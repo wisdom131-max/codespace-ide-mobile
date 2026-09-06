@@ -26,6 +26,17 @@ data class Problem(
 object LintChecker {
 
     fun check(path: String, content: String): List<Problem> {
+        // B1 FIX (2026-09-06): only lint CODE files. The bracket/quote scanner treats
+        // prose as code — a markdown file's parentheses and apostrophes produced false
+        // "Unmatched" ERRORs (observed: badge count 145 on a 200-line .md), inflating
+        // the Problems badge and the panel. MARKDOWN/PLAINTEXT/PLAIN are excluded;
+        // every other Language entry (including JSON/YAML/HTML/CSS) is a code file.
+        val language = com.codespace.ide.domain.Language.fromPath(path)
+        if (language == com.codespace.ide.domain.Language.MARKDOWN ||
+            language == com.codespace.ide.domain.Language.PLAINTEXT ||
+            language == com.codespace.ide.domain.Language.PLAIN) {
+            return emptyList()
+        }
         val problems = mutableListOf<Problem>()
         val lines = content.split("\n")
         val stack = ArrayDeque<Pair<Char, Int>>()

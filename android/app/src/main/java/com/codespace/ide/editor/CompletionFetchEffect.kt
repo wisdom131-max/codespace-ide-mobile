@@ -104,10 +104,24 @@ fun CompletionFetchEffect(
             lspGens.completion++
             val myCompGen = lspGens.completion
             val myCompServerGen = com.codespace.ide.lsp.LspManager.getServerGeneration(language)
-            if (lspRequestIdState.value >= 0 && lspCancellationProvider != null) {
-                try { lspCancellationProvider.invoke(lspRequestIdState.value) } catch (_: Exception) {}
-                lspRequestIdState.value = -1L
+            // B5 FIX 1 (2026-09-06) — CANCELLATION OFF-BY-ONE: the old code cancelled
+            // lspRequestIdState.value, an id captured BEFORE the previous request was
+            // even sent (getPendingRequestId returns -1 until the request is in-flight),
+            // so it targeted the request-before-the-in-flight-one — or nothing — and
+            // the ACTUAL in-flight request never received $/cancelRequest. The correct
+            // target is whatever is pending for the completion method RIGHT NOW,
+            // queried live at cancel time (mirrors VS Code: a new request cancels the
+            // in-flight one).
+            if (lspCancellationProvider != null) {
+                try {
+                    val inFlightId = lspRequestIdProvider?.invoke() ?: -1L
+                    if (inFlightId >= 0) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] cancel in-flight completion id=$inFlightId before new request", "lsp")
+                        lspCancellationProvider.invoke(inFlightId)
+                    }
+                } catch (_: Exception) {}
             }
+            lspRequestIdState.value = -1L
 
             val cOff = selectionEnd
             val cPos = positionMapper.offsetToPosition(cOff)
@@ -181,6 +195,21 @@ fun CompletionFetchEffect(
                     workspaceCompletionsState.value = emptyList()
                     lspIsIncompleteState.value = false
                     lspLastPrefixState.value = ""
+                    // B5 FIX 2 (2026-09-06): withTimeoutOrNull abandons the coroutine but
+                    // does NOT stop the blocking server request — the IO thread stayed
+                    // hostage to it (and the server kept computing). Send $/cancelRequest
+                    // for the still-in-flight id: the server stops and replies promptly,
+                    // which unblocks the abandoned thread. (The late response is already
+                    // discarded by the request-gen/server-gen checks below.)
+                    if (lspCancellationProvider != null) {
+                        try {
+                            val inFlightId = lspRequestIdProvider?.invoke() ?: -1L
+                            if (inFlightId >= 0) {
+                                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] TIMEOUT — sending $/cancelRequest for in-flight id=$inFlightId", "lsp")
+                                lspCancellationProvider.invoke(inFlightId)
+                            }
+                        } catch (_: Exception) {}
+                    }
                     com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] TIMEOUT >5000ms prefix='${prefix}'", "lsp")
                     __lspTimeoutCount++
                     com.codespace.ide.diagnostics.AppOutputLog.log("[LSP-TIMING] STATS success=$__lspSuccessCount timeout=$__lspTimeoutCount slow(>2s)=$__lspSlowCount avgMs=$__lspTotalMs", "lsp")

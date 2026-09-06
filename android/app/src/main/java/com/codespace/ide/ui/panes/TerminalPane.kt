@@ -757,7 +757,7 @@ internal fun TerminalPane(
         if (idx < 0) return
         val cur = tabs[idx].lockedRootPath
         tabs[idx] = tabs[idx].copy(lockedRootPath = if (cur == root) null else root)
-        scope.launch { TerminalSessionStore.save(context, tabs.map {
+        scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
             TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
         }) }
     }
@@ -800,7 +800,7 @@ internal fun TerminalPane(
             tabs.add(TabSession(id, "Ubuntu", session, client, lockedRootPath = lockedRoot))
             activeId = id
             // Phase 4: persist after opening a new tab
-            scope.launch { TerminalSessionStore.save(context, tabs.map {
+            scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
                 TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
             }) }
             return
@@ -1030,7 +1030,7 @@ internal fun TerminalPane(
             showTapToStart = false
             // Phase 4: try session restore (loop-guarded, crash-safe)
             val restored = if (TerminalSessionStore.claimRestoreAttempt(context)) {
-                TerminalSessionStore.load(context)
+                TerminalSessionStore.load(context, projectId)
             } else emptyList()
             if (restored.isNotEmpty()) {
                 // Part B: only re-apply a saved lock if that root still exists.
@@ -1070,7 +1070,7 @@ internal fun TerminalPane(
         sharedState.viewCache.remove(id) // P14-A: evict cached view so it can be GC'd
         if (activeId == id) activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.first().id
         // Phase 4: persist updated tab list
-        scope.launch { TerminalSessionStore.save(context, tabs.map {
+        scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
             TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
         }) }
     }
@@ -1248,7 +1248,7 @@ internal fun TerminalPane(
                         text = { Text("Clear saved sessions", fontSize = 12.sp) },
                         onClick = {
                             showMenu = false
-                            scope.launch { TerminalSessionStore.wipe(context) }
+                            scope.launch { TerminalSessionStore.wipe(context, projectId) }
                         }
                     )
                 }

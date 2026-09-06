@@ -188,6 +188,14 @@ fun EditorPane(
     /** MULTI-ROOT (Part B): invoked after closeRootRequest has been handled so the
      * shell can clear its request state. */
     onCloseRootHandled: (() -> Unit)? = null,
+    /** B1 REACTIVE-SYNC (2026-09-06): EditorPane is the AUTHORITATIVE owner of the
+     * open-tab list — this callback reports (openPaths, activePath) on EVERY tab
+     * open/close/switch, including internal opens the shell never saw before
+     * (go-to-definition, peek, split views). The shell derives its editorTabs +
+     * activeEditorTab mirror from this stream, so the Problems badge, Open Editors
+     * list, and root-removal tab-close branch always see LIVE data — same
+     * reactive-binding principle as WorkspaceRootsStore (no manual refresh). */
+    onTabsChanged: ((openPaths: List<String>, activePath: String?) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
@@ -627,6 +635,23 @@ fun EditorPane(
             }
             onFileOpened?.invoke()
         }
+    }
+
+    // B1 REACTIVE-SYNC: single observation point reporting the authoritative tab
+    // list + active tab to the shell. snapshotFlow fires on ANY mutation of tabs
+    // or activeId (open, close, switch, split, root-removal cleanup) — no per-site
+    // wiring needed, and it cannot miss a path the way ad-hoc callbacks did.
+    // NOTE: declared AFTER the openFilePath effect below so the FIRST emission
+    // already reflects the shell-requested file — otherwise the initial
+    // (empty, null) report would clear the shell's activeEditorTab and unmount
+    // this pane before the open ever happens.
+    androidx.compose.runtime.LaunchedEffect(onTabsChanged) {
+        val callback = onTabsChanged ?: return@LaunchedEffect
+        androidx.compose.runtime.snapshotFlow { tabs.map { it.path } to activeId }
+            .collect { state ->
+                val (paths, activeIdNow) = state
+                callback(paths, tabs.firstOrNull { it.id == activeIdNow }?.path)
+            }
     }
 
     // ── Workspace memory: persist on every state change ─────────────────

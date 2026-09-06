@@ -1507,6 +1507,11 @@ fun ProjectShellScreen(
                                 // (EditorPane sends per-file didClose via the shared close
                                 // path first), then notify servers AFTER didClose.
                                 onWorkspaceRootRemoved = { rootPath ->
+                                    // B4 FIX (2026-09-06): this branch is now reliable — editorTabs is a
+                                    // LIVE mirror of EditorPane's authoritative tab list (onTabsChanged reactive
+                                    // sync), so "empty" really means no tabs under the removed root. The stale-list
+                                    // case (internal opens via go-to-def/peek never reached this list) previously
+                                    // took the notify-immediately branch and left the root's tabs open.
                                     val prefix = rootPath.trimEnd('/')
                                     val affected = editorTabs.filter { it == prefix || it.startsWith(prefix + "/") }
                                     if (affected.isEmpty()) {
@@ -4736,6 +4741,7 @@ private fun PssEditorColumn(
                     onFindBarOpenChanged = { open -> showFindBar = open },
                     closeRootRequest = closeRootRequest,
                     onCloseRootHandled = onCloseRootHandled,
+                    onTabsChanged = { paths, active -> syncEditorTabsFromPane(editorTabs, activeEditorTabMs, paths, active) },
                 )
             } else {
                 Box(

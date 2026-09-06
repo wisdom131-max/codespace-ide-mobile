@@ -3127,13 +3127,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             lintErrors = lintErrors,
             hasCompletions = showCompletions,
             value = value,
-            lineHeightDp = lineHeightDp,
-            vScrollDp = vScrollDp,
             fontSize = fontSize,
+            vScrollPx = vScroll.value,
+            stickyPadPx = if (stickyPadActive) stickyPadPx else 0f,
             GUTTER_WIDTH = GUTTER_WIDTH,
             displayLineCount = visualLineMapper.visualLineCount,
             textLayoutResult = textLayoutResult,
             positionMapper = positionMapper,
+            visualLineMapper = visualLineMapper,
         )
         // P26-1: LSP Code Lens — inline annotations at end of lines (e.g. "3 references")
         if (toggles.showCodeLens && lspCodeLenses != null && lspCodeLenses!!.length() > 0) {

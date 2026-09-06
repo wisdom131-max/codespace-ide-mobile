@@ -74,6 +74,12 @@ public final class TerminalBuffer {
                 x2 = columns;
             }
             TerminalRow lineObject = mLines[externalToInternalRow(row)];
+            // B2 FIX (2026-09-06): transcript rows can be NULL (never allocated —
+            // e.g. during/after a resize race: writeToDisplay -> append() resizes the
+            // buffer on the client thread while the UI thread reads the transcript
+            // via getTranscriptText). Previously this crashed with an NPE inside
+            // findStartOfColumn(). A null row is blank — skip it, like upstream termux.
+            if (lineObject == null) continue;
             int x1Index = lineObject.findStartOfColumn(x1);
             int x2Index = (x2 < mColumns) ? lineObject.findStartOfColumn(x2) : lineObject.getSpaceUsed();
             if (x2Index == x1Index) {
@@ -181,15 +187,21 @@ public final class TerminalBuffer {
     }
 
     public void setLineWrap(int row) {
-        mLines[externalToInternalRow(row)].mLineWrap = true;
+        // B2 FIX: null-safe — row may not be allocated yet (resize race).
+        TerminalRow r = mLines[externalToInternalRow(row)];
+        if (r != null) r.mLineWrap = true;
     }
 
     public boolean getLineWrap(int row) {
-        return mLines[externalToInternalRow(row)].mLineWrap;
+        // B2 FIX: null-safe — a never-allocated row is a blank line, never wrapped.
+        TerminalRow r = mLines[externalToInternalRow(row)];
+        return r != null && r.mLineWrap;
     }
 
     public void clearLineWrap(int row) {
-        mLines[externalToInternalRow(row)].mLineWrap = false;
+        // B2 FIX: null-safe — row may not be allocated yet (resize race).
+        TerminalRow r = mLines[externalToInternalRow(row)];
+        if (r != null) r.mLineWrap = false;
     }
 
     /**

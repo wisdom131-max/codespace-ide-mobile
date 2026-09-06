@@ -39,8 +39,16 @@ object LintAnalyzer {
 
     fun analyze(text: String, language: Language): List<LintError> {
         val errors = mutableListOf<LintError>()
-        checkBraceBalance(text, errors)
-        checkStringTermination(text, errors, language)
+        // B1 FIX (2026-09-06): code-specific scans only for code languages. Prose
+        // (markdown/plain text) previously produced false "Unmatched" bracket errors
+        // from ordinary parentheses/apostrophes in sentences — these showed as editor
+        // squiggles AND inflated the Problems badge. TODO/FIXME info checks stay on
+        // for every file (matches the Todo Tree convention).
+        val isCodeLanguage = language != Language.MARKDOWN && language != Language.PLAINTEXT && language != Language.PLAIN
+        if (isCodeLanguage) {
+            checkBraceBalance(text, errors)
+            checkStringTermination(text, errors, language)
+        }
         if (language == Language.KOTLIN || language == Language.JAVA) {
             checkUnusedImports(text, errors)
         }

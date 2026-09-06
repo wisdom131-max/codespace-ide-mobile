@@ -1585,3 +1585,50 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 3. Exit code 9 / SIGKILL investigation: OOM-kill consistency research (locale-gen memory pressure) - report + options, no implementation without approval.
 4. Standing backlog: multi-cursor parity plan (approval pending), Copilot credential UX (approval pending), README auto-open (deferred, OFF by default), MCP/Tool integration research, Ollama re-add as ChatProvider in extensions repo, kls-classpath script, Kotlin stdlib JAR in proot rootfs.
 
+
+### [2026-09-06 12:05 WAT] — AI Agent: GLM (Superagent)
+
+**Commit (pending SHA) | CI #2647 pending**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[TERMINAL] GROUP A — project-scoped terminal session store (approved, implemented)**
+- GAP CONFIRMED: TerminalSessionStore was ONE GLOBAL slot — tabs saved while in project B overwrote project A's saved set, so launching into A restored B's terminals (unlocked ones re-pointed at A's root). Locks were safe (path-validated against current project's roots) but session SETS bled across projects.
+- FIX: storage keyed per project ("saved_tabs__<projectId>") — projectId is enforced by the STORAGE KEY, not a SavedTab field (a field would be informational only and could not prevent the bleed). One-time legacy migration: the old global list is adopted by the FIRST project that loads with no per-project key, then the global key is consumed so no other project can claim it. save/load/wipe/incrementCrashCount/hasSavedSessions all take projectId; all 5 TerminalPane call sites updated. "Clear saved sessions" clears the current project's key + the legacy global.
+
+**[LINT][UI] B1 — false lint on non-code files + stale badge/tab state (badge=145 on a 200-line .md)**
+- ROOT CAUSE (a): LintChecker.check + LintAnalyzer.analyze ran the bracket/quote scanner on ANY content — a markdown file's prose parens/apostrophes produced false "Unmatched" ERRORs, inflating the Problems badge AND drawing false editor squiggles.
+- FIX (a): both entry points gated — MARKDOWN/PLAINTEXT/PLAIN return empty list / skip brace+string scans. TODO/FIXME info checks stay on for every file.
+- ROOT CAUSE (b): the shell's editorTabs/activeEditorTab mirror was mutated ad-hoc at a few open sites and NEVER updated when tabs were closed/switched INSIDE EditorPane (internal opens via go-to-def/peek/split never reached the shell) — badge kept counting a closed file, Open Editors listed ghosts, root-removal branch mis-decided on stale data.
+- FIX (b): B1 REACTIVE-SYNC — EditorPane (the authoritative tab owner) reports (openPaths, activePath) via ONE snapshotFlow observer + onTabsChanged callback; new EditorTabsSync.kt applies it to the shell mirror (identity-preserving, diff-gated). Observer is declared AFTER the openFilePath effect (verified: zero suspension points before tabs.add — loadFileContent is a plain fun — so the first emission always reflects the requested file) and OUTSIDE the effect block (first insertion accidentally nested it inside LaunchedEffect — would not compile; caught in review).
+
+**[CRASH][TERMINAL] B2 — TerminalBuffer NPE on transcript reads (getSelectedText crash)**
+- ROOT CAUSE: mLines rows for the transcript can be NULL (never allocated; constructor fills only screen rows). getSelectedText read .findStartOfColumn on a null row during/after a resize race (append() on the client thread vs UI-thread transcript read). get/set/clearLineWrap had the same exposure.
+- FIX: null-row skip in getSelectedText (upstream termux pattern) + null-safe wrap accessors.
+
+**[MULTI-ROOT] B4 — root removal not closing its tabs**
+- ROOT CAUSE: the shell branch (notify-now vs ask-EditorPane-to-close) decided on its own STALE editorTabs copy — internal opens invisible to it took the notify-now branch and the root's tabs stayed open.
+- FIX: B1b makes editorTabs a LIVE mirror of EditorPane's authoritative list, so the branch now sees the truth; closeRootRequest path (shared closeEditorTabInternal + didClose + didChangeWorkspaceFolders) does the closing.
+
+**[LSP] B5 — completion cancellation off-by-one + timeout not stopping the request**
+- ROOT CAUSE 1: the pre-request cancel used lspRequestIdState — an id captured BEFORE the request was even sent (getPendingRequestId returns -1 until in-flight), so it targeted the request-before-the-in-flight-one (or nothing); the ACTUAL in-flight request never got $/cancelRequest.
+- FIX 1: cancel now targets whatever is pending for textDocument/completion RIGHT NOW, queried live at cancel time (mirrors VS Code: new request cancels the in-flight one).
+- ROOT CAUSE 2: withTimeoutOrNull(5000) abandons the coroutine but the blocking server request kept the IO thread hostage and the server kept computing.
+- FIX 2: on timeout, send $/cancelRequest for the still-in-flight id — the server stops and replies promptly, unblocking the thread (late response already discarded by gen checks).
+
+**[EDITOR][UI] B6 — ErrorLens diagnostic message rendered ONE LINE ABOVE its line (screenshot-confirmed)**
+- ROOT CAUSE: ErrorLensOverlay had its OWN vertical math: rawDocLine * lineHeightDp - vScrollDp — the exact eaf67ec mistake: raw DOC line as grid index (no VisualLineMapper), fixed lineHeight grid drifting from real Compose layout geometry, and NO sticky-header pad term (with sticky pad active every message landed one line-height HIGH = the reported symptom).
+- FIX: Y now flows through the SAME shared chain as the gutter/lightbulb (EditorLinePositioning): doc line -> visual line (mapper, folded lines hide) -> content-space top (textLayoutResult) -> viewport (-vScroll +stickyPad). X positioning unchanged (was correct). Call site passes vScroll.value px + stickyPadPx + visualLineMapper (same sources the lightbulb uses).
+
+**[LSP] B3 — squiggles/pylsp chain verification (no client bug; no code change)**
+- Full chain traced and verified language-agnostic: publishDiagnostics -> EditorPane per-language handler (server-gen checked at invocation time, URI normalized + filename fallback) -> lspDiagnosticsToLintErrors -> CodeEditor lspDiagnosticErrors -> lintErrors merge -> DecorationStore -> squiggles. Client side matches the working Kotlin path exactly. Remaining suspect for pylsp = server never actually installing/starting in the rootfs (heavy pip install, 240s timeout, OOM-kill pattern like locale-gen) — needs on-device Output check ([LSP] startServer BEGIN: Python + publishDiagnostics lines) before any client work.
+
+**Files:** NEW ui/screens/EditorTabsSync.kt; ui/panes/EditorPane.kt (param + observer); ui/screens/ProjectShellScreen.kt (wiring + B4 comment); terminal/TerminalSessionStore.kt (rewrite); ui/panes/TerminalPane.kt (5 call sites); diagnostics/LintChecker.kt + editor/LintAnalyzer.kt (gates); com/termux/terminal/TerminalBuffer.java (null guards); editor/CompletionFetchEffect.kt (B5); editor/ErrorLensOverlay.kt + editor/CodeEditor.kt call site (B6).
+
+**Next on roadmap (ALL pending):**
+1. GROUP C ITEM 6 — Settings/credential UX redesign PLAN (report + WAIT FOR APPROVAL, no implementation).
+2. Group C items 7-10 (research/plans): agent-tools menu extraction inventory, engine/runtime research, VS Code debugger parity research.
+3. ON-DEVICE regression batch (this build): (a) terminal sessions project-scoped (open tabs in project A, launch into B -> only B's tabs); (b) Problems badge + squiggles on a .md file (expect 0/false-lint gone); (c) ErrorLens message sits ON its own line (sticky scroll on AND off); (d) remove a workspace root -> its tabs close; (e) TerminalBuffer NPE repro (copy/select during rapid output + resize).
+4. Still-pending on-device from #2646: tap-to-open repro (echo + tap), ide open in LOCKED terminal, padlock suite (lock to non-primary root), 5-provider first-send cross-routing check, Gemini live send.
+5. Exit code 9 / SIGKILL OOM investigation (locale-gen memory pressure) — report + options, no implementation without approval.
+6. Standing backlog: multi-cursor parity plan (approval pending), Copilot credential UX (approval pending — folded into item 6 plan), README auto-open (deferred, OFF by default), MCP/Tool integration research, Ollama re-add as ChatProvider in extensions repo, kls-classpath script, Kotlin stdlib JAR in proot rootfs.
