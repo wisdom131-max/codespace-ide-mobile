@@ -367,8 +367,6 @@ commands work (apt, git, node, python3). Android host commands do NOT work here.
 }
 
 // ── UI ────────────────────────────────────────────────────────────────────────
-@Composable
-
 // CROSS-ROUTING FIX (2026-09-06): shared initial model selection. Order:
 // 1. the persisted ChatModelSelection value (what Settings' provider switch
 //    and the other chat panel last wrote), 2. the provider the user activated
@@ -384,6 +382,7 @@ private fun chatModelSelectionInitial(context: android.content.Context, tokenSto
     return registeredModelEntries(tokenStore).firstOrNull() ?: ""
 }
 
+@Composable
 internal fun CopilotChatPanelOverlay(
     onClose: () -> Unit,
     colors: ChatPanelColors = DefaultChatColors,
@@ -443,7 +442,7 @@ internal fun CopilotChatPanelOverlay(
         scope.launch {
             try {
                 com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
-        val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
+                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
@@ -885,7 +884,7 @@ internal fun CopilotChatPanelInline(
         scope.launch {
             try {
                 com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
-        val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths)
+                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths)
                 messages.add(ChatMsg("assistant", reply))
                 persistSessions()
             } catch (e: Exception) {

@@ -384,12 +384,12 @@ fun SettingsScreen(
                         supportingContent = { Text(if (isActive) "✓ Active" else "Tap switch to activate") },
                         trailingContent = {
                             Switch(checked = isActive, onCheckedChange = { if (it) {
-                            activeProvider = provider
-                            // CROSS-ROUTING FIX: activating a provider in Settings must switch
-                            // chat dispatch too - write the shared, persisted model selection
-                            // that both chat panels read.
-                            try { com.codespace.ide.chat.ChatModelSelection.set(context, provider.id + ":" + provider.defaultModel) } catch (_: Exception) {}
-                        } })
+                                activeProvider = provider
+                                // CROSS-ROUTING FIX: activating a provider in Settings must switch
+                                // chat dispatch too - write the shared, persisted model selection
+                                // that both chat panels read.
+                                try { com.codespace.ide.chat.ChatModelSelection.set(context, provider.id + ":" + provider.defaultModel) } catch (_: Exception) {}
+                            } })
                         },
                     )
                     OutlinedTextField(
