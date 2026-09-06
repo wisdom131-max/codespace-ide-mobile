@@ -631,18 +631,42 @@ object ProotInstaller {
                 // env var passed to proot itself, or libproot.so on the host fails to find it.
                 val profileDDir = File(rootfs, "etc/profile.d")
                 profileDDir.mkdirs()
-                // 00-locale: sets UTF-8 locale + stty iutf8 so emoji work in Claude Code
+                // ── LOCALE: C.UTF-8 switch (ported from ubuntu-proot-test, 2026-09-06) ──
+                // PORT ORIGIN: wisdom131-max/ubuntu-proot-test commits 2c59a98 + b231c56,
+                // device-CONFIRMED (build #139, TECNO KL4): no "Generating locales..."
+                // during setup, locale shows C.UTF-8 everywhere, no repeated warning,
+                // ls/apt/python3 normal, emoji display fine.
+                // WHY: en_US.UTF-8 requires locale-gen -> localedef, which is
+                // memory-intensive; an OS-level SIGKILL (signal 9, lmkd) was captured
+                // on-device immediately after "Generating locales... en_US.UTF-8... done"
+                // during setup. C.UTF-8 is compiled into glibc 2.35+ - ZERO generation
+                // work, full UTF-8 support (emoji included). There is INTENTIONALLY NO
+                // locale-gen branch: that is the fix. Audit found nothing depends on
+                // en_US-specific behavior (sort usages are numeric -n; LSP already
+                // launched with C.UTF-8; PERL_BADLANG=0 already set).
+                // DEVICE-TEST FIX included: glibc lists the locale as C.utf8 (lowercase,
+                // NO hyphen) - a naive 'C.utf-8' grep pattern never matches. Guard regex
+                // is grep -qiE 'C[.]?utf-?8' (matches C.utf8 / C.UTF-8 / C.UTF8) and the
+                // confirmation is ONE-TIME via the /var/log marker - profile.d stays
+                // silent on later logins.
                 File(profileDDir, "00-locale.sh").writeText(
                     "#!/bin/sh\n" +
-                    "# Generate en_US.UTF-8 locale if not present\n" +
-                    "if ! locale -a 2>/dev/null | grep -q 'en_US.utf8'; then\n" +
-                    "    locale-gen en_US.UTF-8 2>/dev/null || true\n" +
-                    "fi\n" +
-                    "export LANG=en_US.UTF-8\n" +
-                    "# Only export LC_ALL if the locale is actually available to avoid setlocale warnings\n" +
-                    "locale -a 2>/dev/null | grep -q 'en_US.utf8' && export LC_ALL=en_US.UTF-8\n" +
+                    "# C.UTF-8 locale - no locale-gen, no localedef, no memory spike.\n" +
+                    "# (Ported from ubuntu-proot-test 2c59a98 + b231c56, device-confirmed.)\n" +
+                    "export LANG=C.UTF-8\n" +
+                    "export LC_ALL=C.UTF-8\n" +
                     "export PYTHONIOENCODING=utf-8\n" +
-                    "stty iutf8 2>/dev/null || true\n"
+                    "stty iutf8 2>/dev/null || true\n" +
+                    "# One-time confirmation only - profile.d must stay silent on later logins.\n" +
+                    "# Guard regex matches glibc's C.utf8 spelling (lowercase, no hyphen).\n" +
+                    "if [ ! -f /var/log/locale-c-utf8.ok ]; then\n" +
+                    "    if locale -a 2>/dev/null | grep -qiE 'C[.]?utf-?8'; then\n" +
+                    "        echo '[locale] C.UTF-8 active - no locale-gen needed.'\n" +
+                    "        : > /var/log/locale-c-utf8.ok\n" +
+                    "    else\n" +
+                    "        echo '[locale] WARNING: C.UTF-8 not listed by locale -a'\n" +
+                    "    fi\n" +
+                    "fi\n"
                 )
                 File(profileDDir, "00-locale.sh").setExecutable(true, false)
                 // 01-essential-tools: auto-install git if missing (self-healing).
@@ -813,7 +837,7 @@ object ProotInstaller {
 ## Ubuntu container key files
 - ~/CODEBASE_MAP.md — This file
 - ~/AGENT_MEMORY.md — Project context (written by AgentMemory.kt, injected into AI sessions)
-- /etc/profile.d/00-locale.sh — UTF-8 locale + emoji fix (stty iutf8)
+- /etc/profile.d/00-locale.sh — C.UTF-8 locale (no locale-gen; OOM fix) + emoji fix (stty iutf8)
 - /etc/profile.d/99-dpkg-fix.sh — dpkg/apt shims for Samsung/TECNO kernels
 - /etc/profile.d/mcp-profile.sh — MCP shell aliases (agent(), agent_session_save(), etc.)
 """)
@@ -1227,7 +1251,9 @@ exit 0
             // Suppress perl locale warnings from dpkg post-install scripts
             "PERL_BADLANG=0",
             "LANG=C.UTF-8",
-            "LC_ALL=C.UTF-8"  // C.UTF-8 always exists; 00-locale.sh upgrades to en_US.UTF-8 if generated
+            // C.UTF-8 everywhere — the en_US.UTF-8 locale-gen upgrade was REMOVED
+            // (OOM/SIGKILL on-device); 00-locale.sh now keeps C.UTF-8 as THE locale.
+            "LC_ALL=C.UTF-8"
         )
 
         return Triple(proot, args, envVars)
@@ -1250,7 +1276,10 @@ exit 0
      * P25-1: Strip proot/shell startup noise from structured command output.
      *
      * The interactive PTY terminal (TerminalPane) shows raw proot output — that is correct,
-     * proot bind warnings and locale-gen text are visible in the Terminal tab and that is fine.
+     * proot bind warnings are visible in the Terminal tab and that is fine. NOTE (2026-09-06):
+     * locale-gen text can NO LONGER occur — 00-locale.sh switched to C.UTF-8 with no
+     * locale-gen branch (OOM/SIGKILL fix). The locale-gen patterns below are kept as DEAD
+     * SAFETY NETS in case any other rootfs path ever emits them.
      * But execOnce is used for structured operations (git status, git blame, LSP checks,
      * apt queries, Extensions panel). In those contexts, this noise appears as garbage text
      * mixed in with real command output and breaks parsing in the Source Control panel,

@@ -1661,3 +1661,26 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 4. Exit code 9 / SIGKILL OOM investigation (report + options, no implementation without approval).
 5. Deferred (explicitly): Phase 4 custom providers (unlimited providers, OpenAI-compatible base URL) — after 1-3 confirmed solid on-device; Phase 5 model-ID validation manifest.
 6. Standing backlog: agent-tools menu extraction inventory, engine/runtime research, VS Code debugger parity research, multi-cursor parity plan (approval pending), README auto-open (deferred, OFF by default), MCP/Tool integration research, Ollama re-add as ChatProvider in extensions repo, kls-classpath script, Kotlin stdlib JAR in proot rootfs.
+
+### [2026-09-06 15:45 WAT] — AI Agent: GLM (Superagent)
+
+**Commit (pending SHA) | CI (pending #) — see below**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[LOCALE][OOM] C.UTF-8 FIX PORTED TO MAIN APP (from ubuntu-proot-test 2c59a98 + b231c56, device-confirmed on build #139)**
+- WHAT: /etc/profile.d/00-locale.sh in ProotInstaller REPLACED — en_US.UTF-8 locale-gen branch DELETED; now exports LANG=C.UTF-8, LC_ALL=C.UTF-8, PYTHONIOENCODING=utf-8, stty iutf8. One-time confirmation on first login only (/var/log/locale-c-utf8.ok marker): "[locale] C.UTF-8 active - no locale-gen needed." — silent on later logins.
+- WHY: locale-gen -> localedef is memory-intensive; on-device SIGKILL (signal 9, lmkd) captured right after "Generating locales... en_US.UTF-8... done". C.UTF-8 is compiled into glibc 2.35+ — zero generation work, full UTF-8 (emoji included). This eliminates the exit-9 OOM path during setup.
+- DEVICE-TEST FIX INCLUDED: guard regex grep -qiE 'C[.]?utf-?8' — glibc lists the locale as C.utf8 (lowercase, NO hyphen); a naive 'C.utf-8' pattern never matches, marker never written, warning re-fired every shell (confirmed + fixed in test repo first — do NOT re-introduce hyphen-only grep).
+- SESSION ENV: main app proot env already had LANG=C.UTF-8 + LC_ALL=C.UTF-8 (the LC_ALL=C ASCII-override bug was TEST-REPO-ONLY, fixed there in 2c59a98) — stale comment "00-locale.sh upgrades to en_US.UTF-8 if generated" corrected; no env change needed.
+- stripProotNoise: locale-gen regex patterns KEPT as dead safety nets (locale-gen text can no longer occur); header comment updated.
+- AUDIT (pre-port): nothing depends on en_US — no LC_COLLATE/LC_TIME/LC_NUMERIC refs; sort usages numeric (-n); LSP already launched with C.UTF-8; PERL_BADLANG=0 already set; git auto-install (01-essential-tools.sh) unaffected.
+- FILES: terminal/ProotInstaller.kt only.
+
+**Next on roadmap (ALL pending):**
+1. COMBINED ON-DEVICE REGRESSION BATCH (single pass, newest APK once CI green — includes #2650 ErrorLens fix, #2651 settings phases 1-3, THIS C.UTF-8 port): (a) terminal sessions project-scoped; (b) Problems badge + squiggles on .md; (c) ErrorLens message on its own line (sticky on AND off); (d) remove workspace root -> its tabs close; (e) TerminalBuffer NPE repro; (f) settings UX: valid/malformed/wrong-provider key, empty-submit delete, paste-to-route, live-check status, Switch dispatch; (g) LOCALE: fresh setup -> no "Generating locales...", one-time "[locale] C.UTF-8 active" message, no repeated warning on later shells, locale shows C.UTF-8, emoji display, AND the signal-9/SIGKILL setup crash should be GONE (main-app notification system now testable).
+2. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider first-send cross-routing check, Gemini live send.
+3. Exit code 9 / SIGKILL OOM: locale memory-spike path now eliminated by this port — remaining OOM sources (apt itself) assessed only if a kill recurs in testing.
+4. IME emoji INPUT issue (separate, flagged 2026-09-06): phone IME cannot TYPE emoji into terminal input while output emoji display fine — keyboard-input/IME handling in terminal view, needs its own investigation.
+5. Deferred (explicitly): Phase 4 custom providers; Phase 5 model-ID validation manifest.
+6. Standing backlog: agent-tools menu extraction inventory, engine/runtime research, VS Code debugger parity research, multi-cursor parity plan (approval pending), README auto-open (deferred, OFF by default), MCP/Tool integration research, Ollama re-add as ChatProvider in extensions repo, kls-classpath script, Kotlin stdlib JAR in proot rootfs.
