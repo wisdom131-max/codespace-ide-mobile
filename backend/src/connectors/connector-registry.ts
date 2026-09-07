@@ -150,7 +150,7 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     authUrl: 'https://gitlab.com/oauth/authorize',
     tokenUrl: 'https://gitlab.com/oauth/token',
     revokeUrl: 'https://gitlab.com/oauth/revoke',
-    defaultScope: 'read_api',
+    defaultScope: 'api',
     apiBase: 'https://gitlab.com/api/v4',
     clientIdEnv: 'GITLAB_OAUTH_CLIENT_ID',
     clientSecretEnv: 'GITLAB_OAUTH_CLIENT_SECRET',
@@ -171,7 +171,12 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     id: 'figma', name: 'Figma', authType: 'oauth',
     authUrl: 'https://www.figma.com/oauth',
     tokenUrl: 'https://www.figma.com/api/oauth/token',
-    defaultScope: 'file_read',
+    defaultScope: 'current_user:read file_content:read file_metadata:read '
+      + 'file_comments:read file_comments:write file_versions:read '
+      + 'file_dev_resources:read file_dev_resources:write '
+      + 'projects:read project_metadata:read folders:read folder_metadata:read '
+      + 'library_assets:read library_content:read team_library_content:read '
+      + 'webhooks:read webhooks:write',
     apiBase: 'https://api.figma.com/v1',
     clientIdEnv: 'FIGMA_OAUTH_CLIENT_ID',
     clientSecretEnv: 'FIGMA_OAUTH_CLIENT_SECRET',
@@ -180,7 +185,8 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     id: 'linear', name: 'Linear', authType: 'oauth',
     authUrl: 'https://linear.app/oauth/authorize',
     tokenUrl: 'https://api.linear.app/oauth/token',
-    defaultScope: 'issues:read',
+    defaultScope: 'issues:create issues:read issues:update issues:delete '
+      + 'comments:create comments:read comments:update comments:delete',
     apiBase: 'https://api.linear.app', // GraphQL — POST { "query": "…" } to /
     clientIdEnv: 'LINEAR_OAUTH_CLIENT_ID',
     clientSecretEnv: 'LINEAR_OAUTH_CLIENT_SECRET',
@@ -190,7 +196,8 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     // Atlassian 3LO: audience param required on authorize; Bearer works for calls.
     authUrl: 'https://auth.atlassian.com/authorize',
     tokenUrl: 'https://auth.atlassian.com/oauth/token',
-    defaultScope: 'read:jira-work',
+    defaultScope: 'read:jira-user read:jira-work write:jira-work '
+      + 'manage:jira-project offline_access',
     apiBase: 'https://api.atlassian.com',
     clientIdEnv: 'JIRA_OAUTH_CLIENT_ID',
     clientSecretEnv: 'JIRA_OAUTH_CLIENT_SECRET',
@@ -201,7 +208,7 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     authUrl: 'https://discord.com/oauth2/authorize',
     tokenUrl: 'https://discord.com/api/oauth2/token',
     revokeUrl: 'https://discord.com/api/oauth2/token/revoke',
-    defaultScope: 'identify guilds',
+    defaultScope: 'identify email guilds guilds.members.read',
     apiBase: 'https://discord.com/api/v10',
     clientIdEnv: 'DISCORD_OAUTH_CLIENT_ID',
     clientSecretEnv: 'DISCORD_OAUTH_CLIENT_SECRET',
@@ -212,7 +219,9 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     // Canva's token endpoint takes a JSON body (not form-encoded).
     authUrl: 'https://www.canva.com/api/oauth/authorize',
     tokenUrl: 'https://api.canva.com/api/v1/oauth/token',
-    defaultScope: 'profile:read',
+    defaultScope: 'openid profile:read email design:meta:read design:content:read '
+      + 'design:content:write asset:read asset:write folder:read folder:write '
+      + 'comment:read comment:write',
     apiBase: 'https://api.canva.com/api/v1',
     clientIdEnv: 'CANVA_OAUTH_CLIENT_ID',
     clientSecretEnv: 'CANVA_OAUTH_CLIENT_SECRET',
@@ -223,7 +232,9 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     authUrl: 'https://huggingface.co/oauth/authorize',
     tokenUrl: 'https://huggingface.co/oauth/token',
     revokeUrl: 'https://huggingface.co/oauth/revoke',
-    defaultScope: 'profile',
+    defaultScope: 'openid profile email manage-repos write-discussions '
+      + 'write-collections inference-api jobs write-endpoints webhooks '
+      + 'read-billing read-memberships read-mcp',
     apiBase: 'https://huggingface.co/api',
     clientIdEnv: 'HUGGINGFACE_OAUTH_CLIENT_ID',
     clientSecretEnv: 'HUGGINGFACE_OAUTH_CLIENT_SECRET',
