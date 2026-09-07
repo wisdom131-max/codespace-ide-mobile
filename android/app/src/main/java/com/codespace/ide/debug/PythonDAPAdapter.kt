@@ -320,7 +320,7 @@ class PythonDAPAdapter : DebugAdapter {
         // 9. configurationDone (AFTER setBreakpoints — tells adapter to start running)
         dapClient.sendRequest("configurationDone")
         // P1-D4: send default-enabled exception breakpoint filters after config
-        val defaultFilters = caps.exceptionFilters.filter { it.defaultOn }.map { it.filter }
+        val defaultFilters = caps?.exceptionFilters.orEmpty().filter { it.defaultOn }.map { it.filter }
         if (defaultFilters.isNotEmpty()) {
             dapClient.sendRequest("setExceptionBreakpoints", JSONObject().put("filters", JSONArray(defaultFilters)))
         }

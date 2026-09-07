@@ -660,7 +660,7 @@ object UniversalDebugManager {
             logMessage = logMessage?.takeIf { it.isNotBlank() },
             hitCondition = hitCondition?.takeIf { it.isNotBlank() },
         )
-        breakpoints[filePath][idx] = newBp
+        fileBps[idx] = newBp
         notifyBreakpointsChanged()
         // Note: like the existing toggle path, edit is in-memory only; saveBreakpoints()
         // is only invoked at load time today (pre-existing behavior, unchanged here).
