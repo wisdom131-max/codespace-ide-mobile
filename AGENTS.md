@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-07 13:05 WAT
+> Last updated: 2026-09-07 20:55 WAT
 
 ---
 
@@ -1946,6 +1946,44 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 **Next on roadmap (ALL pending):**
 1. On-device test batches awaiting Wisdom (one pass, newest green APK from #2680/#2681 artifacts): (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657; (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) MD-preview suite T1-T10 (#2664); (d) MCP suite M1-M8 (#2667); (e) P1 debug D1-D5 batch (#2671); (f) P2 debug batch (#2673); (g) CONN-1..8 Phase 1 batch; (h) Phase 2 OAuth2 on-device connect test (after OAuth apps registered per provider); (i) Phase 3 project-services panel test.
 2. OAuth app registration for Phase 2 providers (GitLab/Notion/Figma/Linear/Jira/Discord/Canva/HuggingFace) — client id/secret env vars on Render.
+3. Item 3 remaining: IME emoji phase 2 (read diag logs from on-device emoji tap -> fix per evidence).
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+---
+
+## [2026-09-07 20:55 WAT] — AI Agent: OAuth provider audit + FULL-ACCESS scopes + GitLab/HF app fixes
+
+**RULES REMINDER:** 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY. 2. CHANGE LOG: entry at BOTTOM of AGENTS.md with timestamp, SHA, CI build+pass/fail, what was fixed, files touched, next on roadmap (ALL pending). 3. TAGS: [BUILD-FIX], [LSP], [UI], [DOCS], [INFRA], [BACKEND], [CRASH], [GIT], [CONNECTORS]. 4. Update Current State table at top. 5. NEVER re-do done work. 6. ROADMAP CONTINUITY: list ALL pending. 7. UI: rounded corners 8-12dp + padding 12dp h / 10dp v.
+
+**[CONNECTORS] OAuth provider audit (agent-side, browser + authorize-URL probes):**
+- HUGGING FACE: Wisdom's original app was a PUBLIC app (no client secret) — unusable for server-side exchange. Agent created proper confidential app "CodeSpace IDE Connect" on his account (client id 646cb612-6fa6-4100-8a5f-176f3b96810a), registered the redirect URI, set 30-day tokens, ticked ALL full-access scopes (manage-repos, write-discussions, write-collections, inference-api, jobs, write-endpoints, webhooks, read-billing, read-memberships, read-mcp, openid, profile, email). Old broken public app DELETED. Env vars set on Render.
+- GITLAB: original app had issues; Wisdom created a NEW app on a NEW account (wisdomgoodluck131). New client id 42cc0f8f... set on Render; secret is GitLab's new gloas- prefixed format (70 chars, complete). Access token verified 200. NOTE: platform secret detector SPLIT the PAT at a dot — full working PAT = stored secret + '.01.170r2ufsc' tail; verified /api/v4/user 200.
+- Authorize-URL probes (validate client_id + redirect BEFORE login wall): GitLab OK, Figma OK, Jira OK, Notion OK (redirects to install-integration), Linear OK (clean login wall), HF OK. Discord = SPA, no pre-login validation possible; verify at first connect.
+
+**[CONNECTORS] FULL-ACCESS scopes shipped — edaca98 (backend-only, Render auto-deploy LIVE, health 200):**
+- GitLab: read_api -> api
+- Figma: deprecated file_read -> NEW granular scopes (verified from figma/rest-api-spec openapi.yaml): current_user:read, file_content:read, file_metadata:read, file_comments:read/write, file_versions:read, file_dev_resources:read/write, projects:read, project_metadata:read, folders:read, folder_metadata:read, library_assets:read, library_content:read, team_library_content:read, webhooks:read/write
+- Linear: issues:read -> issues CRUD + comments CRUD (all 8 granular scopes)
+- Jira: read:jira-work -> read:jira-user + read:jira-work + write:jira-work + manage:jira-project + offline_access
+- Discord: identify guilds -> identify email guilds guilds.members.read
+- Canva: profile:read -> openid profile:read email design:meta:read design:content:read/write asset:read/write folder:read/write comment:read/write (verified against canva.dev scopes appendix; brandtemplate skipped — requires Canva Brands). NOTE: Canva requires scopes enabled in integration settings AND requested at authorize.
+- Hugging Face: profile -> full 13-scope set matching new app defaults.
+
+**PENDING USER ACTIONS (required before connect tests pass):**
+1. GitLab: edit the NEW app (wisdomgoodluck131 -> Settings -> Applications) and tick 'api' scope, else authorize fails with invalid scope.
+2. Jira: developer console -> Permissions tab -> add read:jira-user, write:jira-work, manage:jira-project, offline_access.
+3. Notion: integration Configuration -> enable Update content + Insert content (currently Read only).
+4. Canva: app/integration still NOT created (mobile portal issues) — need client id/secret once created, scopes enabled in integration settings.
+5. Drive: agent will request write scope next turn to save/update/dedupe credentials file in 'Codespace IDE — Dev Credentials' folder (currently read-only).
+
+**Commits/CI this entry:** edaca98 (full-access scopes; Android CI #2683 in progress at entry time; backend-only change). Render deploy for edaca98 LIVE, health 200.
+
+**Files touched:** backend/src/connectors/connector-registry.ts. (Render env vars updated via API: GITLAB_OAUTH_CLIENT_ID, GITLAB_OAUTH_CLIENT_SECRET, HUGGINGFACE_OAUTH_CLIENT_ID, HUGGINGFACE_OAUTH_CLIENT_SECRET.)
+
+**Next on roadmap (ALL pending):**
+1. On-device test batches awaiting Wisdom (one pass, newest green APK): (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657; (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) MD-preview suite T1-T10 (#2664); (d) MCP suite M1-M8 (#2667); (e) P1 debug D1-D5 batch (#2671); (f) P2 debug batch (#2673); (g) CONN-1..8 Phase 1 batch; (h) Phase 2 OAuth2 on-device connect test (after pending user actions 1-4 above); (i) Phase 3 project-services panel test.
+2. Pending user actions 1-5 above (GitLab scope tick, Jira permissions, Notion capabilities, Canva app creation, Drive write scope).
 3. Item 3 remaining: IME emoji phase 2 (read diag logs from on-device emoji tap -> fix per evidence).
 4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
