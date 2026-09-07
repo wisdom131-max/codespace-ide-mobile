@@ -532,63 +532,6 @@ internal fun rememberTerminalState(context: android.content.Context): TerminalSt
 
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Voice / TTS models — added 2026-07-08 in response to the debug doc's TTS section.
-// Piper = fast, free, on-device, but flat/robotic (no pacing, no non-verbal sounds).
-// Bark-small = heavier generative model, actually supports [sighs]/[laughs]/[coughs]-style
-// non-verbal tags and real emotional pacing, but is CPU-only here (no GPU in proot) and may
-// be slow or memory-heavy on this device — offered as an explicit, clearly-labeled trade-off.
-// All downloads use curl -C - / wget -c (resume) + --retry so a dropped connection just
-// picks back up instead of restarting from zero — this is now the standard pattern for any
-// downloadable asset in the app, not just voices.
-// ─────────────────────────────────────────────────────────────────────────────
-internal data class VoiceModelOption(
-    val id: String,
-    val label: String,
-    val note: String,
-    val sizeNote: String,
-    val engine: String, // "piper" or "bark"
-)
-
-internal val VOICE_MODELS = listOf(
-    VoiceModelOption("en_US-lessac-medium", "Lessac (Medium)", "Fast, clear, robotic — good default", "~60MB", "piper"),
-    VoiceModelOption("en_US-lessac-high", "Lessac (High)", "Fast, crisper pronunciation — still no emotion", "~120MB", "piper"),
-    VoiceModelOption("en_US-amy-medium", "Amy (Medium)", "Alternate fast voice, female", "~60MB", "piper"),
-    VoiceModelOption("bark-small", "Bark (Emotional)", "\u26A0\uFE0F Real pacing + sighs/laughs/coughs, but slow & CPU-only — may be heavy on this device", "~1.7GB", "bark"),
-)
-
-private fun piperVoiceRepoPath(id: String): String = when (id) {
-    "en_US-lessac-medium" -> "en/en_US/lessac/medium/en_US-lessac-medium"
-    "en_US-lessac-high"   -> "en/en_US/lessac/high/en_US-lessac-high"
-    "en_US-amy-medium"    -> "en/en_US/amy/medium/en_US-amy-medium"
-    else -> "en/en_US/lessac/medium/en_US-lessac-medium"
-}
-
-internal fun voiceInstallScript(m: VoiceModelOption): String = when (m.engine) {
-    "piper" -> {
-        val repoPath = piperVoiceRepoPath(m.id)
-        "echo -e \"\u001b[1;34m[Voice]\u001b[0m Setting up Piper voice: ${m.label}...\"\n" +
-        "command -v pip3 &>/dev/null || { echo -e \"\u001b[1;33m  python3-pip missing \u2014 installing...\u001b[0m\"; apt install -y python3-pip 2>&1 | tail -3; }\n" +
-        "pip3 show piper-tts &>/dev/null || pip3 install piper-tts --break-system-packages 2>&1 | tail -8\n" +
-        "mkdir -p ~/remotion-project/audio && cd ~/remotion-project/audio\n" +
-        "echo -e \"\u001b[1;36m  Downloading voice model (resumable)...\u001b[0m\"\n" +
-        "curl -C - --retry 5 --retry-delay 3 -L -o ${m.id}.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/$repoPath.onnx 2>&1 | tail -5\n" +
-        "curl -C - --retry 5 --retry-delay 3 -L -o ${m.id}.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/$repoPath.onnx.json 2>&1 | tail -5\n" +
-        "echo -e \"\u001b[1;32m  Done. Test with: piper --model ${m.id}.onnx --output_file test.wav <<< 'hello there'\u001b[0m\"\n"
-    }
-    "bark" -> {
-        "echo -e \"\u001b[1;34m[Voice]\u001b[0m Setting up Bark (this is heavy \u2014 ~1.7GB + torch/transformers, may take a while)...\"\n" +
-        "command -v pip3 &>/dev/null || { echo -e \"\u001b[1;33m  python3-pip missing \u2014 installing...\u001b[0m\"; apt install -y python3-pip 2>&1 | tail -3; }\n" +
-        "pip3 show torch &>/dev/null || pip3 install --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu 2>&1 | tail -8\n" +
-        "pip3 show transformers &>/dev/null || pip3 install --break-system-packages transformers scipy accelerate 2>&1 | tail -8\n" +
-        // huggingface_hub (used internally by transformers' from_pretrained) already resumes
-        // partially-downloaded files automatically on retry — just re-run on failure.
-        "echo -e \"\u001b[1;36m  Downloading + caching bark-small (auto-resumes on retry if it drops)...\u001b[0m\"\n" +
-        "python3 -c \"from transformers import AutoProcessor, BarkModel; AutoProcessor.from_pretrained('suno/bark-small'); BarkModel.from_pretrained('suno/bark-small')\" 2>&1 | tail -15\n" +
-        "echo -e \"\u001b[1;32m  Bark-small ready. This is CPU-only here \u2014 expect generation to be noticeably slower than Piper.\u001b[0m\"\n"
-    }
-    else -> "echo 'Unknown voice model'\n"
-}
 
 
 
@@ -682,7 +625,6 @@ internal fun TerminalPane(
     var zshSetupDone      by remember { mutableStateOf(false) }
     var showSchemeMenu    by remember { mutableStateOf(false) }
     var activeScheme      by remember { mutableStateOf(TerminalSchemes.DARK) }
-    var showVoiceModelPicker by remember { mutableStateOf(false) }
     val currentView = remember { androidx.compose.runtime.mutableStateOf<com.termux.view.TerminalView?>(null) }
 
     LaunchedEffect(Unit) {
@@ -1191,13 +1133,6 @@ internal fun TerminalPane(
                         leadingIcon = { Text("  ", fontSize = 10.sp, color = Color(0xFF717171)) },
                         text = { Text("AI & TOOLS", fontSize = 10.sp, color = Color(0xFF717171), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
                         onClick = {}, enabled = false)
-                    DropdownMenuItem(
-                        leadingIcon = { Text("\uD83C\uDF99\uFE0F", fontSize = 13.sp) },
-                        text = { Text("Install Voice (TTS)", color = Color(0xFF89B4FA), fontSize = 13.sp) },
-                        onClick = {
-                            showMenu = false
-                            showVoiceModelPicker = true
-                        })
 
                     DropdownMenuItem(
                         leadingIcon = { Text("🔌", fontSize = 13.sp) },
@@ -1312,33 +1247,6 @@ internal fun TerminalPane(
         }
 
         // Voice/TTS model picker — Piper (fast/free) vs Bark-small (emotional, heavier).
-        if (showVoiceModelPicker) {
-            // Rotation fix (#8): see color scheme picker above for rationale.
-            key(configuration.orientation) {
-            AlertDialog(
-                onDismissRequest = { showVoiceModelPicker = false },
-                title = { Text("Choose a voice model") },
-                text = {
-                    Column {
-                        VOICE_MODELS.forEach { m ->
-                            Column(
-                                Modifier.fillMaxWidth().clickable {
-                                    showVoiceModelPicker = false
-                                    android.widget.Toast.makeText(context, "Setting up ${m.label} — resumes automatically if the connection drops…", android.widget.Toast.LENGTH_SHORT).show()
-                                    active?.session?.write(voiceInstallScript(m))
-                                }.padding(vertical = 8.dp)
-                            ) {
-                                Text(m.label + " \u2022 " + m.sizeNote, fontWeight = FontWeight.Medium)
-                                Text(m.note, fontSize = 11.sp, color = Color(0xFF888888))
-                            }
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = { TextButton(onClick = { showVoiceModelPicker = false }) { Text("Cancel") } },
-            )
-            }
-        }
 
         // ── NewTermux-style toolbar row ────────────────────────────
         // Fixed single-line height + horizontal scroll: in portrait, this row must never wrap to a
