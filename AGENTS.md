@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-07 05:55 WAT
+> Last updated: 2026-09-07 07:12 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 5c1b8c4 |
-| CI build | #2664 GREEN (2026-09-07) |
+| Latest commit | 4812419 |
+| CI build | #2667 GREEN (2026-09-07) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -1795,3 +1795,27 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 3. GROUP C research (await approval before implementing): agent-tools extraction inventory; debugger parity plan; MCP/tool integration research. (Multi-cursor + faster-engine research: DONE, Plan A shipped.)
 4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs. (README auto-open: SHIPPED this commit — removed from deferred.)
+
+### [2026-09-07 07:12 WAT] — AI Agent: GLM (Superagent)
+
+**Commit: 4812419 | CI: #2667 GREEN (chain: f931d00 #2666 FAIL — ConcurrentHashMap.keys() returns legacy Enumeration, not filterable -> 4812419 #2667 PASS)**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[AGENT][MCP][UI] REAL EXTERNAL MCP CLIENT SUPPORT — stdio JSON-RPC, lazy lifecycle, encrypted env vars**
+- Confirmed answers implemented: (1) missing Node/uv runtimes DETECTED + install offered through existing package-manager flow (ProotInstaller.execOnce, Output-tab logged) — never silent-fail; (2) LAZY startup — servers spawn on first use (first chat discovery or first tool call), nothing at app launch; (3) env vars routed through SecureTokenStore (encrypted Keystore-backed, same storage as AI provider keys; config stores only VAR->secret-key mapping, never the value); (4) 60s per tools/call timeout (30s handshake).
+- NEW agent/McpClientManager.kt (545 lines): persistent-session proot spawn (same launchArgs machinery as execOnceWithProcess but long-lived: no fd-1/2 binds, no merged streams, clean stdin/stdout pipes); MCP stdio protocol = newline-delimited JSON-RPC 2.0 (initialize 2024-11-05 -> notifications/initialized -> tools/list -> tools/call, id-matched CompletableDeferred pending map, stderr routed to Output tab [mcp] channel); config mcp_servers.json (name/command/enabled/disabledTools/envKeys); runtime prereq detect (npx/npm/node->node, uvx/uv->uv, python->python3) + apt/pip installers; add/remove/enable/disable/per-tool-toggle/setEnvVar; toolsCache with docs builder.
+- BRIDGE (zero new approval mechanism): AgentTools.executeTool else-branch routes mcp_-prefixed names -> McpClientManager.callTool via runBlocking — SAME dispatch path so the SAME AgentFlowGate AUTO/MANUAL approval gates external tools. Built-ins take priority (docs appended AFTER built-in TOOLS_DESCRIPTION). Tool names mcp_<server>_<tool> (server names sanitized [a-z0-9_], config-prefix name disambiguation).
+- WIRING: chat system prompt (CopilotChatPanelOverlay chat(): ensureDiscovered(context) lazy first-chat spawn + toolDocs appended in AGENT branch); AgentApiServer /tools now returns built-ins + cached external tool names; /system-prompt appends toolDocs (terminal-AI parity). Tool calls can also arrive via POST /tool/mcp_... — same executeTool path.
+- NEW ui/panes/McpServersSection.kt (one-line call from McpPanel, 64KB rule): server rows (running dot, tool count, env count, enable Switch), expandable per-tool toggles + Add env var + Remove; Add-server dialog (name + command, e.g. npx -y @modelcontextprotocol/server-filesystem /root); missing-runtime red banner with Install button; Refresh (forces re-handshake + tools/list). All dialogs rounded 12dp + 12h/10v padding.
+- FILES: agent/McpClientManager.kt (NEW), ui/panes/McpServersSection.kt (NEW), agent/AgentTools.kt (bridge + runBlocking import), agent/AgentApiServer.kt (/tools + /system-prompt), ui/screens/CopilotChatPanelOverlay.kt (ensureDiscovered + toolDocs), ui/panes/PackageManagerPane.kt (one-line McpServersSection call).
+- APK: #2667 artifacts (codespace-ide-arm64-v8a) — Wisdom downloads from Actions himself.
+- ON-DEVICE TEST PLAN (run on #2667 APK): M1 Packages > MCP: EXTERNAL MCP SERVERS section visible, tap Add, name=filesystem, command=npx -y @modelcontextprotocol/server-filesystem /root -> "Server added". M2 If Node.js missing in Ubuntu: red banner "node is missing" appears -> tap Install -> watch Output tab (pkg-install channel) -> banner clears after install. M3 Tap Refresh -> server dot turns green, tools count updates (filesystem server exposes ~11 tools; may take a while on first npx download). M4 Open Copilot chat, ask "list the files in /root using the filesystem MCP tool" -> model calls mcp_filesystem_list_directory (Manual Flow Mode should show the approval card like built-ins). M5 Expand server row -> toggle one tool OFF -> ask chat to use it -> tool reports disabled; toggle back ON. M6 Env vars: Add env var on a server needing an API key -> value never visible in config, server restarts on next use. M7 Toggle whole server OFF -> chat tool calls report server disabled; dot goes gray. M8 Terminal AI parity: curl -s http://localhost:8765/tools | grep mcp_ shows external tools after discovery.
+- BUILD-FAIL LESSON: java.util.concurrent.ConcurrentHashMap.keys() is the legacy Hashtable Enumeration API — NOT a Kotlin collection; .filter{} on it does not resolve. Use .entries.iterator() for cache eviction.
+
+**Next on roadmap (ALL pending):**
+1. On-device test batches awaiting Wisdom: (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657; (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) MD-preview suite T1-T10 (#2664); (d) THIS MCP suite M1-M8 (#2667).
+2. IME emoji phase 2: read diag logs from on-device emoji tap -> implement fix per evidence.
+3. GROUP C research (await approval before implementing): agent-tools extraction inventory; debugger parity plan. (Multi-cursor research DONE+shipped; MCP research DONE+shipped this commit.)
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
