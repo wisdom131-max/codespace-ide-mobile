@@ -71,6 +71,8 @@ data class DebugVariable(
     val depth: Int = 0,
     val expandable: Boolean = false,
     val variablesReference: Int = 0,  // P27-AUDIT: DAP variablesReference for child variable expansion
+    val scopeName: String = "",      // P1-D5: DAP scope this variable came from (Locals/Globals/...)
+    val containerRef: Int = 0,        // P1-D3: variablesReference of the CONTAINER (needed by DAP setVariable)
 )
 
 /** A frame in the call stack. */
@@ -92,6 +94,7 @@ data class DebugBreakpoint(
     val hitCount: Int = 0,
     val verified: Boolean = false,   // P27-11: DAP setBreakpoints verification status
     val message: String? = null,     // P27-11: optional verification message from DAP
+    val hitCondition: String? = null, // P1-D2: DAP hitCondition expression (e.g. ">=5" or "4")
 )
 
 /** A watch expression being evaluated during debugging. */
@@ -147,6 +150,8 @@ object UniversalDebugManager {
     private val adapters = mutableListOf<DebugAdapter>()  // P27-4: accessed in init only, no sync needed
     // Active adapter per session
     private val sessionAdapters = ConcurrentHashMap<String, DebugAdapter>()
+    // P1-D4: per-session enabled exception-breakpoint filter ids
+    private val sessionExceptionFilters = ConcurrentHashMap<String, MutableSet<String>>()
 
     // P27-6: ProcessTracker — centralized process lifecycle tracking
     data class TrackedProcess(
@@ -639,6 +644,68 @@ object UniversalDebugManager {
         val session = sessions[sessionId] ?: return emptyList()
         val adapter = sessionAdapters[sessionId] ?: return emptyList()
         return adapter.getVariables(session, variablesReference)
+    }
+
+    /**
+     * P1-D2: Edit a stored breakpoint's condition / log message / hit condition.
+     * Notifies listeners and re-sends breakpoints to the adapter if a session is live.
+     */
+    fun editBreakpoint(filePath: String, line: Int, condition: String?, logMessage: String?, hitCondition: String?) {
+        val fileBps = breakpoints[filePath] ?: return
+        val idx = fileBps.indexOfFirst { it.line == line }
+        if (idx < 0) return
+        val oldBp = fileBps[idx]
+        val newBp = oldBp.copy(
+            condition = condition?.takeIf { it.isNotBlank() },
+            logMessage = logMessage?.takeIf { it.isNotBlank() },
+            hitCondition = hitCondition?.takeIf { it.isNotBlank() },
+        )
+        breakpoints[filePath][idx] = newBp
+        notifyBreakpointsChanged()
+        // Note: like the existing toggle path, edit is in-memory only; saveBreakpoints()
+        // is only invoked at load time today (pre-existing behavior, unchanged here).
+        // Live session: push updated breakpoints to the adapter
+        for (sessionId in sessions.keys) {
+            val adapter = sessionAdapters[sessionId] ?: continue
+            adapter.sendBreakpoints(sessions[sessionId]!!, getAllBreakpoints())
+        }
+    }
+
+    /**
+     * P1-D3: Set a variable's value via DAP setVariable.
+     * Returns the new value string on success, null if unsupported/failed.
+     */
+    fun setVariable(sessionId: String, variablesReference: Int, name: String, value: String): String? {
+        val session = sessions[sessionId] ?: return null
+        val adapter = sessionAdapters[sessionId] ?: return null
+        if (adapter.capabilities()?.supportsSetVariable != true) return null
+        return adapter.setVariable(session, variablesReference, name, value)
+    }
+
+    /** P1-D4: Exception filters advertised by the session's adapter (empty if none/legacy). */
+    fun getExceptionFilters(sessionId: String): List<DAPExceptionFilter> =
+        sessionAdapters[sessionId]?.capabilities()?.exceptionFilters ?: emptyList()
+
+    /** P1-D3/P1-D4: Full negotiated capabilities for a session (null if legacy/no adapter). */
+    fun getSessionCapabilities(sessionId: String): DAPCapabilities? =
+        sessionAdapters[sessionId]?.capabilities()
+
+    /** P1-D4: Currently enabled exception filter ids for a session (defaults applied lazily). */
+    fun getEnabledExceptionFilters(sessionId: String): Set<String> {
+        if (!sessionExceptionFilters.containsKey(sessionId)) {
+            val defaults = getExceptionFilters(sessionId).filter { it.defaultOn }.map { it.filter }
+            sessionExceptionFilters[sessionId] = defaults.toMutableSet()
+        }
+        return sessionExceptionFilters[sessionId] ?: emptySet()
+    }
+
+    /** P1-D4: Toggle an exception filter and push setExceptionBreakpoints to the adapter. */
+    fun setExceptionBreakpoint(sessionId: String, filterId: String, enabled: Boolean): Boolean {
+        val session = sessions[sessionId] ?: return false
+        val adapter = sessionAdapters[sessionId] ?: return false
+        val set = sessionExceptionFilters.getOrPut(sessionId) { mutableSetOf() }
+        if (enabled) set.add(filterId) else set.remove(filterId)
+        return adapter.setExceptionBreakpoints(session, set.toList())
     }
 
     /**

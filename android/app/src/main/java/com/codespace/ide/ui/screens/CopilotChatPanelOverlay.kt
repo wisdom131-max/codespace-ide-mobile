@@ -782,6 +782,8 @@ internal fun CopilotChatPanelInline(
     projectRootPath: String? = null,
     currentFilePath: String? = null,
     openFilePaths: List<String> = emptyList(),
+    // Item3: open Connectors Hub from the chat panel overflow menu
+    onOpenConnectors: (() -> Unit)? = null,
 ) {
     val context   = LocalContext.current
     val scope     = rememberCoroutineScope()
@@ -792,6 +794,7 @@ internal fun CopilotChatPanelInline(
     var chatLoading   by remember { mutableStateOf(false) }
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) } // Item3: chat-panel overflow menu
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
     var selectedModel by remember { mutableStateOf(chatModelSelectionInitial(context, tokenStore)) }
     // 404-fix: fetch the LIVE model lists once when the panel first composes,
@@ -1048,6 +1051,23 @@ internal fun CopilotChatPanelInline(
                     },
                 )
                 Spacer(Modifier.width(8.dp))
+                if (onOpenConnectors != null) {
+                    Box {
+                        Icon(
+                            Icons.Default.MoreVert, "More",
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(16.dp).clickable { showOverflowMenu = true },
+                        )
+                        DropdownMenu(expanded = showOverflowMenu, onDismissRequest = { showOverflowMenu = false }) {
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Extension, null, tint = colors.textSecondary, modifier = Modifier.size(14.dp)) },
+                                text = { Text("Connectors Hub", fontSize = 12.sp) },
+                                onClick = { showOverflowMenu = false; onOpenConnectors() },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
                 Icon(
                     Icons.Default.Close, null,
                     tint = colors.textSecondary,

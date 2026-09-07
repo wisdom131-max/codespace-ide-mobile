@@ -407,7 +407,7 @@ private val MENU_BAR = listOf(
         MenuAction("Open File","Ctrl+O"), MenuAction("Open Folder"),
         MenuAction("",divider=true),
         MenuAction("Save","Ctrl+S"), MenuAction("Save As","Ctrl+Shift+S"), MenuAction("Auto Save"),
-        MenuAction("",divider=true), MenuAction("Create Snapshot"), MenuAction("Diagnostics Report"), MenuAction("Connectors Hub"), MenuAction("",divider=true), MenuAction("Preferences"), MenuAction("Exit"),
+        MenuAction("",divider=true), MenuAction("Create Snapshot"), MenuAction("Diagnostics Report"), MenuAction("",divider=true), MenuAction("Preferences"), MenuAction("Exit"),
     )),
     MenuBarItem("Edit", listOf(
         MenuAction("Undo","Ctrl+Z"), MenuAction("Redo","Ctrl+Y"),
@@ -1125,9 +1125,6 @@ fun ProjectShellScreen(
                         showNotification("Diagnostics failed: ${e.message}", "error")
                     }
                 }
-            }
-            "Connectors Hub" -> {
-                showConnectorsSheet = true
             }
             "Run Program", "Start Debugging" -> {
                 showBottomPanel = true; activeBottomTab = BottomTab.DEBUG
@@ -1925,6 +1922,7 @@ fun ProjectShellScreen(
             onShowGearMenuChange = { showGearMenu = it },
             showInProjectSettings = showInProjectSettings,
             onShowInProjectSettingsChange = { showInProjectSettings = it },
+            onOpenConnectorsHub = { showConnectorsSheet = true },
             commandQuery = commandQuery,
             onCommandQueryChange = { commandQuery = it },
             showNotifDrawer = showNotifDrawer,
@@ -2001,6 +1999,8 @@ private fun PssOverlays(
     onShowGearMenuChange: (Boolean) -> Unit,
     showInProjectSettings: Boolean,
     onShowInProjectSettingsChange: (Boolean) -> Unit,
+    // Item3: open Connectors Hub from In-Project Settings
+    onOpenConnectorsHub: () -> Unit,
     commandQuery: String,
     onCommandQueryChange: (String) -> Unit,
     showNotifDrawer: Boolean,
@@ -2566,7 +2566,13 @@ private fun PssOverlays(
 
         // P-FLOW: In-Project Settings floating dialog
         if (showInProjectSettings) {
-            InProjectSettingsDialog(onDismiss = { onShowInProjectSettingsChange(false) })
+            InProjectSettingsDialog(
+                onDismiss = { onShowInProjectSettingsChange(false) },
+                onOpenConnectors = {
+                    onShowInProjectSettingsChange(false)
+                    onOpenConnectorsHub()
+                },
+            )
         }
 
         // Person / Account menu
@@ -4967,6 +4973,7 @@ private fun PssEditorColumn(
             .clip(WorkspaceShapes.ChatShape)) {
             CopilotChatPanelInline(
                 onClose = { showChatPanel = false },
+                onOpenConnectors = { showConnectorsSheet = true },
                 pendingPrompt = pendingChatPrompt,
                 onPendingPromptConsumed = { pendingChatPrompt = null },
                 colors = ChatPanelColors(

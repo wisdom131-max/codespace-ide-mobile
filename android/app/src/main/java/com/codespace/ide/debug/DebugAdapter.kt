@@ -53,6 +53,19 @@ interface DebugAdapter {
 
     // P27-AUDIT: Fetch child variables by DAP variablesReference (> 0 means expandable)
     fun getVariables(session: DebugSession, variablesReference: Int): List<DebugVariable> = emptyList()
+
+    /**
+     * P1-D3: DAP setVariable — edit a variable's value in-place.
+     * Returns the new value string on success, null if unsupported/failed.
+     */
+    fun setVariable(session: DebugSession, variablesReference: Int, name: String, value: String): String? = null
+
+    /**
+     * P1-D4: DAP setExceptionBreakpoints — toggle exception breakpoint filters
+     * (caught/uncaught) on a running session. filterIds = currently enabled filter ids.
+     * Returns true if the request was accepted.
+     */
+    fun setExceptionBreakpoints(session: DebugSession, filterIds: List<String>): Boolean = false
 }
 
 // ── LegacyDebugAdapter ───────────────────────────────────────────────────────

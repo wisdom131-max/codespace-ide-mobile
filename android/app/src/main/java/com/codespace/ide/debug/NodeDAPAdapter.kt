@@ -88,6 +88,7 @@ class NodeDAPAdapter : DebugAdapter {
                             put("line", bp.line + 1)
                             if (bp.condition != null) put("condition", bp.condition)
                             if (bp.logMessage != null) put("logMessage", bp.logMessage)
+                            if (bp.hitCondition != null) put("hitCondition", bp.hitCondition)
                         })
                     }
                 })
@@ -431,6 +432,11 @@ class NodeDAPAdapter : DebugAdapter {
         // 10. configurationDone (AFTER setBreakpoints — tells adapter to start running)
         if (caps?.supportsConfigurationDoneRequest == true) {
             dapClient.sendRequest("configurationDone")
+            // P1-D4: send default-enabled exception breakpoint filters after config
+            val defaultFilters = caps.exceptionFilters.filter { it.defaultOn }.map { it.filter }
+            if (defaultFilters.isNotEmpty()) {
+                dapClient.sendRequest("setExceptionBreakpoints", JSONObject().put("filters", JSONArray(defaultFilters)))
+            }
         }
 
         return true
@@ -517,32 +523,35 @@ class NodeDAPAdapter : DebugAdapter {
     }
 
     private fun fetchVariables(dapClient: DAPClient, frameId: Int): List<DebugVariable> {
-        // Get scopes first
+        // P1-D5: fetch ALL scopes (not just the first), tag each variable with its scope name.
+        // Expensive scopes are skipped at pause-time (VS Code lazy-loads them too).
         val scopeArgs = JSONObject().put("frameId", frameId)
         val scopeResp = dapClient.request("scopes", scopeArgs, timeoutSeconds = 5) ?: return emptyList()
         val scopes = scopeResp.optJSONArray("scopes") ?: return emptyList()
-        if (scopes.length() == 0) return emptyList()
-
-        // Get variables from first scope (locals)
-        val firstScope = scopes.optJSONObject(0) ?: return emptyList()
-        val varRef = firstScope.optInt("variablesReference", 0)
-        if (varRef == 0) return emptyList()
-
-        val varArgs = JSONObject().put("variablesReference", varRef)
-        val varResp = dapClient.request("variables", varArgs, timeoutSeconds = 5) ?: return emptyList()
-        val variables = varResp.optJSONArray("variables") ?: return emptyList()
-
-        return (0 until minOf(variables.length(), 50)).mapNotNull { i ->
-            val v = variables.optJSONObject(i) ?: return@mapNotNull null
-            val varRef = v.optInt("variablesReference", 0)
-            DebugVariable(
-                name = v.optString("name", "?"),
-                type = v.optString("type", ""),
-                value = v.optString("value", "undefined"),
-                expandable = varRef > 0,
-                variablesReference = varRef,
-            )
+        val result = mutableListOf<DebugVariable>()
+        for (i in 0 until scopes.length()) {
+            val scope = scopes.optJSONObject(i) ?: continue
+            if (scope.optBoolean("expensive", false)) continue
+            val scopeName = scope.optString("name", "Variables")
+            val scopeRef = scope.optInt("variablesReference", 0)
+            if (scopeRef == 0) continue
+            val varResp = dapClient.request("variables", JSONObject().put("variablesReference", scopeRef), timeoutSeconds = 5) ?: continue
+            val variables = varResp.optJSONArray("variables") ?: continue
+            for (j in 0 until minOf(variables.length(), 100)) {
+                val v = variables.optJSONObject(j) ?: continue
+                val ref = v.optInt("variablesReference", 0)
+                result += DebugVariable(
+                    name = v.optString("name", "?"),
+                    type = v.optString("type", ""),
+                    value = v.optString("value", "undefined"),
+                    expandable = ref > 0,
+                    variablesReference = ref,
+                    scopeName = scopeName,
+                    containerRef = scopeRef,
+                )
+            }
         }
+        return result
     }
 
     // P27-AUDIT: Public override — fetch child variables by DAP variablesReference
@@ -561,8 +570,34 @@ class NodeDAPAdapter : DebugAdapter {
                 value = v.optString("value", "undefined"),
                 expandable = ref > 0,
                 variablesReference = ref,
+                containerRef = variablesReference,
             )
         }
+    }
+
+
+    /**
+     * P1-D3: DAP setVariable — edit a variable's value in place.
+     * Returns the new value string on success, null on failure.
+     */
+    override fun setVariable(session: DebugSession, variablesReference: Int, name: String, value: String): String? {
+        val dapClient = client ?: return null
+        val args = JSONObject()
+            .put("variablesReference", variablesReference)
+            .put("name", name)
+            .put("value", value)
+        val resp = dapClient.request("setVariable", args, timeoutSeconds = 5) ?: return null
+        return if (resp.optBoolean("success", false)) resp.optString("value", value) else null
+    }
+
+    /**
+     * P1-D4: DAP setExceptionBreakpoints — push enabled exception filter ids to the adapter.
+     */
+    override fun setExceptionBreakpoints(session: DebugSession, filterIds: List<String>): Boolean {
+        val dapClient = client ?: return false
+        val args = JSONObject().put("filters", JSONArray(filterIds))
+        val resp = dapClient.request("setExceptionBreakpoints", args, timeoutSeconds = 5)
+        return resp != null
     }
 
     private fun stopProcess() {

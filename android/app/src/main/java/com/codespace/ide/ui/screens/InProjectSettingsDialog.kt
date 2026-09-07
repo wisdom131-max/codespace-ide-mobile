@@ -58,7 +58,11 @@ import com.codespace.ide.lsp.LspState
  *   - Python / LSP (Diagnostics source, Pyright version, Node arguments)
  */
 @Composable
-fun InProjectSettingsDialog(onDismiss: () -> Unit) {
+fun InProjectSettingsDialog(
+    onDismiss: () -> Unit,
+    // Item3: opens the Connectors Hub sheet (Settings is the primary entry point now)
+    onOpenConnectors: (() -> Unit)? = null,
+) {
     val bg       = Color(0xFF1E1E1E)
     val sidebarBg = Color(0xFF252526)
     val surface  = Color(0xFF2D2D2D)
@@ -118,6 +122,18 @@ fun InProjectSettingsDialog(onDismiss: () -> Unit) {
                         }
                     }
                     Spacer(Modifier.width(8.dp))
+                    if (onOpenConnectors != null) {
+                        Row(
+                            Modifier
+                                .background(accentDim, RoundedCornerShape(8.dp))
+                                .clickable { onOpenConnectors() }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("Connectors Hub", color = textPri, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Close, null, tint = textSec,
                             modifier = Modifier.size(18.dp))

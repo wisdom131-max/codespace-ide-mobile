@@ -1,7 +1,9 @@
-// ⚠️ DEAD CODE — DO NOT EDIT OR RELY ON THIS FILE
-// Used Google's deprecated OOB OAuth 2.0 flow (killed by Google in 2022).
-// Replaced by ConnectorsHubSheet.kt + Railway backend OAuth (backend/src/connectors/).
-// Kept for reference only.
+// LIVE CODE — this file is the implementation behind the AI agent's 3 connector tools
+// (AgentTools.kt: list_connectors / connect_service / use_connector). The earlier
+// "DEAD CODE" label was misleading (2026-09-07 correction): only the OLD OOB-flow
+// implementation was dead; this backend-backed rewrite is live. The UI counterpart
+// is ConnectorsHubSheet.kt (Connectors Hub, in Settings + Copilot chat overflow menu);
+// both share ConnectorsApiClient + the backend connectors module (backend/src/connectors).
 
 package com.codespace.ide.agent
 
@@ -20,7 +22,7 @@ import org.json.JSONArray
  * flow, which Google deprecated/killed in 2022, and asked the AI to manually "exchange" a
  * pasted code for a token with no real exchange step ever implemented. It never actually
  * worked for any service. This version calls the real backend (backend/src/connectors/ (TypeScript files),
- * deployed on Railway) which holds real OAuth client secrets and does a proper
+ * deployed on Render) which holds real OAuth client secrets and does a proper
  * authorization-code -> access-token exchange server-side.
  *
  * GitHub is intentionally NOT handled here — GitHub sign-in is a separate, already-working

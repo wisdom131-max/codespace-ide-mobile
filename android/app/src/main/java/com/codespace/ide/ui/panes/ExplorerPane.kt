@@ -2989,6 +2989,14 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     var watchInput by remember { mutableStateOf("") }
     var watchIdCounter by remember { mutableStateOf(0) }
     var debugInput by remember { mutableStateOf("") }
+    // P1-D1..D5 (debugger parity): console REPL, breakpoint/variable edit, exception filters
+    var consoleLines by remember { mutableStateOf(listOf<String>()) }
+    var showConsole by remember { mutableStateOf(true) }
+    var editBpTarget by remember { mutableStateOf<DebugBreakpoint?>(null) }
+    var editVarTarget by remember { mutableStateOf<DebugVariable?>(null) }
+    var exceptionFilters by remember { mutableStateOf(listOf<com.codespace.ide.debug.DAPExceptionFilter>()) }
+    var enabledFilters by remember { mutableStateOf(setOf<String>()) }
+    var supportsSetVariable by remember { mutableStateOf(false) }
 
     val bpListener: () -> Unit = { allBreakpoints = udm.getAllBreakpoints() }
     val stateListener: (com.codespace.ide.debug.DebugSession) -> Unit = { session ->
@@ -3013,6 +3021,13 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     val pausedListener: (List<DebugStackFrame>, List<DebugVariable>) -> Unit = { stack, vars ->
         callStack = stack
         variables = vars
+        // P1-D3/P1-D4: refresh capabilities + exception filter state on each pause
+        val pausedSid = activeSessionId
+        if (pausedSid != null) {
+            supportsSetVariable = udm.getSessionCapabilities(pausedSid)?.supportsSetVariable == true
+            exceptionFilters = udm.getExceptionFilters(pausedSid)
+            enabledFilters = udm.getEnabledExceptionFilters(pausedSid)
+        }
         // P26-1c: Live watch — re-evaluate all watch expressions on each pause
         if (activeSessionId != null && watchExprs.isNotEmpty()) {
             val sid = activeSessionId!!
@@ -3204,7 +3219,14 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             item { SectionHeader("VARIABLES", showVariables) { showVariables = !showVariables } }
             if (showVariables) {
                 if (isRunning && variables.isNotEmpty()) {
-                    items(variables) { v ->
+                    // P1-D5: group variables by DAP scope (Locals/Globals/...)
+                    val scopeGroups = variables.groupBy { it.scopeName.ifBlank { "Locals" } }
+                    scopeGroups.forEach { (scopeName, scopeVars) ->
+                        item {
+                            Text(scopeName.uppercase(), fontSize = 9.sp, color = MutedColor, fontWeight = FontWeight.SemiBold,
+                                fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 1.dp))
+                        }
+                    items(scopeVars) { v ->
                         val varKey = v.name
                         val isExpanded = expandedVarChildren.containsKey(varKey)
                         Column {
@@ -3237,7 +3259,10 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                                 Text(": ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
                                 Text(v.type, fontSize = 11.sp, color = Color(0xFF569CD6), fontFamily = FontFamily.Monospace)
                                 Text(" = ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)
-                                Text(v.value, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(v.value, fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.then(
+                                        if (supportsSetVariable && isRunning) Modifier.clickable { editVarTarget = v } else Modifier
+                                    ))
                             }
                             // P27-AUDIT: Render child variables recursively (depth 1)
                             if (isExpanded) {
@@ -3262,6 +3287,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                                 }
                             }
                         }
+                    }
                     }
                 } else {
                     item { Text(if (!isRunning) "Not started" else "No variables", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) }
@@ -3349,14 +3375,97 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                             if (bp.logMessage != null) {
                                 Text("  log: " + bp.logMessage, fontSize = 10.sp, color = Color(0xFF4EC9B0), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
+                            if (bp.hitCondition != null) {
+                                Text("  hits " + bp.hitCondition, fontSize = 10.sp, color = Color(0xFFDCDCAA), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            // P1-D2: edit condition / log message / hit condition
+                            Icon(Icons.Default.Edit, "Edit", tint = MutedColor, modifier = Modifier.size(12.dp).clickable {
+                                editBpTarget = bp
+                            })
                             Icon(Icons.Default.Close, "Remove", tint = MutedColor, modifier = Modifier.size(12.dp).clickable {
                                 udm.removeBreakpoint(bp.filePath, bp.line)
                             })
                         }
                     }
                 }
+                // P1-D4: exception breakpoint filter toggles (caught/uncaught, adapter-driven)
+                if (exceptionFilters.isNotEmpty()) {
+                    item {
+                        Text("EXCEPTION BREAKPOINTS", fontSize = 9.sp, color = MutedColor, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(start = 24.dp, top = 6.dp, bottom = 1.dp))
+                    }
+                    items(exceptionFilters) { f ->
+                        Row(Modifier.padding(start = 24.dp, top = 1.dp, bottom = 1.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(f.label, fontSize = 11.sp, color = TextColor, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = f.filter in enabledFilters,
+                                onCheckedChange = { checked ->
+                                    val swSid = activeSessionId
+                                    if (swSid != null) {
+                                        udm.setExceptionBreakpoint(swSid, f.filter, checked)
+                                        enabledFilters = udm.getEnabledExceptionFilters(swSid)
+                                    }
+                                },
+                                modifier = Modifier.height(24.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
+            // P1-D1: Debug Console REPL
+            item { SectionHeader("CONSOLE", showConsole) { showConsole = !showConsole } }
+            if (showConsole) {
+                item {
+                    if (isRunning) {
+                        DebugConsoleSection(consoleLines, onEvaluate = { expr ->
+                            val evalSid = activeSessionId
+                            val resultLine = if (evalSid != null) {
+                                "= " + (udm.evaluateExpression(evalSid, expr) ?: "<no result>")
+                            } else {
+                                "= no active session"
+                            }
+                            consoleLines = (consoleLines + listOf("> " + expr, resultLine)).takeLast(100)
+                        })
+                    } else {
+                        Text("No active session", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp))
+                    }
+                }
             }
         }
+    }
+
+    // P1-D2: breakpoint edit dialog (condition / log message / hit condition)
+    editBpTarget?.let { bp ->
+        EditBreakpointDialog(
+            breakpoint = bp,
+            onSave = { cond, log, hits ->
+                udm.editBreakpoint(bp.filePath, bp.line, cond, log, hits)
+                editBpTarget = null
+            },
+            onDismiss = { editBpTarget = null },
+        )
+    }
+
+    // P1-D3: setVariable dialog
+    editVarTarget?.let { v ->
+        EditVariableDialog(
+            variable = v,
+            onSave = { newValue ->
+                val setSid = activeSessionId
+                val newResult = if (setSid != null) udm.setVariable(setSid, v.containerRef, v.name, newValue) else null
+                if (newResult != null) {
+                    variables = variables.map { existing ->
+                        if (existing.name == v.name && existing.scopeName == v.scopeName) existing.copy(value = newResult) else existing
+                    }
+                    consoleLines = (consoleLines + listOf("= set " + v.name + " = " + newResult)).takeLast(100)
+                } else {
+                    consoleLines = (consoleLines + listOf("= set failed (adapter rejected or unsupported)")).takeLast(100)
+                }
+                editVarTarget = null
+            },
+            onDismiss = { editVarTarget = null },
+        )
     }
 }
 

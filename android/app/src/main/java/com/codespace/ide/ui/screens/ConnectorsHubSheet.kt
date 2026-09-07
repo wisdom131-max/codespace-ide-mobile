@@ -31,7 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.*
 
 /**
  * Connectors Hub — Gmail/Calendar/Drive/Slack rows now show REAL live status from the
- * backend (backend/src/connectors/ (TypeScript files) on Railway) and drive a real browser-based OAuth
+ * backend (backend/src/connectors/ on Render) and drive a real browser-based OAuth
  * flow, instead of the old dismiss-only stub rows. GitHub/SSH/AI Providers/Services rows
  * are separate systems, left as-is here.
  */

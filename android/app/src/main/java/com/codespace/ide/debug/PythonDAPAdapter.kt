@@ -78,6 +78,7 @@ class PythonDAPAdapter : DebugAdapter {
                             put("line", bp.line + 1)
                             if (bp.condition != null) put("condition", bp.condition)
                             if (bp.logMessage != null) put("logMessage", bp.logMessage)
+                            if (bp.hitCondition != null) put("hitCondition", bp.hitCondition)
                         })
                     }
                 })
@@ -318,6 +319,11 @@ class PythonDAPAdapter : DebugAdapter {
 
         // 9. configurationDone (AFTER setBreakpoints — tells adapter to start running)
         dapClient.sendRequest("configurationDone")
+        // P1-D4: send default-enabled exception breakpoint filters after config
+        val defaultFilters = caps.exceptionFilters.filter { it.defaultOn }.map { it.filter }
+        if (defaultFilters.isNotEmpty()) {
+            dapClient.sendRequest("setExceptionBreakpoints", JSONObject().put("filters", JSONArray(defaultFilters)))
+        }
         onOutput("[debugpy] Session started — running ${session.filePath.substringAfterLast("/")}\n")
         return true
     }
@@ -396,6 +402,8 @@ class PythonDAPAdapter : DebugAdapter {
             val scopeName = scope.optString("name", "Variables")
             val ref = scope.optInt("variablesReference", 0)
             if (ref == 0) continue
+            // P1-D5: skip expensive scopes at pause-time (VS Code lazy-loads them too)
+            if (scope.optBoolean("expensive", false)) continue
             val varResp = client.request("variables",
                 JSONObject().put("variablesReference", ref).put("count", 100),
                 timeoutSeconds = 5) ?: continue
@@ -410,6 +418,8 @@ class PythonDAPAdapter : DebugAdapter {
                     depth      = 0,
                     expandable = varRef > 0,
                     variablesReference = varRef,
+                    scopeName  = scopeName,
+                    containerRef = ref,
                 )
             }
         }
@@ -434,8 +444,33 @@ class PythonDAPAdapter : DebugAdapter {
                 value      = v.optString("value", ""),
                 expandable = ref > 0,
                 variablesReference = ref,
+                containerRef = variablesReference,
             )
         }
         return result
+    }
+
+    /**
+     * P1-D3: DAP setVariable — edit a variable's value in place.
+     * Returns the new value string on success, null on failure.
+     */
+    override fun setVariable(session: DebugSession, variablesReference: Int, name: String, value: String): String? {
+        val dapClient = client ?: return null
+        val args = JSONObject()
+            .put("variablesReference", variablesReference)
+            .put("name", name)
+            .put("value", value)
+        val resp = dapClient.request("setVariable", args, timeoutSeconds = 5) ?: return null
+        return if (resp.optBoolean("success", false)) resp.optString("value", value) else null
+    }
+
+    /**
+     * P1-D4: DAP setExceptionBreakpoints — push enabled exception filter ids to the adapter.
+     */
+    override fun setExceptionBreakpoints(session: DebugSession, filterIds: List<String>): Boolean {
+        val dapClient = client ?: return false
+        val args = JSONObject().put("filters", JSONArray(filterIds))
+        val resp = dapClient.request("setExceptionBreakpoints", args, timeoutSeconds = 5)
+        return resp != null
     }
 }

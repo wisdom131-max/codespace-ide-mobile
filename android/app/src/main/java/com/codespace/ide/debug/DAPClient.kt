@@ -174,6 +174,13 @@ class DAPClient(private val process: Process) {
 
 // ── DAP response data classes ────────────────────────────────────────────────
 
+data class DAPExceptionFilter(
+    val filter: String,
+    val label: String,
+    val description: String = "",
+    val defaultOn: Boolean = false,
+)
+
 data class DAPCapabilities(
     val supportsConfigurationDoneRequest: Boolean = false,
     val supportsFunctionBreakpoints: Boolean = false,
@@ -183,15 +190,35 @@ data class DAPCapabilities(
     val supportsTerminateRequest: Boolean = false,
     val supportsRestartRequest: Boolean = false,
     val supportsEvaluateForHovers: Boolean = false,
+    // P1-D4: exception breakpoint filters advertised by the adapter (e.g. caught/uncaught)
+    val exceptionFilters: List<DAPExceptionFilter> = emptyList(),
 )
 
-fun JSONObject.toDAPCapabilities() = DAPCapabilities(
-    supportsConfigurationDoneRequest = optBoolean("supportsConfigurationDoneRequest"),
-    supportsFunctionBreakpoints      = optBoolean("supportsFunctionBreakpoints"),
-    supportsConditionalBreakpoints   = optBoolean("supportsConditionalBreakpoints"),
-    supportsLogPoints                = optBoolean("supportsLogPoints"),
-    supportsSetVariable              = optBoolean("supportsSetVariable"),
-    supportsTerminateRequest         = optBoolean("supportsTerminateRequest"),
-    supportsRestartRequest           = optBoolean("supportsRestartRequest"),
-    supportsEvaluateForHovers        = optBoolean("supportsEvaluateForHovers"),
-)
+fun JSONObject.toDAPCapabilities(): DAPCapabilities {
+    val filters = mutableListOf<DAPExceptionFilter>()
+    val filtersArr = optJSONArray("exceptionBreakpointFilters")
+    if (filtersArr != null) {
+        for (i in 0 until filtersArr.length()) {
+            val f = filtersArr.optJSONObject(i) ?: continue
+            filters.add(
+                DAPExceptionFilter(
+                    filter = f.optString("filter", ""),
+                    label = f.optString("label", f.optString("filter", "")),
+                    description = f.optString("description", ""),
+                    defaultOn = f.optBoolean("default", false),
+                )
+            )
+        }
+    }
+    return DAPCapabilities(
+        supportsConfigurationDoneRequest = optBoolean("supportsConfigurationDoneRequest"),
+        supportsFunctionBreakpoints      = optBoolean("supportsFunctionBreakpoints"),
+        supportsConditionalBreakpoints   = optBoolean("supportsConditionalBreakpoints"),
+        supportsLogPoints                = optBoolean("supportsLogPoints"),
+        supportsSetVariable              = optBoolean("supportsSetVariable"),
+        supportsTerminateRequest         = optBoolean("supportsTerminateRequest"),
+        supportsRestartRequest           = optBoolean("supportsRestartRequest"),
+        supportsEvaluateForHovers        = optBoolean("supportsEvaluateForHovers"),
+        exceptionFilters                 = filters.toList(),
+    )
+}
