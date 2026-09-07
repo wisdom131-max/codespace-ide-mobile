@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-06 09:45 WAT
+> Last updated: 2026-09-07 04:55 WAT
 
 ---
 
@@ -29,11 +29,11 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 40a54f9 |
-| CI build | #2657 GREEN (2026-09-06) |
+| Latest commit | 2c79472 |
+| CI build | #2661 GREEN (2026-09-07) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
-| CodeEditor.kt lines | 5,927 |
+| CodeEditor.kt lines | 5,933 |
 
 ---
 
@@ -1747,3 +1747,27 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 5. PYLSP on-device verify: after green APK, open a .py file with errors — install self-heal should fire (check fix re-runs if lint plugins missing); expect 'pylsp lint plugins OK' in Output [LSP] channel + squiggles appear.
 6. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; README auto-open (OFF by default); Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+### [2026-09-07 04:55 WAT] — AI Agent: GLM (Superagent)
+
+**Commit: 2c79472 | CI: #2661 GREEN (chain: de78e46 #2659 FAIL -> 965df89 #2660 FAIL -> 2c79472 #2661 PASS)**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[EDITOR][PERF] MULTI-CURSOR PLAN A (VS CODE TRANSACTION MODEL) + PERFPROBE — approved item 1+2**
+- NEW MultiCursorEngine.kt: VS Code-faithful multi-cursor edit transactions ported from real source (cursorCollection.ts normalize: sort-by-start + touching-merge when either cursor collapsed, overlap-merge otherwise; cursorTypeEditOperations.ts: one ReplaceCommand per cursor built up-front; cursor.ts executeEdits: ALL edits in ONE model transaction with atomic cursor-state recompute). Our transaction: content-diff old->new into ONE precise edit triple (start/deleted/inserted via prefix+suffix scan — replaces length-delta guessing that could not distinguish replace edits), replay at every extra cursor, apply ALL fan-out edits in ONE text write (ascending + running shift). Deletion direction mirrors primary (backspace vs delete key); non-collapsed extra selections are replaced like VS Code. One undo snapshot per transaction.
+- TYPE MIGRATION: extraCursors List<Int> -> List<TextRange> across 10 files (CodeEditor, EditShiftHelper, SnapshotUndoManager, EditorOverlays, CompletionPopupOverlay, LightbulbMenuOverlay, RenameDialogOverlay, SnippetChoicesPopup, ToolbarUndoRedoHandler, DecorationStore CursorState). All 37 shiftExtraCursors call sites + 13 TextSnapshot sites flow TextRange end-to-end.
+- CODEEDITOR UX: new "MC" extra-keys-row key toggles multi-cursor mode (adds/removes cursor at double-tap position; double-tap without MC = word-select). MC mode = no composition (composing regions stripped -> discrete keystroke commits) + autoCorrect off. Overlay paints non-collapsed selections. BackHandler still clears cursors; status chip "N x cursors".
+- UNDO FIX: snapshot restore double-shift bug — restored cursors were shifted AGAIN on restore. Cursors now restored exactly as stored (snapshot coordinates are already final).
+- NEW PerfProbe.kt: measure-first instrumentation (NO optimization yet). (1) keystroke->render latency: onValueChange edit -> onTextLayout, logs >8ms individually; (2) frame health: withFrameNanos loop, >32ms gaps = jank + dropped-frame estimate, 5s summary lines. All logs -> Output tab "[perf]" channel. NOTE: withFrameNanos is androidx.compose.runtime (NOT kotlinx.coroutines) — cost us build #2660.
+- BUILD-FAIL LESSONS: #2659 = 6 MISSED Int-typed sites (find-next-occurrence, add-cursor-above/below, select-all-occurrences, cursors-on-all-lines-above/below menu actions) constructing extraCursors from Ints — type-grep by declaration missed them because they built from local Int vars. Fixed to TextRange + MultiCursorEngine.normalize. #2660 = withFrameNanos wrong package. Verification protocol that caught #2659 pre-push: state-machine raw-newline scan + full-codebase Int-sweep — but the sweep must ALSO cover Int->List construction patterns, not just declared types.
+- FILES: editor/MultiCursorEngine.kt (NEW), editor/PerfProbe.kt (NEW), editor/CodeEditor.kt, editor/EditShiftHelper.kt, editor/EditorOverlays.kt, editor/undo/SnapshotUndoManager.kt, editor/CompletionPopupOverlay.kt, editor/LightbulbMenuOverlay.kt, editor/RenameDialogOverlay.kt, editor/SnippetChoicesPopup.kt, editor/ToolbarUndoRedoHandler.kt, editor/DecorationStore.kt, ui/screens/ProjectShellScreen.kt
+
+**Next on roadmap (ALL pending):**
+1. ON-DEVICE TEST: multi-cursor (MC key, double-tap add/remove, typing fan-out incl. backspace/replace, undo/redo single-snapshot, cursor-above/below, select-all-occurrences) + PerfProbe session (type 30s in large file + scroll + completion popup, send all Output "[perf]" lines) — then decide optimization targets from the numbers.
+2. GROUP B item 3 phase 2: read IME-diag logs from on-device emoji tap -> implement actual fix per evidence.
+3. GROUP C research (await approval before implementing): agent-tools extraction inventory; faster-engine/runtime research (multi-cursor research DONE this session); debugger parity plan; MCP/tool integration research.
+4. COMBINED ON-DEVICE REGRESSION BATCH: ErrorLens (#2650) + settings phases 1-3 (#2651) + C.UTF-8 port (#2652) + Phase B throttling (#2655) + pylsp self-heal (#2656) + IME diag (#2657) + multi-cursor/PerfProbe (#2661) — newest APK supersedes; awaiting Wisdom's one-pass results.
+5. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+6. PYLSP on-device verify: open .py file with errors -> self-heal should fire; expect 'pylsp lint plugins OK' in Output [LSP] channel + squiggles.
+7. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; README auto-open (OFF by default); Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
