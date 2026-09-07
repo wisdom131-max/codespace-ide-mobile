@@ -1,14 +1,23 @@
 export interface ConnectorDef {
   id: string;
   name: string;
-  authUrl: string;
-  tokenUrl: string;
-  revokeUrl?: string;
-  defaultScope: string;
+  /**
+   * 'oauth' (default) — browser consent flow, backend holds client_id/secret.
+   * 'pat' — user pastes a personal API token; no OAuth app, no env vars needed.
+   */
+  authType: 'oauth' | 'pat';
+  authUrl?: string;   // oauth only
+  tokenUrl?: string;  // oauth only
+  revokeUrl?: string; // oauth only
+  defaultScope?: string; // oauth only; PAT rows store scope='pat'
   apiBase: string;
-  clientIdEnv: string;
-  clientSecretEnv: string;
+  clientIdEnv?: string;    // oauth only
+  clientSecretEnv?: string; // oauth only
   extraAuthParams?: Record<string, string>;
+  /** pat only — where the user creates the token */
+  tokenHelpUrl?: string;
+  /** pat only — expected token format hint shown in the paste dialog */
+  tokenHint?: string;
 }
 
 /**
@@ -20,7 +29,7 @@ export interface ConnectorDef {
  */
 export const CONNECTORS: Record<string, ConnectorDef> = {
   gmail: {
-    id: 'gmail', name: 'Gmail',
+    id: 'gmail', authType: 'oauth', name: 'Gmail',
     authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
     revokeUrl: 'https://oauth2.googleapis.com/revoke',
@@ -31,7 +40,7 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     extraAuthParams: { access_type: 'offline', prompt: 'consent' },
   },
   gcalendar: {
-    id: 'gcalendar', name: 'Google Calendar',
+    id: 'gcalendar', authType: 'oauth', name: 'Google Calendar',
     authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
     revokeUrl: 'https://oauth2.googleapis.com/revoke',
@@ -42,7 +51,7 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     extraAuthParams: { access_type: 'offline', prompt: 'consent' },
   },
   gdrive: {
-    id: 'gdrive', name: 'Google Drive',
+    id: 'gdrive', authType: 'oauth', name: 'Google Drive',
     authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
     revokeUrl: 'https://oauth2.googleapis.com/revoke',
@@ -53,7 +62,7 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     extraAuthParams: { access_type: 'offline', prompt: 'consent' },
   },
   slack: {
-    id: 'slack', name: 'Slack',
+    id: 'slack', name: 'Slack', authType: 'oauth',
     authUrl: 'https://slack.com/oauth/v2/authorize',
     tokenUrl: 'https://slack.com/api/oauth.v2.access',
     defaultScope: 'chat:write,channels:read,users:read',
@@ -62,7 +71,7 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     clientSecretEnv: 'SLACK_CLIENT_SECRET',
   },
   github: {
-    id: 'github', name: 'GitHub',
+    id: 'github', name: 'GitHub', authType: 'oauth',
     authUrl: 'https://github.com/login/oauth/authorize',
     tokenUrl: 'https://github.com/login/oauth/access_token',
     // GitHub classic OAuth Apps have no revoke-by-POST endpoint like Google/Slack — revoking
@@ -74,5 +83,54 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     apiBase: 'https://api.github.com',
     clientIdEnv: 'GITHUB_OAUTH_CLIENT_ID',
     clientSecretEnv: 'GITHUB_OAUTH_CLIENT_SECRET',
+  },
+
+  // ── Phase 1 PAT connectors (Item 4, approved 2026-09-07) ────────────────────
+  // User-pasted personal API tokens. No OAuth app, no server env vars — the
+  // user brings their own token; it is encrypted at rest like OAuth tokens.
+  // All seven use 'Authorization: Bearer <token>' so proxyCall works unchanged.
+  sentry: {
+    id: 'sentry', name: 'Sentry', authType: 'pat',
+    apiBase: 'https://sentry.io/api/0',
+    tokenHelpUrl: 'https://sentry.io/settings/account/api/auth-tokens/',
+    tokenHint: 'sntrys_… (create with read scope)',
+  },
+  vercel: {
+    id: 'vercel', name: 'Vercel', authType: 'pat',
+    apiBase: 'https://api.vercel.com',
+    tokenHelpUrl: 'https://vercel.com/account/tokens',
+    tokenHint: 'personal access token',
+  },
+  cloudflare: {
+    id: 'cloudflare', name: 'Cloudflare', authType: 'pat',
+    apiBase: 'https://api.cloudflare.com/client/v4',
+    tokenHelpUrl: 'https://dash.cloudflare.com/profile/api-tokens',
+    tokenHint: 'API token (scoped, not the Global Key)',
+  },
+  posthog: {
+    id: 'posthog', name: 'PostHog', authType: 'pat',
+    // PostHog is regional; us is the default base — EU users pass full URLs in calls.
+    apiBase: 'https://us.posthog.com',
+    tokenHelpUrl: 'https://us.posthog.com/settings/personal-api-keys',
+    tokenHint: 'phx_… personal API key',
+  },
+  stripe: {
+    id: 'stripe', name: 'Stripe', authType: 'pat',
+    apiBase: 'https://api.stripe.com',
+    tokenHelpUrl: 'https://dashboard.stripe.com/apikeys',
+    tokenHint: 'sk_test_… / sk_live_… restricted key',
+  },
+  railway: {
+    id: 'railway', name: 'Railway', authType: 'pat',
+    // Railway's API is GraphQL: POST { "query": "..." } to /graphql.
+    apiBase: 'https://backboard.railway.com',
+    tokenHelpUrl: 'https://railway.com/account/tokens',
+    tokenHint: 'personal access token',
+  },
+  render: {
+    id: 'render', name: 'Render', authType: 'pat',
+    apiBase: 'https://api.render.com',
+    tokenHelpUrl: 'https://dashboard.render.com/settings/api-keys',
+    tokenHint: 'API key (rnd_…)',
   },
 };

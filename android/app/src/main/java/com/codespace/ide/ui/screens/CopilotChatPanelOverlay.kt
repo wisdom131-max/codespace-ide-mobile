@@ -893,6 +893,10 @@ internal fun CopilotChatPanelInline(
                 com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
                 val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths)
                 messages.add(ChatMsg("assistant", reply))
+                // Phase 1 C3: request_connector ran mid-loop -> inline Connect card
+                com.codespace.ide.agent.AgentConnectorManager.consumePendingConnectCard()?.let { svc ->
+                    messages.add(ChatMsg("card_connect", svc))
+                }
                 persistSessions()
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
@@ -1052,6 +1056,12 @@ internal fun CopilotChatPanelInline(
                 )
                 Spacer(Modifier.width(8.dp))
                 if (onOpenConnectors != null) {
+                    Icon(
+                        Icons.Default.AddLink, "Add connector",
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(16.dp).clickable { onOpenConnectors() },
+                    )
+                    Spacer(Modifier.width(8.dp))
                     Box {
                         Icon(
                             Icons.Default.MoreVert, "More",
@@ -1125,6 +1135,16 @@ internal fun CopilotChatPanelInline(
                 }
             }
             items(messages) { msg ->
+                if (msg.role == "card_connect") {
+                    ChatConnectCard(
+                        serviceId = msg.text,
+                        accent = colors.accent,
+                        text = colors.text,
+                        textSecondary = colors.textSecondary,
+                        surface = colors.surface,
+                        onConnect = { onOpenConnectors?.invoke() },
+                    )
+                } else {
                 val isUser = msg.role == "user"
                 Row(
                     Modifier.fillMaxWidth(),
@@ -1142,6 +1162,7 @@ internal fun CopilotChatPanelInline(
                             color = if (isUser) Color.White else colors.text,
                         )
                     }
+                }
                 }
             }
             if (chatLoading) {

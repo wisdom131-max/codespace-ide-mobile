@@ -1141,7 +1141,7 @@ internal fun TerminalPane(
                             showMenu = false
                             // The real local agent API (AgentApiServer, port 8765) is already auto-started
                             // for this session via McpShellProfile — no separate "start" step needed.
-                            // This just lists the 30 tools any AI in this terminal can call via `agent <tool>`.
+                            // This just lists the 31 tools any AI in this terminal can call via `agent <tool>`.
                             active?.session?.write(". ~/.agent-profile.sh 2>/dev/null; agent_tools\n")
                             android.widget.Toast.makeText(context, "Listing available agent tools…", android.widget.Toast.LENGTH_SHORT).show()
                         })

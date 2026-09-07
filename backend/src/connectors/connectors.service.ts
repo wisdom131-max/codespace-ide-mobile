@@ -28,14 +28,22 @@ export class ConnectorsService {
       id: c.id,
       name: c.name,
       connected: byService.has(c.id),
-      configured: !!process.env[c.clientIdEnv],
+      configured: c.authType === 'pat' ? true : !!(c.clientIdEnv && process.env[c.clientIdEnv]),
       scope: byService.get(c.id)?.scope ?? null,
+      authType: c.authType,
+      tokenHelpUrl: c.tokenHelpUrl ?? null,
+      tokenHint: c.tokenHint ?? null,
     }));
   }
 
   getAuthUrl(ownerId: string, service: string): string {
     const conn = CONNECTORS[service];
     if (!conn) throw new BadRequestException(`Unknown connector: ${service}`);
+    if (conn.authType !== 'oauth' || !conn.authUrl || !conn.clientIdEnv) {
+      throw new BadRequestException(
+        `${conn.name} connects with an API token — paste it in the app's Connectors Hub instead.`,
+      );
+    }
     const clientId = process.env[conn.clientIdEnv];
     if (!clientId) {
       throw new BadRequestException(
@@ -52,7 +60,7 @@ export class ConnectorsService {
       client_id: clientId,
       redirect_uri: `${publicBaseUrl()}${CALLBACK_PATH}`,
       response_type: 'code',
-      scope: conn.defaultScope,
+      scope: conn.defaultScope ?? '',
       state,
       ...(conn.extraAuthParams ?? {}),
     });
@@ -73,9 +81,9 @@ export class ConnectorsService {
     const conn = CONNECTORS[service];
     if (!conn) return { ok: false, message: `Unknown connector: ${service}` };
 
-    const clientId = process.env[conn.clientIdEnv];
-    const clientSecret = process.env[conn.clientSecretEnv];
-    if (!clientId || !clientSecret) {
+    const clientId = conn.clientIdEnv ? process.env[conn.clientIdEnv] : undefined;
+    const clientSecret = conn.clientSecretEnv ? process.env[conn.clientSecretEnv] : undefined;
+    if (!clientId || !clientSecret || !conn.tokenUrl) {
       return { ok: false, message: `${conn.name} isn't fully configured on the server.` };
     }
 
@@ -98,7 +106,7 @@ export class ConnectorsService {
     const accessToken = json.access_token ?? json.authed_user?.access_token;
     const refreshToken = json.refresh_token ?? null;
     const expiresIn = json.expires_in ?? null;
-    const scope = json.scope ?? conn.defaultScope;
+    const scope = json.scope ?? conn.defaultScope ?? 'oauth';
 
     if (!resp.ok || !accessToken) {
       return {
@@ -125,6 +133,38 @@ export class ConnectorsService {
   }
 
   /**
+   * Phase 1 (Item 4): store a user-pasted personal API token for a PAT-type
+   * connector. Encrypted at rest exactly like OAuth tokens. PATs don't expire,
+   * so no expiresAt/refresh token is stored; scope is marked 'pat'.
+   */
+  async savePat(ownerId: string, service: string, pat: string): Promise<{ ok: boolean; message: string }> {
+    const conn = CONNECTORS[service];
+    if (!conn) throw new BadRequestException(`Unknown connector: ${service}`);
+    if (conn.authType !== 'pat') {
+      throw new BadRequestException(`${conn.name} connects via OAuth sign-in, not a pasted token.`);
+    }
+    const trimmed = (pat ?? '').trim();
+    if (trimmed.length < 8) {
+      throw new BadRequestException('That token looks too short — paste the full API token.');
+    }
+    const entity: Partial<ConnectorToken> = {
+      ownerId,
+      service,
+      accessTokenEnc: encrypt(trimmed),
+      refreshTokenEnc: undefined,
+      expiresAt: undefined,
+      scope: 'pat',
+    };
+    const existing = await this.repo.findOne({ where: { ownerId, service } });
+    if (existing) {
+      await this.repo.update({ id: existing.id }, entity);
+    } else {
+      await this.repo.save(this.repo.create(entity));
+    }
+    return { ok: true, message: `${conn.name} connected.` };
+  }
+
+  /**
    * Public entry point for other modules (e.g. ReposController) that need a raw, valid access
    * token for a connected service instead of going through proxyCall. Handles refresh
    * transparently, same as proxyCall does internally.
@@ -139,15 +179,20 @@ export class ConnectorsService {
     const row = await this.repo.findOne({ where: { ownerId, service } });
     if (!row) throw new NotFoundException(`${conn.name} is not connected. Connect it first.`);
 
+    // PAT-type connectors: token never expires, there is no refresh flow.
+    if (conn.authType === 'pat') return decrypt(row.accessTokenEnc);
     const isExpired = row.expiresAt && row.expiresAt.getTime() < Date.now() + 60_000;
     if (!isExpired) return decrypt(row.accessTokenEnc);
     if (!row.refreshTokenEnc) return decrypt(row.accessTokenEnc); // no refresh token available — best effort
 
-    const clientId = process.env[conn.clientIdEnv];
-    const clientSecret = process.env[conn.clientSecretEnv];
+    const clientId = conn.clientIdEnv ? process.env[conn.clientIdEnv] : undefined;
+    const clientSecret = conn.clientSecretEnv ? process.env[conn.clientSecretEnv] : undefined;
+    if (!conn.tokenUrl || !clientId || !clientSecret) {
+      throw new UnauthorizedException(`${conn.name} session expired and couldn't be refreshed. Reconnect it.`);
+    }
     const body = new URLSearchParams({
-      client_id: clientId!,
-      client_secret: clientSecret!,
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: decrypt(row.refreshTokenEnc),
       grant_type: 'refresh_token',
     });
@@ -197,6 +242,8 @@ export class ConnectorsService {
   async disconnect(ownerId: string, service: string) {
     const conn = CONNECTORS[service];
     if (!conn) throw new BadRequestException(`Unknown connector: ${service}`);
+    // PAT tokens cannot be revoked remotely by us — deleting the row is the whole
+    // disconnect; the user deletes the token in the provider dashboard if desired.
     const row = await this.repo.findOne({ where: { ownerId, service } });
     if (!row) return { disconnected: false };
 

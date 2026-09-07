@@ -15,7 +15,7 @@ import javax.net.ssl.HttpsURLConnection
  * AgentTools — gives ANY AI launched in the app (via API or terminal) full
  * agent capabilities, mirroring what a Base44 Superagent can do.
  *
- * Capabilities (30 tools):
+ * Capabilities (31 tools):
  *  Shell: run_command, read_file, write_file, list_files, search_files
  *  Git:   git_commit_push, git_pull_rebase, git_branch, git_status, git_diff
  *  Secret: save_secret, get_secret, detect_secrets (auto-scan for keys/tokens)
@@ -88,6 +88,8 @@ You have access to these tools for acting on the user's environment:
     <tool>{"name":"connect_service","arguments":{"service":"gmail","scopes":["read","send"]}}</tool>
 22. use_connector   — Call API with connector token
     <tool>{"name":"use_connector","arguments":{"service":"gmail","method":"GET","endpoint":"/messages"}}</tool>
+23. request_connector — Show the user an inline "Connect <Service>" card in the chat when they need a service that isn't connected yet (works for all connector types)
+    <tool>{"name":"request_connector","arguments":{"service":"sentry"}}</tool>
 
 — Data Entities (local SQLite CRUD) —
 23. create_entity  — Create a data record
@@ -162,6 +164,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "list_connectors" -> AgentConnectorManager.listConnectors(context)
                 "connect_service" -> AgentConnectorManager.connectService(args.getString("service"), args.optJSONArray("scopes"), context)
                 "use_connector" -> AgentConnectorManager.useConnector(args.getString("service"), args.getString("method"), args.getString("endpoint"), args.optString("body", "{}"), context)
+                "request_connector" -> AgentConnectorManager.requestConnectorCard(args.getString("service"), context)
                 "create_entity" -> AgentEntityManager.create(args.getString("entity"), args.getString("data"), context)
                 "read_entities" -> AgentEntityManager.read(args.getString("entity"), args.optString("filter").ifBlank { null }, context)
                 "update_entity" -> AgentEntityManager.update(args.getString("entity"), args.getString("filter"), args.getString("data"), context)
@@ -401,7 +404,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     // for apt didn't even attempt it — it just told the AI to ask a human to type it into
     // a terminal manually, defeating the entire point of an AI package-install tool. Now
     // routes all three through ProotInstaller.execOnce, the same bridge already proven
-    // correct for run_command/git — so the SAME 30 tools genuinely work identically for
+    // correct for run_command/git — so the SAME 31 tools genuinely work identically for
     // both the in-app chat panel and any terminal-launched AI (Claude Code, Ollama CLI).
     private fun installPackage(manager: String, pkg: String, projectDir: String?, context: Context): String {
         val command = when (manager) {

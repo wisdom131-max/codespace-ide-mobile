@@ -50,6 +50,8 @@ internal fun ConnectorsHubSheet(
     var loading by remember { mutableStateOf(true) }
     // In-app OAuth WebView dialog — avoids returning to external browser flow
     var oauthWebViewUrl by remember { mutableStateOf<String?>(null) }
+    // Phase 1: PAT paste-token dialog target (Sentry/Vercel/Cloudflare/PostHog/Stripe/Railway/Render)
+    var patDialogStatus by remember { mutableStateOf<ConnectorsApiClient.ConnectorStatus?>(null) }
     var pendingOAuthId by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
     var busyService by remember { mutableStateOf<String?>(null) }
@@ -121,12 +123,26 @@ internal fun ConnectorsHubSheet(
                             "gcalendar" to Icons.Default.CalendarMonth,
                             "gdrive" to Icons.Default.Cloud,
                             "slack" to Icons.AutoMirrored.Filled.Chat,
+                            "sentry" to Icons.Default.BugReport,
+                            "vercel" to Icons.Default.ChangeHistory,
+                            "cloudflare" to Icons.Default.Cloud,
+                            "posthog" to Icons.Default.Insights,
+                            "stripe" to Icons.Default.CreditCard,
+                            "railway" to Icons.Default.Train,
+                            "render" to Icons.Default.RocketLaunch,
                         )
                         val colorFor = mapOf(
                             "gmail" to Color(0xFFD93025),
                             "gcalendar" to Color(0xFF1A73E8),
                             "gdrive" to Color(0xFF34A853),
                             "slack" to Color(0xFF4A154B),
+                            "sentry" to Color(0xFF6C5FC7),
+                            "vercel" to Color(0xFFEDEDED),
+                            "cloudflare" to Color(0xFFF38020),
+                            "posthog" to Color(0xFFF54E00),
+                            "stripe" to Color(0xFF635BFF),
+                            "railway" to Color(0xFF9500E5),
+                            "render" to Color(0xFF46E3B7),
                         )
                         statuses.forEach { s ->
                             ConnectorStatusRow(
@@ -137,6 +153,10 @@ internal fun ConnectorsHubSheet(
                                 menuText = MenuText,
                                 busy = busyService == s.id,
                                 onConnect = {
+                                    if (s.authType == "pat") {
+                                        // Phase 1: PAT services paste a token — no OAuth page involved
+                                        patDialogStatus = s
+                                    } else {
                                     busyService = s.id
                                     toast = null
                                     scope.launch {
@@ -151,6 +171,7 @@ internal fun ConnectorsHubSheet(
                                             },
                                             onFailure = { toast = it.message ?: "Failed to start connecting ${s.name}" },
                                         )
+                                        }
                                     }
                                 },
                                 onDisconnect = {
@@ -212,6 +233,30 @@ internal fun ConnectorsHubSheet(
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
+
+    // ── Phase 1: PAT paste-token dialog ────────────────────────────────────────
+    patDialogStatus?.let { target ->
+        ConnectorPatDialog(
+            serviceName = target.name,
+            tokenHint = target.tokenHint,
+            tokenHelpUrl = target.tokenHelpUrl,
+            onConnect = { pat, onResult ->
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        ConnectorsApiClient.savePat(accessToken, target.id, pat)
+                    }
+                    result.fold(
+                        onSuccess = {
+                            refreshKey++  // re-fetch statuses so the row flips to Connected
+                            onResult(true, "${target.name} connected.")
+                        },
+                        onFailure = { onResult(false, it.message ?: "Failed to save token") },
+                    )
+                }
+            },
+            onDismiss = { patDialogStatus = null },
+        )
     }
 
     // ── In-app OAuth WebView dialog ───────────────────────────────────────────

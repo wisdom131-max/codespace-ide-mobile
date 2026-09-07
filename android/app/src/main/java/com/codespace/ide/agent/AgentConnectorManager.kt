@@ -33,14 +33,37 @@ import org.json.JSONArray
 object AgentConnectorManager {
 
     /** Services the backend actually supports (see backend/src/connectors/connector-registry.ts). */
-    private val SERVICES = listOf("gmail", "gcalendar", "gdrive", "slack")
+    private val OAUTH_SERVICES = listOf("gmail", "gcalendar", "gdrive", "slack")
+
+    /** Phase 1 (Item 4): personal-API-token services — user pastes the token in the Connectors Hub. */
+    private val PAT_SERVICES = listOf("sentry", "vercel", "cloudflare", "posthog", "stripe", "railway", "render")
+
+    val SERVICES get() = OAUTH_SERVICES + PAT_SERVICES
 
     private val DISPLAY_NAMES = mapOf(
         "gmail" to "Gmail",
         "gcalendar" to "Google Calendar",
         "gdrive" to "Google Drive",
         "slack" to "Slack",
+        "sentry" to "Sentry",
+        "vercel" to "Vercel",
+        "cloudflare" to "Cloudflare",
+        "posthog" to "PostHog",
+        "stripe" to "Stripe",
+        "railway" to "Railway",
+        "render" to "Render",
     )
+
+    /** Phase 1 C3: when request_connector runs, the chat UI shows an inline
+     * "Connect <Service>" card. Side-channel consumed by CopilotChatPanelInline
+     * right after the agent loop returns. */
+    @Volatile private var pendingConnectCard: String? = null
+
+    fun consumePendingConnectCard(): String? {
+        val s = pendingConnectCard
+        pendingConnectCard = null
+        return s
+    }
 
     private fun requireAccessToken(context: Context): String? =
         SecureTokenStore(context).lastAccessToken?.takeIf { it.isNotBlank() }
@@ -77,6 +100,11 @@ object AgentConnectorManager {
      * there's no separate "paste the code back" step anymore.
      */
     fun connectService(service: String, scopes: JSONArray?, context: Context): String {
+        if (service in PAT_SERVICES) {
+            return "${DISPLAY_NAMES[service]} connects with a personal API token, not a sign-in page. " +
+                "The user should open the Connectors Hub (chat kebab or In-Project Settings) and tap ${DISPLAY_NAMES[service]}. " +
+                "Use the request_connector tool to show them a connect card instead."
+        }
         if (service !in SERVICES) {
             return "Unknown or unsupported service: $service. Available: ${SERVICES.joinToString(", ")}. " +
                 "For GitHub, use Settings > Accounts > Sign in with GitHub instead."
@@ -99,6 +127,22 @@ object AgentConnectorManager {
             },
             onFailure = { e -> "Couldn't start connecting ${DISPLAY_NAMES[service]}: ${e.message}" },
         )
+    }
+
+    /**
+     * Phase 1 C3: the agent asks to surface an inline "Connect <Service>" card in
+     * the chat. Generic across OAuth + PAT connector types — the card just opens
+     * the Connectors Hub, where each service runs its own flow.
+     */
+    fun requestConnectorCard(service: String, @Suppress("UNUSED_PARAMETER") context: Context): String {
+        if (service !in SERVICES) {
+            return "Unknown service: $service. Available: ${SERVICES.joinToString(", ")}."
+        }
+        if (service == "github") return "GitHub connects from Settings > Accounts > Sign in with GitHub."
+        pendingConnectCard = service
+        return "The user is being shown a 'Connect ${DISPLAY_NAMES[service]}' card in the chat. " +
+            "Tell them to tap Connect on it and finish in the Connectors Hub, then continue your answer. " +
+            "Do not call this tool again for ${DISPLAY_NAMES[service]} in this conversation."
     }
 
     fun useConnector(

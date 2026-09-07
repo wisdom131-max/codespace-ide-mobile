@@ -32,6 +32,10 @@ object ConnectorsApiClient {
         val connected: Boolean,
         val configured: Boolean,
         val scope: String?,
+        /** Phase 1 (Item 4): 'oauth' = browser consent flow, 'pat' = paste an API token. */
+        val authType: String = "oauth",
+        val tokenHelpUrl: String? = null,
+        val tokenHint: String? = null,
     )
 
     private val client = OkHttpClient.Builder()
@@ -60,6 +64,9 @@ object ConnectorsApiClient {
                     connected = o.optBoolean("connected", false),
                     configured = o.optBoolean("configured", false),
                     scope = if (o.isNull("scope")) null else o.optString("scope"),
+                    authType = o.optString("authType", "oauth"),
+                    tokenHelpUrl = if (o.isNull("tokenHelpUrl")) null else o.optString("tokenHelpUrl"),
+                    tokenHint = if (o.isNull("tokenHint")) null else o.optString("tokenHint"),
                 )
             }
         }
@@ -79,6 +86,23 @@ object ConnectorsApiClient {
                 error(msg?.takeIf { it.isNotBlank() } ?: "HTTP ${resp.code}: ${bodyStr.take(300)}")
             }
             JSONObject(bodyStr).getString("authUrl")
+        }
+    }
+
+    /** POST /connectors/{service}/token — store a PAT-type connector's API token (encrypted server-side). */
+    fun savePat(accessToken: String, service: String, pat: String): Result<Unit> = runCatching {
+        val payload = JSONObject().put("pat", pat)
+        val req = Request.Builder()
+            .url("$API_BASE/connectors/$service/token")
+            .header("Authorization", "Bearer $accessToken")
+            .post(payload.toString().toRequestBody(JSON))
+            .build()
+        client.newCall(req).execute().use { resp ->
+            val bodyStr = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                val msg = runCatching { JSONObject(bodyStr).optString("message") }.getOrNull()
+                error(msg?.takeIf { it.isNotBlank() } ?: "HTTP ${resp.code}: ${bodyStr.take(300)}")
+            }
         }
     }
 

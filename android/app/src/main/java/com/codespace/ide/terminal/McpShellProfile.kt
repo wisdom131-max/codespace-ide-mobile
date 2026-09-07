@@ -11,7 +11,7 @@ import java.io.File
  *
  * What gets injected into ~/.bashrc:
  *   AGENT_API_URL  — http://localhost:8765 (local AgentApiServer)
- *   agent()        — call any of the 30 tools from the terminal
+ *   agent()        — call any of the 31 tools from the terminal
  *   agent_tools    — list all available tools
  *   agent_prompt   — get the system prompt for CLI AI tools
  *   Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search, etc.
@@ -20,7 +20,7 @@ import java.io.File
  *   agent_read src/main.kt
  *   agent_run "git status"
  *   agent_git commit_push "fix: update UI"
- *   agent_tools  # list all 30 tools
+ *   agent_tools  # list all 31 tools
  *   agent_prompt  # get system prompt for CLI AI
  *
  * Also starts AgentApiServer if not already running.
@@ -175,7 +175,7 @@ object McpShellProfile {
         appendLine("# ── Health check ──────────────────────────────────────────────────")
         appendLine("agent_health() { curl -s \"\$AGENT_API_URL/health\" 2>/dev/null || echo '[agent] API not running'; }")
         appendLine("")
-        appendLine("echo '[Agent] 30 tools ready. Type agent_tools to list, agent <tool> \"<json>\" to call.'")
+        appendLine("echo '[Agent] 31 tools ready. Type agent_tools to list, agent <tool> \"<json>\" to call.'")
         appendLine("[ -n \"${'\$'}{WORKSPACE_PATH}\" ] && echo \"[Agent] Project files: ${'\$'}{WORKSPACE_PATH}\" || echo \"[Agent] Tip: open a project in Explorer to set WORKSPACE_PATH\"")
         appendLine("echo '[Agent] Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search, agent_mem_*, agent_fetch...'")
     }

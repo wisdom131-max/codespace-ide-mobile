@@ -48,6 +48,21 @@ export class ConnectorsController {
         <p>${result.message}</p></div></body></html>`);
   }
 
+  /**
+   * Phase 1 (Item 4): store a personal API token for a PAT-type connector.
+   * JWT-guarded like /call — the pasted token is encrypted at rest server-side.
+   */
+  @Post(':service/token')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  savePat(
+    @Req() req: any,
+    @Param('service') service: string,
+    @Body() body: { pat: string },
+  ) {
+    return this.connectors.savePat(req.user.userId, service, body?.pat);
+  }
+
   @Post(':service/call')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)

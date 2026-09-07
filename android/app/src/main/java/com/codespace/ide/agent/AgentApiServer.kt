@@ -19,7 +19,7 @@ import java.util.concurrent.Executors
  *   curl -s -X POST http://localhost:8765/tool/run_command -d '{"command":"ls -la"}'
  *   curl -s http://localhost:8765/tools
  *
- * This gives terminal-launched AI the SAME 30 tools as the chat panel:
+ * This gives terminal-launched AI the SAME 31 tools as the chat panel:
  *   Shell, Git, Secrets, Web, Memory, Connectors, Entities, Scheduler, Media, Packages
  *
  * The server starts when the terminal/proot session begins and stops when it ends.
