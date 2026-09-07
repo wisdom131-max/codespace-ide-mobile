@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-07 07:12 WAT
+> Last updated: 2026-09-07 13:05 WAT
 
 ---
 
@@ -29,9 +29,9 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 2492f53 |
-| CI build | #2673 GREEN (2026-09-07) |
-| Backend | Render -> https://codespace-ide-backend.onrender.com |
+| Latest commit | 7cbdb37 |
+| CI build | #2680 GREEN, #2681 pending (2026-09-07) |
+| Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
 
@@ -1914,3 +1914,38 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 6. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
 
 ---
+
+---
+
+## [2026-09-07 13:00 WAT] — AI Agent: Connectors Phase 2+3 changelog + Render outage root-caused & FULLY RECOVERED (agent-side, via Render/Supabase/GitHub APIs)
+
+**RULES REMINDER:** 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY. 2. CHANGE LOG: entry at BOTTOM of AGENTS.md with timestamp, SHA, CI build+pass/fail, what was fixed, files touched, next on roadmap (ALL pending). 3. TAGS: [BUILD-FIX], [LSP], [UI], [DOCS], [INFRA], [BACKEND], [CRASH], [GIT]. 4. Update Current State table at top. 5. NEVER re-do done work. 6. ROADMAP CONTINUITY: list ALL pending. 7. UI: rounded corners 8-12dp + padding 12dp h / 10dp v.
+
+**[BACKEND][CRASH] RENDER OUTAGE — root cause & recovery (all done by agent via Render API rnd_ key + Supabase service key + GitHub token, no manual dashboard steps):**
+- Deploys af52003/b8694d8/fd2c004 all failed 2026-09-07 10:02-10:39 UTC with status update_failed. Render logs (fetched via API) show EXACT cause: TypeOrmModule "Unable to connect to the database. Retrying (1)(2)(3)" -> ENOTFOUND tenant/user postgres.cuipfwhkggxngadixius not found -> ExceptionHandler crash before listen(). Supabase free tier had AUTO-PAUSED the project; Supavisor rejects paused tenants. af52003 was simply the first deploy after the pause — the source was NEVER the problem (af52003 builds clean with Render's exact command, verified locally).
+- Wisdom restored Supabase via dashboard. Agent then: verified project awake (REST /rest/v1/ 200 in 0.8s), triggered Render manual deploy via API -> LIVE (health 200, /api/v1/connectors/sentry/token returns proper 401 JSON with traceId — Phase 1 route confirmed live).
+- SECOND root cause discovered during verification: the production DB had ZERO tables (PostgREST swagger showed empty public schema; users/connector_tokens/refresh_tokens/projects all missing). Cause: database.module.ts had synchronize = NODE_ENV !== 'production' (=false on Render) AND no migrations were ever written -> schema was never created in production. NOT caused by the pause.
+- Fix: database.module.ts synchronize now also honors TYPEORM_SYNCHRONIZE === 'true' (7cbdb37, #2681). TYPEORM_SYNCHRONIZE=true set on Render service via API; fresh deploy -> TypeORM created all 4 tables (users, refresh_tokens, projects, connector_tokens) — verified via PostgREST schema listing. Backend now fully functional end-to-end.
+
+**[INFRA] Keep-alive (prevents recurrence of the Supabase pause):**
+- Investigation confirmed NO keep-alive mechanism ever existed (no cron, no scheduled ping, nothing — request from earlier development never landed). Also note: pinging Render alone would NOT have helped — /api/v1/health never touches the DB; only real DB queries reset Supabase's idle clock.
+- NEW .github/workflows/backend-keepalive.yml (8e499fd, #2680 GREEN): daily 06:00 UTC + manual trigger; step 1 runs REAL psql SELECT 1 directly against Supabase Postgres via repo secret DATABASE_URL (added to GitHub by agent, encrypted via repo public key); step 2 curls Render health for a warmth log. First manual run verified GREEN end-to-end (both steps success).
+
+**[CONNECTORS] Phase 2 (Group A OAuth2) — fd2c004, #2678 GREEN:**
+- backend connector-registry.ts: +8 OAuth2 defs — GitLab, Notion, Figma, Linear, Jira, Discord, Canva, Hugging Face; connectors.service.ts OAuth flow generalized for the new providers.
+- Android: ConnectorsHubSheet +8 rows; ChatConnectCard/ConnectorPatDialog/AgentConnectorManager provider-aware.
+- NOTE: OAuth app registration per provider still required before on-device connect tests will complete — client id/secret env vars needed on Render.
+
+**[CONNECTORS] Phase 3 (Group C) — b3a0089, #2679 GREEN:**
+- NEW ProjectServicesPanel.kt (376 lines): project-level Firebase / Supabase / n8n service config panels (CloudBackupPanel pattern — settings, NOT Connectors Hub). SecureTokenStore +secure helpers. ProjectShellScreen 1-line panel hook.
+
+**Commits/CI this entry:** 8e499fd (keep-alive workflow, #2680 GREEN) | 7cbdb37 (TYPEORM_SYNCHRONIZE override, #2681 pending — backend-only, no app code change). Render deploys: manual deploy LIVE at 12:16 UTC (8e499fd), redeploy LIVE at 12:57 UTC (7cbdb37 + env var) — health 200, PAT endpoint 401 as designed.
+
+**Files touched:** .github/workflows/backend-keepalive.yml (NEW); backend/src/database/database.module.ts; backend/src/connectors/{connector-registry,connectors.service}.ts; agent/AgentConnectorManager.kt; data/SecureTokenStore.kt; ui/panels/ProjectServicesPanel.kt (NEW); ui/screens/ConnectorsHubSheet.kt; ui/screens/ChatConnectCard.kt; ui/screens/ConnectorPatDialog.kt; ui/screens/ProjectShellScreen.kt. (Phase 2/3 commits fd2c004/b3a0089.)
+
+**Next on roadmap (ALL pending):**
+1. On-device test batches awaiting Wisdom (one pass, newest green APK from #2680/#2681 artifacts): (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657; (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) MD-preview suite T1-T10 (#2664); (d) MCP suite M1-M8 (#2667); (e) P1 debug D1-D5 batch (#2671); (f) P2 debug batch (#2673); (g) CONN-1..8 Phase 1 batch; (h) Phase 2 OAuth2 on-device connect test (after OAuth apps registered per provider); (i) Phase 3 project-services panel test.
+2. OAuth app registration for Phase 2 providers (GitLab/Notion/Figma/Linear/Jira/Discord/Canva/HuggingFace) — client id/secret env vars on Render.
+3. Item 3 remaining: IME emoji phase 2 (read diag logs from on-device emoji tap -> fix per evidence).
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
