@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | ac5746c |
-| CI build | #2671 GREEN (2026-09-07) |
+| Latest commit | 2492f53 |
+| CI build | #2673 GREEN (2026-09-07) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -1841,3 +1841,34 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
   - [PENDING] On-device regression: MCP client batch M1-M8 (AGENTS.md plan, 4812419)
   - [PENDING] On-device regression: Markdown preview parity batch T1-T10 (5c1b8c4)
   - [PENDING] Full P1 audit items 4+ (plan report) and remaining debugger parity phases
+
+---
+
+**[2026-09-07 10:45 WAT] — AI Agent (P2 debugger parity)**
+
+**RULES REMINDER**: TWO-REPO (main IDE here, proot only in ubuntu-proot-test) | changelog at bottom with SHA+CI | tags on entries | never re-do done work | roadmap lists ALL pending | UI rounded 8-12dp + padding 12h/10v | no inline code in composable bodies (64KB rule)
+
+**Commit**: 2492f53 | **CI**: #2673 GREEN (2c818e1 was #2672 GREEN before it)
+
+**Tag**: [DAP]
+
+**What was added (VS Code debug-parity batch 2):**
+- [DAP-HOVER] Hover-evaluate: hovering a variable while paused evaluates it (DAP evaluate, context=hover, gated on supportsEvaluateForHovers). Word extraction in new DebugHoverEvaluate.kt; value rendered as green row in HoverPopup; cleared on session end; IO dispatcher.
+- [DAP-RESTART] restartFrame icon on every call-stack row (gated on supportsRestartFrame capability — debugpy + js-debug both advertise it).
+- [DAP-THREADS] THREADS section in RUN AND DEBUG panel when >1 thread; tap to switch active thread (stack + threads refresh).
+- [DAP-PAGING] "Load more frames (n/m)" row — DAP stackTrace paging, 20 per page, totalFrames tracked.
+- [DAP-FUNCBP] FUNCTION BREAKPOINTS section: add/toggle/remove by function name, verified-state + message from adapter setFunctionBreakpoints response; pushed at launch config alongside line breakpoints.
+- [DAP-TOOLBAR] New DebugToolbarOverlay.kt: self-contained floating debug toolbar (continue/pause, step over/into/out, stop) — visible while debugging regardless of active pane; one-line call in ProjectShellScreen. Own UDM listener, renders nothing when idle.
+
+**Files touched**: DAPClient.kt (supportsRestartFrame), DebugAdapter.kt (+5 interface methods), UniversalDebugManager.kt (DebugThread/DebugFunctionBreakpoint data classes, function-bp store, 10 new methods), NodeDAPAdapter.kt + PythonDAPAdapter.kt (threads/paging/restartFrame/func-bps + parseFrame refactor), EditorPane.kt (hover-evaluate wiring), CodeEditor.kt (param passthrough), HoverPopup.kt (debug value row), ExplorerPane.kt RunDebugPanel (THREADS/paging/FUNCBP sections + restart icon), DebugEditDialogs.kt (AddFunctionBreakpointDialog), NEW DebugToolbarOverlay.kt, NEW DebugHoverEvaluate.kt, ProjectShellScreen.kt (1-line toolbar call).
+
+**Structural check**: brace/paren deltas == HEAD baseline on all 13 files (string-literal noise only). 676 insertions, 28 deletions.
+
+**Next on roadmap (ALL pending):**
+1. On-device test batches awaiting Wisdom: (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657; (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) MD-preview suite T1-T10 (#2664); (d) MCP suite M1-M8 (#2667); (e) P1 debug D1-D5 batch (#2671); (f) THIS P2 debug batch: hover-evaluate, restart-frame, threads, paging, function breakpoints, floating toolbar (#2673).
+2. Item 3 connectors expansion: PLAN DELIVERED (20-item reconciliation + Ollama answer); implementation awaits approval.
+3. IME emoji phase 2: read diag logs from on-device emoji tap -> implement fix per evidence.
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+---
