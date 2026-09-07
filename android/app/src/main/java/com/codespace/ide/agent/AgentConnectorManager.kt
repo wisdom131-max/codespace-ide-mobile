@@ -33,7 +33,11 @@ import org.json.JSONArray
 object AgentConnectorManager {
 
     /** Services the backend actually supports (see backend/src/connectors/connector-registry.ts). */
-    private val OAUTH_SERVICES = listOf("gmail", "gcalendar", "gdrive", "slack")
+    private val OAUTH_SERVICES = listOf(
+        "gmail", "gcalendar", "gdrive", "slack",
+        // Phase 2 (Group A) — rows appear in the Hub; usable once server env vars are set.
+        "gitlab", "notion", "figma", "linear", "jira", "discord", "canva", "huggingface",
+    )
 
     /** Phase 1 (Item 4): personal-API-token services — user pastes the token in the Connectors Hub. */
     private val PAT_SERVICES = listOf("sentry", "vercel", "cloudflare", "posthog", "stripe", "railway", "render")
@@ -52,6 +56,14 @@ object AgentConnectorManager {
         "stripe" to "Stripe",
         "railway" to "Railway",
         "render" to "Render",
+        "gitlab" to "GitLab",
+        "notion" to "Notion",
+        "figma" to "Figma",
+        "linear" to "Linear",
+        "jira" to "Jira",
+        "discord" to "Discord",
+        "canva" to "Canva",
+        "huggingface" to "Hugging Face",
     )
 
     /** Phase 1 C3: when request_connector runs, the chat UI shows an inline

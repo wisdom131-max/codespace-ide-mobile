@@ -120,5 +120,7 @@ internal fun serviceIdFromName(name: String): String = when (name) {
     "Slack" -> "slack"
     "Sentry" -> "sentry"; "Vercel" -> "vercel"; "Cloudflare" -> "cloudflare"
     "PostHog" -> "posthog"; "Stripe" -> "stripe"; "Railway" -> "railway"; "Render" -> "render"
+    "GitLab" -> "gitlab"; "Notion" -> "notion"; "Figma" -> "figma"; "Linear" -> "linear"
+    "Jira" -> "jira"; "Discord" -> "discord"; "Canva" -> "canva"; "Hugging Face" -> "huggingface"
     else -> name.lowercase()
 }

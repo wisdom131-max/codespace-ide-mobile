@@ -14,6 +14,13 @@ export interface ConnectorDef {
   clientIdEnv?: string;    // oauth only
   clientSecretEnv?: string; // oauth only
   extraAuthParams?: Record<string, string>;
+  /**
+   * How the code-for-token exchange (and refresh) talks to tokenUrl:
+   * 'form'  — x-www-form-urlencoded body with client_id/secret (RFC 6749 default) — all standard providers.
+   * 'json'  — JSON body with client_id/secret fields (Canva).
+   * 'notion' — Authorization: Basic base64(id:secret) header + minimal JSON body (Notion).
+   */
+  tokenExchange?: 'form' | 'json' | 'notion';
   /** pat only — where the user creates the token */
   tokenHelpUrl?: string;
   /** pat only — expected token format hint shown in the paste dialog */
@@ -132,5 +139,93 @@ export const CONNECTORS: Record<string, ConnectorDef> = {
     apiBase: 'https://api.render.com',
     tokenHelpUrl: 'https://dashboard.render.com/settings/api-keys',
     tokenHint: 'API key (rnd_…)',
+  },
+
+  // ── Phase 2 (Group A) OAuth2 connectors — approved 2026-09-07 ─────────────
+  // Standard authorization-code flow against the shared redirect URI
+  // https://codespace-ide-backend.onrender.com/api/v1/connectors/callback
+  // Rows stay "Not set up yet" until the client id/secret env vars are set.
+  gitlab: {
+    id: 'gitlab', name: 'GitLab', authType: 'oauth',
+    authUrl: 'https://gitlab.com/oauth/authorize',
+    tokenUrl: 'https://gitlab.com/oauth/token',
+    revokeUrl: 'https://gitlab.com/oauth/revoke',
+    defaultScope: 'read_api',
+    apiBase: 'https://gitlab.com/api/v4',
+    clientIdEnv: 'GITLAB_OAUTH_CLIENT_ID',
+    clientSecretEnv: 'GITLAB_OAUTH_CLIENT_SECRET',
+  },
+  notion: {
+    id: 'notion', name: 'Notion', authType: 'oauth',
+    // Notion uses no scope param (integration capabilities are set in the
+    // Notion console) and a NONSTANDARD exchange: Basic-auth header + JSON body.
+    authUrl: 'https://api.notion.com/v1/oauth/authorize',
+    tokenUrl: 'https://api.notion.com/v1/oauth/token',
+    apiBase: 'https://api.notion.com/v1',
+    defaultScope: '',
+    clientIdEnv: 'NOTION_OAUTH_CLIENT_ID',
+    clientSecretEnv: 'NOTION_OAUTH_CLIENT_SECRET',
+    tokenExchange: 'notion',
+  },
+  figma: {
+    id: 'figma', name: 'Figma', authType: 'oauth',
+    authUrl: 'https://www.figma.com/oauth',
+    tokenUrl: 'https://www.figma.com/api/oauth/token',
+    defaultScope: 'file_read',
+    apiBase: 'https://api.figma.com/v1',
+    clientIdEnv: 'FIGMA_OAUTH_CLIENT_ID',
+    clientSecretEnv: 'FIGMA_OAUTH_CLIENT_SECRET',
+  },
+  linear: {
+    id: 'linear', name: 'Linear', authType: 'oauth',
+    authUrl: 'https://linear.app/oauth/authorize',
+    tokenUrl: 'https://api.linear.app/oauth/token',
+    defaultScope: 'issues:read',
+    apiBase: 'https://api.linear.app', // GraphQL — POST { "query": "…" } to /
+    clientIdEnv: 'LINEAR_OAUTH_CLIENT_ID',
+    clientSecretEnv: 'LINEAR_OAUTH_CLIENT_SECRET',
+  },
+  jira: {
+    id: 'jira', name: 'Jira', authType: 'oauth',
+    // Atlassian 3LO: audience param required on authorize; Bearer works for calls.
+    authUrl: 'https://auth.atlassian.com/authorize',
+    tokenUrl: 'https://auth.atlassian.com/oauth/token',
+    defaultScope: 'read:jira-work',
+    apiBase: 'https://api.atlassian.com',
+    clientIdEnv: 'JIRA_OAUTH_CLIENT_ID',
+    clientSecretEnv: 'JIRA_OAUTH_CLIENT_SECRET',
+    extraAuthParams: { audience: 'api.atlassian.com', prompt: 'consent' },
+  },
+  discord: {
+    id: 'discord', name: 'Discord', authType: 'oauth',
+    authUrl: 'https://discord.com/oauth2/authorize',
+    tokenUrl: 'https://discord.com/api/oauth2/token',
+    revokeUrl: 'https://discord.com/api/oauth2/token/revoke',
+    defaultScope: 'identify guilds',
+    apiBase: 'https://discord.com/api/v10',
+    clientIdEnv: 'DISCORD_OAUTH_CLIENT_ID',
+    clientSecretEnv: 'DISCORD_OAUTH_CLIENT_SECRET',
+    extraAuthParams: { prompt: 'consent' }, // refresh tokens need re-consent on Discord
+  },
+  canva: {
+    id: 'canva', name: 'Canva', authType: 'oauth',
+    // Canva's token endpoint takes a JSON body (not form-encoded).
+    authUrl: 'https://www.canva.com/api/oauth/authorize',
+    tokenUrl: 'https://api.canva.com/api/v1/oauth/token',
+    defaultScope: 'profile:read',
+    apiBase: 'https://api.canva.com/api/v1',
+    clientIdEnv: 'CANVA_OAUTH_CLIENT_ID',
+    clientSecretEnv: 'CANVA_OAUTH_CLIENT_SECRET',
+    tokenExchange: 'json',
+  },
+  huggingface: {
+    id: 'huggingface', name: 'Hugging Face', authType: 'oauth',
+    authUrl: 'https://huggingface.co/oauth/authorize',
+    tokenUrl: 'https://huggingface.co/oauth/token',
+    revokeUrl: 'https://huggingface.co/oauth/revoke',
+    defaultScope: 'profile',
+    apiBase: 'https://huggingface.co/api',
+    clientIdEnv: 'HUGGINGFACE_OAUTH_CLIENT_ID',
+    clientSecretEnv: 'HUGGINGFACE_OAUTH_CLIENT_SECRET',
   },
 };

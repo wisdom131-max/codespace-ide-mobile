@@ -130,6 +130,14 @@ internal fun ConnectorsHubSheet(
                             "stripe" to Icons.Default.CreditCard,
                             "railway" to Icons.Default.Train,
                             "render" to Icons.Default.RocketLaunch,
+                            "gitlab" to Icons.Default.Code,
+                            "notion" to Icons.Default.Description,
+                            "figma" to Icons.Default.DesignServices,
+                            "linear" to Icons.Default.LinearScale,
+                            "jira" to Icons.Default.Layers,
+                            "discord" to Icons.Default.Forum,
+                            "canva" to Icons.Default.Palette,
+                            "huggingface" to Icons.Default.SentimentVerySatisfied,
                         )
                         val colorFor = mapOf(
                             "gmail" to Color(0xFFD93025),
@@ -143,6 +151,14 @@ internal fun ConnectorsHubSheet(
                             "stripe" to Color(0xFF635BFF),
                             "railway" to Color(0xFF9500E5),
                             "render" to Color(0xFF46E3B7),
+                            "gitlab" to Color(0xFFFC6D26),
+                            "notion" to Color(0xFFB3B3B3),
+                            "figma" to Color(0xFFF24E1E),
+                            "linear" to Color(0xFF5E6AD2),
+                            "jira" to Color(0xFF0052CC),
+                            "discord" to Color(0xFF5865F2),
+                            "canva" to Color(0xFF7D2AE8),
+                            "huggingface" to Color(0xFFFFD21E),
                         )
                         statuses.forEach { s ->
                             ConnectorStatusRow(

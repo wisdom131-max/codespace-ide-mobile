@@ -87,19 +87,49 @@ export class ConnectorsService {
       return { ok: false, message: `${conn.name} isn't fully configured on the server.` };
     }
 
-    const body = new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      grant_type: 'authorization_code',
-      redirect_uri: `${publicBaseUrl()}${CALLBACK_PATH}`,
-    });
+    const redirectUri = `${publicBaseUrl()}${CALLBACK_PATH}`;
 
-    const resp = await fetch(conn.tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body,
-    });
+    // Phase 2: providers differ in how the exchange must be sent.
+    //  - form (default): x-www-form-urlencoded body with client credentials
+    //  - json (Canva):   JSON body with client credentials in fields
+    //  - notion:         Authorization: Basic base64(id:secret) header + JSON body
+    let resp: Response;
+    if (conn.tokenExchange === 'notion') {
+      resp = await fetch(conn.tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+        },
+        body: JSON.stringify({ grant_type: 'authorization_code', code, redirect_uri: redirectUri }),
+      });
+    } else if (conn.tokenExchange === 'json') {
+      resp = await fetch(conn.tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          redirect_uri: redirectUri,
+        }),
+      });
+    } else {
+      const body = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+      });
+      resp = await fetch(conn.tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+        body,
+      });
+    }
     const json: any = await resp.json().catch(() => ({}));
 
     // Slack's "Sign in with Slack" nests the user token under authed_user; normalize both shapes.
@@ -190,25 +220,47 @@ export class ConnectorsService {
     if (!conn.tokenUrl || !clientId || !clientSecret) {
       throw new UnauthorizedException(`${conn.name} session expired and couldn't be refreshed. Reconnect it.`);
     }
-    const body = new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: decrypt(row.refreshTokenEnc),
-      grant_type: 'refresh_token',
-    });
-    const resp = await fetch(conn.tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body,
-    });
+    const refreshToken = decrypt(row.refreshTokenEnc);
+    // Phase 2: honor the connector's exchange style on refresh too.
+    // (Notion never gets here — its tokens don't expire and no refresh token is stored.)
+    let resp: Response;
+    if (conn.tokenExchange === 'json') {
+      resp = await fetch(conn.tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          grant_type: 'refresh_token',
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: refreshToken,
+        }),
+      });
+    } else if (conn.tokenExchange === 'notion') {
+      // Notion has no refresh-token grant — treat like an expiring PAT: return best effort.
+      return decrypt(row.accessTokenEnc);
+    } else {
+      const body = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      });
+      resp = await fetch(conn.tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+        body,
+      });
+    }
     const json: any = await resp.json().catch(() => ({}));
     if (!resp.ok || !json.access_token) {
       throw new UnauthorizedException(`${conn.name} session expired and couldn't refresh. Reconnect it.`);
     }
+    // Some providers (Canva, Atlassian) ROTATE refresh tokens — persist the new one.
     await this.repo.update(
       { id: row.id },
       {
         accessTokenEnc: encrypt(json.access_token),
+        refreshTokenEnc: json.refresh_token ? encrypt(json.refresh_token) : row.refreshTokenEnc,
         expiresAt: json.expires_in ? new Date(Date.now() + json.expires_in * 1000) : undefined,
       },
     );

@@ -43,6 +43,8 @@ internal fun ChatConnectCard(
         "slack" -> "Slack"
         "sentry" -> "Sentry"; "vercel" -> "Vercel"; "cloudflare" -> "Cloudflare"
         "posthog" -> "PostHog"; "stripe" -> "Stripe"; "railway" -> "Railway"; "render" -> "Render"
+        "gitlab" -> "GitLab"; "notion" -> "Notion"; "figma" -> "Figma"; "linear" -> "Linear"
+        "jira" -> "Jira"; "discord" -> "Discord"; "canva" -> "Canva"; "huggingface" -> "Hugging Face"
         else -> serviceId.replaceFirstChar { it.uppercase() }
     }
     Surface(
