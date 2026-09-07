@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-07 04:55 WAT
+> Last updated: 2026-09-07 05:55 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 2c79472 |
-| CI build | #2661 GREEN (2026-09-07) |
+| Latest commit | 5c1b8c4 |
+| CI build | #2664 GREEN (2026-09-07) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -1771,3 +1771,27 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 5. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 6. PYLSP on-device verify: open .py file with errors -> self-heal should fire; expect 'pylsp lint plugins OK' in Output [LSP] channel + squiggles.
 7. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; README auto-open (OFF by default); Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+### [2026-09-07 05:55 WAT] — AI Agent: GLM (Superagent)
+
+**Commit: 5c1b8c4 | CI: #2664 GREEN (chain: 9bde92b #2663 FAIL — missing closing paren in encodeUrl interpolation -> 5c1b8c4 #2664 PASS)**
+
+**RULES REMINDER:** 1. TWO-REPO: main IDE -> codespace-ide-mobile | proot/rootfs -> ubuntu-proot-test. 2. CHANGE LOG after every commit, bottom of file. 3. TAGS. 4. Current State table updated. 5. NO RE-DO of done work. 6. ROADMAP: list ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v. 8. NO inline composable code (64KB limit). 9. String breaks = explicit \n. 10. NO SUB-AGENTS.
+
+**[EDITOR][UI][BUILD-FIX] EYE-ICON MD SPLIT PANEL REMOVED + MD PREVIEW VS CODE PARITY + README AUTO-OPEN (additive, .md stays fully editable)**
+- EYE-ICON + DRAG-GESTURE + SPLIT PANEL REMOVED (EditorPane.kt, -147 lines): showMdPreview state, Visibility eye IconButton, P48 tab drag-down trigger, and the entire P48/P45-4 split else-if branch deleted. Zero references remain. .md files now render through the normal editor chain — identical to every other file type.
+- MD-IMG BASE-URL FIX (PreviewPane.kt MarkdownPreview): loadDataWithBaseURL now uses file:// + percent-encoded parent-dir URL of the active file so RELATIVE image paths (images/logo.png) resolve — VS Code markdown-preview parity (asWebviewUri/localResourceRoots net effect). allowFileAccess enabled.
+- RENDERER FIDELITY (MarkdownRenderer.kt): new encodeUrl() — percent-encodes relative img/link paths per segment (spaces/unicode) while http(s)/data/about/anchor URLs and existing %XX escapes pass through; GFM task lists (- [ ] / - [x]) render as disabled checkboxes.
+- README AUTO-OPEN + .md AUTO-PREVIEW (additive ONLY): new MarkdownPreviewRouter.kt — shouldShowPreviewTab() + findReadmeAtRoot() (VS Code startupPage.ts openReadme algorithm: exact readme.md case-insensitive, else readme.markdown, else first sorted file starting with readme). ProjectShellScreen hooks: (1) [REPO-OPEN] LaunchedEffect — fresh project entry with NO open editor opens root readme as a NORMAL EDITABLE TAB then flips bottom panel to Preview; (2) Explorer onOpenFile; (3,4) file-search onOpenFile/onOpenFileAtLine — .md opens flip the bottom panel to Preview AFTER the editable tab exists. Settings toggle md_preview_auto default ON (FeatureToggleStore + SettingsSchema, appended at END of toggle lists — InProjectSettingsDialog indexes by position).
+- DESIGN CONTRACT (Wisdom-confirmed): a .md file ALWAYS opens as a normal fully-editable editor tab (typing/undo/save type-agnostic); auto-open only ADDS the rendered preview alongside. Preview pane re-reads disk every 500ms (lastModified poll) and the editor writes on every keystroke — preview follows edits live, no lock possible.
+- BUILD-FAIL LESSON: one-line interpolation edit dropped a closing paren inside ${} — grep-verified fix pattern works but ALWAYS re-scan edited interpolation lines before push.
+- FILES: ui/panes/EditorPane.kt (-147), ui/panes/PreviewPane.kt, ui/panes/MarkdownPreviewRouter.kt (NEW), editor/MarkdownRenderer.kt, editor/FeatureToggleStore.kt, editor/settings/SettingsSchema.kt, ui/screens/ProjectShellScreen.kt (+31)
+- APK: #2664 artifacts (codespace-ide-arm64-v8a) — Wisdom downloads from Actions himself now (standing instruction).
+- ON-DEVICE TEST PLAN (run on #2664 APK): T1 open a .md from Explorer -> normal editable tab + Preview tab shows rendered view; T2 TYPE in the .md editor -> Preview updates within ~1s (500ms poll); T3 save + reopen -> edit persisted; T4 undo/redo in .md; T5 repo-relative images in a README render (VS Code clone with assets); T6 task list README renders checkboxes; T7 fresh project open with README.md -> README opens editable + Preview tab auto-shows; T8 project with NO readme -> nothing auto-opens; T9 toggle md_preview_auto OFF in settings -> .md opens with NO auto-preview; T10 HTML/SVG/Browser preview modes unchanged.
+
+**Next on roadmap (ALL pending):**
+1. On-device test batches awaiting Wisdom: (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657 (ErrorLens, settings UX 1-3, C.UTF-8, throttling, pylsp self-heal, IME diag); (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) THIS MD-preview suite (T1-T10 above, #2664).
+2. IME emoji phase 2: read diag logs from on-device emoji tap -> implement fix per evidence.
+3. GROUP C research (await approval before implementing): agent-tools extraction inventory; debugger parity plan; MCP/tool integration research. (Multi-cursor + faster-engine research: DONE, Plan A shipped.)
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs. (README auto-open: SHIPPED this commit — removed from deferred.)
