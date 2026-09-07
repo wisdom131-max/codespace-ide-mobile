@@ -72,6 +72,20 @@ class SecureTokenStore @Inject constructor(
     }
 
     fun aiKey(provider: String): String? = prefs.getString("ai_$provider", null)
+
+    /**
+     * Phase 3 (Group C): per-project service credentials (Firebase / Supabase / n8n).
+     * Keys are namespaced 'proj_<projectId>_<name>'; values live in the same
+     * EncryptedSharedPreferences store (AES-256-GCM at rest). null value deletes.
+     */
+    fun projectSecret(projectId: String, name: String): String? =
+        prefs.getString("proj_" + projectId + "_" + name, null)
+
+    fun setProjectSecret(projectId: String, name: String, value: String?) {
+        val key = "proj_" + projectId + "_" + name
+        if (value != null) prefs.edit().putString(key, value).apply()
+        else prefs.edit().remove(key).apply()
+    }
     fun setAiKey(provider: String, key: String?) =
         prefs.edit().putString("ai_$provider", key).apply()
 

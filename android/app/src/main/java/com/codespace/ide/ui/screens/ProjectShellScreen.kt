@@ -811,6 +811,8 @@ fun ProjectShellScreen(
     var snapshotMessage    by remember { mutableStateOf<String?>(null) }
     // Connectors hub (replaces Person menu)
     var showConnectorsSheet by remember { mutableStateOf(false) }
+    // Connectors Phase 3 (Group C): project-level Firebase/Supabase/n8n panel
+    var showProjectServices by remember { mutableStateOf(false) }
     val terminalEnhancements = remember { TerminalEnhancementManager(context) }
     var _terminalTheme by remember { mutableStateOf(terminalEnhancements.currentTheme()) }
     var showTerminalThemePicker by remember { mutableStateOf(false) }
@@ -1760,6 +1762,14 @@ fun ProjectShellScreen(
             ConnectorsHubSheet(onDismiss = { showConnectorsSheet = false })
         }
 
+        // ── Connectors Phase 3: Project Services panel (Firebase/Supabase/n8n) ──
+        if (showProjectServices) {
+            com.codespace.ide.ui.panels.ProjectServicesPanel(
+                projectId = projectId,
+                onDismiss = { showProjectServices = false },
+            )
+        }
+
 
                 // P27-1: Panel overflow menu — extracted to composable, all 45 items wired
         if (showPanelMenu) {
@@ -1924,6 +1934,7 @@ fun ProjectShellScreen(
             showInProjectSettings = showInProjectSettings,
             onShowInProjectSettingsChange = { showInProjectSettings = it },
             onOpenConnectorsHub = { showConnectorsSheet = true },
+            onOpenProjectServices = { showProjectServices = true },
             commandQuery = commandQuery,
             onCommandQueryChange = { commandQuery = it },
             showNotifDrawer = showNotifDrawer,
@@ -2005,6 +2016,7 @@ private fun PssOverlays(
     onShowInProjectSettingsChange: (Boolean) -> Unit,
     // Item3: open Connectors Hub from In-Project Settings
     onOpenConnectorsHub: () -> Unit,
+    onOpenProjectServices: () -> Unit,
     commandQuery: String,
     onCommandQueryChange: (String) -> Unit,
     showNotifDrawer: Boolean,
@@ -2519,6 +2531,16 @@ private fun PssOverlays(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("In-Project Settings", fontSize = 13.sp, color = MenuText)
+                            }
+                        }
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { onOpenProjectServices(); onShowGearMenuChange(false) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("Project Services (Firebase / Supabase / n8n)", fontSize = 13.sp, color = MenuText)
                             }
                         }
                         item {
