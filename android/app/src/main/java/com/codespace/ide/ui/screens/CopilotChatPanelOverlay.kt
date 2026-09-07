@@ -227,6 +227,9 @@ private suspend fun chat(
 ): String = withContext(Dispatchers.IO) {
     // P41-X: Build workspace context for AI prompts
     val workspaceCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
+    // MCP: lazy first-chat discovery — spawns enabled external MCP servers once,
+    // tools/list results feed the external-tools docs block below.
+    com.codespace.ide.agent.McpClientManager.ensureDiscovered(context)
     
     val systemPrompt = when (mode) {
         ChatMode.ASK   -> "You are a helpful coding assistant inside VN Code. Answer concisely." + 
@@ -287,6 +290,7 @@ All run_command calls execute inside the Ubuntu proot terminal. Standard Linux
 commands work (apt, git, node, python3). Android host commands do NOT work here.
 
 """ + AgentTools.TOOLS_DESCRIPTION +
+            com.codespace.ide.agent.McpClientManager.toolDocs(context) +
             if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
         ChatMode.PLAN  -> "You are a planning assistant inside VN Code. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution." +
             if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""

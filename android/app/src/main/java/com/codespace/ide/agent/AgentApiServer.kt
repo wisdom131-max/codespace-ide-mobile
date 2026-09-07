@@ -150,7 +150,7 @@ object AgentApiServer {
                         "create_entity","read_entities","update_entity","delete_entity",
                         "schedule_task","list_tasks","cancel_task",
                         "upload_file","install_package"
-                    )
+                    ) + McpClientManager.cachedToolNames(ctx)
                     val toolsJson = tools.joinToString(",") { """"$it"""" }
                     httpJson(200, """{"tools":[$toolsJson],"count":${tools.size}}""")
                 }
@@ -173,7 +173,7 @@ object AgentApiServer {
 
                 // System prompt for CLI AI tools
                 method == "GET" && path == "/system-prompt" ->
-                    httpJson(200, """{"prompt":${JSONObject.quote(AgentTools.TOOLS_DESCRIPTION)}}""")
+                    httpJson(200, """{"prompt":${JSONObject.quote(AgentTools.TOOLS_DESCRIPTION + McpClientManager.toolDocs(ctx))}}""")
 
                 
                 // Save a terminal AI session snapshot into the Copilot chat SharedPreferences.

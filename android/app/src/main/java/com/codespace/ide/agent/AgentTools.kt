@@ -3,6 +3,7 @@ package com.codespace.ide.agent
 import android.content.Context
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.terminal.ProotInstaller
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -170,7 +171,12 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "cancel_task" -> AgentScheduler.cancel(args.getString("name"), context)
                 "upload_file" -> uploadFile(args.getString("path"), args.getString("url"))
                 "install_package" -> installPackage(args.getString("manager"), args.getString("package"), args.optString("project_dir").ifBlank { null }, context)
-                else -> "Unknown tool: $name"
+                // MCP: external stdio MCP server tools (mcp_<server>_<tool>) bridge
+                // through McpClientManager — SAME dispatch path, so the SAME
+                // AgentFlowGate AUTO/MANUAL approval already gated this call.
+                else -> if (name.startsWith("mcp_")) {
+                    runBlocking { McpClientManager.callTool(name, args, context) }
+                } else "Unknown tool: $name"
             }
         } catch (e: Exception) {
             "Error executing $name: ${e.message}"

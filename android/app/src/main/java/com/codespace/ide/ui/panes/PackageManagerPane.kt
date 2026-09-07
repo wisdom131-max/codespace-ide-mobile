@@ -524,6 +524,9 @@ internal fun McpPanel() {
             McpStat("Port",          "8765")
         }
 
+        // MCP: external stdio server config UI (new file, single-line call)
+        com.codespace.ide.ui.panes.McpServersSection()
+
         if (!bashrcInstalled) {
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
