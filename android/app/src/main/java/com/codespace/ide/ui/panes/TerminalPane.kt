@@ -1246,8 +1246,6 @@ internal fun TerminalPane(
             }
         }
 
-        // Voice/TTS model picker — Piper (fast/free) vs Bark-small (emotional, heavier).
-
         // ── NewTermux-style toolbar row ────────────────────────────
         // Fixed single-line height + horizontal scroll: in portrait, this row must never wrap to a
         // second line (which would steal vertical space the terminal output needs) and must never
