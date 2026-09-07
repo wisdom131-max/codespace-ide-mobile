@@ -629,7 +629,7 @@ private fun PreviewBody(
                 } else null
                 HtmlPreview(content, language, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, liveUrl = liveUrl)
             }
-        PreviewMode.MARKDOWN  -> MarkdownPreview(content, onWebView = onWebView, onLoading = onLoading)
+        PreviewMode.MARKDOWN  -> MarkdownPreview(content, activeFilePath, onWebView = onWebView, onLoading = onLoading)
         PreviewMode.SVG       -> SvgPreview(content, onWebView = onWebView)
         PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack, sharedWebView = sharedWebView)
     }
@@ -821,6 +821,7 @@ private fun HtmlPreview(
 @Composable
 private fun MarkdownPreview(
     content: String,
+    activeFilePath: String,
     onWebView: (WebView) -> Unit,
     onLoading: (Boolean) -> Unit,
 ) {
@@ -851,10 +852,19 @@ private fun MarkdownPreview(
         update = { wv ->
             // P-RENDER: Use content-based key — html.take(64) was always the template
             // header, so the WebView never reloaded when markdown content arrived.
+            // MD-IMG: base = file:// URL of the file's directory so RELATIVE image
+            // paths in the repo (images/logo.png) resolve correctly — VS Code parity
+            // (markdown-language-features uses asWebviewUri + localResourceRoots for
+            // the same net effect). Spaces/etc are percent-encoded per segment.
+            val baseDir = java.io.File(activeFilePath).parent ?: "/"
+            val baseUrl = "file://" + baseDir.split("/").map { seg ->
+                if (seg.isEmpty()) "" else java.net.URLEncoder.encode(seg, "UTF-8").replace("+", "%20")
+            }.joinToString("/")
+            wv.settings.allowFileAccess = true
             val contentKey = content.take(128)
             if (wv.tag as? String != contentKey) {
                 wv.tag = contentKey
-                wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
+                wv.loadDataWithBaseURL(baseUrl, html, "text/html", "UTF-8", null)
             }
             onWebView(wv)
         },

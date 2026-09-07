@@ -870,6 +870,25 @@ fun ProjectShellScreen(
         }
     }
 
+    // [REPO-OPEN] README auto-open (VS Code startupPage.ts openReadme() parity):
+    // only when NO editor is open (fresh project entry / repo open). The readme
+    // opens as a NORMAL EDITABLE TAB first, then — for .md — the bottom panel
+    // flips to Preview so the rendered view shows ALONGSIDE. Additive only.
+    LaunchedEffect(projectId, restoredState) {
+        if (editorTabs.isNotEmpty()) return@LaunchedEffect
+        if (!restoredState?.openFilePaths.isNullOrEmpty()) return@LaunchedEffect
+        if (restoredState?.activeFilePath?.isNotBlank() == true) return@LaunchedEffect
+        if (!com.codespace.ide.ui.panes.MarkdownPreviewRouter.autoPreviewEnabled()) return@LaunchedEffect
+        val root = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: return@LaunchedEffect
+        val readme = com.codespace.ide.ui.panes.MarkdownPreviewRouter.findReadmeAtRoot(root) ?: return@LaunchedEffect
+        editorTabs.add(readme)
+        activeEditorTab = readme
+        if (com.codespace.ide.ui.panes.MarkdownPreviewRouter.shouldShowPreviewTab(readme)) {
+            showBottomPanel = true
+            activeBottomTab = BottomTab.PREVIEW
+        }
+    }
+
     // P9-1: Start background file indexer when project opens
     LaunchedEffect(projectId) {
         if (projectId.isNotBlank()) {
@@ -1383,6 +1402,10 @@ fun ProjectShellScreen(
                                     pushNavEntry(activeEditorTab, scrollTargetLine)
                                     activeEditorTab = path
                                     activePanel = null
+                                    if (com.codespace.ide.ui.panes.MarkdownPreviewRouter.shouldShowPreviewTab(path)) {
+                                        showBottomPanel = true
+                                        activeBottomTab = BottomTab.PREVIEW
+                                    }
                                     showNotification("Opened ${path.substringAfterLast("/")}", "success")
                                 },
                                 onFileRenamed = { oldPath, newPath ->
@@ -1797,11 +1820,19 @@ fun ProjectShellScreen(
             onOpenFile = { path ->
                 if (!editorTabs.contains(path)) editorTabs.add(path)
                 activeEditorTab = path
+                if (com.codespace.ide.ui.panes.MarkdownPreviewRouter.shouldShowPreviewTab(path)) {
+                    showBottomPanel = true
+                    activeBottomTab = BottomTab.PREVIEW
+                }
                 showFileSearch = false
             },
             onOpenFileAtLine = { path, line ->
                 if (!editorTabs.contains(path)) editorTabs.add(path)
                 activeEditorTab = path
+                if (com.codespace.ide.ui.panes.MarkdownPreviewRouter.shouldShowPreviewTab(path)) {
+                    showBottomPanel = true
+                    activeBottomTab = BottomTab.PREVIEW
+                }
                 scrollTargetLine = line + 1  // Phase V-FIX: convert 0-based to 1-based
                 showFileSearch = false
             },

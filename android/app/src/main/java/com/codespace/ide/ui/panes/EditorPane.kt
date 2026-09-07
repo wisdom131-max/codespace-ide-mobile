@@ -14,7 +14,6 @@ import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.DisposableEffect
@@ -439,9 +438,6 @@ fun EditorPane(
             onCloseRootHandled?.invoke()
         }
     }
-    // P45-4: Markdown preview — shows rendered .md next to editor
-    var showMdPreview by remember { mutableStateOf(false) }
-    var mdPreviewWeight by remember { mutableFloatStateOf(0.4f) }  // bottom panel ratio (0.2..0.8)
     // P2-9 Bookmarks: path → set of bookmarked line indices
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
     // P8-1 Breakpoints: path → set of breakpoint line indices (0-based)
@@ -813,21 +809,6 @@ fun EditorPane(
                         Modifier
                             .clickable { activeId = tab.id }
                             .background(if (isActive) TabActiveBg else TabInactiveBg)
-                            // P48: Drag tab downward to open markdown preview for .md files
-                            .pointerInput(tab.id, tab.language) {
-                                detectDragGestures(
-                                    onDragStart = { },
-                                    onDragEnd = { },
-                                    onDragCancel = { },
-                                ) { change, dragAmount ->
-                                    change.consume()
-                                    // Only for markdown files, and only on downward drag
-                                    if (tab.language == Language.MARKDOWN && dragAmount.y > 20f) {
-                                        activeId = tab.id
-                                        showMdPreview = true
-                                    }
-                                }
-                            }
                     ) {
                         Row(
                             Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -1007,18 +988,6 @@ fun EditorPane(
                 }
                 IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
-                }
-                // P45-4: Markdown preview toggle — only visible for .md files
-                val activeTabMd = tabs.firstOrNull { it.id == activeId }
-                if (activeTabMd != null && activeTabMd.language == Language.MARKDOWN) {
-                    IconButton(onClick = { showMdPreview = !showMdPreview }, modifier = Modifier.size(35.dp)) {
-                        Icon(
-                            Icons.Default.Visibility,
-                            contentDescription = "Markdown Preview",
-                            tint = if (showMdPreview) Color(0xFF61AFEF) else TabTextInactive,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
                 }
                 // P2-9 Bookmarks panel toggle
                 IconButton(onClick = { showBookmarkPanel = !showBookmarkPanel }, modifier = Modifier.size(35.dp)) {
@@ -1690,123 +1659,6 @@ fun EditorPane(
                         currentFilePath = active.path,
                         onFontSizeChange = onFontSizeChange,
                     )
-                }
-            } else if (showMdPreview && active.language == Language.MARKDOWN) {
-                // P48: Markdown Preview — rendered .md as a bottom panel below editor
-                // Draggable vertical divider resizes the split. Close button in header.
-                // WebView content only reloads when markdown actually changes.
-                val mdContent = active.content
-                val htmlContent = remember(mdContent) {
-                    com.codespace.ide.editor.MarkdownRenderer.render(mdContent)
-                }
-                val density = LocalDensity.current
-                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
-                    val totalHeightPx = with(density) { maxHeight.toPx() }
-                    Column(Modifier.fillMaxSize()) {
-                        // Top: Code editor
-                        CodeEditor(
-                            content = mdContent,
-                            language = active.language,
-                            fontSize = fontSize,
-                            savedContent = active.savedContent,
-                            onContentChange = { newText ->
-                                val idx = tabs.indexOfFirst { it.id == active.id }
-                                if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
-                                if (active.path.startsWith("/")) {
-                                    try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
-                                }
-                            },
-                            onInsertHandler = onInsertRequest,
-                            modifier = Modifier
-                                .weight(1f - mdPreviewWeight)
-                                .fillMaxWidth(),
-                            wordWrap = wordWrap,
-                            showInlayHints = false,
-                            findReplaceOpen = findReplaceOpen,
-                            onFindReplaceClose = { findReplaceOpen = false },
-                            onFindReplaceOpen = { findReplaceOpen = true },
-                            goToLineOpen = goToLineOpen,
-                            onGoToLineClose = { goToLineOpen = false },
-                        onGoToLineOpen = { goToLineOpen = true },
-                        onSave = saveCurrentFile,
-                            projectRoot = projectRootPath,
-                            currentFilePath = active.path,
-                            onFontSizeChange = onFontSizeChange,
-                        )
-                        // Middle: Draggable divider (horizontal, drag up/down)
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .background(Color(0xFF333333))
-                                .pointerInput(Unit) {
-                                    detectDragGestures { change, dragAmount ->
-                                        change.consume()
-                                        if (totalHeightPx > 0) {
-                                            // Dragging down increases preview weight (more space for preview)
-                                            // Dragging up decreases preview weight (more space for editor)
-                                            val delta = dragAmount.y / totalHeightPx
-                                            mdPreviewWeight = (mdPreviewWeight + delta).coerceIn(0.2f, 0.8f)
-                                        }
-                                    }
-                                }
-                        )
-                        // Bottom: Markdown preview panel with close button
-                        Column(Modifier.weight(mdPreviewWeight).fillMaxWidth().background(Color(0xFF1E1E1E))) {
-                            // Preview header bar with close button
-                            Row(
-                                Modifier.fillMaxWidth().height(28.dp).background(Color(0xFF252526)),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    "Preview",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFFCCCCCC),
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(start = 8.dp).weight(1f),
-                                )
-                                // Close button
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Close preview",
-                                    tint = Color(0xFF888888),
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .padding(2.dp)
-                                        .clickable { showMdPreview = false }
-                                )
-                                Spacer(Modifier.width(8.dp))
-                            }
-                            HorizontalDivider(color = Color(0xFF333333))
-                            // WebView showing rendered markdown — only reloads when content changes
-                            AndroidView(
-                                factory = { ctx ->
-                                    android.webkit.WebView(ctx).apply {
-                                        settings.javaScriptEnabled = false  // P-RENDER: local renderer, no JS needed
-                                        settings.loadWithOverviewMode = true
-                                        settings.useWideViewPort = true
-                                        settings.setSupportZoom(true)  // P-ZOOM
-                                        settings.builtInZoomControls = true
-                                        settings.displayZoomControls = false
-                                        webViewClient = android.webkit.WebViewClient()
-                                        loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
-                                        // P-RENDER: Use mdContent-based key — htmlContent.take(64)
-                                        // is always the template header, never changes with content
-                                        tag = mdContent.take(128)
-                                    }
-                                },
-                                update = { wv ->
-                                    // P48: Only reload when content actually changes (tag guard)
-                                    val currentTag = wv.tag as? String
-                                    if (currentTag != mdContent.take(128)) {
-                                        wv.tag = mdContent.take(128)
-                                        wv.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
-                                    }
-                                },
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                    }
                 }
             } else {
                 // ── Sticky Scroll header (computed above unconditionally) ───────────

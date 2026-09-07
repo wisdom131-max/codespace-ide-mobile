@@ -34,6 +34,7 @@ object FeatureToggleStore {
         Toggle("merge_conflicts", true, "Merge conflicts", "Highlight merge conflict markers with resolve buttons"),
         Toggle("lsp_highlights", true, "LSP highlights", "Highlight occurrences of symbol under cursor"),
         Toggle("disable_builtin_completion", false, "Disable built-in completion (non-LSP)", "Suppress local keyword/snippet completions so only LSP completions appear -- useful for testing LSP and Tab-triggered snippet expansion without the built-in popup interfering"),
+        Toggle("md_preview_auto", true, "Markdown preview auto-open", "Opening a .md file also shows the rendered preview in the Preview tab (editable editor tab always opens normally)"),
     )
 
     private val states = mutableMapOf<String, MutableState<Boolean>>()

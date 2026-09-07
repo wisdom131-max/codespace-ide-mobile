@@ -224,6 +224,17 @@ $body
                 inTable = false
             }
 
+            // Task list item: - [ ] / - [x] (GFM) — rendered as a disabled checkbox
+            val taskMatch = Regex("^\\s*[-*+]\\s+\\[([ xX])\\]\\s+(.+)").matchEntire(line)
+            if (taskMatch != null) {
+                closeTable()
+                if (!inList || listType != "ul") { closeList(); html.append("<ul>\n"); inList = true; listType = "ul" }
+                val checked = if (taskMatch.groupValues[1].lowercase() == "x") " checked" else ""
+                html.append("<li style=\"list-style:none;margin-left:-1.2em;\"><input type=\"checkbox\"$checked disabled> ${inlineFormat(taskMatch.groupValues[2])}</li>\n")
+                i++
+                continue
+            }
+
             // Unordered list
             val ulMatch = Regex("^\\s*[-*+]\\s+(.+)").matchEntire(line)
             if (ulMatch != null) {
@@ -278,11 +289,11 @@ $body
         var result = escapeHtml(text)
         // Images: ![alt](url)
         result = Regex("!\\[(.+?)\\]\\((.+?)\\)").replace(result) { m ->
-            "<img src=\"${m.groupValues[2]}\" alt=\"${m.groupValues[1]}\">"
+            "<img src=\"${encodeUrl(m.groupValues[2])}\" alt=\"${m.groupValues[1]}\">"
         }
         // Links: [text](url)
         result = Regex("\\[(.+?)\\]\\((.+?)\\)").replace(result) { m ->
-            "<a href=\"${m.groupValues[2]}\">${m.groupValues[1]}</a>"
+            "<a href=\"${encodeUrl(m.groupValues[2]}\">${m.groupValues[1]}</a>"
         }
         // Bold: **text** or __text__
         result = Regex("\\*\\*(.+?)\\*\\*").replace(result) { "<strong>${it.groupValues[1]}</strong>" }
@@ -295,6 +306,24 @@ $body
         // Inline code: `code`
         result = Regex("`(.+?)`").replace(result) { "<code>${it.groupValues[1]}</code>" }
         return result
+    }
+
+    // MD-IMG: file-relative URLs need percent-encoding per path segment (spaces,
+    // unicode) or WebView file:// loads fail. Absolute http(s)/data/about/anchor
+    // URLs and already-encoded segments pass through untouched.
+    private fun encodeUrl(url: String): String {
+        if (url.isBlank()) return url
+        if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:") ||
+            url.startsWith("about:") || url.startsWith("#")) return url
+        val queryIdx = url.indexOf('?')
+        val path = if (queryIdx >= 0) url.substring(0, queryIdx) else url
+        val query = if (queryIdx >= 0) url.substring(queryIdx) else ""
+        val encPath = path.split("/").joinToString("/") { seg ->
+            seg.split("%").joinToString("%") { s ->
+                if (s.isEmpty()) "" else java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+            }
+        }
+        return encPath + query
     }
 
     private fun escapeHtml(text: String): String {

@@ -98,6 +98,7 @@ object SettingsSchema {
         ToggleDef("ghost_text", true, "Ghost text", "AI suggestion preview as dimmed text"),
         ToggleDef("merge_conflicts", true, "Merge conflicts", "Highlight merge conflict markers with resolve buttons"),
         ToggleDef("lsp_highlights", true, "LSP highlights", "Highlight occurrences of symbol under cursor"),
+        ToggleDef("md_preview_auto", true, "Markdown preview auto-open", "Opening a .md file also shows the rendered preview in the Preview tab (editable editor tab always opens normally)"),
     )
 
     val toggleByKey: Map<String, ToggleDef> = featureToggles.associateBy { it.key }
