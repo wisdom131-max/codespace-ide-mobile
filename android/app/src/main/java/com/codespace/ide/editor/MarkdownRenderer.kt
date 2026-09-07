@@ -293,7 +293,7 @@ $body
         }
         // Links: [text](url)
         result = Regex("\\[(.+?)\\]\\((.+?)\\)").replace(result) { m ->
-            "<a href=\"${encodeUrl(m.groupValues[2]}\">${m.groupValues[1]}</a>"
+            "<a href=\"${encodeUrl(m.groupValues[2])}\">${m.groupValues[1]}</a>"
         }
         // Bold: **text** or __text__
         result = Regex("\\*\\*(.+?)\\*\\*").replace(result) { "<strong>${it.groupValues[1]}</strong>" }
