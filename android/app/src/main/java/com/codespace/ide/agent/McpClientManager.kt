@@ -271,7 +271,8 @@ object McpClientManager {
         ).optJSONObject("result") ?: return
         val tools = result.optJSONArray("tools") ?: return
         val prefix = "mcp_${cfg.name}_"
-        toolsCache.keys().filter { it.startsWith(prefix) }.forEach { toolsCache.remove(it) }
+        val cacheIter = toolsCache.entries.iterator()
+        while (cacheIter.hasNext()) { if (cacheIter.next().key.startsWith(prefix)) cacheIter.remove() }
         for (i in 0 until tools.length()) {
             val t = tools.getJSONObject(i)
             val toolName = t.getString("name")
@@ -290,7 +291,8 @@ object McpClientManager {
     fun stopServer(name: String) {
         sessions.remove(name)?.stop()
         val prefix = "mcp_${name}_"
-        toolsCache.keys().filter { it.startsWith(prefix) }.forEach { toolsCache.remove(it) }
+        val cacheIter = toolsCache.entries.iterator()
+        while (cacheIter.hasNext()) { if (cacheIter.next().key.startsWith(prefix)) cacheIter.remove() }
     }
 
     // ── Docs exposed to the model (appended to the system prompt) ──────────
