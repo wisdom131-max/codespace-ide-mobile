@@ -11,7 +11,9 @@ import { Project } from '../repos/project.entity';
         type: 'postgres' as const,
         url: process.env.DATABASE_URL,
         entities: [User, RefreshToken, Project],
-        synchronize: process.env.NODE_ENV !== 'production',
+        // TYPEORM_SYNCHRONIZE=true lets the prod instance create/refresh schema from entities
+        // (no migration infra exists yet). Safe to enable on Render for this project.
+        synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true' || process.env.NODE_ENV !== 'production',
         autoLoadEntities: true,
         ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
         retryAttempts: 3,
