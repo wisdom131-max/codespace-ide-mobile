@@ -1872,3 +1872,45 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
 
 ---
+
+---
+
+**[2026-09-07 11:30 WAT] — AI Agent (Connectors Phase 1 — PAT connectors + chat Connect card)**
+
+**RULES REMINDER**: TWO-REPO (main IDE here, proot only in ubuntu-proot-test) | changelog at bottom with SHA+CI | tags on entries | never re-do done work | roadmap lists ALL pending | UI rounded 8-12dp + padding 12h/10v | no inline code in composable bodies (64KB rule)
+
+**Commit**: af52003 (+ revert b8694d8 of incidental backend lock/devDeps churn) | **CI**: #2676 GREEN (also #2675 GREEN — identical Android code)
+
+**Tag**: [CONNECTORS]
+
+**What was added (Item 4, Phase 1 — Group B PAT/API-key connectors):**
+- [PAT-REGISTRY] backend connector-registry.ts: ConnectorDef gains authType 'oauth'|'pat' (+ optional tokenHelpUrl/tokenHint); 7 new PAT defs — Sentry, Vercel, Cloudflare, PostHog (us.posthog.com base; EU via absolute-URL calls), Stripe, Railway (GraphQL backboard), Render. All 7 use 'Authorization: Bearer' so proxyCall works unchanged. PAT rows: configured=true always (no server env), scope='pat', no expiry/refresh.
+- [PAT-BACKEND] connectors.service.ts: savePat() AES-256-GCM encrypted upsert per (owner,service); getValidAccessToken PAT short-circuit (no refresh); PAT-aware disconnect (delete row only — no remote revoke); statusForUser now returns authType/tokenHelpUrl/tokenHint. connectors.controller.ts: POST /connectors/:service/token (JWT-guarded). Existing 5 OAuth connectors untouched (same env vars, same storage table). Render auto-deploys the backend from this push.
+- [PAT-UI] ConnectorsHubSheet: 7 new rows (BugReport/ChangeHistory/Cloud/Insights/CreditCard/Train/RocketLaunch + brand colors); PAT rows open NEW ConnectorPatDialog.kt — paste-token dialog (format hint, 'create a token' browser link, save via scope.launch on IO, encrypted server-side, never echoed; hub refreshes on success so row flips to Connected).
+- [CONNECT-CARD C3] New agent tool 31 request_connector: agent calls it when a needed service isn't connected; AgentConnectorManager.requestConnectorCard() sets a side-channel var, CopilotChatPanelInline consumes it after the agent loop and appends a card_connect message; chat transcript renders NEW ChatConnectCard.kt — Base44-style inline 'Connect <Service>' card with a Connect button that opens the Connectors Hub. Generic across ALL connector types (OAuth and PAT both just open the Hub).
+- [ADD-CONNECTOR C2] Visible Add-connector (AddLink icon) button in the Copilot chat header next to the kebab — direct entry to the Connectors Hub; works generically as connectors are added.
+- [COUNTS] Tool count 30->31 across AgentTools header/dispatch, AgentApiServer, McpShellProfile (banner + agent_tools), TerminalPane.
+
+**Files touched**: backend/src/connectors/{connector-registry,connectors.service,connectors.controller}.ts; data/ConnectorsApiClient.kt (ConnectorStatus +authType/help fields, savePat()); agent/AgentConnectorManager.kt (PAT_SERVICES, PAT-aware connectService, requestConnectorCard/consumePendingConnectCard); agent/AgentTools.kt; agent/AgentApiServer.kt; terminal/McpShellProfile.kt; ui/panes/TerminalPane.kt; ui/screens/ConnectorsHubSheet.kt; ui/screens/CopilotChatPanelOverlay.kt; NEW ui/screens/ConnectorPatDialog.kt; NEW ui/screens/ChatConnectCard.kt.
+
+**Structural check**: brace/paren deltas == HEAD on all 8 modified files; raw-newline state-machine scan 0 violations; backend tsc --noEmit clean; icons verified in material-icons-extended.
+
+**Phase 1 on-device test batch (CONN-1..8):**
+1. CONN-1: Connectors Hub (chat kebab or Settings title bar) shows 11 rows (Gmail, Calendar, Drive, Slack + Sentry, Vercel, Cloudflare, PostHog, Stripe, Railway, Render) — new rows say 'Tap to connect'.
+2. CONN-2: Tap Sentry -> paste-token dialog (not a browser page); 'Create a token' link opens sentry.io token page; paste a read-scope token -> Connect -> row flips green 'Connected'.
+3. CONN-3: Disconnect Sentry (tap row) -> returns to 'Tap to connect'; reconnect with same token works.
+4. CONN-4: Chat in AGENT mode: 'List my Sentry projects' -> agent should either use_connector or (if not connected) call request_connector -> inline 'Connect Sentry' card appears in the transcript; its Connect button opens the Hub.
+5. CONN-5: With Sentry connected: use_connector via chat returns real project data (any nonzero result proves the Bearer proxy works).
+6. CONN-6: Same quick pass for one of Vercel/Railway/Render (confirms Bearer pattern isn't Sentry-specific). Railway = GraphQL calls.
+7. CONN-7: 'Add connector' button (chain-link icon) in chat header opens the Hub.
+8. CONN-8: Regression: Gmail/Calendar/Drive/Slack rows still OAuth-connect fine (WebView flow unchanged).
+
+**Next on roadmap (ALL pending):**
+1. On-device test batches awaiting Wisdom: (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657; (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) MD-preview suite T1-T10 (#2664); (d) MCP suite M1-M8 (#2667); (e) P1 debug D1-D5 batch (#2671); (f) P2 debug batch (#2673); (g) THIS CONN-1..8 batch (af52003/b8694d8 #2676).
+2. Connectors Phase 2 (Group A OAuth2): GitLab, Notion, Figma, Linear, Jira, Discord, Canva + Hugging Face (discretionary) — same registry pattern, needs OAuth app registration per provider; START ONLY after Phase 1 confirmed on-device.
+3. Connectors Phase 3 (Group C): Firebase, Supabase, n8n as project-level settings panels (CloudBackupPanel pattern), NOT in the Connectors Hub.
+4. Item 3 remaining: IME emoji phase 2 (read diag logs from on-device emoji tap -> fix per evidence).
+5. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+6. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+---
