@@ -66,6 +66,27 @@ interface DebugAdapter {
      * Returns true if the request was accepted.
      */
     fun setExceptionBreakpoints(session: DebugSession, filterIds: List<String>): Boolean = false
+
+    /**
+     * P2-THREADS: DAP threads request — returns all threads in the process.
+     * Empty list means single-threaded (or unsupported legacy adapter).
+     */
+    fun getThreads(session: DebugSession): List<DebugThread> = emptyList()
+
+    /** P2-THREADS: switch the active thread and return its stack frames. */
+    fun switchThread(session: DebugSession, threadId: Int): List<DebugStackFrame> = emptyList()
+
+    /**
+     * P2-PAGING: fetch the next page of stack frames for the active thread.
+     * Returns (newFrames, totalFrames); empty frames list when all loaded.
+     */
+    fun loadMoreFrames(session: DebugSession): Pair<List<DebugStackFrame>, Int> = Pair(emptyList(), 0)
+
+    /** P2-RESTART: DAP restartFrame — re-run the current function from its start. */
+    fun restartFrame(session: DebugSession, frameId: Int): Boolean = false
+
+    /** P2-FUNCBP: DAP setFunctionBreakpoints — breakpoints by function name. */
+    fun setFunctionBreakpoints(session: DebugSession, names: List<DebugFunctionBreakpoint>): Boolean = false
 }
 
 // ── LegacyDebugAdapter ───────────────────────────────────────────────────────

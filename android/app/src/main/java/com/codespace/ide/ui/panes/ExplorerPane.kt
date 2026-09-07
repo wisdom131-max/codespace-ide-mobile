@@ -2997,8 +2997,17 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     var exceptionFilters by remember { mutableStateOf(listOf<com.codespace.ide.debug.DAPExceptionFilter>()) }
     var enabledFilters by remember { mutableStateOf(setOf<String>()) }
     var supportsSetVariable by remember { mutableStateOf(false) }
+    // P2: threads / restart-frame / frame paging / function breakpoints
+    var threads by remember { mutableStateOf<List<com.codespace.ide.debug.DebugThread>>(emptyList()) }
+    var totalFrames by remember { mutableStateOf(-1) }
+    var supportsRestartFrame by remember { mutableStateOf(false) }
+    var functionBps by remember { mutableStateOf(udm.getFunctionBreakpoints()) }
+    var showFunctionBpDialog by remember { mutableStateOf(false) }
 
-    val bpListener: () -> Unit = { allBreakpoints = udm.getAllBreakpoints() }
+    val bpListener: () -> Unit = {
+        allBreakpoints = udm.getAllBreakpoints()
+        functionBps = udm.getFunctionBreakpoints()
+    }
     val stateListener: (com.codespace.ide.debug.DebugSession) -> Unit = { session ->
         sessionState = session.state
         // P27-7: Sync activeSessionId with UDM — single source of truth
@@ -3009,6 +3018,8 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 }
                 variables = emptyList()
                 callStack = emptyList()
+                threads = emptyList()
+                totalFrames = -1
             }
             DebugState.RUNNING, DebugState.PAUSED -> {
                 if (activeSessionId == null) {
@@ -3025,6 +3036,9 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
         val pausedSid = activeSessionId
         if (pausedSid != null) {
             supportsSetVariable = udm.getSessionCapabilities(pausedSid)?.supportsSetVariable == true
+            supportsRestartFrame = udm.getSessionCapabilities(pausedSid)?.supportsRestartFrame == true
+            threads = udm.getThreads(pausedSid)
+            totalFrames = -1  // unknown until first load-more; full page (20) implies more
             exceptionFilters = udm.getExceptionFilters(pausedSid)
             enabledFilters = udm.getEnabledExceptionFilters(pausedSid)
         }
@@ -3344,13 +3358,78 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                             Icon(Icons.Default.Code, null, tint = if (frame.active) Color(0xFF569CD6) else IconColor, modifier = Modifier.size(12.dp))
                             Spacer(Modifier.width(4.dp))
                             Text(frame.function, fontSize = 11.sp, color = if (frame.active) Color(0xFF569CD6) else TextColor, fontFamily = FontFamily.Monospace,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (frame.active) FontWeight.Bold else FontWeight.Normal)
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (frame.active) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f))
                             Text("  " + frame.file.substringAfterLast("/") + ":" + (frame.line + 1), fontSize = 10.sp, color = MutedColor, fontFamily = FontFamily.Monospace,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            // P2-RESTART: restartFrame per call-stack row (gated on capability)
+                            if (supportsRestartFrame && activeSessionId != null) {
+                                Icon(Icons.Default.Refresh, "Restart frame", tint = MutedColor,
+                                    modifier = Modifier.size(13.dp).padding(start = 2.dp).clickable {
+                                        val rfSid = activeSessionId
+                                        if (rfSid != null && udm.restartFrame(rfSid, frame.frameId)) {
+                                            consoleLines = (consoleLines + listOf("= restarted frame " + frame.function)).takeLast(100)
+                                        }
+                                    })
+                            }
+                        }
+                    }
+                    // P2-PAGING: "load more frames" row when more frames exist
+                    val showLoadMore = isRunning && callStack.isNotEmpty() &&
+                        ((totalFrames == -1 && callStack.size >= 20) || (totalFrames > callStack.size))
+                    if (showLoadMore) {
+                        item {
+                            Text(
+                                if (totalFrames > 0) "Load more frames (" + callStack.size + "/" + totalFrames + ")" else "Load more frames",
+                                fontSize = 10.sp, color = Color(0xFF007ACC), fontFamily = FontFamily.Monospace,
+                                modifier = Modifier
+                                    .padding(start = 24.dp, top = 2.dp, bottom = 2.dp)
+                                    .clickable {
+                                        val lmSid = activeSessionId ?: return@clickable
+                                        val (newFrames, newTotal) = udm.loadMoreFrames(lmSid)
+                                        if (newFrames.isEmpty()) {
+                                            totalFrames = callStack.size  // server says: that was all
+                                        } else {
+                                            callStack = callStack + newFrames
+                                            totalFrames = newTotal
+                                        }
+                                    }
+                            )
                         }
                     }
                 } else {
                     item { Text("Not paused", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) }
+                }
+            }
+
+            // P2-THREADS: thread list — only rendered when more than one thread exists
+            if (isRunning && threads.size > 1) {
+                item { SectionHeader("THREADS (" + threads.size + ")", true) { } }
+                items(threads) { t ->
+                    Row(
+                        Modifier
+                            .padding(start = 24.dp, top = 1.dp, bottom = 1.dp)
+                            .fillMaxWidth()
+                            .clickable {
+                                val swSid = activeSessionId ?: return@clickable
+                                val refreshed = udm.switchThread(swSid, t.id)
+                                if (refreshed.isNotEmpty()) {
+                                    callStack = refreshed
+                                    totalFrames = -1
+                                }
+                                threads = udm.getThreads(swSid)
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Code, null,
+                            tint = if (t.active) Color(0xFF569CD6) else IconColor,
+                            modifier = Modifier.size(12.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(t.name + "  #" + t.id, fontSize = 11.sp,
+                            color = if (t.active) Color(0xFF569CD6) else TextColor,
+                            fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            fontWeight = if (t.active) FontWeight.Bold else FontWeight.Normal)
+                    }
                 }
             }
 
@@ -3385,6 +3464,40 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                             Icon(Icons.Default.Close, "Remove", tint = MutedColor, modifier = Modifier.size(12.dp).clickable {
                                 udm.removeBreakpoint(bp.filePath, bp.line)
                             })
+                        }
+                    }
+                }
+                // P2-FUNCBP: function breakpoints (break by function/method name)
+                item {
+                    Row(
+                        Modifier.padding(start = 24.dp, top = 6.dp, bottom = 1.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("FUNCTION BREAKPOINTS", fontSize = 9.sp, color = MutedColor, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.Add, "Add function breakpoint", tint = MutedColor,
+                            modifier = Modifier.size(13.dp).clickable { showFunctionBpDialog = true })
+                    }
+                }
+                if (functionBps.isEmpty()) {
+                    item { Text("None set", fontSize = 10.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 1.dp, bottom = 1.dp)) }
+                } else {
+                    items(functionBps) { fb ->
+                        Row(Modifier.padding(start = 24.dp, top = 1.dp, bottom = 1.dp).fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.RadioButtonChecked, "Toggle",
+                                tint = if (fb.enabled) Color(0xFFE53935) else MutedColor,
+                                modifier = Modifier.size(12.dp).clickable { udm.toggleFunctionBreakpoint(fb.name) })
+                            Spacer(Modifier.width(4.dp))
+                            Text(fb.name, fontSize = 11.sp,
+                                color = if (fb.verified || !isRunning) TextColor else Color(0xFFDCDCAA),
+                                fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f))
+                            if (isRunning && !fb.verified && fb.message != null) {
+                                Text(" " + fb.message, fontSize = 9.sp, color = Color(0xFFF48771), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Icon(Icons.Default.Close, "Remove", tint = MutedColor,
+                                modifier = Modifier.size(12.dp).clickable { udm.removeFunctionBreakpoint(fb.name) })
                         }
                     }
                 }
@@ -3444,6 +3557,15 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 editBpTarget = null
             },
             onDismiss = { editBpTarget = null },
+        )
+    }
+
+    // P2-FUNCBP: add function breakpoint dialog
+    if (showFunctionBpDialog) {
+        AddFunctionBreakpointDialog(
+            existingNames = functionBps.map { it.name },
+            onAdd = { name -> udm.addFunctionBreakpoint(name).also { functionBps = udm.getFunctionBreakpoints() } },
+            onDismiss = { showFunctionBpDialog = false },
         )
     }
 

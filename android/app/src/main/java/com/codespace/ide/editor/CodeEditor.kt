@@ -630,6 +630,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     lspSignatureHelpProvider: ((line: Int, col: Int) -> SignatureInfo?)? = null,
     /** P38: LSP hover content — raw text from LSP hover, rendered as compact popup */
     lspHoverContent: String? = null,
+    /** P2: hover-evaluate — "expr = value" from the paused debug session */
+    debugHoverValue: String? = null,
     /** P38: LSP Go-to-Definition — returns true if LSP succeeded (falls back to regex if false/null) */
     onLspDefinition: ((Int, Int) -> Boolean)? = null,  // TEST-11-FIX: now passes (line, col) so LSP gets current cursor, not stale state
     /** P41-O5: LSP Go to Declaration — semantic navigation to declaration (e.g. header file) */
@@ -4555,6 +4557,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         HoverPopup(
             lspHoverContent = lspHoverContent,
+            debugHoverValue = debugHoverValue,
             showCompletions = showCompletions,
             fontSize = fontSize,
             vScrollValue = vScroll.value,

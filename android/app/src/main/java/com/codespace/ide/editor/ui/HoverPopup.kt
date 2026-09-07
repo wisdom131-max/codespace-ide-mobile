@@ -43,6 +43,7 @@ import com.codespace.ide.ui.LocalEditorColors
 @Composable
 internal fun BoxScope.HoverPopup(
     lspHoverContent: String?,
+    debugHoverValue: String? = null,
     showCompletions: Boolean,
     fontSize: Int,
     vScrollValue: Int,
@@ -52,7 +53,7 @@ internal fun BoxScope.HoverPopup(
     textLayoutResult: TextLayoutResult? = null,
 ) {
     val colors = LocalEditorColors.current
-    if (lspHoverContent != null && !showCompletions) {
+    if ((lspHoverContent != null || debugHoverValue != null) && !showCompletions) {
         val hoverScrollState = rememberScrollState()
         var hoverExpanded by remember(lspHoverContent) { mutableStateOf(false) }
         val hoverPos = PositionMapper(text).offsetToPosition(cursorOffset)
@@ -121,6 +122,20 @@ internal fun BoxScope.HoverPopup(
                             maxLines = if (hoverExpanded) Int.MAX_VALUE else 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+                    }
+                    // P2: hover-evaluate — value from the paused debug session
+                    if (debugHoverValue != null) {
+                        Box(Modifier.padding(top = 2.dp).fillMaxWidth().background(Color(0x14000000), RoundedCornerShape(4.dp))) {
+                            Text(
+                                text = debugHoverValue,
+                                color = Color(0xFF89D185),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            )
+                        }
                     }
                 }
             }

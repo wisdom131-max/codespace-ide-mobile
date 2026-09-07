@@ -379,6 +379,8 @@ fun EditorPane(
     var lastHighlightCol by remember { mutableStateOf(-1) }
     var showLspHover by remember { mutableStateOf(true) }  // P33: auto-hover enabled by default
     var lspHoverContent by remember { mutableStateOf<String?>(null) }
+    // P2: hover-evaluate — "expr = value" from the paused debug session
+    var debugHoverValue by remember { mutableStateOf<String?>(null) }
     // P24-1: LSP diagnostic squiggles — updated by setDiagnosticsHandler callback
     var lspSquiggles by remember { mutableStateOf<List<com.codespace.ide.editor.LintError>>(emptyList()) }
     // P24: visible banner shown when LSP server fails to start (not just logcat)
@@ -1235,6 +1237,32 @@ fun EditorPane(
             }
         }
 
+        // P2: hover-evaluate — evaluate the word under the cursor on the active
+        // PAUSED debug session (DAP evaluate, hover context). Self-gates: stays
+        // null when no session is paused or the adapter lacks supportsEvaluateForHovers.
+        LaunchedEffect(lspCursorLine, lspCursorCol) {
+            delay(350)
+            val snap = active ?: return@LaunchedEffect
+            val word = extractWordAtContent(snap.content, lspCursorLine, lspCursorCol)
+            debugHoverValue = if (word == null) null else withContext(Dispatchers.IO) {
+                com.codespace.ide.debug.UniversalDebugManager.evaluateOnActiveSession(word)
+                    ?.let { v -> word + " = " + v }
+            }
+        }
+        DisposableEffect(Unit) {
+            val clearListener: (com.codespace.ide.debug.DebugSession) -> Unit = { s ->
+                if (s.state == com.codespace.ide.debug.DebugState.STOPPED ||
+                    s.state == com.codespace.ide.debug.DebugState.CRASHED ||
+                    s.state == com.codespace.ide.debug.DebugState.FAILED ||
+                    s.state == com.codespace.ide.debug.DebugState.ERROR
+                ) debugHoverValue = null
+            }
+            com.codespace.ide.debug.UniversalDebugManager.addOnSessionStateChangedListener(clearListener)
+            onDispose {
+                com.codespace.ide.debug.UniversalDebugManager.removeOnSessionStateChangedListener(clearListener)
+            }
+        }
+
         // P26-1: LSP Document Highlight — highlight all occurrences on cursor move (debounced)
         // P35 FIX: Same guard as hover — skip if position unchanged from last query.
         LaunchedEffect(lspCursorLine, lspCursorCol) {
@@ -2073,6 +2101,7 @@ fun EditorPane(
                         } else null,
                         // P38: Compact LSP hover content (rendered inside CodeEditor as overlay, not Popup)
                         lspHoverContent = if (showLspHover) lspHoverContent else null,
+                        debugHoverValue = debugHoverValue,
                         // P38: LSP Go-to-Definition — real semantic navigation (BUG-4)
                         onLspDefinition = if (LspManager.isServerRunning(active.language)) {
                             { cursorLine, cursorCol ->  // TEST-11-FIX: use passed cursor position, not stale lspCursorLine/Col

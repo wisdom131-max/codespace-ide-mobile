@@ -54,6 +54,9 @@ class NodeDAPAdapter : DebugAdapter {
     @Volatile private var lastExitCode: Int = 0
 
     @Volatile private var threadId: Int = 1
+    // P2-PAGING: totalFrames from last stackTrace response (-1 = unknown); frames loaded so far
+    @Volatile private var lastTotalFrames: Int = -1
+    @Volatile private var framesLoaded: Int = 0
     @Volatile private var currentFrameId: Int = 0
 
     override fun canDebug(language: Language, filePath: String) =
@@ -429,6 +432,14 @@ class NodeDAPAdapter : DebugAdapter {
             }
         }
 
+        // P2-FUNCBP: push stored function breakpoints before configurationDone
+        if (caps?.supportsFunctionBreakpoints == true) {
+            val storedFbs = UniversalDebugManager.getFunctionBreakpoints()
+            if (storedFbs.isNotEmpty()) {
+                setFunctionBreakpoints(session, storedFbs)
+            }
+        }
+
         // 10. configurationDone (AFTER setBreakpoints — tells adapter to start running)
         if (caps?.supportsConfigurationDoneRequest == true) {
             dapClient.sendRequest("configurationDone")
@@ -462,6 +473,64 @@ class NodeDAPAdapter : DebugAdapter {
                 put("runtimeExecutable", "node")
             }
         }
+    }
+
+    // ── P2: threads / paging / restartFrame / function breakpoints ──────────
+
+    override fun getThreads(session: DebugSession): List<DebugThread> {
+        val dapClient = client ?: return emptyList()
+        val resp = dapClient.request("threads", timeoutSeconds = 5) ?: return emptyList()
+        val arr = resp.optJSONArray("threads") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val t = arr.optJSONObject(i) ?: return@mapNotNull null
+            val id = t.optInt("id", -1)
+            DebugThread(id = id, name = t.optString("name", "Thread $id"), active = id == threadId)
+        }
+    }
+
+    override fun switchThread(session: DebugSession, newThreadId: Int): List<DebugStackFrame> {
+        threadId = newThreadId
+        val dapClient = client ?: return emptyList()
+        return fetchStackFrames(dapClient, newThreadId)
+    }
+
+    override fun loadMoreFrames(session: DebugSession): Pair<List<DebugStackFrame>, Int> {
+        val dapClient = client ?: return Pair(emptyList(), lastTotalFrames)
+        if (lastTotalFrames in 0..framesLoaded) return Pair(emptyList(), lastTotalFrames)
+        val args = JSONObject().put("threadId", threadId).put("startFrame", framesLoaded).put("levels", 20)
+        val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5) ?: return Pair(emptyList(), lastTotalFrames)
+        val frames = resp.optJSONArray("stackFrames") ?: return Pair(emptyList(), lastTotalFrames)
+        if (frames.length() == 0) return Pair(emptyList(), lastTotalFrames)
+        lastTotalFrames = resp.optInt("totalFrames", framesLoaded + frames.length())
+        val parsed = (0 until frames.length()).map { i -> parseFrame(frames.optJSONObject(i) ?: JSONObject(), framesLoaded + i) }
+        framesLoaded += frames.length()
+        return Pair(parsed, lastTotalFrames)
+    }
+
+    override fun restartFrame(session: DebugSession, frameId: Int): Boolean {
+        if (caps?.supportsRestartFrame != true) return false
+        // On success the adapter emits a 'stopped' event (reason=frameEntry) which
+        // refreshes the stack/variables UI through the normal paused path.
+        return client?.request("restartFrame", JSONObject().put("frameId", frameId), timeoutSeconds = 5) != null
+    }
+
+    override fun setFunctionBreakpoints(session: DebugSession, bps: List<DebugFunctionBreakpoint>): Boolean {
+        if (caps?.supportsFunctionBreakpoints != true) return false
+        val args = JSONObject().put("breakpoints", JSONArray().apply {
+            bps.forEach { fb -> put(JSONObject().put("name", fb.name)) }
+        })
+        val resp = client?.request("setFunctionBreakpoints", args, timeoutSeconds = 5) ?: return false
+        val arr = resp.optJSONArray("breakpoints")
+        val verified = mutableMapOf<String, Pair<Boolean, String?>>()
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                val b = arr.optJSONObject(i) ?: continue
+                val nm = b.optString("name", bps.getOrNull(i)?.name ?: continue)
+                verified[nm] = Pair(b.optBoolean("verified", false), b.optString("message", "").ifEmpty { null })
+            }
+        }
+        UniversalDebugManager.markFunctionBreakpointsVerified(verified)
+        return true
     }
 
     // ── Control ───────────────────────────────────────────────────────
@@ -507,19 +576,23 @@ class NodeDAPAdapter : DebugAdapter {
         val args = JSONObject().put("threadId", threadId).put("startFrame", 0).put("levels", 20)
         val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5) ?: return emptyList()
         val frames = resp.optJSONArray("stackFrames") ?: return emptyList()
-        return (0 until frames.length()).map { i ->
-            val f = frames.optJSONObject(i) ?: JSONObject()
-            val rawId = f.optInt("id", 0)
-            val src = f.optJSONObject("source")
-            val srcPath = src?.optString("path", "") ?: src?.optString("name", "") ?: ""
-            DebugStackFrame(
-                function = f.optString("name", "<anonymous>"),
-                file = srcPath,  // P27-2: clean path, frameId stored separately
-                line = f.optInt("line", 0) - 1, // DAP 1-based → 0-based
-                active = i == 0,
-                frameId = rawId,
-            )
-        }
+        // P2-PAGING: record total frame count so the UI can offer "load more"
+        lastTotalFrames = resp.optInt("totalFrames", frames.length())
+        framesLoaded = frames.length()
+        return (0 until frames.length()).map { i -> parseFrame(frames.optJSONObject(i) ?: JSONObject(), i) }
+    }
+
+    private fun parseFrame(f: JSONObject, index: Int): DebugStackFrame {
+        val rawId = f.optInt("id", 0)
+        val src = f.optJSONObject("source")
+        val srcPath = src?.optString("path", "") ?: src?.optString("name", "") ?: ""
+        return DebugStackFrame(
+            function = f.optString("name", "<anonymous>"),
+            file = srcPath,  // P27-2: clean path, frameId stored separately
+            line = f.optInt("line", 0) - 1, // DAP 1-based → 0-based
+            active = index == 0,
+            frameId = rawId,
+        )
     }
 
     private fun fetchVariables(dapClient: DAPClient, frameId: Int): List<DebugVariable> {

@@ -190,6 +190,8 @@ data class DAPCapabilities(
     val supportsTerminateRequest: Boolean = false,
     val supportsRestartRequest: Boolean = false,
     val supportsEvaluateForHovers: Boolean = false,
+    // P2: restartFrame support (js-debug/debugpy both advertise it)
+    val supportsRestartFrame: Boolean = false,
     // P1-D4: exception breakpoint filters advertised by the adapter (e.g. caught/uncaught)
     val exceptionFilters: List<DAPExceptionFilter> = emptyList(),
 )
@@ -219,6 +221,7 @@ fun JSONObject.toDAPCapabilities(): DAPCapabilities {
         supportsTerminateRequest         = optBoolean("supportsTerminateRequest"),
         supportsRestartRequest           = optBoolean("supportsRestartRequest"),
         supportsEvaluateForHovers        = optBoolean("supportsEvaluateForHovers"),
+        supportsRestartFrame            = optBoolean("supportsRestartFrame"),
         exceptionFilters                 = filters.toList(),
     )
 }

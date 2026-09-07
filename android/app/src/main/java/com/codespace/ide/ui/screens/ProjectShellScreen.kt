@@ -1960,6 +1960,9 @@ fun ProjectShellScreen(
             handleMenuAction = { handleMenuAction(it) },
             showNotification = { msg, type -> showNotification(msg, type) },
         )
+
+        // P2-TOOLBAR: floating debug toolbar — self-contained, renders only while debugging
+        DebugToolbarOverlay()
     } // end root Box
 }
 

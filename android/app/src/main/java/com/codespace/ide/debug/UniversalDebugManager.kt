@@ -84,6 +84,21 @@ data class DebugStackFrame(
     val frameId: Int = 0,  // P27-2: DAP frame ID for evaluate operations
 )
 
+/** P2-THREADS: a thread in the debugged process. */
+data class DebugThread(
+    val id: Int,
+    val name: String,
+    val active: Boolean = false,
+)
+
+/** P2-FUNCBP: a function breakpoint (break by function/method name). */
+data class DebugFunctionBreakpoint(
+    val name: String,
+    val enabled: Boolean = true,
+    val verified: Boolean = false,
+    val message: String? = null,
+)
+
 /** A breakpoint — line breakpoints, conditional, log points. */
 data class DebugBreakpoint(
     val filePath: String,
@@ -218,6 +233,9 @@ object UniversalDebugManager {
 
     /** Callbacks for UI updates. */
     // P26-1: Multi-listener support — prevents panels from overwriting each other
+    // P2-FUNCBP: function breakpoints (in-memory, same lifecycle as line breakpoints)
+    private val functionBreakpoints = mutableListOf<DebugFunctionBreakpoint>()
+
     private val breakpointListeners = mutableListOf<() -> Unit>()
     private val sessionStateListeners = mutableListOf<(DebugSession) -> Unit>()
     private val outputListeners = mutableListOf<(String) -> Unit>()
@@ -697,6 +715,93 @@ object UniversalDebugManager {
             sessionExceptionFilters[sessionId] = defaults.toMutableSet()
         }
         return sessionExceptionFilters[sessionId] ?: emptySet()
+    }
+
+    // ── P2: threads / restartFrame / frame paging / function breakpoints ──────
+
+    /** P2-THREADS: threads in the debugged process (empty = single-threaded/legacy). */
+    fun getThreads(sessionId: String): List<DebugThread> {
+        val session = sessions[sessionId] ?: return emptyList()
+        val adapter = sessionAdapters[sessionId] ?: return emptyList()
+        return adapter.getThreads(session)
+    }
+
+    /** P2-THREADS: switch active thread; returns its refreshed stack frames. */
+    fun switchThread(sessionId: String, threadId: Int): List<DebugStackFrame> {
+        val session = sessions[sessionId] ?: return emptyList()
+        val adapter = sessionAdapters[sessionId] ?: return emptyList()
+        return adapter.switchThread(session, threadId)
+    }
+
+    /** P2-PAGING: fetch the next page of call-stack frames. Returns (newFrames, totalFrames). */
+    fun loadMoreFrames(sessionId: String): Pair<List<DebugStackFrame>, Int> {
+        val session = sessions[sessionId] ?: return Pair(emptyList(), 0)
+        val adapter = sessionAdapters[sessionId] ?: return Pair(emptyList(), 0)
+        return adapter.loadMoreFrames(session)
+    }
+
+    /** P2-RESTART: DAP restartFrame on a call-stack row. */
+    fun restartFrame(sessionId: String, frameId: Int): Boolean {
+        val session = sessions[sessionId] ?: return false
+        val adapter = sessionAdapters[sessionId] ?: return false
+        return adapter.restartFrame(session, frameId)
+    }
+
+    /** P2-FUNCBP: stored function breakpoints (in-memory list). */
+    fun getFunctionBreakpoints(): List<DebugFunctionBreakpoint> = functionBreakpoints.toList()
+
+    /** P2-FUNCBP: add a function breakpoint; pushes to any live session. */
+    fun addFunctionBreakpoint(name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || functionBreakpoints.any { it.name == trimmed }) return false
+        functionBreakpoints.add(DebugFunctionBreakpoint(name = trimmed))
+        notifyBreakpointsChanged()
+        sendFunctionBreakpointsToActiveSessions()
+        return true
+    }
+
+    /** P2-FUNCBP: remove by name; pushes to any live session. */
+    fun removeFunctionBreakpoint(name: String) {
+        functionBreakpoints.removeAll { it.name == name }
+        notifyBreakpointsChanged()
+        sendFunctionBreakpointsToActiveSessions()
+    }
+
+    /** P2-FUNCBP: toggle enabled; pushes to any live session. */
+    fun toggleFunctionBreakpoint(name: String) {
+        val idx = functionBreakpoints.indexOfFirst { it.name == name }
+        if (idx < 0) return
+        functionBreakpoints[idx] = functionBreakpoints[idx].copy(enabled = !functionBreakpoints[idx].enabled)
+        notifyBreakpointsChanged()
+        sendFunctionBreakpointsToActiveSessions()
+    }
+
+    /** P2-FUNCBP: mark verification status from DAP setFunctionBreakpoints responses. */
+    fun markFunctionBreakpointsVerified(verified: Map<String, Pair<Boolean, String?>>) {
+        for (i in functionBreakpoints.indices) {
+            val fb = functionBreakpoints[i]
+            verified[fb.name]?.let { (ok, msg) ->
+                functionBreakpoints[i] = fb.copy(verified = ok, message = msg)
+            }
+        }
+        notifyBreakpointsChanged()
+    }
+
+    private fun sendFunctionBreakpointsToActiveSessions() {
+        for (sessionId in sessions.keys) {
+            val adapter = sessionAdapters[sessionId] ?: continue
+            adapter.setFunctionBreakpoints(sessions[sessionId]!!, getFunctionBreakpoints())
+        }
+    }
+
+    /** P2-HOVER: evaluate an expression on the active paused session (for hover-evaluate). */
+    fun evaluateOnActiveSession(expression: String): String? {
+        val sid = activeSessionId ?: return null
+        val session = sessions[sid] ?: return null
+        if (session.state != DebugState.PAUSED) return null
+        val adapter = sessionAdapters[sid] ?: return null
+        if (adapter.capabilities()?.supportsEvaluateForHovers != true) return null
+        return adapter.evaluate(session, expression)
     }
 
     /** P1-D4: Toggle an exception filter and push setExceptionBreakpoints to the adapter. */
