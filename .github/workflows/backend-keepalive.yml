@@ -1,0 +1,32 @@
+name: Backend keep-alive
+
+# Prevents Supabase free-tier auto-pause (~7 days inactivity) by running a
+# REAL database query directly against Postgres — not just a Render HTTP ping,
+# which never reaches the database. Also curls Render health for a warmth log.
+# Requires repo secret DATABASE_URL (the same postgres:// URL Render uses).
+
+on:
+  schedule:
+    # Daily at 06:00 UTC — comfortable margin vs. the 7-day pause window.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Supabase Postgres with a real query
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "[$(date -u)] Running keep-alive SELECT 1 against Supabase..."
+          psql "$DATABASE_URL" -c 'SELECT 1 AS alive;'
+          echo "[$(date -u)] Supabase keep-alive query succeeded — activity clock reset."
+
+      - name: Ping Render backend health (warmth log)
+        run: |
+          echo "[$(date -u)] Curling Render health endpoint..."
+          curl -sS --max-time 60 -o /dev/null -w "Render health HTTP:%{http_code} time:%{time_total}s\n" \
+            https://codespace-ide-backend.onrender.com/api/v1/health
+          echo "[$(date -u)] Keep-alive run complete."
