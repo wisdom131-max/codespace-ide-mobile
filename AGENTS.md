@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 4812419 |
-| CI build | #2667 GREEN (2026-09-07) |
+| Latest commit | ac5746c |
+| CI build | #2671 GREEN (2026-09-07) |
 | Backend | Render -> https://codespace-ide-backend.onrender.com |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -1819,3 +1819,25 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 3. GROUP C research (await approval before implementing): agent-tools extraction inventory; debugger parity plan. (Multi-cursor research DONE+shipped; MCP research DONE+shipped this commit.)
 4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+---
+
+**RULES REMINDER**: TWO-REPO (main IDE here, proot only in ubuntu-proot-test) | changelog at bottom with SHA+CI | tags on entries | never re-do done work | roadmap lists ALL pending | UI rounded 8-12dp + padding 12h/10v | no inline code in composable bodies (64KB rule)
+
+- [2026-09-07 09:30 WAT] — AI Agent: Debug parity P1 (D1-D5) + Connectors Hub relocation
+- Commits: 2aebc7b (main batch, CI #2670 RED) -> ac5746c ([BUILD-FIX] smart-cast caps, nullable bps list, PssEditorColumn callback threading, CI #2671 GREEN)
+- What was added:
+  - [DAP][P1-D1] Debug Console REPL section in RunDebugPanel (new DebugConsoleSection.kt; evaluate via DAP evaluate; "> expr" / "= result" transcript, 100-line cap)
+  - [DAP][P1-D2] Breakpoint edit dialog: condition / logMessage / hitCondition (new DebugEditDialogs.kt; UDM.editBreakpoint; Node/Python adapters send hitCondition; BREAKPOINTS list shows hits + edit icon)
+  - [DAP][P1-D3] setVariable: DebugVariable.containerRef added; Node/Python adapters implement setVariable; tap a variable value in VARIABLES to edit (gated on supportsSetVariable cap)
+  - [DAP][P1-D4] setExceptionBreakpoints: exceptionFilters parsed from initialize (DAPClient.toDAPCapabilities); toggles rendered under BREAKPOINTS; adapter defaultsOn pushed after configurationDone
+  - [DAP][P1-D5] VARIABLES grouped by DAP scope (Locals/Globals) like VS Code
+  - [CONNECTORS] AgentConnectorManager "DEAD CODE" banner removed (it is LIVE: backs the 3 agent connector tools; doc now points at ConnectorsHubSheet + Render backend)
+  - [CONNECTORS][UI] Connectors Hub removed from hamburger File menu; added to In-Project Settings title bar + Copilot chat overflow (kebab) menu
+- Files touched: debug/DAPClient.kt, debug/DebugAdapter.kt, debug/NodeDAPAdapter.kt, debug/PythonDAPAdapter.kt, debug/UniversalDebugManager.kt, ui/panes/DebugConsoleSection.kt (NEW), ui/panes/DebugEditDialogs.kt (NEW), ui/panes/ExplorerPane.kt, ui/screens/ProjectShellScreen.kt, ui/screens/InProjectSettingsDialog.kt, ui/screens/CopilotChatPanelOverlay.kt, agent/AgentConnectorManager.kt, ui/screens/ConnectorsHubSheet.kt (doc only)
+- Next on roadmap (ALL pending):
+  - [PENDING] On-device regression: debug console/bp-edit/setVariable/exception filters/scope groups (D1-D5)
+  - [PENDING] On-device regression: Connectors Hub entry points (Settings title bar + chat kebab; hamburger File no longer has it)
+  - [PENDING] On-device regression: MCP client batch M1-M8 (AGENTS.md plan, 4812419)
+  - [PENDING] On-device regression: Markdown preview parity batch T1-T10 (5c1b8c4)
+  - [PENDING] Full P1 audit items 4+ (plan report) and remaining debugger parity phases
