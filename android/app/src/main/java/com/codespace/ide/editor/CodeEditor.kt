@@ -1494,7 +1494,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // PERF-PROBE: frame-clock observer for jank/frame-gap counters (measure-first pass)
     androidx.compose.runtime.LaunchedEffect(Unit) {
         while (true) {
-            kotlinx.coroutines.withFrameNanos { t -> PerfProbe.onFrame(t) }
+            androidx.compose.runtime.withFrameNanos { t -> PerfProbe.onFrame(t) }
         }
     }
     LaunchedEffect(Unit) {
