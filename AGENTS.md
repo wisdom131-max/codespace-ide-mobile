@@ -1987,3 +1987,36 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 3. Item 3 remaining: IME emoji phase 2 (read diag logs from on-device emoji tap -> fix per evidence).
 4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+---
+
+## [2026-09-08 15:35 WAT] — AI Agent: [CONNECTORS] Discord OAuth COMPLETE — ALL Phase 2 provider registrations done
+
+**RULES REMINDER:** 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY. 2. CHANGE LOG: entry at BOTTOM of AGENTS.md with timestamp, SHA, CI build+pass/fail, what was fixed, files touched, next on roadmap (ALL pending). 3. TAGS: [BUILD-FIX], [LSP], [UI], [DOCS], [INFRA], [BACKEND], [CRASH], [GIT], [CONNECTORS]. 4. Update Current State table at top. 5. NEVER re-do done work. 6. ROADMAP CONTINUITY: list ALL pending. 7. UI: rounded corners 8-12dp + padding 12dp h / 10dp v.
+
+**[CONNECTORS] Discord OAuth app created + live (completes ALL Phase 2 registrations):**
+- Discord account "CodeSpace Dev" (wisdomgoodluck131@gmail.com) registered 2026-09-08 via interactive Hyperbeam VM (Discord signup blocks headless browsers; VM input limitation solved by Wisdom driving the final form manually via the VM embed link).
+- Dev portal app "CodeSpace IDE": Application/Client ID 1546888566188015668, Public Key 02c04310...857e1; secret captured + stored as $DISCORD_CLIENT_SECRET sandbox secret.
+- OAuth2 page: redirect https://codespace-ide-backend.onrender.com/api/v1/connectors/callback saved; ALL registry scopes ticked; bot permission Administrator.
+- Render env: DISCORD_OAUTH_CLIENT_ID / DISCORD_OAUTH_CLIENT_SECRET set via API (key-based PUT); manual deploy dep-dag1mulg1s2s738lmqig LIVE 14:29 UTC, health 200. Probe: /connectors/discord/auth-url returns 401 UNAUTHORIZED without user JWT (expected) — no config errors.
+
+**[CONNECTORS] Phase 2 registration status — ALL COMPLETE (agent-side, 2026-09-07/08):**
+- GitLab: full-access PAT 'codespace-ide-full-access' (expires 2027-09-08) + OAuth app 42cc0f8f... 23/23 scopes. DONE.
+- Jira: Atlassian app perms + 3LO + org "CodeSpace IDE" + site codespace-ide.atlassian.net (Free forever). DONE.
+- Notion: read/insert/update verified live. DONE.
+- Canva: OAuth app OC-AaB-5OKiVlGt, 10 scopes, MFA on, deployed. DONE.
+- Discord: see above. DONE.
+- (Figma / Linear / Hugging Face were already done 2026-09-07.)
+
+**[DOCS] credentials-master.md (Google Drive, file 117QDbKGf9FpWRr0LtFQI6zw-roEqNxze) updated:** Discord section upgraded to COMPLETE (client id, public key, redirect, scopes, deploy id, probe result); Last-Updated footer refreshed. Previous PENDING lines for GitLab/Jira/Notion/Canva already cleared 2026-09-08.
+
+**Commits/CI this entry:** NONE (no app code change — agent-side credentials + Render env only). Render deploy dep-dag1mulg1s2s738lmqig LIVE, health 200.
+
+**Files touched:** No repo files. (Render env vars via API; Drive credentials-master.md patched; workspace creds/discord.md NEW.)
+
+**Next on roadmap (ALL pending):**
+1. On-device test batches awaiting Wisdom (one pass, newest green APK): (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657; (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) MD-preview suite T1-T10 (#2664); (d) MCP suite M1-M8 (#2667); (e) P1 debug D1-D5 batch (#2671); (f) P2 debug batch (#2673); (g) CONN-1..8 Phase 1 batch; (h) Phase 2 OAuth2 on-device connect test — ALL 8 providers now registered, test can proceed (GitLab/Notion/Figma/Linear/Jira/Discord/Canva/HF); (i) Phase 3 project-services panel test.
+2. Phase 2 provider registrations: COMPLETE — no pending user actions remain (GitLab api tick DONE, Jira perms DONE, Notion capabilities DONE, Canva app DONE, Discord app DONE, Drive write access obtained and credentials file updated).
+3. Item 3 remaining: IME emoji phase 2 (read diag logs from on-device emoji tap -> fix per evidence).
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
