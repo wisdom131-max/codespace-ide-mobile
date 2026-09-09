@@ -816,7 +816,7 @@ object ProotInstaller {
 - agent/AgentApiServer.kt — HTTP server port 8765 in Ubuntu; /tool/* endpoints for terminal AI
 - agent/AgentTools.kt — read_file, write_file, run_command, git_* tool implementations
 - agent/AgentMemory.kt — Reads/writes ~/AGENT_MEMORY.md, injects into AI context
-- agent/AgentConnectorManager.kt — ⚠️ DEAD CODE. Replaced by ConnectorsHubSheet + Railway OAuth.
+- agent/AgentConnectorManager.kt — LIVE. Backs the 4 agent connector tools (list_connectors / connect_service / use_connector / request_connector) + the chat Connect card; shares ConnectorsApiClient + the Render backend with ConnectorsHubSheet.
 
 ## Git / Auth / Data
 - data/GitHubAuth.kt — GitHub Device Flow OAuth for git push/pull. WORKING — do not touch.
