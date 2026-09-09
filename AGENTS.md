@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-07 20:55 WAT
+> Last updated: 2026-09-09 07:35 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 7cbdb37 |
-| CI build | #2680 GREEN, #2681 pending (2026-09-07) |
+| Latest commit | 123e064 |
+| CI build | #2686 GREEN (2026-09-09) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -2017,6 +2017,33 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 **Next on roadmap (ALL pending):**
 1. On-device test batches awaiting Wisdom (one pass, newest green APK): (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657; (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) MD-preview suite T1-T10 (#2664); (d) MCP suite M1-M8 (#2667); (e) P1 debug D1-D5 batch (#2671); (f) P2 debug batch (#2673); (g) CONN-1..8 Phase 1 batch; (h) Phase 2 OAuth2 on-device connect test — ALL 8 providers now registered, test can proceed (GitLab/Notion/Figma/Linear/Jira/Discord/Canva/HF); (i) Phase 3 project-services panel test.
 2. Phase 2 provider registrations: COMPLETE — no pending user actions remain (GitLab api tick DONE, Jira perms DONE, Notion capabilities DONE, Canva app DONE, Discord app DONE, Drive write access obtained and credentials file updated).
+3. Item 3 remaining: IME emoji phase 2 (read diag logs from on-device emoji tap -> fix per evidence).
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+
+---
+
+## [2026-09-09 07:35 WAT] — AI Agent: [DOCS][CONNECTORS] stale-comment fix verified green; Canva review SUBMITTED (In review)
+
+**RULES REMINDER:** 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY. 2. CHANGE LOG: entry at BOTTOM of AGENTS.md with timestamp, SHA, CI build+pass/fail, what was fixed, files touched, next on roadmap (ALL pending). 3. TAGS: [BUILD-FIX], [LSP], [UI], [DOCS], [INFRA], [BACKEND], [CRASH], [GIT], [CONNECTORS]. 4. Update Current State table at top. 5. NEVER re-do done work. 6. ROADMAP CONTINUITY: list ALL pending. 7. UI: rounded corners 8-12dp + padding 12dp h / 10dp v.
+
+**[DOCS][CONNECTORS] 123e064 — stale 'DEAD CODE' comment fix, CI GREEN:**
+- ProotInstaller architecture-map comment claimed AgentConnectorManager was dead code pending deletion. WRONG: AgentConnectorManager is LIVE — backs 4 chat agent tools (request_connector, list_connectors, connector_status, remove_connector) + the chat-inline Connect card via ConnectorsApiClient. Comment deleted, code untouched. CI build #2686 GREEN.
+
+**[CONNECTORS] Canva review SUBMITTED — integration now 'In review' (agent-side, 2026-09-09):**
+- Root cause of failed submission: integration NAME had never saved (13/18 chars placeholder bug) + redirect URL field was EMPTY (VM setup never saved it). Both fixed via browser automation: name 'CodeSpace IDE' saved, redirect URL https://codespace-ide-backend.onrender.com/api/v1/connectors/callback saved (default URL 1).
+- Second blocker: Canva requires the OAuth flow to be TESTED once before submitting. Done: generated PKCE code challenge (S256), ran full authorize flow at canva.com/api/oauth/authorize with client OC-AaB-5OKiVlGt, approved consent (all 10 scopes, account ijeziewisdom131@gmail.com), redirect hit backend callback (expected 'missing code' without user state — Canva-side flow completed).
+- Submission accepted: 'passed our initial check and is now in the queue'. Status: In review. Until review completes, only the owner account can authorize the integration (draft behavior).
+- NOTE: the OAuth test consent also confirmed end-to-end that the authorize URL + scopes + redirect are all valid on Canva's side.
+
+**Commits/CI this entry:** 123e064 (comment fix only, Android CI #2686 GREEN).
+
+**Files touched:** app/src/main/java/com/codespace/ide/proot/ProotInstaller.kt (comment only). (Canva portal changes agent-side; workspace creds/canva.md updated.)
+
+**Next on roadmap (ALL pending):**
+1. On-device test batches awaiting Wisdom (one pass, newest green APK): (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657; (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) MD-preview suite T1-T10 (#2664); (d) MCP suite M1-M8 (#2667); (e) P1 debug D1-D5 batch (#2671); (f) P2 debug batch (#2673); (g) CONN-1..8 Phase 1 batch; (h) Phase 2 OAuth2 on-device connect test — all 8 providers registered; Canva authorize currently owner-account-only until review completes; (i) Phase 3 project-services panel test.
+2. Canva review: monitor portal for review outcome; if rejected, fix per Canva feedback and resubmit.
 3. Item 3 remaining: IME emoji phase 2 (read diag logs from on-device emoji tap -> fix per evidence).
 4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
