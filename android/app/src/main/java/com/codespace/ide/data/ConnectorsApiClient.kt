@@ -1,5 +1,6 @@
 package com.codespace.ide.data
 
+import android.content.Context
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -45,14 +46,54 @@ object ConnectorsApiClient {
 
     private val JSON = "application/json; charset=utf-8".toMediaType()
 
+    /**
+     * FIX (Batch H 401): this client bypasses AppModule's auth interceptor, so an
+     * expired access token surfaced as a hard 401 (Connectors Hub showed the red
+     * UNAUTHORIZED error + fallback rows even while the user looked signed in —
+     * the rest of the app silently refreshes, only this client didn't).
+     * On HTTP 401, attempt ONE /auth/refresh with the stored refresh token, persist
+     * the new pair to SecureTokenStore, and retry the original request.
+     * context == null skips refresh (callers without a Context keep old behavior).
+     */
+    private fun executeWithRefresh(context: Context?, accessToken: String, request: Request): okhttp3.Response {
+        val first = client.newCall(request).execute()
+        if (first.code != 401 || context == null) return first
+        first.close()
+        var newAccess: String? = null
+        try {
+            val store = SecureTokenStore(context)
+            val refreshToken = store.refreshToken?.takeIf { it.isNotBlank() } ?: return client.newCall(request).execute()
+            val refreshReq = Request.Builder()
+                .url("$API_BASE/auth/refresh")
+                .post("{\"refreshToken\":\"$refreshToken\"}".toRequestBody(JSON))
+                .build()
+            client.newCall(refreshReq).execute().use { rr ->
+                if (!rr.isSuccessful) return client.newCall(request).execute()
+                val o = JSONObject(rr.body?.string().orEmpty())
+                val access = o.optString("accessToken").takeIf { it.isNotBlank() }
+                val newRefresh = o.optString("refreshToken").takeIf { it.isNotBlank() }
+                if (access != null) {
+                    store.lastAccessToken = access
+                    if (newRefresh != null) store.refreshToken = newRefresh
+                    newAccess = access
+                }
+            }
+        } catch (_: Exception) {
+            // Refresh failed — fall through and replay with the original (stale) token
+        }
+        val token = newAccess ?: accessToken
+        val retry = request.newBuilder().header("Authorization", "Bearer $token").build()
+        return client.newCall(retry).execute()
+    }
+
     /** GET /connectors — status per service (connected/configured/scope). */
-    fun fetchStatus(accessToken: String): Result<List<ConnectorStatus>> = runCatching {
+    fun fetchStatus(accessToken: String, context: Context? = null): Result<List<ConnectorStatus>> = runCatching {
         val req = Request.Builder()
             .url("$API_BASE/connectors")
             .header("Authorization", "Bearer $accessToken")
             .get()
             .build()
-        client.newCall(req).execute().use { resp ->
+        executeWithRefresh(context, accessToken, req).use { resp ->
             val bodyStr = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) error("HTTP ${resp.code}: ${bodyStr.take(300)}")
             val arr = JSONArray(bodyStr)
@@ -73,13 +114,13 @@ object ConnectorsApiClient {
     }
 
     /** GET /connectors/{service}/auth-url — mint the provider's OAuth consent URL. */
-    fun fetchAuthUrl(accessToken: String, service: String): Result<String> = runCatching {
+    fun fetchAuthUrl(accessToken: String, service: String, context: Context? = null): Result<String> = runCatching {
         val req = Request.Builder()
             .url("$API_BASE/connectors/$service/auth-url")
             .header("Authorization", "Bearer $accessToken")
             .get()
             .build()
-        client.newCall(req).execute().use { resp ->
+        executeWithRefresh(context, accessToken, req).use { resp ->
             val bodyStr = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
                 val msg = runCatching { JSONObject(bodyStr).optString("message") }.getOrNull()
@@ -90,14 +131,14 @@ object ConnectorsApiClient {
     }
 
     /** POST /connectors/{service}/token — store a PAT-type connector's API token (encrypted server-side). */
-    fun savePat(accessToken: String, service: String, pat: String): Result<Unit> = runCatching {
+    fun savePat(accessToken: String, service: String, pat: String, context: Context? = null): Result<Unit> = runCatching {
         val payload = JSONObject().put("pat", pat)
         val req = Request.Builder()
             .url("$API_BASE/connectors/$service/token")
             .header("Authorization", "Bearer $accessToken")
             .post(payload.toString().toRequestBody(JSON))
             .build()
-        client.newCall(req).execute().use { resp ->
+        executeWithRefresh(context, accessToken, req).use { resp ->
             val bodyStr = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
                 val msg = runCatching { JSONObject(bodyStr).optString("message") }.getOrNull()
@@ -107,13 +148,13 @@ object ConnectorsApiClient {
     }
 
     /** DELETE /connectors/{service} — disconnect + best-effort revoke. */
-    fun disconnect(accessToken: String, service: String): Result<Unit> = runCatching {
+    fun disconnect(accessToken: String, service: String, context: Context? = null): Result<Unit> = runCatching {
         val req = Request.Builder()
             .url("$API_BASE/connectors/$service")
             .header("Authorization", "Bearer $accessToken")
             .delete()
             .build()
-        client.newCall(req).execute().use { resp ->
+        executeWithRefresh(context, accessToken, req).use { resp ->
             if (!resp.isSuccessful) error("HTTP ${resp.code}: ${resp.body?.string().orEmpty().take(300)}")
         }
     }
@@ -125,6 +166,7 @@ object ConnectorsApiClient {
         method: String,
         path: String,
         body: String?,
+        context: Context? = null,
     ): Result<String> = runCatching {
         val payload = JSONObject().apply {
             put("method", method.uppercase())
@@ -138,7 +180,7 @@ object ConnectorsApiClient {
             .header("Authorization", "Bearer $accessToken")
             .post(payload.toString().toRequestBody(JSON))
             .build()
-        client.newCall(req).execute().use { resp ->
+        executeWithRefresh(context, accessToken, req).use { resp ->
             val bodyStr = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) error("HTTP ${resp.code}: ${bodyStr.take(2000)}")
             bodyStr

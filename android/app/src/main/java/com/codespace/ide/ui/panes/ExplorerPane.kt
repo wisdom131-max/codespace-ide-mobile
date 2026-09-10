@@ -2972,7 +2972,10 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
 ) {
     // P23-2: Wired to UniversalDebugManager — real debug backend
     val udm = UniversalDebugManager
-    var selectedConfig by remember { mutableStateOf("Kotlin Application") }
+    // FIX (Batch E): context MUST reach startDebug or UDM skips DAP adapters entirely
+    // (legacy-only fallback — no breakpoints/variables/console). 
+    val dbgContext = LocalContext.current
+    var selectedConfig by remember { mutableStateOf("Python: Current File") }
     var showConfigMenu by remember { mutableStateOf(false) }
     var activeSessionId by remember { mutableStateOf<String?>(null) }
     var sessionState by remember { mutableStateOf<DebugState>(DebugState.IDLE) }
@@ -3051,16 +3054,25 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             }
         }
     }
+    // FIX (Batch E): program + adapter output was wired to notifyOutput but NO UI ever
+    // listened — stdout was invisible during debug sessions. Mirror it into CONSOLE.
+    val outputListener: (String) -> Unit = { msg ->
+        if (msg.isNotBlank()) {
+            consoleLines = (consoleLines + msg.lineSequence().filter { it.isNotBlank() }.toList()).takeLast(100)
+        }
+    }
     LaunchedEffect(Unit) {
         udm.addOnBreakpointsChangedListener(bpListener)
         udm.addOnSessionStateChangedListener(stateListener)
         udm.addOnPausedListener(pausedListener)
+        udm.addOnOutputListener(outputListener)
     }
     DisposableEffect(Unit) {
         onDispose {
             udm.removeOnBreakpointsChangedListener(bpListener)
             udm.removeOnSessionStateChangedListener(stateListener)
             udm.removeOnPausedListener(pausedListener)
+            udm.removeOnOutputListener(outputListener)
         }
     }
 
@@ -3130,7 +3142,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                                 else -> Language.KOTLIN
                             }
                         }
-                        val sessionId = udm2.startDebug(dbgLang, activeFilePath, null)
+                        val sessionId = udm2.startDebug(dbgLang, activeFilePath, null, dbgContext)
                         if (sessionId != null) {
                             activeSessionId = sessionId
                             sessionState = DebugState.STARTING

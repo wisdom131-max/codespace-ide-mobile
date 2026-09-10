@@ -84,7 +84,7 @@ object AgentConnectorManager {
         val token = requireAccessToken(context)
             ?: return "Not signed in to CodeSpace IDE — sign in first (cloud sync auth), then connectors become available."
 
-        val result = ConnectorsApiClient.fetchStatus(token)
+        val result = ConnectorsApiClient.fetchStatus(token, context)
         return result.fold(
             onSuccess = { statuses ->
                 val sb = StringBuilder("Available connectors:\n")
@@ -124,7 +124,7 @@ object AgentConnectorManager {
         val token = requireAccessToken(context)
             ?: return "Not signed in to CodeSpace IDE — sign in first, then try connecting ${DISPLAY_NAMES[service]} again."
 
-        val result = ConnectorsApiClient.fetchAuthUrl(token, service)
+        val result = ConnectorsApiClient.fetchAuthUrl(token, service, context)
         return result.fold(
             onSuccess = { authUrl ->
                 try {
@@ -170,7 +170,7 @@ object AgentConnectorManager {
         val token = requireAccessToken(context)
             ?: return "Not signed in to CodeSpace IDE — sign in first."
 
-        val result = ConnectorsApiClient.proxyCall(token, service, method, endpoint, body)
+        val result = ConnectorsApiClient.proxyCall(token, service, method, endpoint, body, context)
         return result.fold(
             onSuccess = { it.take(6000) },
             onFailure = { e -> "Connector call failed: ${e.message}" },

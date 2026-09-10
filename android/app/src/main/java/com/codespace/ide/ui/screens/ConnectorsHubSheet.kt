@@ -65,7 +65,7 @@ internal fun ConnectorsHubSheet(
         }
         loading = true
         loadError = null
-        val result = withContext(Dispatchers.IO) { ConnectorsApiClient.fetchStatus(accessToken) }
+        val result = withContext(Dispatchers.IO) { ConnectorsApiClient.fetchStatus(accessToken, context) }
         result.fold(
             onSuccess = { statuses = it },
             onFailure = { loadError = it.message ?: "Failed to load connector status" },
@@ -177,7 +177,7 @@ internal fun ConnectorsHubSheet(
                                     toast = null
                                     scope.launch {
                                         val result = withContext(Dispatchers.IO) {
-                                            ConnectorsApiClient.fetchAuthUrl(accessToken, s.id)
+                                            ConnectorsApiClient.fetchAuthUrl(accessToken, s.id, context)
                                         }
                                         busyService = null
                                         result.fold(
@@ -195,7 +195,7 @@ internal fun ConnectorsHubSheet(
                                     toast = null
                                     scope.launch {
                                         val result = withContext(Dispatchers.IO) {
-                                            ConnectorsApiClient.disconnect(accessToken, s.id)
+                                            ConnectorsApiClient.disconnect(accessToken, s.id, context)
                                         }
                                         busyService = null
                                         result.fold(
@@ -260,7 +260,7 @@ internal fun ConnectorsHubSheet(
             onConnect = { pat, onResult ->
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
-                        ConnectorsApiClient.savePat(accessToken, target.id, pat)
+                        ConnectorsApiClient.savePat(accessToken, target.id, pat, context)
                     }
                     result.fold(
                         onSuccess = {
