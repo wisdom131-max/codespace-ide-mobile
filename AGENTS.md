@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | f148c97 |
-| CI build | #2688 GREEN (2026-09-10) |
+| Latest commit | 52cfcfa |
+| CI build | #2690 GREEN (2026-09-10) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -2077,3 +2077,37 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 5. Exit-9 batch G items: evidence-first — pending SESSION FINISHED diag output from device (kind + title + lastLine now logged).
 6. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+---
+
+## [2026-09-10 10:45 WAT] — AI Agent: [DAP] Batch E debugger no-op FIXED (context never reached startDebug) [CONNECTORS] Batch H 401 root cause FIXED (52cfcfa, CI #2690 GREEN)
+
+**RULES REMINDER:** 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY. 2. CHANGE LOG: entry at BOTTOM of AGENTS.md with timestamp, SHA, CI build+pass/fail, what was fixed, files touched, next on roadmap (ALL pending). 3. TAGS: [BUILD-FIX], [LSP], [UI], [DOCS], [INFRA], [BACKEND], [CRASH], [GIT], [CONNECTORS], [DAP]. 4. Update Current State table at top. 5. NEVER re-do done work. 6. ROADMAP CONTINUITY: list ALL pending. 7. UI: rounded corners 8-12dp + padding 12dp h / 10dp v.
+
+**[DAP] Batch E 'debug didn't work' root cause (code-traced from device report):**
+- RunDebugPanel's bug button called `udm.startDebug(dbgLang, activeFilePath, null)` — third arg is projectRoot, `context` stayed DEFAULT NULL. UDM only resolves DAP adapters when context != null, so EVERY bug-button launch silently fell back to legacy providers (pdb-style) — no breakpoints-in-panel, no VARIABLES, no CONSOLE, no exception filters. Other call sites (ProjectShellScreen 2x) pass context correctly; only this one was broken.
+- Stale default config label 'Kotlin Application' replaced with 'Python: Current File' (the old name matched nothing in the defaults list; Kotlin has NO debug adapter — Python (debugpy) and Node (js-debug) are the only DAP adapters).
+- UDM notifyOutput was wired to NO UI — program stdout invisible during debug. Added output listener in RunDebugPanel mirroring program/adapter output into the CONSOLE transcript (last 100 lines).
+
+**[CONNECTORS] Batch H HTTP 401 UNAUTHORIZED root cause:**
+- Backend access-token TTL = 900s (JWT_ACCESS_TTL default 900 = 15 min). The app-wide Retrofit/OkHttp client auto-refreshes on 401 (AppModule auth interceptor), which is why the user stays 'signed in' everywhere else — but ConnectorsApiClient built its OWN bare OkHttpClient with no interceptor. Every Hub open after 15 min sent a dead token -> 401 -> sheet rendered the red error + ONLY the 3 static stub rows (GitHub/SSH/AI Providers). NOT an older panel — the same sheet's fallback UI.
+- FIX: executeWithRefresh() in ConnectorsApiClient — on 401, POST /auth/refresh with the stored 30-day refresh token, persist new pair to SecureTokenStore, retry the original request once. All 5 endpoints (fetchStatus/fetchAuthUrl/savePat/disconnect/proxyCall) route through it; optional `context` param, null = old behavior. All 7 call sites pass context (ConnectorsHubSheet 4, AgentConnectorManager 3).
+- Side effect: likely also fixes Batch I OAuth row no-op — the OAuth tap path calls fetchAuthUrl through the same client; an expired token produced a subtle failure toast that read as 'nothing happens'.
+
+**Files:** ui/panes/ExplorerPane.kt (dbgContext + startDebug context + output listener + config default), data/ConnectorsApiClient.kt (executeWithRefresh + 5 signatures), ui/screens/ConnectorsHubSheet.kt (4 context args), agent/AgentConnectorManager.kt (3 context args).
+
+**Re-test on next green APK (only fixed items, per protocol):**
+- Batch E 1-5 (debug session now launches DAP: pause, VARIABLES, CONSOLE eval, set-variable, exception filters) then Batch F 2-6.
+- Batch H 1-6 (Hub loads full provider rows; Railway PAT connect/disconnect/reconnect).
+- Batch I 1-8 retest after 401 fix (likely unblocked).
+- Batch A item 3 squiggle (f148c97, #2688) and exit-9 diag capture when it recurs.
+
+**Next on roadmap (ALL pending):**
+1. Batch A #6 AI-key single-box redesign + Gemini key validation bug (real Gemini keys rejected — validation rule suspect, NOT yet root-caused).
+2. Batch A #7 exit-9 — open, awaiting on-device [REAL-EXIT vs SIGNAL-DEATH] diag line.
+3. Batch B #1/#2/#7 multi-cursor entry points (extra-keys MC toggle + double-tap second cursor + exit-MC) — not yet root-caused.
+4. Batch B #8 LSP timeout pile-up under real load (293-854ms keystroke->render, inlayHint/hover/semanticTokens timeouts, worstFrame 44s) — Phase B throttling investigation.
+5. Batch G #2 ide open file:line jump + #3 locked-root resolution + #1 path link styling.
+6. Batch D/E/F/H/J walkthroughs REWRITTEN source-verified (this turn) — pending on-device.
+7. Debugger P3 (run-to-cursor, inline values) — queued.
+8. Credential UX Phase 4/5 — deferred. Canva review outcome check (in review).
+9. MCP concurrency cap — measure first via PerfProbe.
