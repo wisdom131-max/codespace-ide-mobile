@@ -2980,10 +2980,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val visualLineDbg = visualLineMapper.docToVisualLine(debugCurrentLine - 1)
             val layoutDbg = textLayoutResult
             val densityDbg = androidx.compose.ui.platform.LocalDensity.current.density
+            // BAND-STICKY-FIX (2026-09-10): the editor content Row is padded down by
+            // stickyPadDp when a sticky header is pinned (line ~1845) and the inlay hints
+            // compensate with +stickyPadPx — the debug band did NOT, so with any pinned
+            // header (e.g. 'def main' above the debug line) the band rendered exactly
+            // ONE LINE ABOVE the red dot. Same chain as the inlays at line ~2904.
+            val stickyPadDbg = if (stickyPadActive) stickyPadPx else 0f
             val topDbg = if (layoutDbg != null && visualLineDbg >= 0 && visualLineDbg < layoutDbg.lineCount) {
-                ((layoutDbg.getLineTop(visualLineDbg) - vScroll.value).coerceAtLeast(0f)) / densityDbg
+                ((layoutDbg.getLineTop(visualLineDbg) - vScroll.value + stickyPadDbg).coerceAtLeast(0f)) / densityDbg
             } else {
-                ((debugCurrentLine - 1) * lineHeightDp.value - vScrollDp).coerceAtLeast(0f)
+                ((debugCurrentLine - 1) * lineHeightDp.value - vScrollDp + (stickyPadDbg / densityDbg)).coerceAtLeast(0f)
             }
             Box(
                 modifier = Modifier
@@ -3005,9 +3011,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val layoutHl = textLayoutResult
             val visualLineHl = visualLineMapper.docToVisualLine(highlightTargetLine - 1)
             val topDpHl = if (layoutHl != null && visualLineHl >= 0 && visualLineHl < layoutHl.lineCount) {
-                ((layoutHl.getLineTop(visualLineHl) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
+                ((layoutHl.getLineTop(visualLineHl) - vScroll.value + (if (stickyPadActive) stickyPadPx else 0f)).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
             } else {
-                ((highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl).coerceAtLeast(0f)
+                ((highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl + (if (stickyPadActive) stickyPadPx else 0f)).coerceAtLeast(0f)
             }
             // Compute blink alpha from elapsed time
             val blinkElapsed = if (highlightBlinkStart > 0) (System.currentTimeMillis() - highlightBlinkStart) / 1000f else 0f

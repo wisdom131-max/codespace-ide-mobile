@@ -816,7 +816,9 @@ object LspManager {
     private var ctagsInstallChecked = false
 
     // Diagnostics handlers: language -> (uri, diagnostics) -> Unit
-    private val diagnosticsHandlers = ConcurrentHashMap<Language, (String, JSONArray) -> Unit>()
+    // SQUIGGLE-FIX (2026-09-10): dead map deleted — setDiagnosticsHandler() delegates
+    // to LspDiagnosticsHandler.handlerMap, but this LOCAL map was never written, so the
+    // publish callback below invoked NOTHING and EditorPane squiggles never fired.
 
     class LspServer(
         val language: Language,
@@ -1554,7 +1556,11 @@ object LspManager {
             val uri = params.optString("uri", "")
             val diags = params.optJSONArray("diagnostics") ?: JSONArray()
             server.diagnostics[uri] = diags
-            diagnosticsHandlers[language]?.invoke(uri, diags)
+            // SQUIGGLE-FIX (2026-09-10): invoke the handler via LspDiagnosticsHandler —
+            // setDiagnosticsHandler() stores handlers THERE, not in a local map. The old
+            // local-map lookup was always null, so registered EditorPane handlers never
+            // fired and squiggles never rendered (diagnostics stopped at DiagnosticManager).
+            LspDiagnosticsHandler.setDiagnostics(language, uri, diags)
             // Phase P: Feed into central DiagnosticManager
             val filePath = uri.removePrefix("file://")
             val converted = DiagnosticConverter.fromLsp(diags, uri, filePath, language.name.lowercase())
