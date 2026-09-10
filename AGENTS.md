@@ -2159,3 +2159,34 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 8. Credential UX Phase 4/5 — deferred. Canva review outcome check (in review).
 9. MCP concurrency cap — measure first via PerfProbe.
 10. Batch E 1-5 + F 2-6, H 1-6, I 1-8 re-tests (52cfcfa 401/context fixes) + Batch A item 3 squiggle re-test (f148c97, #2688) — all pending on-device.
+
+---
+
+### [2026-09-10 14:55 WAT] — AI Agent: Batch fail-fixes from screenshot-verified results (401 real root cause, debug band off-by-one, squiggle/MCP/exit-9 diagnostics)
+**Commit:** a0d1bb7 | **CI Build:** #2694 🔄 in progress (entry updated when green)
+**RULES REMINDER:** 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY. 2. CHANGE LOG: entry at BOTTOM of AGENTS.md with timestamp, SHA, CI build+pass/fail, what was fixed, files touched, next on roadmap (ALL pending). 3. TAGS: [BUILD-FIX], [LSP], [UI], [DOCS], [INFRA], [BACKEND], [CRASH], [GIT], [CONNECTORS], [DAP]. 4. Update Current State table at top. 5. NEVER re-do done work. 6. ROADMAP CONTINUITY: list ALL pending. 7. UI: rounded corners 8-12dp + padding 12dp h / 10dp v.
+
+**[CONNECTORS][CRASH] Batch H 401 REAL root cause (AuthScreen.kt):** Old "local-first" sign-in stored the raw Firebase ID token as BOTH accessToken and refreshToken. Backend JwtStrategy only verifies JWT_SECRET-signed tokens (its own /auth/google output) — every Hub call 401d, and the earlier refresh-retry fix could never help because the stored "refresh token" was never in the refresh_tokens table. FIX: sign-in now exchanges the Firebase ID token for a real backend JWT pair via POST /auth/google (endpoint live, Firebase Admin verified configured); falls back to Firebase token ONLY if backend unreachable (rare). Likely unblocks Batch I OAuth no-op (same dead-token path).
+
+**[DEBUG][DAP] Yellow current-line band off-by-one (CodeEditor.kt):** Screenshot-confirmed (band on line 18, breakpoint dot on line 19). P54 band used fixed-grid (debugCurrentLine-1)*lineHeight math — breaks when any fold/wrapped line sits above the debug line; same drift class as the lightbulb bug. Now uses the proven visualLineMapper.docToVisualLine + textLayoutResult.getLineTop chain (identical to highlightTargetLine blink overlay), grid math only as pre-layout fallback.
+
+**[LSP][INTELLISENSE] Squiggle — decision-point diagnostics (EditorPane.kt):** Previous stale-content fix (liveTab mirror) did NOT resolve on-device retest. Added [SQUIGGLE-DIAG] logging at every branch: handler registered/fired/dropped (tab mismatch, gen 0, URI mismatch)/matched with parsed count + raw JSON. Next on-device run pinpoints whether KLS emits no diagnostics at all (plausible for non-Gradle files), URI mismatch, or empty conversion.
+
+**[MCP] Server-row tap diagnostics (McpServersSection.kt):** Row reported unresponsive. Added [MCP-ROW-DIAG] log on every row tap — isolates touch-not-reaching-handler vs expanded-render vs empty cached tools. NOTE: source-verified nav path = Settings (gear) > Connectors > MCP / Agent Tools (NOT Packages).
+
+**[CRASH][TERMINAL] exit=-9 memory diagnostics (TerminalPane.kt):** Confirmed SIGKILL signal 9 (lmkd/OOM) — old useradd/profile.d exit-code theory dead. Added [EXIT9-MEM-DIAG] pre-launch snapshot (sysAvailMb/total/threshold/lowMemory + ourProcessPssMb + jvmUsed/max) at the exact kill window to size the problem on the 2.8GB TECNO KL4.
+
+**Files touched:** AuthScreen.kt, CodeEditor.kt, EditorPane.kt, McpServersSection.kt, TerminalPane.kt
+
+**Next on roadmap (ALL pending):**
+1. Batch A #6 AI-key single-box redesign + Gemini key validation bug (real keys rejected — not yet root-caused).
+2. Batch A #7 exit-9 — now with [EXIT9-MEM-DIAG] memory snapshot at kill window.
+3. Batch B #1/#2/#7 multi-cursor entry points — not yet root-caused.
+4. Batch B #8 LSP timeout pile-up under real load — Phase B throttling investigation.
+5. Batch G #2 ide open file:line jump + #3 locked-root resolution + #1 path link styling.
+6. Squiggle + MCP row re-test with new diagnostics ([SQUIGGLE-DIAG], [MCP-ROW-DIAG]).
+7. Batch D/E/F walkthroughs pending on-device (source-verified: Run & Debug panel = activity bar play/bug icon; Settings gear > Connectors for MCP).
+8. Batch H/I connectors + OAuth re-test after real-token sign-in fix (requires fresh sign-in on device).
+9. Debugger P3 (run-to-cursor, inline values) — queued.
+10. Credential UX Phase 4/5 — deferred. Canva review outcome check (in review).
+11. MCP concurrency cap — measure first via PerfProbe.
