@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 123e064 |
-| CI build | #2686 GREEN (2026-09-09) |
+| Latest commit | f148c97 |
+| CI build | #2688 GREEN (2026-09-10) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -2047,3 +2047,33 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 3. Item 3 remaining: IME emoji phase 2 (read diag logs from on-device emoji tap -> fix per evidence).
 4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
 5. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
+
+---
+
+## [2026-09-10 09:35 WAT] — AI Agent: [LSP] squiggle root-cause FIXED (stale content) [CRASH] exit-9 evidence upgrade (f148c97, CI #2688)
+
+**RULES REMINDER:** 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY. 2. CHANGE LOG: entry at BOTTOM of AGENTS.md with timestamp, SHA, CI build+pass/fail, what was fixed, files touched, next on roadmap (ALL pending). 3. TAGS: [BUILD-FIX], [LSP], [UI], [DOCS], [INFRA], [BACKEND], [CRASH], [GIT], [CONNECTORS]. 4. Update Current State table at top. 5. NEVER re-do done work. 6. ROADMAP CONTINUITY: list ALL pending. 7. UI: rounded corners 8-12dp + padding 12dp h / 10dp v.
+
+**[LSP] Batch A item 3 root cause found + FIXED — squiggles/underlines never rendering (f148c97):**
+- Symptom: Kotlin type error -> Problems badge counts it, NO red underline/inline message on the error line. Same class of failure for ErrorLens inline line.
+- ROOT CAUSE (code-traced, no guess): the GAP-9 diagnostics subscription (LaunchedEffect keyed on id+language) captured `snap` ONCE at file-open time. For a NEWLY CREATED file snap.content was EMPTY; after typing, incoming LSP diagnostics were converted via lspDiagnosticsToLintErrors(diags, snap.content) against the STALE/EMPTY snapshot. On empty content, endOffset.coerceIn(1, 0) throws IllegalArgumentException inside the handler -> lspSquiggles never set -> zero squiggles forever. The Problems badge uses a SEPARATE path (LspManager's own publishDiagnostics -> DiagnosticManager, no content conversion) which is why it counted correctly.
+- FIX: `val liveTab by rememberUpdatedState(active)` added next to the effect; the handler now (1) reads liveTab, (2) guards live.id == snap.id (handler belongs to this file only), (3) converts with live.content (CURRENT text). Also added empty-file guard in lspDiagnosticsToLintErrors (skip instead of throw).
+- Files: ui/panes/EditorPane.kt (liveTab + handler), lsp/LspIntegration.kt (empty-content guard).
+- Re-test on device: NEW file -> type `val number: String = 123` -> red underline + ErrorLens line under the 123. Also re-check on an EXISTING file with an error (open, add bad line, expect squiggle — was silently broken for same reason when file changed after open).
+
+**[CRASH] Exit-9 investigation — evidence-first, per Wisdom ('find out one way or the other'):**
+- CODE FACTS established (no blind fix): (1) JNI.waitFor returns WEXITSTATUS for normal exits and NEGATIVE -WTERMSIG for signal deaths -> positive 9 is a REAL 'exit 9', NOT an OOM/lmkd kill (that would report -9). (2) The app's own useradd/groupadd wrappers deliberately 'exit 9' for already-exists (documented in 01-essential-tools.sh comments). (3) All profile.d scripts verified: no bare 'exit' — apt/useradd calls are subshell'd or || true'd, so the interactive login shell cannot be killed by them. (4) One-shot 'bash -c/-lc' agent/IDE-CLI sessions (invisible ProcessBuilder, NOT terminal tabs) CAN legitimately return 9 through apt/useradd chains. (5) C.UTF-8 locale change is orthogonal — Wisdom's doubt confirmed by code evidence.
+- DIAG UPGRADE (f148c97): SESSION FINISHED diag line now logs exit KIND: REAL-EXIT vs SIGNAL-DEATH(signal=N, SIGKILL=lmkd/OOM noted). 
+- DECISIVE NEXT STEP (on-device): when exit 9 appears again, open Output tab -> terminal channel -> read 'SESSION FINISHED diag: exit=9 [kind] title=... lastLine=...' + the transcript tail line. Title shows the command for -lc tabs (identifies WHICH session class died); lastLine shows what was on screen. That answers 'one way or the other' definitively.
+
+**Commits/CI this entry:** f148c97 (Android CI #2688 GREEN, confirmed 2026-09-10).
+
+**Files touched:** app/src/main/java/com/codespace/ide/ui/panes/EditorPane.kt, app/src/main/java/com/codespace/ide/lsp/LspIntegration.kt, app/src/main/java/com/codespace/ide/ui/panes/TerminalPane.kt.
+
+**Next on roadmap (ALL pending):**
+1. On-device test batches awaiting Wisdom (one pass, newest green APK): (a) combined regression #2650/#2651/#2652/#2655/#2656/#2657; (b) multi-cursor Plan A + PerfProbe batch (2c79472 #2661); (c) MD-preview suite T1-T10 (#2664); (d) MCP suite M1-M8 (#2667); (e) P1 debug D1-D5 batch (#2671); (f) P2 debug batch (#2673); (g) CONN-1..8 Phase 1 batch; (h) Phase 2 OAuth2 on-device connect test — all 8 providers registered; Canva authorize owner-account-only until review completes; (i) Phase 3 project-services panel test; (j) NEW: squiggle re-test per above (f148c97); (k) NEW: exit-9 diag capture — paste SESSION FINISHED lines from Output tab when it fires.
+2. Canva review: monitor portal for review outcome; if rejected, fix per Canva feedback and resubmit.
+3. Item 3 remaining: IME emoji phase 2 (read diag logs from on-device emoji tap -> fix per evidence).
+4. Still-pending on-device from #2646: tap-to-open repro, ide open in LOCKED terminal, padlock suite, 5-provider cross-routing, Gemini live send.
+5. Exit-9 batch G items: evidence-first — pending SESSION FINISHED diag output from device (kind + title + lastLine now logged).
+6. Deferred: Phase 4 custom providers; Phase 5 model-ID validation manifest; Ollama re-add as ChatProvider in extensions repo; kls-classpath script; Kotlin stdlib JAR in proot rootfs.
