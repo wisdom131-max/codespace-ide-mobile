@@ -69,7 +69,6 @@ fun InProjectSettingsDialog(
     val textPri  = Color(0xFFE0E0E0)
     val textSec  = Color(0xFF888888)
     val accent   = Color(0xFF4FC3F7)
-    val accentDim = Color(0xFF3794C3)
     val divider  = Color(0xFF333333)
     val activeCatBg = Color(0xFF37373D)
 
@@ -122,18 +121,8 @@ fun InProjectSettingsDialog(
                         }
                     }
                     Spacer(Modifier.width(8.dp))
-                    if (onOpenConnectors != null) {
-                        Row(
-                            Modifier
-                                .background(accentDim, RoundedCornerShape(8.dp))
-                                .clickable { onOpenConnectors() }
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("Connectors Hub", color = textPri, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        }
-                        Spacer(Modifier.width(8.dp))
-                    }
+                    // P54-CONNECTORS: header chip removed — Connectors Hub is now a
+                    // normal list row under its own CONNECTORS category (see renderer).
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Close, null, tint = textSec,
                             modifier = Modifier.size(18.dp))
@@ -406,6 +395,7 @@ fun InProjectSettingsDialog(
 enum class SettingsCategory(val label: String) {
     COMMONLY_USED("Commonly Used"),
     AI_AGENT("AI Agent Flow"),
+    CONNECTORS("Connectors"),
     EDITOR("Editor Features"),
     NOTIFICATIONS("Notifications"),
     TEXT_EDITOR("Text Editor"),
@@ -474,6 +464,9 @@ enum class RowType {
     TERMINAL_INTEGRATED_NOTIFICATIONS_CHECKBOX,
     TERMINAL_COMMANDS_TO_SKIP_SHELL_INPUT,
     EXTENSIONS_IGNORE_RECOMMENDATIONS_CHECKBOX,
+    // ── P54-CONNECTORS: Connectors category rows ──
+    CONNECTORS_HUB,            // opens the Connectors Hub sheet
+    MCP_TOOLS_SECTION,         // MCP / Agent Tools servers section (relocated from Extensions panel)
     TASK_NOTIFY_WINDOW_ON_COMPLETION_CHECKBOX,
     MCP_INDICATOR_CHECKBOX,
 }
@@ -522,6 +515,15 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
     add(SettingsRow("mcp_indicator", SettingsCategory.AI_AGENT, "Show MCP Agent Indicator",
         "Show the MCP status dot + label in the status bar — only appears while an AI agent is actively connected and running",
         RowType.MCP_INDICATOR_CHECKBOX))
+
+    // ── P54-CONNECTORS: Connectors category (Hub relocated from header chip,
+    // MCP/Agent Tools relocated from the Extensions panel) ──
+    add(SettingsRow("connectors_hub", SettingsCategory.CONNECTORS, "Connectors Hub",
+        "Manage GitHub, GitLab, Notion, Jira, Discord, Canva and other service connections",
+        RowType.CONNECTORS_HUB))
+    add(SettingsRow("mcp_agent_tools", SettingsCategory.CONNECTORS, "MCP / Agent Tools",
+        "External stdio MCP servers: add servers, toggle individual tools, refresh",
+        RowType.MCP_TOOLS_SECTION))
 
     FeatureToggleStore.toggles.forEachIndexed { idx, toggle ->
         add(SettingsRow("toggle_$idx", SettingsCategory.EDITOR,
@@ -750,6 +752,7 @@ private fun SettingsRowRenderer(
     textSec: Color,
     surface: Color,
     divider: Color,
+    onOpenConnectors: (() -> Unit)? = null,
 ) {
     // P-SETTINGS-RESTRUCTURE (Item 1): record usage so "Commonly Used" ranking updates.
     // We record on *composition* — the user had to at least see/change the setting for
@@ -854,6 +857,43 @@ private fun SettingsRowRenderer(
             "Show a window notification when a long-running task finishes",
             ProjectSettingsStore.taskNotifyWindowOnCompletion, { ProjectSettingsStore.setTaskNotifyWindowOnCompletion(it) },
             textPri, textSec, divider)
+        // ── P54-CONNECTORS renderers ──
+        RowType.CONNECTORS_HUB -> ConnectorsHubRow(onOpenConnectors, accent, textPri, textSec)
+        RowType.MCP_TOOLS_SECTION -> McpToolsSectionRow()
+    }
+}
+
+// ── P54-CONNECTORS: Connectors Hub action row ────────────────────────────────────
+@Composable
+private fun ConnectorsHubRow(
+    onOpenConnectors: (() -> Unit)?,
+    accent: Color,
+    textPri: Color,
+    textSec: Color,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable { onOpenConnectors?.invoke() }
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Connectors Hub", color = textPri, fontSize = 13.sp)
+            Text("Manage GitHub, GitLab, Notion, Jira, Discord, Canva and other service connections",
+                color = textSec, fontSize = 11.sp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Text("Open", color = accent, fontSize = 12.sp)
+    }
+}
+
+// ── P54-CONNECTORS: MCP / Agent Tools section row (relocated from Extensions panel).
+// McpServersSection is self-contained (no params) and pure-Column based, so it embeds
+// directly as one list item. ─────────────────────────────────────────────────────
+@Composable
+private fun McpToolsSectionRow() {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        com.codespace.ide.ui.panes.McpServersSection()
     }
 }
 

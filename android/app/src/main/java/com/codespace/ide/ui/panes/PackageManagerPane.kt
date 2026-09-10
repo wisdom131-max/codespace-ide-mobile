@@ -524,8 +524,8 @@ internal fun McpPanel() {
             McpStat("Port",          "8765")
         }
 
-        // MCP: external stdio server config UI (new file, single-line call)
-        com.codespace.ide.ui.panes.McpServersSection()
+        // P54-CONNECTORS: MCP servers section relocated to In-Project Settings →
+        // Connectors category (McpToolsSectionRow). Removed from the Extensions panel.
 
         if (!bashrcInstalled) {
             Spacer(Modifier.height(8.dp))

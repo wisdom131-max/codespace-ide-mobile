@@ -1758,6 +1758,15 @@ fun EditorPane(
                         onGoToLineClose = { goToLineOpen = false },
                         onGoToLineOpen = { goToLineOpen = true },
                         onSave = saveCurrentFile,
+                        // P54-BREAKPOINTS: main editor instance was missing breakpoint
+                        // wiring (only the split instance had it) - gutter taps were no-ops.
+                        breakpointLines = fileBreakpoints[active.path] ?: emptySet(),
+                        debugCurrentLine = debugCurrentLine,
+                        onBreakpointToggle = { line ->
+                            val cur = fileBreakpoints[active.path] ?: emptySet()
+                            fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
+                            udm?.toggleBreakpoint(active.path, line)
+                        },
                         initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
                         projectRoot = projectRootPath,

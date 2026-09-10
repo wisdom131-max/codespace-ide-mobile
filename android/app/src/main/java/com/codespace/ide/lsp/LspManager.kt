@@ -1421,6 +1421,13 @@ object LspManager {
             AppOutputLog.log("[LSP] ${language.displayName} server already installed — skipping install", "lsp")
         }
 
+        // P54-DEBUG-DEPS: install debugger dependencies (debugpy for Python,
+        // @vscode/js-debug for JS/TS) in the SAME batch as the language server —
+        // same trigger point (first file open of this language), NOT deferred to
+        // the first debug-button tap. Per-process memo inside DebuggerDependencies
+        // guarantees it never re-checks while a healthy server is being reused.
+        com.codespace.ide.debug.DebuggerDependencies.ensure(context, language)
+
         // R3-KLSP-STDLIB: Ensure Kotlin stdlib JAR + classpath script exist before
         // starting the server. This handles re-download if the JAR was deleted and
         // creates the conditional classpath.sh that provides stdlib for loose .kt files.

@@ -3890,8 +3890,8 @@ private fun buildRunCommand(path: String): String? {
     var activeSession by remember { mutableStateOf(udm.getActiveSession()) }
     // P26-4c: Multi-session — all currently non-stopped sessions
     var allSessions by remember { mutableStateOf(udm.getActiveSessions()) }
-    // P26-4b: Capability negotiation — what this adapter actually supports
-    var caps by remember { mutableStateOf<com.codespace.ide.debug.DAPCapabilities?>(null) }
+    // P54-TOOLBAR-STRIP: caps tracking removed — session controls live ONLY in the
+    // floating DebugToolbarOverlay (VS Code parity: one toolbar, never in the console).
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scope = rememberCoroutineScope()
     // P26-4a: Attach dialog visibility
@@ -3918,8 +3918,7 @@ private fun buildRunCommand(path: String): String? {
         }
         // Refresh multi-session list
         allSessions = udm.getActiveSessions()
-        // Refresh caps for the newly active session
-        caps = activeSession?.id?.let { udm.getAdapterCapabilities(it) }
+        // P54-TOOLBAR-STRIP: caps assignment removed with the console step toolbar
     }
     val outputListener: (String) -> Unit = { msg ->
         messages.add(msg)
@@ -3955,27 +3954,8 @@ private fun buildRunCommand(path: String): String? {
                 }
                 Spacer(Modifier.width(4.dp))
             }
-            // Stop button — only when session active
-            if (activeSession != null) {
-                // P27-AUDIT: Restart button — wired to udm.restartSession()
-                Icon(Icons.Default.Refresh, "Restart", tint = Color(0xFF388A34),
-                    modifier = Modifier.size(16.dp).clickable {
-                        activeSession?.id?.let { sid ->
-                            udm.restartSession(sid)
-                            messages.add("[debug] Restarting session $sid...")
-                        }
-                    })
-                Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.Stop, "Stop", tint = Color(0xFFE53935),
-                    modifier = Modifier.size(16.dp).clickable {
-                        activeSession?.id?.let { udm.stopSession(it) }
-                        activeSession = null
-                        allSessions = udm.getActiveSessions()
-                        caps = null
-                        messages.add("[debug] Session stopped.")
-                    })
-                Spacer(Modifier.width(8.dp))
-            }
+            // P54-TOOLBAR-STRIP: Restart/Stop removed from the console header — the
+            // floating DebugToolbarOverlay owns restart/stop during a session.
             // Run button
             Icon(Icons.Default.PlayArrow, "Run", tint = Color(0xFF4EC9B0),
                 modifier = Modifier.size(16.dp).clickable { onRun() })
@@ -4004,7 +3984,6 @@ private fun buildRunCommand(path: String): String? {
                         modifier = Modifier.clickable {
                             activeSession = session
                             udm.setActiveSession(session.id)
-                            caps = udm.getAdapterCapabilities(session.id)
                         },
                     ) {
                         Text(
@@ -4021,74 +4000,9 @@ private fun buildRunCommand(path: String): String? {
             HorizontalDivider(color = Color(0xFF3C3C3C))
         }
 
-        // ── P26-4b: Capability-aware step toolbar — only when session active ─
-        if (activeSession != null) {
-            // Determine which step controls are supported.
-            // If caps is null (legacy adapter) show all controls as a best-effort fallback.
-            // DAPCapabilities doesn't have explicit step flags, but all adapters that return
-            // capabilities() support the standard step commands (next/stepIn/stepOut).
-            // We hide the entire toolbar only when the session is running (not paused).
-            val isPaused = activeSession?.state == com.codespace.ide.debug.DebugState.PAUSED
-            val sid = activeSession?.id
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF2D2D30))
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                // Continue (Resume)
-                DebugToolbarBtn(
-                    label = "▶",
-                    tooltip = "Continue",
-                    enabled = isPaused && sid != null,
-                    color = Color(0xFF4EC9B0),
-                ) { sid?.let { udm.resumeSession(it) } }
-                // Pause
-                DebugToolbarBtn(
-                    label = "⏸",
-                    tooltip = "Pause",
-                    enabled = activeSession?.state == com.codespace.ide.debug.DebugState.RUNNING && sid != null,
-                    color = Color(0xFFD7BA7D),
-                ) { sid?.let { udm.pauseSession(it) } }
-                Spacer(Modifier.width(4.dp))
-                // Step Over
-                DebugToolbarBtn(
-                    label = "↷",
-                    tooltip = "Step Over",
-                    enabled = isPaused && sid != null,
-                    color = Color(0xFFCCCCCC),
-                ) { sid?.let { udm.stepOver(it) } }
-                // Step Into
-                DebugToolbarBtn(
-                    label = "↓",
-                    tooltip = "Step Into",
-                    enabled = isPaused && sid != null,
-                    color = Color(0xFFCCCCCC),
-                ) { sid?.let { udm.stepInto(it) } }
-                // Step Out
-                DebugToolbarBtn(
-                    label = "↑",
-                    tooltip = "Step Out",
-                    enabled = isPaused && sid != null,
-                    color = Color(0xFFCCCCCC),
-                ) { sid?.let { udm.stepOut(it) } }
-                Spacer(Modifier.weight(1f))
-                // Show adapter name when caps are known
-                if (caps != null) {
-                    Text(
-                        "DAP",
-                        fontSize = 9.sp,
-                        color = Color(0xFF4EC9B0),
-                        modifier = Modifier
-                            .background(Color(0xFF1A3A2A), RoundedCornerShape(3.dp))
-                            .padding(horizontal = 4.dp, vertical = 2.dp),
-                    )
-                }
-            }
-            HorizontalDivider(color = Color(0xFF3C3C3C))
-        }
+        // P54-TOOLBAR-STRIP: the embedded step toolbar (Continue/Pause/Step Over/Into/Out)
+        // was removed — the floating DebugToolbarOverlay is the single session toolbar
+        // (VS Code: debug.toolBarLocation floating/docked-in-Run-view, never in console).
 
         // ── P23-3: Colour-coded output log ─────────────────────────────────
         LazyColumn(Modifier.weight(1f).background(Color(0xFF1E1E1E)).padding(8.dp), state = listState) {
@@ -4144,7 +4058,7 @@ private fun buildRunCommand(path: String): String? {
             onAttached = { sessionId ->
                 allSessions = udm.getActiveSessions()
                 activeSession = udm.getSessionById(sessionId)
-                caps = udm.getAdapterCapabilities(sessionId)
+                // P54-TOOLBAR-STRIP: caps assignment removed with the console step toolbar
                 messages.add("[debug] Attached to process — session $sessionId")
             },
             onAttachFailed = { reason ->
@@ -4152,36 +4066,6 @@ private fun buildRunCommand(path: String): String? {
             },
         )
         }
-    }
-}
-
-/**
- * P26-4b: Small debug toolbar button — label is a unicode symbol, used for step controls.
- * Uses text instead of Material Icons to avoid depending on specific icon availability.
- */
-@Composable
-private fun DebugToolbarBtn(
-    label: String,
-    tooltip: String,
-    enabled: Boolean,
-    color: Color,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .size(28.dp)
-            .background(
-                if (enabled) Color(0xFF37373D) else Color.Transparent,
-                RoundedCornerShape(4.dp),
-            )
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            label,
-            fontSize = 14.sp,
-            color = if (enabled) color else Color(0xFF555555),
-        )
     }
 }
 

@@ -107,11 +107,28 @@ class PythonDAPAdapter : DebugAdapter {
                !output.contains("Error")
     }
 
+    /** P54-DEBUGPY: tail of the last install attempt, surfaced to the debug console on failure. */
+    @Volatile var lastInstallOutput: String = ""
+
+    /**
+     * P54-DEBUGPY: LSP-style self-heal install chain (same pattern as LspManager installs):
+     * dpkg shim preload, stale lock cleanup, dpkg repair, pip presence check with apt
+     * fallback install, pip3 -> python3 -m pip fallback, 300s timeout, output surfaced
+     * (logToOutput=true) so the real failure reason is visible in the Output/Debug panels.
+     */
     fun installDebugpy(context: Context): Boolean {
-        Log.d(TAG, "Installing debugpy...")
+        Log.d(TAG, "Installing debugpy (self-heal chain)...")
         val result = ProotInstaller.execOnce(context,
-            "pip3 install --break-system-packages debugpy", timeoutSeconds = 120)
+            "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
+            "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
+            "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
+            "dpkg --configure -a 2>/dev/null; " +
+            "command -v pip3 >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq python3-pip); " +
+            "pip3 install --break-system-packages debugpy 2>&1 || " +
+            "python3 -m pip install --break-system-packages debugpy 2>&1",
+            timeoutSeconds = 300, logToOutput = true)
         Log.d(TAG, "debugpy install result: $result")
+        lastInstallOutput = result
         return isDebugpyInstalled(context)
     }
 
@@ -129,9 +146,12 @@ class PythonDAPAdapter : DebugAdapter {
 
         // 1. Ensure debugpy is installed
         if (!isDebugpyInstalled(context)) {
-            onOutput("[debugpy] Not installed — installing now (this may take ~30s)...\n")
+            onOutput("[debugpy] Not installed — installing now (this may take up to 5 min)...\n")
             if (!installDebugpy(context)) {
-                onOutput("[debugpy] Installation failed. Falling back to legacy pdb.\n")
+                // P54-DEBUGPY: no silent pdb fallback exists — surface the real output tail.
+                onOutput("[debugpy] Installation FAILED. Install output (last lines):\n")
+                onOutput(lastInstallOutput.lines().takeLast(20).joinToString("\n") + "\n")
+                onOutput("[debugpy] Debug start aborted. Fix the issue above and press Run again.\n")
                 return false
             }
             onOutput("[debugpy] Installed successfully.\n")
