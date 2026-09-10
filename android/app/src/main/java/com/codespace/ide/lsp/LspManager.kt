@@ -1558,6 +1558,13 @@ object LspManager {
             // Phase P: Feed into central DiagnosticManager
             val filePath = uri.removePrefix("file://")
             val converted = DiagnosticConverter.fromLsp(diags, uri, filePath, language.name.lowercase())
+            // SQUIGGLE-DIAG (2026-09-10): raw-in vs converted-out — if the server sent
+            // N diagnostics but converted==0, the drop is in THIS converter; if raw N
+            // itself never appears, the server never published them. Pairs with the
+            // EditorPane-side handler FIRED/DROPPED logs.
+            if (diags.length() > 0) {
+                AppOutputLog.log("[SQUIGGLE-DIAG] RX raw=" + diags.length() + " converted=" + converted.size + " uri=" + uri.substringAfterLast('/'), "lsp")
+            }
             if (converted.isEmpty()) {
                 DiagnosticManager.clearDiagnostics(DiagnosticManager.DiagnosticSource.LSP, language.name.lowercase(), uri)
             } else {

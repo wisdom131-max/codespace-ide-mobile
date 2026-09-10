@@ -92,6 +92,8 @@ class PythonDAPAdapter : DebugAdapter {
                 allOk = false
             } else {
                 AppOutputLog.log("[DAP] setBreakpoints OK for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) set", "lsp")
+                // [BAND-DIAG]: the exact 1-based lines sent to the server.
+                AppOutputLog.log("[BAND-DIAG] sentLines1=" + bps.joinToString(",") { (it.line + 1).toString() } + " file=" + filePath.takeLast(40), "lsp")
             }
         }
         return allOk
@@ -477,6 +479,12 @@ class PythonDAPAdapter : DebugAdapter {
         val frameId = f.optInt("id", 0)
         val src = f.optJSONObject("source")
         val path = src?.optString("path", "") ?: ""
+        // [BAND-DIAG]: log the RAW DAP 1-based line exactly as the server sent it,
+        // before the 0-based conversion — pairs with [BAND-DIAG] toggle/paused logs
+        // to pinpoint any remaining off-by-one in the band render chain.
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[BAND-DIAG] dapFrame raw: name=" + f.optString("name", "") + " rawLine1=" + f.optInt("line", 0) +
+            " file=" + path.takeLast(50), "lsp")
         return DebugStackFrame(
             function = f.optString("name", "<unknown>"),
             file     = path,

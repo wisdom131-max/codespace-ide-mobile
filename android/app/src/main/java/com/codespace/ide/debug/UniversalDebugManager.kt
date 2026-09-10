@@ -6,6 +6,11 @@ import com.codespace.ide.domain.Language
 import com.codespace.ide.editor.FileIndexer
 import com.codespace.ide.diagnostics.AppOutputLog
 import com.codespace.ide.data.NotificationStore
+import android.os.Handler
+import android.os.Looper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -338,6 +343,27 @@ object UniversalDebugManager {
      */
     fun isDebuggable(language: Language, filePath: String): Boolean {
         return selectProvider(language, filePath) != null
+    }
+
+    /**
+     * DEBUG-ANR FIX (2026-09-10): async front-door for startDebug. The Python DAP
+     * adapter's launch() runs a 10s `debugpy --version` proot check (and a possible
+     * 300s install) — calling that on the MAIN thread from the Run/Debug button
+     * froze the UI and Android killed the whole app (the "app closes when tapping
+     * Debug" report). Callers get the session id (or null) back on the main thread
+     * via onResult; output continues to stream through the normal onOutput path.
+     */
+    fun startDebugAsync(
+        language: Language,
+        filePath: String,
+        projectRoot: String? = null,
+        context: Context? = null,
+        onResult: (String?) -> Unit,
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val sessionId = startDebug(language, filePath, projectRoot, context)
+            Handler(Looper.getMainLooper()).post { onResult(sessionId) }
+        }
     }
 
     /**

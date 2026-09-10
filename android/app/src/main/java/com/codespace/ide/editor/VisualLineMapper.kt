@@ -176,6 +176,12 @@ class VisualLineMapper(
      * Returns -1 if the document line doesn't have a visual line (shouldn't happen).
      */
     fun docToVisualLine(docLine: Int): Int {
+        // DEBUG-CRASH FIX (2026-09-10): when the document is EMPTY (lineCount == 0),
+        // coerceIn(0, -1) itself throws IllegalArgumentException — this fired from the
+        // debug-band render path when a paused frame set debugCurrentLine with an empty
+        // or not-yet-laid-out editor open. Return -1 (unknown) — callers must treat -1
+        // as "do not render" and never feed it to getLineTop().
+        if (lineCount <= 0) return -1
         val safeLine = docLine.coerceIn(0, lineCount - 1)
         if (safeLine in foldedLineIndices) {
             // Find the fold placeholder for this folded block

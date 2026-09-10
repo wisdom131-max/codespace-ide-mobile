@@ -170,6 +170,38 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     }
     override fun onColorsChanged(session: TerminalSession) {}
     override fun setTerminalShellPid(session: TerminalSession, pid: Int) {
+        // EXIT-9 DIAG (2026-09-10): memory pressure is RULED OUT by on-device evidence
+        // (exit=-9 signal-9 with healthy sysAvailMb). Remaining suspect: Android 12+
+        // PHANTOM PROCESS KILLER — a COUNT-based SIGKILL (default limit: 32 phantom
+        // child processes per app) that fires exactly when a NEW child is spawned —
+        // i.e. right at "Launching proot...". Log the app's live direct-child count
+        // (what PPK counts toward its limit), the new child's oom_score_adj, and its
+        // cgroup, so the next exit-9 event shows whether we were at/near the limit.
+        try {
+            val myPid = android.os.Process.myPid()
+            var childCount = 0
+            val childNames = StringBuilder()
+            val procDir = java.io.File("/proc")
+            procDir.listFiles()?.forEach { f ->
+                val stat = runCatching { java.io.File(f, "stat").readText() }.getOrNull() ?: return@forEach
+                // stat: pid (comm) state ppid ...
+                val ppid = runCatching { stat.substringAfterLast(") ").split(" ")[1].toInt() }.getOrNull() ?: return@forEach
+                if (ppid == myPid) {
+                    childCount++
+                    if (childNames.length < 300) {
+                        val comm = runCatching { java.io.File(f, "comm").readText().trim() }.getOrDefault("?")
+                        childNames.append(comm).append(' ')
+                    }
+                }
+            }
+            val oomAdj = runCatching { java.io.File("/proc/$pid/oom_score_adj").readText().trim() }.getOrDefault("?")
+            val cgroup = runCatching { java.io.File("/proc/$pid/cgroup").readText().trim() }.getOrDefault("?")
+            val diag = "[EXIT9-PHANTOM-DIAG] newChildPid=$pid oomAdj=$oomAdj directChildren=$childCount cgroup=$cgroup children: $childNames"
+            android.util.Log.d("TerminalSession", diag)
+            com.codespace.ide.diagnostics.AppOutputLog.log(diag, "terminal")
+        } catch (e: Exception) {
+            android.util.Log.d("TerminalSession", "EXIT9-PHANTOM-DIAG failed: ${e.message}")
+        }
         // Move child process into foreground cgroup — PREVENTS phantom process killer (signal 31).
         // Android 12+ LMKD/phantom process killer kills child processes whose parent is NOT
         // a foreground service. setProcessGroup(pid, THREAD_GROUP_FOREGROUND) re-assigns

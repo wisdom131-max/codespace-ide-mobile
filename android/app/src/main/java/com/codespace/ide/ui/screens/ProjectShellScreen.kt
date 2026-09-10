@@ -1133,14 +1133,16 @@ fun ProjectShellScreen(
                 val filePath = activeEditorTab ?: ""
                 if (filePath.isNotBlank()) {
                     val lang = com.codespace.ide.domain.Language.fromPath(filePath)
-                    val udm = com.codespace.ide.debug.UniversalDebugManager
-                    val sessionId = udm.startDebug(lang, filePath, null, context)
-                    if (sessionId != null) {
-                        debugMessages.add("[debug] Session started: ${lang.displayName} — ${filePath.substringAfterLast('/')}")
-                        showNotification("Debugging ${filePath.substringAfterLast('/')}", "info")
-                    } else {
-                        debugMessages.add("[debug] No debugger available for ${lang.displayName}")
-                        showNotification("No debugger for ${lang.displayName}", "error")
+                    // DEBUG-ANR FIX: startDebug blocks up to 10s+ on proot (debugpy check);
+                    // running it on the main thread caused ANR + full app kill.
+                    com.codespace.ide.debug.UniversalDebugManager.startDebugAsync(lang, filePath, null, context) { sessionId ->
+                        if (sessionId != null) {
+                            debugMessages.add("[debug] Session started: ${lang.displayName} — ${filePath.substringAfterLast('/')}")
+                            showNotification("Debugging ${filePath.substringAfterLast('/')}", "info")
+                        } else {
+                            debugMessages.add("[debug] No debugger available for ${lang.displayName}")
+                            showNotification("No debugger for ${lang.displayName}", "error")
+                        }
                     }
                 } else {
                     debugMessages.add("[debug] No file open — open a file first, then press Run.")
@@ -3559,8 +3561,8 @@ private fun PssBottomPanelContent(
                     } else {
                         // P25-DEBUG: Start real debug session via UDM
                         val lang = Language.fromPath(path)
-                        val udm = com.codespace.ide.debug.UniversalDebugManager
-                        val sessionId = udm.startDebug(lang, path, null, context)
+                        // DEBUG-ANR FIX: async — startDebug blocks up to 10s+ on proot.
+                        com.codespace.ide.debug.UniversalDebugManager.startDebugAsync(lang, path, null, context) { sessionId ->
                         if (sessionId != null) {
                             debugMessages.add("[debug] Session started: ${lang.displayName} — ${path.substringAfterLast('/')}")
                         } else {
@@ -3577,6 +3579,7 @@ private fun PssBottomPanelContent(
                                 else -> "Don't know how to run this file type."
                             }
                             debugMessages.add("[debug] " + alternatives)
+                        }
                         }
                     }
                 },

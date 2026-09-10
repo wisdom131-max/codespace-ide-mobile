@@ -2900,7 +2900,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 // GUTTER-ALIGN FIX: add the sticky pad the scrolled Row applies so
                 // inlay hints follow the shifted text (the doc-to-visual mapping via
                 // visualLineMapper was already correct here).
-                val yOffset = if (layoutInlay != null && displayIdx < layoutInlay.lineCount) {
+                val yOffset = if (layoutInlay != null && displayIdx >= 0 && displayIdx < layoutInlay.lineCount) {
                     ((layoutInlay.getLineTop(displayIdx) - vScroll.value + if (stickyPadActive) stickyPadPx else 0f) / density.density).dp
                 } else {
                     lineHeightDpInlay * displayIdx - vScrollDp.dp + (if (stickyPadActive) stickyPadDp else 0.dp)
@@ -2980,7 +2980,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val visualLineDbg = visualLineMapper.docToVisualLine(debugCurrentLine - 1)
             val layoutDbg = textLayoutResult
             val densityDbg = androidx.compose.ui.platform.LocalDensity.current.density
-            val topDbg = if (layoutDbg != null && visualLineDbg < layoutDbg.lineCount) {
+            val topDbg = if (layoutDbg != null && visualLineDbg >= 0 && visualLineDbg < layoutDbg.lineCount) {
                 ((layoutDbg.getLineTop(visualLineDbg) - vScroll.value).coerceAtLeast(0f)) / densityDbg
             } else {
                 ((debugCurrentLine - 1) * lineHeightDp.value - vScrollDp).coerceAtLeast(0f)
@@ -3004,7 +3004,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val scrollOffsetPxHl = vScrollDp
             val layoutHl = textLayoutResult
             val visualLineHl = visualLineMapper.docToVisualLine(highlightTargetLine - 1)
-            val topDpHl = if (layoutHl != null && visualLineHl < layoutHl.lineCount) {
+            val topDpHl = if (layoutHl != null && visualLineHl >= 0 && visualLineHl < layoutHl.lineCount) {
                 ((layoutHl.getLineTop(visualLineHl) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
             } else {
                 ((highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl).coerceAtLeast(0f)
@@ -3047,12 +3047,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             lspHighlightLines.forEach { (startLine, endLine) ->
                 val visualStartDH = visualLineMapper.docToVisualLine(startLine)
                 val visualEndDH = visualLineMapper.docToVisualLine(endLine)
-                val topDp = if (layoutDH != null && visualStartDH < layoutDH.lineCount) {
+                val topDp = if (layoutDH != null && visualStartDH >= 0 && visualStartDH < layoutDH.lineCount) {
                     ((layoutDH.getLineTop(visualStartDH) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
                 } else {
                     (startLine * lineHeightPxHighlight - scrollOffsetPx).coerceAtLeast(0f)
                 }
-                val heightDp = if (layoutDH != null && visualEndDH < layoutDH.lineCount && visualEndDH >= visualStartDH) {
+                val heightDp = if (layoutDH != null && visualEndDH >= 0 && visualEndDH < layoutDH.lineCount && visualEndDH >= visualStartDH) {
                     ((layoutDH.getLineBottom(visualEndDH) - layoutDH.getLineTop(visualStartDH)) / androidx.compose.ui.platform.LocalDensity.current.density).coerceAtLeast(0f)
                 } else {
                     ((endLine - startLine + 1) * lineHeightPxHighlight).coerceAtLeast(0f)
@@ -3094,7 +3094,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val layoutCS = textLayoutResult
                 val visualLineCS = visualLineMapper.docToVisualLine(startLine)
                 val startOffsetCS = positionMapper.lineColumnToOffset(startLine, startChar)
-                val swatchTopDp = if (layoutCS != null && visualLineCS < layoutCS.lineCount) {
+                val swatchTopDp = if (layoutCS != null && visualLineCS >= 0 && visualLineCS < layoutCS.lineCount) {
                     ((layoutCS.getLineTop(visualLineCS) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
                 } else {
                     startLine * lineHeightPxCS - vScrollDp
@@ -3150,7 +3150,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 // BUG-3 FIX: subtract scroll offset
                 val layoutCL = textLayoutResult
                 val visualLineCL = visualLineMapper.docToVisualLine(startLine)
-                val topDpCL = if (layoutCL != null && visualLineCL < layoutCL.lineCount) {
+                val topDpCL = if (layoutCL != null && visualLineCL >= 0 && visualLineCL < layoutCL.lineCount) {
                     ((layoutCL.getLineTop(visualLineCL) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
                 } else {
                     (startLine * lineHeightPxCL - vScrollDp).coerceAtLeast(0f)
@@ -3252,7 +3252,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 val visualLineDL = visualLineMapper.docToVisualLine(startLine)
                 val startOffsetDL = positionMapper.lineColumnToOffset(startLine, startChar)
                 val endOffsetDL = positionMapper.lineColumnToOffset(startLine, endChar)
-                val topDpDL = if (layoutDL != null && visualLineDL < layoutDL.lineCount) {
+                val topDpDL = if (layoutDL != null && visualLineDL >= 0 && visualLineDL < layoutDL.lineCount) {
                     ((layoutDL.getLineTop(visualLineDL) - vScroll.value).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
                 } else {
                     (startLine * lineHeightPxDL - vScrollDp).coerceAtLeast(0f)
@@ -4625,7 +4625,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             if (popupOffsetX + popupWidthPx > screenWidthPx) {
                 popupOffsetX = (screenWidthPx - popupWidthPx).roundToInt().coerceAtLeast(0)
             }
-            var popupOffsetY = if (layoutLI != null && visualLineLI < layoutLI.lineCount) {
+            var popupOffsetY = if (layoutLI != null && visualLineLI >= 0 && visualLineLI < layoutLI.lineCount) {
                 (layoutLI.getLineBottom(visualLineLI) - vScroll.value).roundToInt().coerceAtLeast(0)
             } else {
                 ((cursorLine + 1) * lineHeightPx - vScroll.value).roundToInt().coerceAtLeast(0)
@@ -4633,7 +4633,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val availableHeightPxLI = with(screenDensity) { availableHeightDp.dp.toPx() }
             val popupMaxHeightPx = with(screenDensity) { 220.dp.toPx() }
             if (popupOffsetY + popupMaxHeightPx > availableHeightPxLI) {
-                popupOffsetY = if (layoutLI != null && visualLineLI < layoutLI.lineCount) {
+                popupOffsetY = if (layoutLI != null && visualLineLI >= 0 && visualLineLI < layoutLI.lineCount) {
                     (layoutLI.getLineTop(visualLineLI) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)
                 } else {
                     ((cursorLine * lineHeightPx) - vScroll.value - popupMaxHeightPx).roundToInt().coerceAtLeast(0)

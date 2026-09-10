@@ -22,6 +22,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import com.codespace.ide.data.ConnectorsApiClient
 import com.codespace.ide.data.SecureTokenStore
 import kotlinx.coroutines.Dispatchers
@@ -80,25 +85,57 @@ internal fun ConnectorsHubSheet(
             .background(Color(0x88000000))
             .clickable { onDismiss() }
     ) {
+        // Bug-2 fix (2026-09-10): cap the sheet at 85% of screen height —
+        // previously the Card wrapped ALL connector rows and any row past the
+        // screen edge was clipped and unreachable (no scroll anywhere).
+        val sheetMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.85f).dp
         Card(
             Modifier
                 .align(Alignment.BottomStart)
                 .padding(bottom = 0.dp)
                 .fillMaxWidth()
+                .heightIn(max = sheetMaxHeight)
                 .clickable(onClick = {}), // eat clicks so card doesn't dismiss
             shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
             colors = CardDefaults.cardColors(containerColor = MenuBg),
             elevation = CardDefaults.cardElevation(12.dp),
         ) {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                // Handle bar
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                // Handle bar — P54 fix (2026-09-10): was a purely decorative Box.
+                // Now supports the standard bottom-sheet gestures: drag DOWN past
+                // ~56dp (or tap the grab area) dismisses the sheet.
+                val density = androidx.compose.ui.platform.LocalDensity.current
                 Box(
                     Modifier
                         .align(Alignment.CenterHorizontally)
-                        .width(40.dp)
-                        .height(4.dp)
-                        .background(Color(0xFF555555), RoundedCornerShape(2.dp))
-                )
+                        .fillMaxWidth()
+                        .height(24.dp)
+                        .pointerInput(Unit) {
+                            var dragAccumPx = 0f
+                            val dismissThresholdPx = with(density) { 56.dp.toPx() }
+                            detectVerticalDragGestures(
+                                onDragStart = { dragAccumPx = 0f },
+                                onDragEnd = {
+                                    if (dragAccumPx >= dismissThresholdPx) onDismiss()
+                                },
+                                onDragCancel = { },
+                            ) { change, dragAmount ->
+                                change.consume()
+                                if (dragAmount > 0f) dragAccumPx += dragAmount else dragAccumPx = 0f
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            androidx.compose.foundation.gestures.detectTapGestures { onDismiss() }
+                        }
+                ) {
+                    Box(
+                        Modifier
+                            .align(Alignment.Center)
+                            .width(40.dp)
+                            .height(4.dp)
+                            .background(Color(0xFF555555), RoundedCornerShape(2.dp))
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {

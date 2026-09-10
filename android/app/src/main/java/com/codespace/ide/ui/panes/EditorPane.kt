@@ -461,7 +461,27 @@ fun EditorPane(
     LaunchedEffect(udm) {
         udm?.addOnPausedListener { stack, _ ->
             val activeFrame = stack.firstOrNull { it.active }
-            debugCurrentLine = (activeFrame?.line ?: stack.firstOrNull()?.line ?: -1) + 1
+            // DEBUG-CRASH FIX (2026-09-10): previously ANY paused event set
+            // debugCurrentLine even when the paused frame was in a DIFFERENT file
+            // (or an empty editor was open) — the CodeEditor band then rendered with
+            // an out-of-range/empty layout and crashed the whole app via
+            // getLineTop(-1). Now: only show the band when the paused frame's file
+            // matches the file in THIS editor; otherwise hide it (0).
+            val frameFile = activeFrame?.file ?: stack.firstOrNull()?.file ?: ""
+            val frameLine = activeFrame?.line ?: stack.firstOrNull()?.line ?: -1
+            val frameName = frameFile.substringAfterLast('/')
+            val activeTab = tabs.firstOrNull { it.id == activeId }
+            val editorName = activeTab?.path?.substringAfterLast('/') ?: ""
+            val matches = frameName.isNotEmpty() && editorName.isNotEmpty() && frameName == editorName
+            debugCurrentLine = if (matches) frameLine + 1 else 0
+            // [BAND-DIAG]: full off-by-one evidence chain — the tapped gutter line,
+            // the DAP frame line (0-based, already converted by parseFrame), the
+            // resulting debugCurrentLine, and the file-match decision. One paused
+            // event now shows exactly which hop is off if the band mis-renders.
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[BAND-DIAG] paused: frameFile=" + frameFile.takeLast(60) +
+                " frameLine0=" + frameLine + " debugCurrentLine=" + debugCurrentLine +
+                " editorFile=" + editorName + " match=" + matches, "lsp")
         }
     }
     // P26-1: LSP Document Highlight — auto-highlight all occurrences of symbol under cursor
@@ -1291,7 +1311,13 @@ fun EditorPane(
                     s.state == com.codespace.ide.debug.DebugState.CRASHED ||
                     s.state == com.codespace.ide.debug.DebugState.FAILED ||
                     s.state == com.codespace.ide.debug.DebugState.ERROR
-                ) debugHoverValue = null
+                ) {
+                    debugHoverValue = null
+                    // DEBUG-CRASH FIX (2026-09-10): clear the debug band the moment
+                    // the session ends — a stale debugCurrentLine pointing at a file
+                    // that is no longer open (or an empty editor) was a crash path.
+                    debugCurrentLine = 0
+                }
             }
             com.codespace.ide.debug.UniversalDebugManager.addOnSessionStateChangedListener(clearListener)
             onDispose {
@@ -1692,6 +1718,9 @@ fun EditorPane(
                             val cur = fileBreakpoints[active.path] ?: emptySet()
                             fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
                             udm?.toggleBreakpoint(active.path, line)
+                            // [BAND-DIAG]: 0-based gutter line as tapped and stored.
+                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                "[BAND-DIAG] toggle: gutterLine0=" + line + " file=" + active.path.takeLast(40), "lsp")
                         },
                         projectRoot = projectRootPath,
                         currentFilePath = active.path,
@@ -1789,6 +1818,9 @@ fun EditorPane(
                             val cur = fileBreakpoints[active.path] ?: emptySet()
                             fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
                             udm?.toggleBreakpoint(active.path, line)
+                            // [BAND-DIAG]: 0-based gutter line as tapped and stored.
+                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                "[BAND-DIAG] toggle: gutterLine0=" + line + " file=" + active.path.takeLast(40), "lsp")
                         },
                         initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },

@@ -260,7 +260,7 @@ fun InProjectSettingsDialog(
                                         lastCategory = row.category
                                     }
                                     item(key = "p_${row.id}") {
-                                        SettingsRowRenderer(row, accent, textPri, textSec, surface, divider)
+                                        SettingsRowRenderer(row, accent, textPri, textSec, surface, divider, onOpenConnectors)
                                     }
                                 }
                             }
@@ -377,7 +377,7 @@ fun InProjectSettingsDialog(
                                         lastCategory = row.category
                                     }
                                     item(key = "l_${row.id}") {
-                                        SettingsRowRenderer(row, accent, textPri, textSec, surface, divider)
+                                        SettingsRowRenderer(row, accent, textPri, textSec, surface, divider, onOpenConnectors)
                                     }
                                 }
                             }
