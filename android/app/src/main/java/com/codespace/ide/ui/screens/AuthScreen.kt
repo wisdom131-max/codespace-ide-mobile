@@ -32,9 +32,46 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 private const val WEB_CLIENT_ID =
     "872673459882-v8qfuree46s2c3rs4lsrq6psf8alads1.apps.googleusercontent.com"
+
+private const val AUTH_API_BASE = "https://codespace-ide-backend.onrender.com/api/v1"
+private val AUTH_JSON_MEDIA = "application/json".toMediaType()
+private val authHttpClient by lazy {
+    OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+}
+
+/** POST /auth/google — exchanges a Firebase ID token for a real backend JWT pair.
+ *  Throws on any non-2xx or malformed response (caller treats as "backend unavailable"). */
+private data class BackendAuthTokens(val accessToken: String, val refreshToken: String, val role: String)
+
+private fun exchangeFirebaseTokenForBackendJwt(firebaseIdToken: String): BackendAuthTokens {
+    val body = JSONObject().put("firebaseIdToken", firebaseIdToken).toString()
+        .toRequestBody(AUTH_JSON_MEDIA)
+    val req = Request.Builder().url("$AUTH_API_BASE/auth/google").post(body).build()
+    authHttpClient.newCall(req).execute().use { resp ->
+        val bodyStr = resp.body?.string().orEmpty()
+        if (!resp.isSuccessful) error("auth/google HTTP ${resp.code}: ${bodyStr.take(200)}")
+        val o = JSONObject(bodyStr)
+        return BackendAuthTokens(
+            accessToken  = o.getString("accessToken"),
+            refreshToken = o.getString("refreshToken"),
+            role         = o.optString("role", "owner"),
+        )
+    }
+}
 
 data class AuthResult(
     val accessToken: String,
@@ -89,21 +126,47 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
                 ?.getIdToken(false)?.await()?.token
                 ?: throw Exception("Could not get Firebase ID token")
 
-            // ── LOCAL-FIRST AUTH (no backend needed) ─────────────────────────
-            // Railway backend is offline (free trial ended). We use the Firebase
-            // ID token directly as both access and refresh token. The app works
-            // fully offline:
-            // - Projects are stored locally (cloud sync fails gracefully)
-            // - Connectors are placeholder (fail gracefully)
-            // - GitHub auth uses direct API calls (no backend needed)
-            // Firebase ID tokens last 1 hour and auto-refresh via FirebaseAuth.
-            onAuthenticated(
-                AuthResult(
-                    accessToken  = firebaseIdToken,
-                    refreshToken = firebaseAuth.currentUser?.getIdToken(true)?.await()?.token ?: firebaseIdToken,
-                    role         = "owner",
+            // FIX (Batch H 401 root cause, 2026-09-10): the OLD "local-first" comment
+            // below was written when the Render backend was believed offline (Railway
+            // trial ended). It is NOT offline anymore (migrated to Render, confirmed
+            // live via /health). Using the raw Firebase ID token as both accessToken
+            // AND refreshToken meant the Connectors Hub (and every other backend-JWT
+            // call) always got Unauthorized: the backend's JwtStrategy only verifies
+            // tokens signed with JWT_SECRET (its own auth.service.issueTokens output),
+            // never raw Firebase ID tokens. The 401-retry "refresh" fix on
+            // ConnectorsApiClient could never help because the STORED refresh token
+            // was never a real backend refresh token either — POST /auth/refresh
+            // would 401 on it too (not found in refresh_tokens table).
+            // REAL FIX: exchange the Firebase ID token for a real backend JWT pair via
+            // POST /auth/google (already live and verified: returns 401 "Invalid
+            // Firebase ID token" for garbage input, so Firebase Admin is configured
+            // correctly on Render — a REAL token will succeed).
+            val backendTokens = try {
+                withContext(Dispatchers.IO) { exchangeFirebaseTokenForBackendJwt(firebaseIdToken) }
+            } catch (_: Exception) { null }
+
+            if (backendTokens != null) {
+                onAuthenticated(
+                    AuthResult(
+                        accessToken  = backendTokens.accessToken,
+                        refreshToken = backendTokens.refreshToken,
+                        role         = backendTokens.role,
+                    )
                 )
-            )
+            } else {
+                // Backend unreachable (rare — e.g. mobile data drop mid-login). Fall back
+                // to the Firebase token so the user isn't hard-locked-out of the app; the
+                // Connectors Hub will show its existing "sign in first" error until the
+                // NEXT successful login exchanges a real backend pair. Projects/editor/
+                // terminal all work fine on this fallback since they don't call the backend.
+                onAuthenticated(
+                    AuthResult(
+                        accessToken  = firebaseIdToken,
+                        refreshToken = firebaseAuth.currentUser?.getIdToken(true)?.await()?.token ?: firebaseIdToken,
+                        role         = "owner",
+                    )
+                )
+            }
         } catch (e: GetCredentialException) {
             error = "Sign-in cancelled. Try again."
         } catch (e: Exception) {

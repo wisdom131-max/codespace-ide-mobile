@@ -859,6 +859,37 @@ internal fun TerminalPane(
                     "loader=${loaderBin.exists()} talloc=${tallocBin.exists()} shmem=${shmemBin.exists()} " +
                     "rootfs=${rootfsDir.absolutePath} bash=${bashBin.exists()}"
                 )
+                // EXIT-9-MEM-DIAG (2026-09-10): on-device evidence now shows exit=-9
+                // SIGNAL-DEATH signal=9 (lmkd/OOM kill) firing right at "Launching proot...",
+                // ruling out the earlier useradd/profile.d exit-code-9 theory entirely.
+                // Log real memory numbers at the exact moment of the kill window — both
+                // system-wide (ActivityManager.MemoryInfo, what lmkd itself watches) and
+                // this app's own process (Debug.MemoryInfo / Runtime), so we know whether
+                // it's overall device pressure or this app's own footprint before proot
+                // even starts. TECNO KL4 is ~2.8GB total RAM — a device this size can be
+                // sitting at <150MB free after Android + other apps before we launch
+                // anything, which is a fundamentally different problem than a leak.
+                try {
+                    val am = ctx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                    val mi = android.app.ActivityManager.MemoryInfo()
+                    am.getMemoryInfo(mi)
+                    val pid = android.os.Process.myPid()
+                    val procMemInfo = am.getProcessMemoryInfo(intArrayOf(pid)).firstOrNull()
+                    val ourPssMb = (procMemInfo?.totalPss ?: 0) / 1024
+                    val runtime = Runtime.getRuntime()
+                    val jvmUsedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
+                    val jvmMaxMb = runtime.maxMemory() / (1024 * 1024)
+                    val diagLine = "[EXIT9-MEM-DIAG] pre-launch: sysAvailMb=" + (mi.availMem / (1024 * 1024)) +
+                        " sysTotalMb=" + (mi.totalMem / (1024 * 1024)) +
+                        " sysLowMemory=" + mi.lowMemory +
+                        " sysThresholdMb=" + (mi.threshold / (1024 * 1024)) +
+                        " ourProcessPssMb=" + ourPssMb +
+                        " jvmUsedMb=" + jvmUsedMb + "/" + jvmMaxMb
+                    android.util.Log.d("TerminalPane", diagLine)
+                    com.codespace.ide.diagnostics.AppOutputLog.log(diagLine, "terminal")
+                } catch (e: Exception) {
+                    android.util.Log.d("TerminalPane", "EXIT9-MEM-DIAG failed: ${e.message}")
+                }
                 writeToDisplay(progressSession, "[Ubuntu] Launching proot...\r\n\r\n")
             } finally {
                 // Do NOT stop TerminalService here — it must stay alive for the proot session.

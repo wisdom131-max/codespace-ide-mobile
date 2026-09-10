@@ -207,7 +207,17 @@ internal fun McpServersSection() {
                         checkRuntimes()
                     }
                 },
-                onExpand = { expanded = if (expanded == cfg.name) null else cfg.name },
+                onExpand = {
+                    // MCP-ROW-DIAG (2026-09-10): row reported unresponsive after Add on-device.
+                    // Log every tap so the next test tells us whether onExpand is even firing —
+                    // if this line never appears in Output/lsp after a tap, the touch event
+                    // isn't reaching this handler at all (layout/overlay issue upstream);
+                    // if it DOES appear but the tool list still doesn't show, the bug is in
+                    // the expanded-content render or cachedToolsFor(cfg.name) below.
+                    android.util.Log.d("McpServersSection", "onExpand tapped for '${cfg.name}', current expanded='$expanded'")
+                    com.codespace.ide.diagnostics.AppOutputLog.log("[MCP-ROW-DIAG] tap fired for '" + cfg.name + "', expanded was '" + expanded + "' -> now '" + (if (expanded == cfg.name) null else cfg.name) + "'", "lsp")
+                    expanded = if (expanded == cfg.name) null else cfg.name
+                },
                 onRemove = {
                     scope.launch(Dispatchers.IO) {
                         McpClientManager.removeServer(context, cfg.name)

@@ -2968,8 +2968,23 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         ExtraCursorOverlay(extraCursors, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, positionMapper, colors, textLayoutResult, vScroll.value)
 
         // P54: Debug current-line background highlight (yellow tint, like VS Code)
+        // FIX (2026-09-10, screenshot-confirmed off-by-one): this used a naive fixed-grid
+        // formula (debugCurrentLine-1)*lineHeight that assumes every DOCUMENT line renders
+        // as exactly one VISUAL row. Any folded region or wrapped long line above the
+        // debug line breaks that assumption and the band lands one (or more) rows off —
+        // exactly the "highlight one line above the breakpoint" bug reported on-device.
+        // Same root-cause class as the earlier lightbulb-drift fix; now uses the identical
+        // visualLineMapper + textLayoutResult approach already proven correct for
+        // highlightTargetLine below (falls back to the old grid math only pre-layout).
         if (debugCurrentLine > 0) {
-            val topDbg = ((debugCurrentLine - 1) * lineHeightDp.value - vScrollDp).coerceAtLeast(0f)
+            val visualLineDbg = visualLineMapper.docToVisualLine(debugCurrentLine - 1)
+            val layoutDbg = textLayoutResult
+            val densityDbg = androidx.compose.ui.platform.LocalDensity.current.density
+            val topDbg = if (layoutDbg != null && visualLineDbg < layoutDbg.lineCount) {
+                ((layoutDbg.getLineTop(visualLineDbg) - vScroll.value).coerceAtLeast(0f)) / densityDbg
+            } else {
+                ((debugCurrentLine - 1) * lineHeightDp.value - vScrollDp).coerceAtLeast(0f)
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
