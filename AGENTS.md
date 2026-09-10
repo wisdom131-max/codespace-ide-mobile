@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 52cfcfa |
-| CI build | #2690 GREEN (2026-09-10) |
+| Latest commit | 3d5e98b |
+| CI build | #2692 GREEN (2026-09-10) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -2111,3 +2111,51 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 7. Debugger P3 (run-to-cursor, inline values) — queued.
 8. Credential UX Phase 4/5 — deferred. Canva review outcome check (in review).
 9. MCP concurrency cap — measure first via PerfProbe.
+
+---
+
+### [2026-09-10 13:10 WAT] — AI Agent: 4 approved fixes (Connectors category + breakpoints on main editor + console-toolbar strip + debugpy self-heal + debugger-deps bundled with LSP)
+**Commit:** 3d5e98b | **CI Build:** #2692 ✅ GREEN
+**RULES REMINDER:** 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY. 2. CHANGE LOG: entry at BOTTOM of AGENTS.md with timestamp, SHA, CI build+pass/fail, what was fixed, files touched, next on roadmap (ALL pending). 3. TAGS: [BUILD-FIX], [LSP], [UI], [DOCS], [INFRA], [BACKEND], [CRASH], [GIT], [CONNECTORS], [DAP]. 4. Update Current State table at top. 5. NEVER re-do done work. 6. ROADMAP CONTINUITY: list ALL pending. 7. UI: rounded corners 8-12dp + padding 12dp h / 10dp v.
+
+**[CONNECTORS][UI] Settings header chip -> Connectors category (P54-CONNECTORS):**
+- ROOT CAUSE of inflated portrait header: 'Connectors Hub' chip sat IN the In-Project Settings title bar Row (shared portrait+landscape). In portrait its fixed width crushed the weighted search box; the chip was the ONLY thing added vs the old compact design.
+- FIX: chip deleted from title bar (accentDim color with it). NEW top-level CONNECTORS('Connectors') category (2nd, after AI Agent Flow). 'Connectors Hub' is a normal list row (ConnectorsHubRow: label + description + 'Open', opens the Hub sheet via defaulted onOpenConnectors renderer param — call sites unchanged). MCP/Agent Tools section RELOCATED from the Extensions panel (PackageManagerPane call removed) into the same category as McpToolsSectionRow — McpServersSection is param-less and pure-Column so it embeds as one list item.
+- LANDSCAPE NOTE: title bar is shared, so landscape also loses the chip (wider search box — closer to original); no other landscape change.
+
+**[DAP] Gutter breakpoints were literal no-ops on the MAIN editor (P54-BREAKPOINTS):**
+- EditorPane instantiates CodeEditor 3x; ONLY the split-view instance had breakpointLines/onBreakpointToggle/debugCurrentLine. The main instance (the editor you actually use) fell back to empty defaults -> tapping a line number did nothing. Fixed: all three params wired on the main instance (same as split).
+
+**[DAP][UI] Console step-toolbar stripped (P54-TOOLBAR-STRIP):**
+- VS Code source-verified (debugToolBar.ts + debug.toolBarLocation): session controls live in exactly ONE toolbar — floating (default), docked-in-Run-view, or hidden. The Debug Console has NO session controls (output + REPL only).
+- FIX: DEBUG CONSOLE embedded toolbar (Continue/Pause/Step Over/Into/Out row + Restart/Stop header icons + caps tracking + DebugToolbarBtn composable) removed. Floating DebugToolbarOverlay is the single session toolbar. Console header keeps Attach / Run / Clear; multi-session switcher kept.
+
+**[DAP] debugpy self-heal rewrite (P54-DEBUGPY):**
+- OLD installDebugpy was the ONLY installer with no self-heal: bare pip3, 120s, one attempt, output discarded (Log.d only), plus a LYING 'Falling back to legacy pdb' message (no pdb session ever started — launch returned null -> 'No debugger available').
+- NEW: LSP-style chain — dpkg shim LD_PRELOAD + stale apt/dpkg lock cleanup + dpkg --configure -a + pip presence check w/ apt python3-pip fallback + pip3 -> python3 -m pip fallback, 300s, logToOutput=true. On failure launch() now prints the LAST 20 LINES of real install output to the debug console; honest abort message.
+
+**[DAP] Debugger deps bundled with LSP install (P54-DEBUG-DEPS, Wisdom requirement):**
+- NEW debug/DebuggerDependencies.kt, called from LspManager.startServer right after the server install/ensure block: debugpy with Python LSP, @vscode/js-debug with JS/TS LSP.
+- TRIGGER SEMANTICS (exactly as agreed): fires on FIRST open of a matching file ONLY when no healthy LSP server exists for that language (the same condition that runs the LSP install check). Subsequent opens short-circuit at LspManager's 'reuse healthy server' check BEFORE any probe — zero debugpy work. Per-process memo: once ensured (success OR failure) it NEVER re-probes this app session; failed installs are NOT retried per-file-open (retry point = explicit debug launch, adapter launch() self-heal). On app restart: at most one probe on the first .py/.js/.ts open.
+- Log lines: '[DEBUG-DEPS] ...' in the lsp Output channel.
+
+**Files touched:** ui/screens/InProjectSettingsDialog.kt (chip removal, CONNECTORS category, 2 rows + renderers), ui/panes/PackageManagerPane.kt (MCP call removed), ui/panes/EditorPane.kt (main-editor breakpoint params), ui/screens/ProjectShellScreen.kt (console strip, -134 lines net), debug/PythonDAPAdapter.kt (self-heal + honest messages), debug/DebuggerDependencies.kt (NEW), lsp/LspManager.kt (1-line hook + comment).
+
+**Re-test on #2692 APK (only NEW items this build):**
+1. In-Project Settings: portrait header compact again (title + full-width search + X); NO 'Connectors Hub' chip. Category strip shows 'Connectors' -> Hub row opens the sheet; MCP / Agent Tools row shows the full server section (Add/Add-env/Refresh/toggles) inside Settings.
+2. Open any .py file in the MAIN editor -> tap a line number -> red breakpoint dot appears; tap again -> gone. (Split-view gutter already worked; main editor was the broken one.)
+3. Start a debug session -> ONLY the floating toolbar has Continue/Pause/Steps/Restart/Stop. DEBUG CONSOLE header has just Attach / Run / Clear; NO second toolbar row above the transcript.
+4. First .py open after fresh rootfs: Output tab (lsp channel) shows '[DEBUG-DEPS] Ensuring debugger dependency ... debugpy' NEXT TO the pylsp install lines — one batch, one wait. Second .py open: NO [DEBUG-DEPS] lines at all. JS/TS equivalent with @vscode/js-debug.
+5. If a debugpy install fails: debug console now shows the real pip output tail (last 20 lines) instead of the silent pdb lie.
+
+**Next on roadmap (ALL pending):**
+1. Batch A #6 AI-key single-box redesign + Gemini key validation bug (real Gemini keys rejected — validation rule suspect, NOT yet root-caused).
+2. Batch A #7 exit-9 — open, awaiting on-device [REAL-EXIT vs SIGNAL-DEATH] diag line.
+3. Batch B #1/#2/#7 multi-cursor entry points (extra-keys MC toggle + double-tap second cursor + exit-MC) — not yet root-caused.
+4. Batch B #8 LSP timeout pile-up under real load (293-854ms keystroke->render, inlayHint/hover/semanticTokens timeouts, worstFrame 44s) — Phase B throttling investigation.
+5. Batch G #2 ide open file:line jump + #3 locked-root resolution + #1 path link styling.
+6. Batch D/E/F/H/J walkthroughs REWRITTEN source-verified — pending on-device.
+7. Debugger P3 (run-to-cursor, inline values) — queued.
+8. Credential UX Phase 4/5 — deferred. Canva review outcome check (in review).
+9. MCP concurrency cap — measure first via PerfProbe.
+10. Batch E 1-5 + F 2-6, H 1-6, I 1-8 re-tests (52cfcfa 401/context fixes) + Batch A item 3 squiggle re-test (f148c97, #2688) — all pending on-device.
