@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 77d63b7 |
-| CI build | #2698 GREEN (2026-09-10) |
+| Latest commit | 3f39b8b |
+| CI build | #2700 GREEN (2026-09-10) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -2244,3 +2244,28 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 7. Batch H/I connectors + OAuth re-test after fresh sign-in.
 8. Debugger P3 (run-to-cursor, inline values) — queued.
 9. Batch J deferred; chat-command testing deferred until model configured.
+
+---
+
+### [2026-09-10 19:15 WAT] — AI Agent: Claude, Commit 3f39b8b, CI Build #2700 GREEN
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**Commit:** 3f39b8b | **CI Build:** #2700 GREEN
+
+**On-device #2698 retest results:** debug-tap empty editor PASS, paused-on-mismatched-file PASS (no crash), debug-start no freeze PASS, Settings connectors row + Hub scroll/drag-dismiss PASS. Band off-by-one PERSISTED, squiggle PERSISTED — both root-caused from the user's diagnostic logs (no guessing this time).
+
+**What was fixed:**
+- [LSP] SQUIGGLE ROOT CAUSE (log-proven): LspManager.setDiagnosticsHandler() stores the EditorPane handler in LspDiagnosticsHandler.handlerMap, but the textDocument/publishDiagnostics callback invoked a LOCAL ConcurrentHashMap that is NEVER written — the registered handler NEVER fired. Evidence: '[SQUIGGLE-DIAG] handler REGISTERED' and 'RX raw=2' present, zero 'handler FIRED' lines. Fix: publish callback now routes through LspDiagnosticsHandler.setDiagnostics() (store + invoke); dead local map deleted.
+- [DAP] BAND OFF-BY-ONE ROOT CAUSE (log-proven): [BAND-DIAG] showed line numbers were CORRECT (gutter 0-based 13, DAP raw 1-based 14, debugCurrentLine 14 — all consistent), so the drift was geometric: the content Row is padded down by stickyPadDp when a sticky header is pinned, inlays/lightbulb compensate with +stickyPadPx, but the debug band and the blink highlight did not — any pinned header = band exactly one line above the dot. Both blocks now add the pad (same chain as inlays).
+
+**Files touched:** lsp/LspManager.kt, editor/CodeEditor.kt
+
+**Next on roadmap (ALL pending items):**
+1. Wisdom installs #2700 codespace-ide-arm64-v8a artifact.
+2. RETEST (only these): (a) squiggle in a .kt file (val number: String = 123) — expect [SQUIGGLE-DIAG] handler FIRED + MATCHED in Output and a red underline on device; (b) debug pause under a pinned sticky header — gold band must sit ON the red-dot line.
+3. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence line (child count at spawn, oom_score_adj, cgroup) — phantom process killer count-based SIGKILL theory still unconfirmed.
+4. Batch D/E/F walkthroughs rewrite (tap-by-tap).
+5. Batch H/I connectors + OAuth re-test after fresh sign-in.
+6. Debugger P3 (run-to-cursor, inline values) — queued.
+7. Batch J deferred; chat-command testing deferred until model configured.
