@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -125,7 +126,7 @@ internal fun ConnectorsHubSheet(
                             }
                         }
                         .pointerInput(Unit) {
-                            androidx.compose.foundation.gestures.detectTapGestures { onDismiss() }
+                            detectTapGestures { onDismiss() }
                         }
                 ) {
                     Box(
