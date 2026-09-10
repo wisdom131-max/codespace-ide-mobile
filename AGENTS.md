@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 9e48d89 |
-| CI build | #2695 pending (2026-09-10) |
+| Latest commit | 77d63b7 |
+| CI build | #2698 GREEN (2026-09-10) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -2198,7 +2198,7 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
 
 ### [2026-09-10 17:55 WAT] — AI Agent: Claude, Commit 9e48d89, CI Build #2695 pending
-**Commit:** 9e48d89 | **CI Build:** #2695 (pending — agent watched, status to be confirmed)
+**Commit:** 9e48d89 | **CI Build:** #2695 FAILED -> build-fix 77d63b7 | **CI Build:** #2698 GREEN
 
 **What was fixed:**
 - [CRASH][DAP] DEBUG-TAP CRASH (app closed on tapping Debug button): THREE root causes fixed. (1) `VisualLineMapper.docToVisualLine` threw `IllegalArgumentException` from `coerceIn(0, -1)` when the open doc had lineCount==0 — now returns -1. (2) All 10 `getLineTop` overlay branches in CodeEditor (band, highlight, drag, current-line, dead-line, inlay, lightbulb x2, call-stack) required only `< lineCount` — a -1 index passed and `getLineTop(-1)` killed the app; all now require `>= 0` first. (3) EditorPane paused-listener set `debugCurrentLine` from ANY paused frame even for a different/empty editor — now band renders only when the frame's file matches the open editor, and it is cleared on session STOPPED/CRASHED/FAILED/ERROR.
@@ -2216,6 +2216,30 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 3. Band off-by-one fix decision from [BAND-DIAG] evidence (gutter tap vs DAP line vs render).
 4. Squiggle fix from SQUIGGLE-DIAG verdict (KLS path vs converter vs UI drop).
 5. Exit-9 final verdict + fix (phantom killer: reduce/track children or advise adb disable).
+6. Batch D/E/F walkthroughs rewrite (tap-by-tap).
+7. Batch H/I connectors + OAuth re-test after fresh sign-in.
+8. Debugger P3 (run-to-cursor, inline values) — queued.
+9. Batch J deferred; chat-command testing deferred until model configured.
+
+---
+
+### [2026-09-10 18:20 WAT] — AI Agent: Claude, Commit 77d63b7, CI Build #2698 GREEN
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**Commit:** 77d63b7 | **CI Build:** #2698 GREEN (fixes #2695 failure of 9e48d89)
+
+**What was fixed:**
+- [BUILD-FIX] #2695 failed on a single compile error in ConnectorsHubSheet.kt: `detectTapGestures` was called fully-qualified (`androidx.compose.foundation.gestures.detectTapGestures`) — it is a SUSPEND EXTENSION of PointerInputScope, which cannot be resolved via package qualification. Added the normal import and plain call. NEW RULE RECORDED: detectTapGestures / detectVerticalDragGestures always use normal imports + bare calls inside pointerInput blocks.
+
+**Files touched:** ui/screens/ConnectorsHubSheet.kt
+
+**Next on roadmap (ALL pending items):**
+1. Wisdom installs #2698 codespace-ide-arm64-v8a artifact.
+2. RETEST (9e48d89 batch only): debug-tap on empty editor (no crash), debug start without UI freeze, Settings connectors row opens Hub, Hub scrolls + drag-dismiss, [SQUIGGLE-DIAG] RX line on squiggle case, [EXIT9-PHANTOM-DIAG] evidence on next exit-9.
+3. Band off-by-one fix decision from [BAND-DIAG] evidence.
+4. Squiggle fix from SQUIGGLE-DIAG verdict.
+5. Exit-9 final verdict + fix (phantom process killer count-based SIGKILL theory).
 6. Batch D/E/F walkthroughs rewrite (tap-by-tap).
 7. Batch H/I connectors + OAuth re-test after fresh sign-in.
 8. Debugger P3 (run-to-cursor, inline values) — queued.
