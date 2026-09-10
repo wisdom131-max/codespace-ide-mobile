@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 3d5e98b |
-| CI build | #2692 GREEN (2026-09-10) |
+| Latest commit | 9e48d89 |
+| CI build | #2695 pending (2026-09-10) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -2190,3 +2190,33 @@ CodeEditor.kt (editor/) — removed line 2297: softWrap = !wordWrap
 9. Debugger P3 (run-to-cursor, inline values) — queued.
 10. Credential UX Phase 4/5 — deferred. Canva review outcome check (in review).
 11. MCP concurrency cap — measure first via PerfProbe.
+
+---
+
+## CHANGE LOG — 2026-09-10 17:55 WAT
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+### [2026-09-10 17:55 WAT] — AI Agent: Claude, Commit 9e48d89, CI Build #2695 pending
+**Commit:** 9e48d89 | **CI Build:** #2695 (pending — agent watched, status to be confirmed)
+
+**What was fixed:**
+- [CRASH][DAP] DEBUG-TAP CRASH (app closed on tapping Debug button): THREE root causes fixed. (1) `VisualLineMapper.docToVisualLine` threw `IllegalArgumentException` from `coerceIn(0, -1)` when the open doc had lineCount==0 — now returns -1. (2) All 10 `getLineTop` overlay branches in CodeEditor (band, highlight, drag, current-line, dead-line, inlay, lightbulb x2, call-stack) required only `< lineCount` — a -1 index passed and `getLineTop(-1)` killed the app; all now require `>= 0` first. (3) EditorPane paused-listener set `debugCurrentLine` from ANY paused frame even for a different/empty editor — now band renders only when the frame's file matches the open editor, and it is cleared on session STOPPED/CRASHED/FAILED/ERROR.
+- [CRASH][DAP] DEBUG-ANR: `PythonDAPAdapter.launch()` runs a 10s `debugpy --version` proot check (up to 300s install) — was called on the MAIN thread from both Run/Debug buttons. New `UniversalDebugManager.startDebugAsync()` runs it on Dispatchers.IO and delivers the session id back on the main thread; both ProjectShellScreen call sites converted. UI can no longer ANR-freeze on debug start.
+- [DAP] BAND-DIAG evidence chain for the golden-line vs red-dot off-by-one: [BAND-DIAG] logs at gutter toggle (0-based), setBreakpoints sentLines (1-based), raw DAP frame line (parseFrame, pre-conversion), and paused render decision — one paused event now pinpoints the bad hop.
+- [LSP] SQUIGGLE-DIAG: LspManager publishDiagnostics now logs raw-in vs converted-out counts — separates "server never sent" from "converter dropped" from "EditorPane dropped".
+- [EXIT-9] PHANTOM-DIAG: memory ruled out earlier; prime suspect = Android 12+ phantom process killer (count-based SIGKILL at 32 children, fires exactly at new child spawn = proot launch). Every `setTerminalShellPid` now logs newChildPid, oom_score_adj, cgroup, and the app's direct-children count + names. Next exit-9 event will confirm or kill the theory.
+- [UI][CRASH-REPORT] ConnectorsHubSheet: 85% screen-height cap + verticalScroll (rows past screen edge were unreachable); grab handle now actually works (drag down ~56dp or tap dismisses). InProjectSettingsDialog: the connectors row was a NO-OP — both `SettingsRowRenderer` call sites now pass `onOpenConnectors`. CodeSpaceApplication: crash reporter repointed to the LIVE Superagent endpoint (old instance URL silently dead — every stack trace lost; new endpoint verified end-to-end with a test POST + record read).
+
+**Files touched:** editor/VisualLineMapper.kt, editor/CodeEditor.kt, ui/panes/EditorPane.kt, ui/panes/TerminalPane.kt, ui/screens/ProjectShellScreen.kt, ui/screens/InProjectSettingsDialog.kt, ui/screens/ConnectorsHubSheet.kt, debug/UniversalDebugManager.kt, debug/PythonDAPAdapter.kt, lsp/LspManager.kt, CodeSpaceApplication.kt
+
+**Next on roadmap (ALL pending items):**
+1. Confirm #2695 CI green; Wisdom installs codespace-ide-arm64-v8a artifact.
+2. RETEST (this batch only): debug-tap on empty editor + on paused mismatched file (no crash), debug button starts session w/o freeze, Settings connectors row opens Hub, Hub scrolls + drag-dismiss, squiggle diagnostics via [SQUIGGLE-DIAG] RX lines, exit-9 reproduces w/ [EXIT9-PHANTOM-DIAG] evidence.
+3. Band off-by-one fix decision from [BAND-DIAG] evidence (gutter tap vs DAP line vs render).
+4. Squiggle fix from SQUIGGLE-DIAG verdict (KLS path vs converter vs UI drop).
+5. Exit-9 final verdict + fix (phantom killer: reduce/track children or advise adb disable).
+6. Batch D/E/F walkthroughs rewrite (tap-by-tap).
+7. Batch H/I connectors + OAuth re-test after fresh sign-in.
+8. Debugger P3 (run-to-cursor, inline values) — queued.
+9. Batch J deferred; chat-command testing deferred until model configured.
