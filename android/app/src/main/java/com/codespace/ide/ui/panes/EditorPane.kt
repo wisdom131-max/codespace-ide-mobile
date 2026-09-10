@@ -1167,19 +1167,32 @@ fun EditorPane(
         }
         // GAP-9 FIX: Diagnostics subscription belongs in its own stable effect, NOT in the
         // hover effect that fires on every cursor move. Re-subscribing on every cursor move
-        // was harmless but wasteful and could cause missed diagnostics if the handler
+        // was harmless but wasteful but could cause missed diagnostics if the handler
         // was replaced mid-delivery. Keyed on (id, language) so it re-subscribes only
         // when the file or language changes — exactly when a new uri is in scope.
+        // SQUIGGLE-STALE-FIX (2026-09-10): liveTab mirrors `active` on every
+        // recomposition so the diagnostics handler below can convert LSP positions
+        // against the CURRENT content, not the content captured at file-open time.
+        val liveTab by rememberUpdatedState(active)
         LaunchedEffect(active?.id, active?.language) {
             val snap = active ?: return@LaunchedEffect
             if (!LspManager.isSupported(snap.language)) return@LaunchedEffect
             val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
             LspManager.setDiagnosticsHandler(snap.language) { diagUri, diags ->
+                // SQUIGGLE-STALE-FIX (2026-09-10): `snap` is captured once when the file
+                // opens (content EMPTY for a newly created file), so snap.content is
+                // STALE by the time diagnostics arrive after editing. Converting LSP
+                // line/char positions against stale content produced wrong offsets and
+                // coerceIn(1, 0) throws on empty content — squiggles NEVER rendered
+                // while the Problems badge (separate path, no conversion) counted fine.
+                // Read the live tab instead.
+                val live = liveTab
+                if (live == null || live.id != snap.id) return@setDiagnosticsHandler
                 // Server-gen check at callback invocation time (handler survives server
                 // restarts — must read CURRENT generation, not registration-time value).
                 // Note: doc-version check doesn't apply to push-based diagnostics —
                 // we don't know which document version the server computed these for.
-                if (LspManager.getServerGeneration(snap.language) == 0) return@setDiagnosticsHandler
+                if (LspManager.getServerGeneration(live.language) == 0) return@setDiagnosticsHandler
                 // P33-INTELLISENSE: Normalize both URIs before comparing — server may
                 // return %20 for spaces while our URI has raw spaces (or vice versa).
                 val normDiag = LspManager.normalizeFileUri(diagUri)
@@ -1189,7 +1202,7 @@ fun EditorPane(
                 val diagFile = diagUri.substringAfterLast("/")
                 val ourFile = uri.substringAfterLast("/")
                 if (normDiag == normUri || diagFile == ourFile) {
-                    lspSquiggles = lspDiagnosticsToLintErrors(diags, snap.content)
+                    lspSquiggles = lspDiagnosticsToLintErrors(diags, live.content)
                 }
             }
         }

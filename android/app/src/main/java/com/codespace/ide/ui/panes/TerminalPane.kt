@@ -98,8 +98,20 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
             finishedSession.getEmulator()?.screen?.getTranscriptText()
         } catch (_: Exception) { null }
         val lastMeaningful = tailRaw?.lines()?.lastOrNull { it.isNotBlank() }?.take(100)
+        // EXIT-9 EVIDENCE (2026-09-10): JNI.waitFor returns WEXITSTATUS for a normal
+        // exit and NEGATIVE -WTERMSIG for a signal death. So exit=9 is a REAL 'exit 9'
+        // (matches the useradd/groupadd wrapper 'already exists' path), while exit=-9
+        // would mean SIGKILL (lmkd/OOM kill). Log which kind this was.
+        val exitKind = if (exitCode < 0) {
+            val sig = -exitCode
+            val note = if (sig == 9) " (SIGKILL = lmkd/OOM kill)" else ""
+            "SIGNAL-DEATH signal=" + sig + note
+        } else {
+            val note = if (exitCode == 9) " (matches useradd/groupadd wrapper already-exists)" else ""
+            "REAL-EXIT code=" + exitCode + note
+        }
         com.codespace.ide.diagnostics.AppOutputLog.log(
-            "SESSION FINISHED diag: exit=" + exitCode + " title=" + (deadTitle ?: "?") +
+            "SESSION FINISHED diag: exit=" + exitCode + " [" + exitKind + "] title=" + (deadTitle ?: "?") +
             " lastLine=" + (lastMeaningful ?: "(blank transcript)"),
             "terminal")
         if (tailRaw != null) {

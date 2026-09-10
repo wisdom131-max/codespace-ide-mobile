@@ -298,6 +298,9 @@ fun applyImportEdits(content: String, edits: List<ImportEdit>): String {
  * Maps LSP line/character positions to character offsets in the file content string.
  */
 fun lspDiagnosticsToLintErrors(diagnostics: JSONArray, fileContent: String): List<LintError> {
+    // SQUIGGLE-STALE-FIX (2026-09-10): an empty file has no characters to underline —
+    // coerceIn(startOffset + 1, 0) below would throw IllegalArgumentException. Skip.
+    if (fileContent.isEmpty()) return emptyList()
     val lines = fileContent.split("\n")
     // Pre-compute line start offsets
     val lineOffsets = IntArray(lines.size + 1)
