@@ -4672,7 +4672,12 @@ private fun PssEditorColumn(
                         if (!editorTabs.contains(path)) editorTabs.add(path)
                         pushNavEntry(activeEditorTab, scrollTargetLine)
                         activeEditorTab = path
-                        scrollTargetLine = line
+                        // LINE-BASE-FIX (2026-09-11): `line` here is 0-BASED (OSC 7777 + tap
+                        // detector convert 1-based to 0-based), but scrollTargetLine feeds
+                        // EditorPane/CodeEditor's scrollToLine which is 1-BASED. The other two
+                        // call sites (file-search, split terminal) convert with +1; this one
+                        // didn't — every ide-open / terminal path-tap landed one line ABOVE.
+                        scrollTargetLine = line + 1
                     },
                     projectId          = projectId,
                     sessionStateStore  = sessionStateStore,
