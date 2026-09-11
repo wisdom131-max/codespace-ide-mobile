@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-11 07:05 WAT
+> Last updated: 2026-09-11 08:57 WAT
 
 ---
 
@@ -29,12 +29,12 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 49b3d4e |
-| CI build | pending (49b3d4e pushed 2026-09-11; check Actions for 358952d/515261b/d01f288) |
+| Latest commit | 8ebfab3 |
+| CI build | pending (8ebfab3 pushed 2026-09-11; prior builds #2702-#2706 green) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
-| CodeEditor.kt lines | 5,933 |
+| CodeEditor.kt lines | 5,939 |
 
 ---
 
@@ -2356,3 +2356,44 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 6. Zero-tab noise fix decision (audit in 515261b changelog): approve/decline handler-unregister + stderr rate-limit + AppOutputLog post cap.
 7. Debugger P3 (run-to-cursor, inline values) — queued.
 8. Batch J deferred; chat-command testing deferred until model configured.
+
+---
+
+### [2026-09-11 08:57 WAT] — AI Agent: Claude, Commit 8ebfab3, CI Build pending
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**Commit:** 8ebfab3 | **CI Build:** pending
+
+**Context:** Wisdom approved implementing items 2 (MC button), 3 (double-tap second cursor), 6 (locked non-primary-root ide open), 7 (zero-tab LSP noise fixes: handler-unregister + stderr rate-limit + log post cap), and the Gemini key format fix once the AQ. question was answered. SPLIT-CLOBBER explicitly approved as a real-bug fix but NOT confirmed as the user's root cause (failure reproduced in single-editor view). Item 1 full redesign and item 5 jumpToLine refactor remain ON HOLD.
+
+**Research findings baked into this commit:**
+- GEMINI AQ. QUESTION ANSWERED: AQ.-prefixed keys are Google's new AUTHORIZATION (auth) keys — the new AI Studio default format, bound to a service account; standard AIza keys get rejected by the Gemini API from Sept 2026. NOT an OAuth token (those are ya29./1// formats). So Wisdom's key was LEGITIMATE and the inline format check was wrong to reject it.
+- ITEM 6 ROOT CAUSE: `ide: 'X' does not exist` comes from the ide CLI script's own -e check — toggleTabRootLock only recorded lockedRootPath for the NEXT session (re)creation ("No live-cd" design decision) — so a terminal locked to a non-primary root kept its shell cwd at the OLD root and relative ide open paths resolved against the stale cwd. Primary-root locks appeared to work because cwd already matched.
+- ITEM 2 LAYERED CAUSES: (a) real split-registration clobber: three CodeEditor instances overwrite one keyboardInsert slot, last-mounted wins — in split view MC flipped the SPLIT pane's local mcMode; (b) zero visual feedback on the MC chip meant even a working toggle looked dead; (c) single-view failure cause NOT identified statically — global mode store makes the toggle effective for the visible editor under every failure mode, and [MC-DIAG] logs will produce evidence on the next device run.
+
+**What was fixed:**
+- [MC][EDITOR] mcMode hoisted from per-instance remember{} to global MultiCursorModeStore (new editor/MultiCursorModeStore.kt) — ALL CodeEditor instances share one flag; the visible editor reads the real mode no matter which closure receives the key press. Esc + BackHandler now exit MC mode. [MC-DIAG] logs on MC toggle and on double-tap cursor add/remove (lsp channel).
+- [MC][RESTRUCTURE] KeyInsertDispatcher (new editor/KeyInsertDispatcher.kt) replaces the last-mounted-wins keyboardInsert lambda slot: CodeEditor registers via DisposableEffect and unregisters its OWN handler on dispose (identity check). Split panes/disposed editors can no longer steal or hold key presses. Plumb: CodeEditor/EditorPane param types + ProjectShellScreen state/pass-through/EditorPane call.
+- [MC][UI][ICONS] Extra-keys row extracted to ui/screens/EditorExtraKeysRow.kt (64KB rule; SPECIAL_KEYS moved with it). MC chip now renders an ACCENT HIGHLIGHT (accent bg-tint + accent border + accent text) while MC mode is ON — live visual state at last.
+- [TERMINAL][GIT] LOCK-CD-FIX: toggleTabRootLock now cds the RUNNING shell into the locked root (guest-style /root,/sdcard roots pass through; host-style roots translate via hostToGuestPath). Unlock does NOT cd. Unreachable root prints visible [LOCK-DIAG] in-terminal. Session-start fallback cd failure (IdeEnvironment) now echoes [LOCK-DIAG] instead of silent 2>/dev/null swallow.
+- [LSP][PERF] ZERO-TAB QUIETING (all three approved fixes): (1) squiggle diagnostics handler now DisposableEffect + clearDiagnosticsHandler on dispose — no more FIRED/DROPPED log flood with zero tabs; (2) LSP stderr drains rate-limited to 10 lines/sec with per-window suppression summary lines (main server + ctags-lsp, pipes still fully drained); (3) AppOutputLog capped at 80 entries/sec (shared limiter for log + logInternal) with drop-counter reporting once per window.
+- [AI-KEYS] GEMINI-AUTH-KEY: AiKeyFormats.isValid + detect() accept AQ.-prefixed authorization keys (>=30 chars) alongside AIza; AgentTools SECRET_PATTERNS gained AQ. -> "Google Gemini Auth Key".
+
+**Files touched:** editor/MultiCursorModeStore.kt (NEW), editor/KeyInsertDispatcher.kt (NEW), ui/screens/EditorExtraKeysRow.kt (NEW), editor/CodeEditor.kt, ui/panes/EditorPane.kt, ui/screens/ProjectShellScreen.kt, ui/panes/TerminalPane.kt, environment/IdeEnvironment.kt, lsp/LspManager.kt, diagnostics/AppOutputLog.kt, chat/AiKeyFormats.kt, agent/AgentTools.kt
+
+**Item 1 decision:** NO format-widening of the live-check REJECTED label — user report was the INLINE format message, which is now fixed (AQ. accepted). NO single-input-box redesign (still on hold per Wisdom).
+
+**Next on roadmap (ALL pending items):**
+1. Confirm 8ebfab3 CI green; Wisdom installs codespace-ide-arm64-v8a artifact.
+2. RETEST MC (item 2+3, one batch): (a) tap MC chip in a single-editor view — chip must show accent highlight ON; (b) with MC ON, double-tap a second spot — second cursor appears (check [MC-DIAG] lines in Output lsp channel); (c) Esc clears cursors AND chip highlight; (d) repeat in split view — both panes share the MC state; (e) undo/redo chips still work in single + split view.
+3. RETEST locked-root ide open (item 6): lock a terminal to a NON-primary root — expect "[LOCK] cwd -> <guest path>" printed in the terminal — then `ide open <file-in-that-root>:LINE` must open + jump (not "does not exist"). Also close + restore the app: lock must survive and still cd.
+4. RETEST Gemini key (item 1): paste the AQ. key — inline "does not look like a valid Gemini key" message must NOT appear; Save + live check.
+5. RETEST zero-tab noise (item 7): with all editor tabs closed, watch Output lsp channel — SQUIGGLE-DIAG FIRED/DROPPED lines must STOP; a chatty install must show "... N line(s) suppressed" summaries instead of a flood; UI stays smooth during stderr bursts.
+6. d01f288 batch retest if not yet done: (a) OAuth row flip + failed-exchange toast; (b) Hub GitHub device-code dialog + Source Control propagation + sign-out; (c) terminal link styling blue underline + tap opens.
+7. 49b3d4e line-jump retest if not yet done: `ide open file:42` on a file NOT already open — must scroll + gold highlight + cursor on line 42 (chevron parity). Only if STILL broken: approved shared-jumpToLine() extraction refactor.
+8. MCP Batch D items 2-9 retest with literal walkthrough (name linkdemo, command npx -y @modelcontextprotocol/server-everything).
+9. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence (child count, oom_score_adj, cgroup).
+10. Item 4 PerfProbe re-verify AFTER 2/3/6/7 retests: 2k+ line file, ~30s typing, read [perf] lines, compare vs original failing numbers; zero tabs -> [perf] lines stop.
+11. Debugger P3 (run-to-cursor, inline values) — queued.
+12. Batch J deferred; chat-command testing deferred until model configured; Item 1 full single-input redesign ON HOLD.
