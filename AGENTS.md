@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-11 13:15 WAT
+> Last updated: 2026-09-11 16:25 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 4298662 |
-| CI build | #2712 GREEN (7dbcac7) + #2713 GREEN (docs); 4298662 pending (#2714) |
+| Latest commit | a8a7220 |
+| CI build | #2717 pending (a8a7220 build-fix); #2714/#2715/#2716 FAILED (padding overload mix + jtokkit .size, fixed in a8a7220) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2475,6 +2475,36 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 3. After retests pass: implement APPROVED validation change — isValid() demoted to soft non-blocking warning, live check sole real validator, detect() paste-route only; live-check failure shows real vendor error text self-sufficiently. Custom-model-ID entry PARKED as separate future item.
 4. Retest xAI + Custom endpoint (new): add xAI key (paste + live check); Settings shows Custom Endpoint URL field; point at any OpenAI-compatible server, verify live models + one send.
 5. Architecture plan (item 3, delivered 2026-09-11, awaiting approval): streaming typed response parts / token counting / rich model metadata — plan only, no code until approved.
+6. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
+7. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence.
+8. Item 4 PerfProbe re-verify AFTER items 2/3/6/7 retests.
+9. Debugger P3 (run-to-cursor, inline values) — queued.
+10. Batch J deferred; chat-command testing deferred until model configured.
+
+---
+
+### [2026-09-11 16:25 WAT] — AI Agent: Claude, Commits 4298662 + 1731b4d + a8a7220, CI #2714-#2717
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**[BUILD-FIX]** #2714/#2715/#2716 FAILED, fixed in a8a7220 (#2717): (a) `Modifier.padding(end = 8.dp, vertical = 10.dp)` mixes named params from DIFFERENT padding overloads — Kotlin cannot resolve; use horizontal/vertical pairs only. (b) jtokkit `encode()` returns IntArrayList whose `.size` is a PRIVATE field in Kotlin — must call `.size()` as a method.
+
+**[AI-PROVIDERS] (4298662):** xAI 6th built-in (api.x.ai, grok-4 default, 'xai-' key format) + CustomOpenAiProvider 7th (id 'custom', user-set base URL -> any OpenAI-compatible server, URL in NEW CustomEndpointStore plain prefs, /chat/completions appended unless full path, isAvailable = URL AND key, 'custom-model' placeholder default). AiKeysSection endpoint-URL field (custom only) with http(s) validation + auto-save + live-check re-run. Provider count 5 -> 7. Ollama + Azure intentionally OUT (user decision).
+
+**[AI-STREAMING] (1731b4d):** ChatProvider.completeStreaming(request, onDelta) — DEFAULT = blocking complete() fallback, nothing breaks. OpenAiCompatibleTransport.callStreaming: OpenAI SSE stream:true (covers openai/deepseek/openrouter/xai/custom, 180s read timeout). Anthropic SSE content_block_delta. Gemini streamGenerateContent?alt=sse (buildContents extracted). Both chat panels: live bubble grows as deltas arrive (NEW ChatStreamUi.kt LiveStreamIndicator, 64KB-rule extraction); AGENT mode clears per iteration + appends tool-done lines; auto-scroll every ~120 chars.
+
+**[AI-METADATA]:** ChatModelInfo(id, displayName, maxInputTokens, supportsToolCalling); fetchModelInfos() default wraps fetchModels() (additive). OpenRouter: REAL context_length from public /models (transport fetchModelInfos). Gemini: REAL inputTokenLimit from models list (single call).
+
+**[TOKEN-COUNT] (user requested visible consumer, not parked):** ChatProvider.countTokens(request) — REAL per-provider: Gemini :countTokens endpoint, Anthropic /v1/messages/count_tokens, jtokkit BPE o200k/cl100k (NEW dep com.knuddels:jtokkit:1.1.0, lazy init, chars/4 fallback) for OpenAI-family. ChatContextGauge in BOTH panels above input: "Context: 12.3k / 128k (10%)", recomputed per turn fire-and-forget (5s cap, never delays reply), amber >=80%, red >=95%, "limit unknown" when no real value. TokenCounter.modelContextLimit: live vendor -> static table (openai 128k / claude 200k / grok 131k / deepseek 128k) -> null; memoized per app run.
+
+**Files touched:** build.gradle.kts (jtokkit); chat/ChatProvider.kt; chat/TokenCounter.kt (new); chat/CustomEndpointStore.kt (new); chat/providers/{Xai,CustomOpenAi}Provider.kt (new); chat/providers/OpenAiCompatibleTransport.kt; chat/providers/{OpenAi,DeepSeek,OpenRouter,Anthropic,Gemini}Provider.kt; ui/screens/ChatStreamUi.kt (new); ui/screens/AiKeysSection.kt; ui/screens/CopilotChatPanelOverlay.kt (chat() streaming events, buildSystemPrompt/convMsgsOf extraction, both panels' live bubble + gauge)
+
+**Next on roadmap (ALL pending items):**
+1. Confirm #2717 CI green; install newest APK.
+2. RETEST batch (gate for validation change): MC chip + double-tap second cursor; locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet; ide open file:42 fresh-tab jump.
+3. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint pointed at a real OpenAI-compatible server (URL save -> live models -> one send).
+4. STREAMING retest (1731b4d): ASK-mode reply streams in visibly; AGENT mode shows per-iteration stream + tool-done lines; context gauge shows "Context: X / Y (Z%)" after each turn and turns amber/red near limits.
+5. After retests pass: implement APPROVED validation change — isValid() demoted to soft non-blocking warning, live check sole real validator, detect() paste-route only; live-check failure shows real vendor error text self-sufficiently. Custom-model-ID entry PARKED as separate future item.
 6. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
 7. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence.
 8. Item 4 PerfProbe re-verify AFTER items 2/3/6/7 retests.
