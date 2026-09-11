@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-11 08:57 WAT
+> Last updated: 2026-09-11 09:40 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 8ebfab3 |
-| CI build | pending (8ebfab3 pushed 2026-09-11; prior builds #2702-#2706 green) |
+| Latest commit | 8fe79a8 |
+| CI build | pending (8fe79a8 pushed 2026-09-11; #2708/#2709 FAILED on orphan brace, fixed by 8fe79a8) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2397,3 +2397,30 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 10. Item 4 PerfProbe re-verify AFTER 2/3/6/7 retests: 2k+ line file, ~30s typing, read [perf] lines, compare vs original failing numbers; zero tabs -> [perf] lines stop.
 11. Debugger P3 (run-to-cursor, inline values) — queued.
 12. Batch J deferred; chat-command testing deferred until model configured; Item 1 full single-input redesign ON HOLD.
+
+---
+
+### [2026-09-11 09:40 WAT] — AI Agent: Claude, Commit 8fe79a8, CI Build pending (#2710)
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**Commit:** 8fe79a8 | **CI Build:** pending (#2710; #2708 + #2709 FAILED)
+
+**[BUILD-FIX]** CI #2708 (8ebfab3) + #2709 (4ea5624) failed in :app:kspProdDebugKotlin with 'Expecting a top level declaration' from CodeEditor.kt:1688 onward. Root cause: the KeyInsertDispatcher patch replaced the two-level `LaunchedEffect(Unit) { currentOnInsertHandler?.invoke { text -> ... } }` wrapper with a one-level `val insertHandler: (String) -> Unit = { text -> ... }` lambda but left BOTH closing braces — the orphan `    }` at line 1687 closed the CodeEditor composable early, so the new DisposableEffect + every following declaration parsed as top-level garbage. Fix: deleted the orphan brace (1-line deletion). Verified: brace-balance of every 8ebfab3-touched file now identical to last-green 49b3d4e baselines; new files all balance 0. LESSON (added to pitfalls): when replacing a nested wrapper with a flatter construct, count BOTH removed opening braces and remove the matching closers.
+
+**Files touched:** editor/CodeEditor.kt (1 line deleted)
+
+**Next on roadmap (ALL pending items):**
+1. Confirm 8fe79a8 CI green; Wisdom installs codespace-ide-arm64-v8a artifact.
+2. RETEST MC (items 2+3): MC chip accent highlight ON; double-tap second cursor ([MC-DIAG] in Output lsp channel); Esc clears cursors + chip; split-view parity; undo/redo chips.
+3. RETEST locked-root ide open (item 6): lock to NON-primary root, expect "[LOCK] cwd ->" echo, then `ide open <file>:LINE` opens + jumps; lock survives app restart.
+4. RETEST Gemini AQ. key (item 1): paste accepted, Save + live check pass.
+5. RETEST zero-tab noise (item 7): FIRED/DROPPED lines stop with all tabs closed; suppression summaries during chatty installs; UI smooth.
+6. 49b3d4e line-jump retest if not yet done: `ide open file:42` on a NOT-already-open file — scroll + gold highlight + cursor on line 42. Only if STILL broken: approved shared-jumpToLine() extraction refactor.
+7. d01f288 batch retest if not yet done: OAuth row flip + toast; Hub GitHub device-flow + sign-out; terminal link styling + tap.
+8. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
+9. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence.
+10. Item 4 PerfProbe re-verify AFTER items 2/3/6/7 retests.
+11. Item 1 full single-input-box redesign — ON HOLD pending VS Code BYOK research verdict (research complete, awaiting Wisdom's decision).
+12. Debugger P3 (run-to-cursor, inline values) — queued.
+13. Batch J deferred; chat-command testing deferred until model configured.
