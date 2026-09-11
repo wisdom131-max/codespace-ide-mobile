@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 358952d |
-| CI build | pending (358952d pushed 2026-09-11; d01f288 CI status unknown — check Actions) |
+| Latest commit | 49b3d4e |
+| CI build | pending (49b3d4e pushed 2026-09-11; check Actions for 358952d/515261b/d01f288) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2327,5 +2327,32 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 4. MCP Batch D items 2-9 retest with literal walkthrough (name linkdemo, command npx -y @modelcontextprotocol/server-everything).
 5. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence (child count, oom_score_adj, cgroup).
 6. Zero-tab noise fix decision: approve/decline the 3 proposed telemetry-quieting changes above.
+7. Debugger P3 (run-to-cursor, inline values) — queued.
+8. Batch J deferred; chat-command testing deferred until model configured.
+
+---
+
+### [2026-09-11 07:25 WAT] — AI Agent: Claude, Commit 49b3d4e, CI Build pending
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**Commit:** 49b3d4e | **CI Build:** pending
+
+**Context:** Wisdom clarified: `ide open file:42` NEVER scrolled or highlighted at all (file opens only). Asked to make it behave like the in-editor chevron Go-to-Line (which works on-device).
+
+**Full-chain audit (all stages verified in code, no guessing):** CLI script -> OSC 7777 emulator parser (line field parsed correctly) -> TerminalSession listener (attached on every addUbuntuTab path incl. restore) -> IdeTerminalBridge (0-based conversion) -> ProjectShellScreen lambda -> EditorPane scrollToLineParam -> CodeEditor LaunchedEffect(scrollToLine). The break: on a FRESH tab, key(active.id) REMOUNTS CodeEditor, and the scroll effect fires BEFORE the first layout pass — vScroll.maxValue is still 0, so animateScrollTo(target.coerceAtMost(0)) animated to nothing. Highlight was set but rendered off-screen at scroll position 0. Already-open files (no remount) were unaffected. The chevron Go-to-Line never hits this because its editor is long laid out.
+
+**What was fixed:**
+- [EDITOR][LINE-JUMP-READY-FIX] CodeEditor scrollToLine effect: highlight + cursor move now run IMMEDIATELY (layout-independent), then the scroll RETRIES (50ms interval, up to 20 attempts ~1s) until the layout reports a real vScroll.maxValue. Short viewport-fitting files legitimately keep maxValue==0 — retries just time out, highlight/cursor already applied.
+
+**Files touched:** editor/CodeEditor.kt
+
+**Next on roadmap (ALL pending items):**
+1. Confirm 49b3d4e CI green; Wisdom installs codespace-ide-arm64-v8a artifact.
+2. RETEST (single item): from the MAIN terminal, `ide open src/Main.kt:42` on a file NOT already open — file must open, scroll to line 42, gold highlight + cursor ON line 42 (chevron Go-to-Line parity). Also tap a styled path:line link — same behavior.
+3. d01f288 batch retest if not yet done: (a) OAuth row flip + failed-exchange toast; (b) Hub GitHub device-code dialog + Source Control propagation + sign-out; (c) terminal link styling blue underline + tap opens.
+4. MCP Batch D items 2-9 retest with literal walkthrough (name linkdemo, command npx -y @modelcontextprotocol/server-everything).
+5. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence (child count, oom_score_adj, cgroup).
+6. Zero-tab noise fix decision (audit in 515261b changelog): approve/decline handler-unregister + stderr rate-limit + AppOutputLog post cap.
 7. Debugger P3 (run-to-cursor, inline values) — queued.
 8. Batch J deferred; chat-command testing deferred until model configured.
