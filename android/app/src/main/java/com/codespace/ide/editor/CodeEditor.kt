@@ -946,7 +946,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val newRegion = if (insertedLen > 0) newText.substring(editStart, editStart + insertedLen) else ""
             val lineDelta = newRegion.count { it == '\n' } - oldRegion.count { it == '\n' }
             if (lineDelta != 0 && vScroll.maxValue > 0) {
-                vScroll.scrollTo((vScroll.value + lineDelta * lhPxSync).toFloat().coerceIn(0f, vScroll.maxValue.toFloat()))
+                vScroll.scrollTo((vScroll.value + (lineDelta * lhPxSync).toInt()).coerceIn(0, vScroll.maxValue))
             }
         }
         value = TextFieldValue(newText, TextRange(newSelStart, newSelEnd))
