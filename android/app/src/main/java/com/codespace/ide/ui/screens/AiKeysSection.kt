@@ -40,6 +40,7 @@ import com.codespace.ide.chat.AiKeyFormats
 import com.codespace.ide.chat.ChatModelSelection
 import com.codespace.ide.chat.ChatProvider
 import com.codespace.ide.chat.ChatProviderRegistry
+import com.codespace.ide.chat.CustomEndpointStore
 import com.codespace.ide.data.SecureTokenStore
 import kotlinx.coroutines.launch
 
@@ -90,7 +91,11 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
     // Per-provider editing + live-check state (all remember() at top — CI rule).
     val uiStates = remember {
         mutableStateMapOf<String, AiKeyUiState>().apply {
-            providers.forEach { put(it.id, AiKeyUiState()) }
+            providers.forEach {
+                put(it.id, if (it.id == "custom") {
+                    AiKeyUiState(urlDraft = CustomEndpointStore.baseUrl ?: "")
+                } else AiKeyUiState())
+            }
         }
     }
 
@@ -142,6 +147,60 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                             uiStates[provider.id] = AiKeyUiState(liveStatus = LiveStatus.UNCHECKED)
                         }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
                     }
+                }
+            }
+
+            // ── CUSTOM ENDPOINT URL (2026-09-11): base URL against the shared
+            // OpenAI-compatible transport. Auto-saved on tap; live check re-runs so
+            // "live: N models" verifies the endpoint, not just the key. ──
+            if (provider.id == "custom") {
+                OutlinedTextField(
+                    value = state.urlDraft,
+                    onValueChange = { raw ->
+                        val cur = uiStates[provider.id] ?: state
+                        uiStates[provider.id] = cur.copy(urlDraft = raw, urlError = null, urlSaved = false)
+                    },
+                    label = { Text("Endpoint base URL") },
+                    singleLine = true,
+                    isError = state.urlError != null,
+                    supportingText = if (state.urlError != null) {
+                        { Text(state.urlError ?: "", color = MaterialTheme.colorScheme.error) }
+                    } else {
+                        { Text("https://host/v1 — /chat/completions is appended automatically") }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    if (state.urlSaved) {
+                        Text("Endpoint saved", style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(end = 8.dp, vertical = 10.dp))
+                    }
+                    Button(
+                        shape = RoundedCornerShape(10.dp),
+                        onClick = {
+                            val trimmed = state.urlDraft.trim()
+                            if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+                                uiStates[provider.id] = state.copy(
+                                    urlError = "Endpoint must start with http:// or https://",
+                                )
+                            } else {
+                                CustomEndpointStore.baseUrl = trimmed
+                                val cur = uiStates[provider.id] ?: state
+                                uiStates[provider.id] = cur.copy(urlSaved = true, urlError = null)
+                                // Re-verify the endpoint with a live model fetch.
+                                if (savedKeyIds.contains(provider.id)) {
+                                    uiStates[provider.id] =
+                                        (uiStates[provider.id] ?: cur).copy(liveStatus = LiveStatus.CHECKING)
+                                    runLiveCheck(provider, tokenStore, uiStates, scope)
+                                }
+                            }
+                        },
+                    ) { Text(if (CustomEndpointStore.baseUrl == null) "Save endpoint" else "Update endpoint") }
                 }
             }
 
@@ -258,6 +317,10 @@ private data class AiKeyUiState(
     val routeCandidate: String? = null,
     val liveStatus: LiveStatus = LiveStatus.UNCHECKED,
     val liveModelCount: Int = 0,
+    // Custom-endpoint URL editor (provider id "custom" only)
+    val urlDraft: String = "",
+    val urlError: String? = null,
+    val urlSaved: Boolean = false,
 )
 
 private fun keyStatusLine(provider: ChatProvider, hasKey: Boolean, state: AiKeyUiState, isActive: Boolean): String {

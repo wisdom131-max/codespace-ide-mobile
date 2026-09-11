@@ -5,6 +5,8 @@ import com.codespace.ide.chat.providers.DeepSeekProvider
 import com.codespace.ide.chat.providers.GeminiProvider
 import com.codespace.ide.chat.providers.OpenAiProvider
 import com.codespace.ide.chat.providers.OpenRouterProvider
+import com.codespace.ide.chat.providers.XaiProvider
+import com.codespace.ide.chat.providers.CustomOpenAiProvider
 
 /**
  * ProviderBootstrap — registers the built-in cloud API providers, once, on first
@@ -21,5 +23,7 @@ object ProviderBootstrap {
         GeminiProvider(),
         DeepSeekProvider(),
         OpenRouterProvider(),
+        XaiProvider(),
+        CustomOpenAiProvider(),
     )
 }

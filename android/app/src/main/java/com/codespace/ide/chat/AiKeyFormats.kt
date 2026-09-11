@@ -27,6 +27,10 @@ object AiKeyFormats {
             "gemini"     -> (k.startsWith("AIza") && k.length >= 35) ||
                             (k.startsWith("AQ.") && k.length >= 30)
             "deepseek"   -> k.startsWith("sk-") && k.length >= 30
+            // xAI keys: xai- prefix (docs.a.x.ai). Loose on purpose.
+            "xai"        -> k.startsWith("xai-") && k.length >= 20
+            // "custom": ANY key shape is legitimate against a user-chosen server —
+            // length-only rule (falls through to the else branch). Never route-detected.
             // Unknown / future providers: non-trivial length only.
             else -> k.length >= 8
         }
@@ -42,6 +46,7 @@ object AiKeyFormats {
         val hits = mutableListOf<String>()
         if (k.startsWith("sk-ant-")) { hits.add("anthropic"); return hits }
         if (k.startsWith("sk-or-")) { hits.add("openrouter"); return hits }
+        if (k.startsWith("xai-")) { hits.add("xai"); return hits }
         if (k.startsWith("sk-proj-")) { hits.add("openai"); return hits }
         // GEMINI-AUTH-KEY: AQ.-prefixed authorization keys are also Gemini keys.
         if (k.startsWith("AQ.")) { hits.add("gemini"); return hits }

@@ -42,6 +42,8 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         JsonSettingsStore.init(this)
         FeatureToggleStore.init(this)
         ProjectSettingsStore.init(this)
+        // Custom OpenAI-compatible endpoint base URL (config, not a credential)
+        com.codespace.ide.chat.CustomEndpointStore.init(this)
         // Initialize TextMate engine (loads bundled grammars from assets)
         TextMateEngineHolder.get(this)
         NotificationStore.init(this) // P-NOTIF-RESTRUCTURE: persisted settings + sound
