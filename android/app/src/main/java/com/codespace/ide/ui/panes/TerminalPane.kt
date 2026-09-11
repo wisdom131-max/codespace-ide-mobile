@@ -747,6 +747,12 @@ internal fun TerminalPane(
         onDispose { tab?.client?.onTextChanged = null; fsNotifyJob?.cancel() }
     }
 
+    fun writeToDisplay(session: TerminalSession, text: String) {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        session.getEmulator()?.append(bytes, bytes.size)
+        currentView.value?.post { currentView.value?.onScreenUpdated() }
+    }
+
     // Part B: toggle a terminal's lock to a workspace root. Lock persists in
     // TerminalSessionStore and feeds workDir/$WORKSPACE_PATH at every session
     // (re)creation. No live-cd of a running shell (VS Code model, confirmed).
@@ -783,11 +789,6 @@ internal fun TerminalPane(
         if (idx >= 0) tabs[idx] = tabs[idx].copy(name = trimmed)
     }
 
-    fun writeToDisplay(session: TerminalSession, text: String) {
-        val bytes = text.toByteArray(Charsets.UTF_8)
-        session.getEmulator()?.append(bytes, bytes.size)
-        currentView.value?.post { currentView.value?.onScreenUpdated() }
-    }
 
     // Ubuntu proot is the ONLY terminal environment this app ships (bash/ash removed —
     // see AGENTS.md). This single function handles both cases:
