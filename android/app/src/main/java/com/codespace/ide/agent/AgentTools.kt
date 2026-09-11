@@ -317,6 +317,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         Regex("AKIA[0-9A-Z]{16}") to "AWS Access Key",
         Regex("gh[pousr]_[A-Za-z0-9]{36,}") to "GitHub Token",
         Regex("AIza[0-9A-Za-z_\\-]{35}") to "Google API Key",
+        // GEMINI-AUTH-KEY (2026-09-11): new AI Studio authorization keys.
+        Regex("AQ\\.[0-9A-Za-z_\\-]{25,}") to "Google Gemini Auth Key",
         Regex("ya29\\.[0-9A-Za-z_\\-]+") to "Google OAuth Token",
         Regex("sk-[A-Za-z0-9]{48}") to "OpenAI API Key",
         Regex("sk-ant-[A-Za-z0-9_\\-]{95}") to "Anthropic API Key",

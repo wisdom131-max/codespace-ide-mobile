@@ -391,13 +391,6 @@ private class AdaptiveSubmenuPositionProvider(private val marginPx: Int) : Popup
 // NotifItem moved to NotificationDrawerOverlay.kt
 private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES, BUILD, TOOLCHAIN, TASKS, HISTORY, ARTIFACTS, DOWNLOADS, BACKUP, TODO, TESTS, ANALYSIS }
 
-private val SPECIAL_KEYS = listOf(
-    "{", "}", "[", "]", "(", ")", "<", ">", "=", "+", "-", "*", "/",
-    ":", ";", "'", "\"", "|", "&", "!", "?", "@", "#", "$", "%", "^",
-    "~", "\\", ",", ".", "_", "`", "Tab", "Esc", "MC",
-    "\u21A9", "\u21AA",
-)
-
 private data class MenuBarItem(val label: String, val items: List<MenuAction>)
 private data class MenuAction(val label: String, val shortcut: String = "", val divider: Boolean = false)
 
@@ -842,7 +835,7 @@ fun ProjectShellScreen(
     var closeRootRequest by remember(projectId) { mutableStateOf<String?>(null) }
     var pendingRemovedRoot by remember(projectId) { mutableStateOf<String?>(null) }
     val activeEditorTabMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }; var activeEditorTab by activeEditorTabMs
-    val keyboardInsertMs = remember { mutableStateOf<((String) -> Unit)?>(null) }; var _keyboardInsert by keyboardInsertMs
+    val keyInsertDispatcher = remember { com.codespace.ide.editor.KeyInsertDispatcher() }
     /** Breadcrumb: when set, ExplorerSidePanel auto-expands and scrolls to this dir. */
     val breadcrumbNavDirMs = remember { mutableStateOf<String?>(null) }; var breadcrumbNavDir by breadcrumbNavDirMs
     // Wizard auto-select: on first load, navigate Explorer to the project root
@@ -1734,7 +1727,7 @@ fun ProjectShellScreen(
                     findQueryMs = findQueryMs,
                     findMatchIndexMs = findMatchIndexMs,
                     isDraggingBottomPanelMs = isDraggingBottomPanelMs,
-                    keyboardInsertMs = keyboardInsertMs,
+                    keyInsertDispatcher = keyInsertDispatcher,
                     previewPortMs = previewPortMs,
                     replaceQueryMs = replaceQueryMs,
                     scrollTargetLineMs = scrollTargetLineMs,
@@ -4376,7 +4369,7 @@ private fun PssEditorColumn(
     findQueryMs: MutableState<String>,
     findMatchIndexMs: MutableState<Int>,
     isDraggingBottomPanelMs: MutableState<Boolean>,
-    keyboardInsertMs: MutableState<((String) -> Unit)?>,
+    keyInsertDispatcher: com.codespace.ide.editor.KeyInsertDispatcher,
     previewPortMs: MutableState<Int?>,
     replaceQueryMs: MutableState<String>,
     scrollTargetLineMs: MutableState<Int>,
@@ -4427,7 +4420,6 @@ private fun PssEditorColumn(
     var findQuery by findQueryMs
     var findMatchIndex by findMatchIndexMs
     var isDraggingBottomPanel by isDraggingBottomPanelMs
-    var keyboardInsert by keyboardInsertMs
     var previewPort by previewPortMs
     var replaceQuery by replaceQueryMs
     var scrollTargetLine by scrollTargetLineMs
@@ -4662,7 +4654,7 @@ private fun PssEditorColumn(
                 EditorPane(
                     openFilePath       = activeEditorTab,
                     fontSize           = editorFontSize,
-                    onInsertRequest    = { fn -> keyboardInsert = fn },
+                    onInsertRequest    = keyInsertDispatcher,
                     onCursorChange     = { line, col -> cursorLine = line; cursorCol = col },
                     wordWrap           = wordWrap,
                     showInlayHints     = showInlayHints,
@@ -4723,30 +4715,16 @@ private fun PssEditorColumn(
             }
         }
 
-        // Coding toolbar — can be toggled in In-Project Settings
+        // Coding toolbar — can be toggled in In-Project Settings.
+        // Extracted to EditorExtraKeysRow.kt (64KB rule). MC chip now shows live
+        // multi-cursor mode state (accent highlight while ON).
         if (activeEditorTab != null && ProjectSettingsStore.extraKeysEnabled.value) {
-            Row(
-                Modifier.fillMaxWidth().height(40.dp).background(KeyboardToolbarBg)
-                    .horizontalScroll(rememberScrollState()),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Spacer(Modifier.width(4.dp))
-                val isDarkToolbar = KeyboardToolbarBg.red < 0.5f
-                val keyBg = if (isDarkToolbar) Color(0xFF3A3A3A) else Color(0xFFFFFFFF)
-                val keyText = if (isDarkToolbar) Color(0xFFEEEEEE) else Color(0xFF333333)
-                val keyBorder = if (isDarkToolbar) Color(0xFF555555) else DividerColor
-                SPECIAL_KEYS.forEach { key ->
-                    Box(
-                        Modifier.height(32.dp).defaultMinSize(minWidth = 36.dp)
-                            .background(keyBg, RoundedCornerShape(4.dp))
-                            .border(1.dp, keyBorder, RoundedCornerShape(4.dp))
-                            .clickable { keyboardInsert?.invoke(key) }
-                            .padding(horizontal = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) { Text(key, fontSize = 13.sp, color = keyText, fontFamily = FontFamily.Monospace) }
-                    Spacer(Modifier.width(4.dp))
-                }
-            }
+            EditorExtraKeysRow(
+                toolbarBg = KeyboardToolbarBg,
+                divider = DividerColor,
+                accent = TabActiveIndicator,
+                onKey = { key -> keyInsertDispatcher.dispatch(key) },
+            )
             HorizontalDivider(color = DividerColor)
         }
 

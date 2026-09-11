@@ -21,7 +21,11 @@ object AiKeyFormats {
             "anthropic"  -> k.startsWith("sk-ant-") && k.length >= 30
             "openrouter" -> k.startsWith("sk-or-") && k.length >= 40
             "openai"     -> k.startsWith("sk-") && k.length >= 40
-            "gemini"     -> k.startsWith("AIza") && k.length >= 35
+            // GEMINI-AUTH-KEY (2026-09-11): Google is migrating standard AIza keys to
+            // service-account-bound authorization keys (the new AI Studio default;
+            // standard keys rejected from Sept 2026). New keys use the AQ. prefix.
+            "gemini"     -> (k.startsWith("AIza") && k.length >= 35) ||
+                            (k.startsWith("AQ.") && k.length >= 30)
             "deepseek"   -> k.startsWith("sk-") && k.length >= 30
             // Unknown / future providers: non-trivial length only.
             else -> k.length >= 8
@@ -39,6 +43,8 @@ object AiKeyFormats {
         if (k.startsWith("sk-ant-")) { hits.add("anthropic"); return hits }
         if (k.startsWith("sk-or-")) { hits.add("openrouter"); return hits }
         if (k.startsWith("sk-proj-")) { hits.add("openai"); return hits }
+        // GEMINI-AUTH-KEY: AQ.-prefixed authorization keys are also Gemini keys.
+        if (k.startsWith("AQ.")) { hits.add("gemini"); return hits }
         if (k.startsWith("AIza")) { hits.add("gemini"); return hits }
         if (k.startsWith("sk-")) { hits.add("deepseek"); hits.add("openai") }
         return hits

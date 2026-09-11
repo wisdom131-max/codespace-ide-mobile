@@ -29,6 +29,35 @@ object AppOutputLog {
 
     private const val TAG = "AppOutputLog"
     private const val MAX_LINES = 500
+
+    // LOG-POST-CAP (2026-09-11): every log() call ends in a main-thread mutation (direct
+    // or Handler.post). A background flood (LSP stderr, build tools, proot noise) turned
+    // into a post storm that janked the UI even with zero editor tabs open. Cap total
+    // entries at 80/sec; surplus is dropped and reported once per window.
+    private const val MAX_ENTRIES_PER_SEC = 80
+    private val capWindowStartMs = java.util.concurrent.atomic.AtomicLong(0)
+    private val capWindowCount = java.util.concurrent.atomic.AtomicInteger(0)
+    private val capDropped = java.util.concurrent.atomic.AtomicLong(0)
+
+    /** Admits this log entry; on window rollover reports the prior window's drop count. */
+    private fun admit(): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - capWindowStartMs.get() >= 1000L) {
+            synchronized(this) {
+                if (now - capWindowStartMs.get() >= 1000L) {
+                    val dropped = capDropped.getAndSet(0)
+                    if (dropped > 0) {
+                        addEntry("[" + timeFmt.format(Date()) + "] [info]  [AppOutputLog] $dropped log lines suppressed in last window (cap $MAX_ENTRIES_PER_SEC/sec)")
+                    }
+                    capWindowCount.set(0)
+                    capWindowStartMs.set(now)
+                }
+            }
+        }
+        if (capWindowCount.incrementAndGet() <= MAX_ENTRIES_PER_SEC) return true
+        capDropped.incrementAndGet()
+        return false
+    }
     val availableChannels = listOf("info", "build", "git", "debug", "terminal", "lsp")
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.US)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -38,8 +67,13 @@ object AppOutputLog {
     )
 
     fun log(message: String, channel: String = "info") {
+        if (!admit()) return
         val ts = timeFmt.format(Date())
-        val entry = "[$ts] [$channel]  $message"
+        addEntry("[$ts] [$channel]  $message")
+    }
+
+    /** Shared mutation path: direct on main thread, Handler.post from background. */
+    private fun addEntry(entry: String) {
         // If already on main thread, mutate directly (e.g. from LaunchedEffect)
         if (Looper.myLooper() == Looper.getMainLooper()) {
             if (lines.size >= MAX_LINES) lines.removeAt(0)
@@ -75,6 +109,7 @@ object AppOutputLog {
     val internalLines = mutableStateListOf<String>()
 
     fun logInternal(message: String, channel: String = "internal") {
+        if (!admit()) return
         val ts = timeFmt.format(Date())
         val entry = "[$ts] [$channel]  $message"
         if (Looper.myLooper() == Looper.getMainLooper()) {

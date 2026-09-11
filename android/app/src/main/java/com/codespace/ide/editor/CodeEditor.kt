@@ -643,7 +643,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
      *  - "Tab" → triggers snippet expansion or inserts \t at cursor
      *  - "Esc" → dismisses completions, snippet sessions, and popups
      *  - Any other string → inserts at cursor position (like typing it on a real keyboard) */
-    onInsertHandler: (((String) -> Unit) -> Unit)? = null,
+    onInsertHandler: com.codespace.ide.editor.KeyInsertDispatcher? = null,
     /** Phase R: Format Selection trigger — when incremented, formats the selected text range. */
     formatSelectionTrigger: Int = 0,
     /** Pinch-to-zoom: called with new font size when user pinches on the editor. */
@@ -1502,17 +1502,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // onContentChange that updates the wrong tab, and LaunchedEffect(content) would
     // then reset value back to the old text, making the inserted character vanish.
     val currentOnContentChange by rememberUpdatedState(onContentChange)
-    val currentOnInsertHandler by rememberUpdatedState(onInsertHandler)
+    val currentInsertDispatcher by rememberUpdatedState(onInsertHandler)
     // ── Multi-cursor state ───────────────────────────────────────────────
     // Moved here (before LaunchedEffect) so the Esc key handler can reference it.
     val extraCursorsState = remember { mutableStateOf<List<androidx.compose.ui.text.TextRange>>(emptyList()) }
     var extraCursors by extraCursorsState
-    // Multi-cursor input mode (MC toolbar key): when ON, double-tap adds/removes
-    // cursors; when OFF, double-tap word-selects (native-style behavior restored).
-    var mcMode by remember { mutableStateOf(false) }
+    // MULTI-CURSOR-MODE-GLOBAL: when ON, double-tap adds/removes cursors; when OFF,
+    // double-tap word-selects (native-style). The flag now lives in
+    // MultiCursorModeStore so the extra-keys MC chip can render live state and ALL
+    // CodeEditor instances (split panes included) share ONE mode flag.
     // P22-K: Back press clears extra cursors (mobile equivalent of Escape)
     androidx.activity.compose.BackHandler(enabled = extraCursors.isNotEmpty()) {
         extraCursors = emptyList()
+        MultiCursorModeStore.enabled = false
     }
     // PERF-PROBE: frame-clock observer for jank/frame-gap counters (measure-first pass)
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -1520,8 +1522,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             androidx.compose.runtime.withFrameNanos { t -> PerfProbe.onFrame(t) }
         }
     }
-    LaunchedEffect(Unit) {
-        currentOnInsertHandler?.invoke { text ->
+    // KEY-INSERT-DISPATCHER: handler is now an explicit register/unregister pair
+    // (DisposableEffect below) instead of last-mounted-wins overwriting of a shared
+    // lambda slot - split panes and disposed editors can no longer steal key presses.
+    val insertHandler: (String) -> Unit = { text ->
             // P-EXTRAKEYS: Ensure editor has focus so BasicTextField processes the
             // programmatic value update. Without focus, BasicTextField in Compose
             // 1.6.x may not render programmatic value changes.
@@ -1543,8 +1547,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 }
                 "MC" -> {
                     // Multi-cursor mode toggle — no text inserted.
-                    mcMode = !mcMode
-                    if (!mcMode) extraCursors = emptyList()
+                    MultiCursorModeStore.enabled = !MultiCursorModeStore.enabled
+                    if (!MultiCursorModeStore.enabled) extraCursors = emptyList()
+                    AppOutputLog.log("[MC-DIAG] MC key pressed — mode=" + (if (MultiCursorModeStore.enabled) "ON" else "OFF") + " extraCursors=" + extraCursors.size, "lsp")
                 }
                 "Esc" -> {
                     snippetSession = null
@@ -1557,6 +1562,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     peekDefResult = null
                     // FIX: Esc must also clear multi-cursors (mobile equivalent of Escape)
                     extraCursors = emptyList()
+                    MultiCursorModeStore.enabled = false
                 }
                 "Tab" -> {
                     if (snippetSession != null) {
@@ -1678,6 +1684,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 }
             }
         }
+    }
+    DisposableEffect(Unit) {
+        currentInsertDispatcher?.register(insertHandler)
+        onDispose { currentInsertDispatcher?.unregister(insertHandler) }
     }
     // P38-FIX: Long-press trigger for auto-opening LSP menu
     var longPressTrigger by remember { mutableStateOf(0) }
@@ -2381,7 +2391,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onDoubleTap = { offset ->
                                     textLayoutResult?.let { layout ->
                                         val charOffset = layout.getOffsetForPosition(offset)
-                                        if (mcMode) {
+                                        if (MultiCursorModeStore.enabled) {
                                             // MC mode: add/remove a cursor at this position
                                             val atPrimary = charOffset == value.selection.min
                                             val existing = extraCursors.find { it.min == charOffset }
@@ -2390,6 +2400,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 existing != null -> extraCursors - existing
                                                 else -> MultiCursorEngine.normalize(extraCursors + TextRange(charOffset))
                                             }
+                                            AppOutputLog.log("[MC-DIAG] double-tap in MC mode at offset $charOffset — extraCursors=" + extraCursors.size, "lsp")
                                         } else {
                                             // MC off: double-tap word-selects (native-style)
                                             val (wordStart, wordEnd) = WordBoundary.findWordBoundaries(value.text, charOffset)

@@ -755,6 +755,23 @@ internal fun TerminalPane(
         if (idx < 0) return
         val cur = tabs[idx].lockedRootPath
         tabs[idx] = tabs[idx].copy(lockedRootPath = if (cur == root) null else root)
+        // LOCK-CD-FIX (2026-09-11): the lock used to feed workDir/$WORKSPACE_PATH only
+        // at the NEXT session (re)creation - a terminal locked to a non-primary root
+        // kept its shell cwd at the OLD root, so `ide open file.kt:42` resolved against
+        // the stale cwd and the ide CLI printed "does not exist". cd the RUNNING shell
+        // into the new root immediately (unlock does NOT cd - VS Code model).
+        if (cur != root) {
+            // Guest-style roots (/root/..., /sdcard/...) are valid inside Ubuntu as-is;
+            // host-style roots (filesDir, rootfs, /storage/emulated/0) translate.
+            val guest = if (root.startsWith("/root") || root.startsWith("/sdcard")) root
+                        else com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, root)
+            val session = tabs[idx].session
+            if (guest != null) {
+                session.write("cd \"$guest\" 2>/dev/null && echo \"[LOCK] cwd -> $guest\" || echo \"[LOCK-DIAG] cd to '$root' failed inside Ubuntu - keeping current cwd\"\n")
+            } else {
+                writeToDisplay(session, "\r\n[LOCK-DIAG] '$root' is not reachable inside Ubuntu (no bind mount covers it) - ide open will resolve against the current cwd\r\n")
+            }
+        }
         scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
             TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
         }) }

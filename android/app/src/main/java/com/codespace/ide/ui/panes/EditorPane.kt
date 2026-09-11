@@ -144,7 +144,7 @@ fun findFileByName(root: java.io.File, name: String, maxDepth: Int = 10): java.i
 fun EditorPane(
     openFilePath: String? = null,
     onFileOpened: (() -> Unit)? = null,
-    onInsertRequest: (((String) -> Unit) -> Unit)? = null,
+    onInsertRequest: com.codespace.ide.editor.KeyInsertDispatcher? = null,
     fontSize: Int = 13,
     onCursorChange: ((Int, Int) -> Unit)? = null,
     wordWrap: Boolean = false,
@@ -1194,10 +1194,14 @@ fun EditorPane(
         // recomposition so the diagnostics handler below can convert LSP positions
         // against the CURRENT content, not the content captured at file-open time.
         val liveTab by rememberUpdatedState(active)
-        LaunchedEffect(active?.id, active?.language) {
-            val snap = active ?: return@LaunchedEffect
-            if (!LspManager.isSupported(snap.language)) return@LaunchedEffect
-            val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
+        DisposableEffect(active?.id, active?.language) {
+            val snap = active
+            val snapLang = snap?.language
+            var registered = false
+            if (snap != null && snapLang != null && LspManager.isSupported(snapLang)) {
+                val uri = LspManager.fileUriFromHostPath(context, snap.path)
+                if (uri != null) {
+                    registered = true
             // SQUIGGLE-DIAG (2026-09-10): the 2026-09-10 stale-content fix did not
             // resolve on-device re-test (still no underline for `val number: String = 123`
             // in a .kt file). Rather than guess again, log EVERY decision point in this
@@ -1246,6 +1250,17 @@ fun EditorPane(
                     lspSquiggles = parsed
                 } else {
                     AppOutputLog.log("[SQUIGGLE-DIAG] DROPPED — URI mismatch: diagUri=" + normDiag + " ourUri=" + normUri + " diagFile=" + diagFile + " ourFile=" + ourFile, "lsp")
+                }
+                }
+            }
+            }
+            onDispose {
+                // ZERO-TAB-LSP-FIX: without this unregister, the handler outlived its
+                // tab and every server publish kept logging FIRED/DROPPED with NO editor
+                // open at all — background LSP noise that never stops.
+                if (registered && snapLang != null) {
+                    AppOutputLog.log("[SQUIGGLE-DIAG] handler UNREGISTERED for " + snapLang.displayName + " (tab closed/switched)", "lsp")
+                    LspManager.clearDiagnosticsHandler(snapLang)
                 }
             }
         }

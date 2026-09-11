@@ -1516,13 +1516,32 @@ object LspManager {
         notifyLspEvent(language, "starting", NotificationStore.Severity.PROGRESS, "Initializing language server…")
         AppOutputLog.log("[LSP] Process spawned for ${language.displayName} — isAlive=${process.isAlive}", "lsp")
 
-        // Drain stderr in background thread so it doesn't block stdout (JSON-RPC) reads
+        // Drain stderr in background thread so it doesn't block stdout (JSON-RPC) reads.
+        // STDERR-RATE-LIMIT (2026-09-11): a chatty server (or an install/stack flood)
+        // posted EVERY stderr line into AppOutputLog -> main-thread Handler.post storm
+        // that janked the UI even with zero editor tabs open. Allow 10 lines/sec, then
+        // suppress and emit one summary per window. Lines are always READ (pipe drained).
         Thread {
             try {
+                var windowStartMs = System.currentTimeMillis()
+                var windowLines = 0
+                var suppressedTotal = 0L
                 process.errorStream.bufferedReader().forEachLine { line ->
+                    val now = System.currentTimeMillis()
+                    if (now - windowStartMs >= 1000L) {
+                        if (suppressedTotal > 0) {
+                            AppOutputLog.log("[LSP][${language.displayName}][stderr] ... $suppressedTotal line(s) suppressed in last window (rate limit)", "lsp")
+                        }
+                        windowStartMs = now
+                        windowLines = 0
+                        suppressedTotal = 0
+                    }
                     Log.w(TAG, "LSP-STDERR [${language.displayName}]: $line")
-                    if (line.isNotBlank()) {
+                    if (line.isNotBlank() && windowLines < 10) {
+                        windowLines++
                         AppOutputLog.log("[LSP][${language.displayName}][stderr] $line", "lsp")
+                    } else if (line.isNotBlank()) {
+                        suppressedTotal++
                     }
                 }
             } catch (_: Exception) {}
@@ -3212,12 +3231,27 @@ object LspManager {
 
             val process = pb.start()
 
-            // Drain stderr in background
+            // Drain stderr in background (rate-limited - see STDERR-RATE-LIMIT above)
             Thread {
                 try {
+                    var windowStartMs = System.currentTimeMillis()
+                    var windowLines = 0
+                    var suppressedTotal = 0L
                     process.errorStream.bufferedReader().forEachLine { line ->
-                        if (line.isNotBlank()) {
+                        val now = System.currentTimeMillis()
+                        if (now - windowStartMs >= 1000L) {
+                            if (suppressedTotal > 0) {
+                                AppOutputLog.log("[LSP][ctags-lsp][stderr] ... $suppressedTotal line(s) suppressed in last window (rate limit)", "lsp")
+                            }
+                            windowStartMs = now
+                            windowLines = 0
+                            suppressedTotal = 0
+                        }
+                        if (line.isNotBlank() && windowLines < 10) {
+                            windowLines++
                             AppOutputLog.log("[LSP][ctags-lsp][stderr] $line", "lsp")
+                        } else if (line.isNotBlank()) {
+                            suppressedTotal++
                         }
                     }
                 } catch (_: Exception) {}

@@ -210,7 +210,7 @@ object IdeEnvironment {
         return listOf(
             "export WORKSPACE_PATH=\"$workspacePath\"\n",
             "export PROJECT_FILES=\"$workspacePath\"\n",
-            "cd \"$workspacePath\" 2>/dev/null && clear\n",
+            "cd \"$workspacePath\" 2>/dev/null && clear || echo \"[LOCK-DIAG] cd to '$workspacePath' failed - not reachable inside Ubuntu, keeping current cwd\"\n",
             "export PROMPT_COMMAND='history -a'\n",
             "export HISTFILE=~/.bash_history\n",
             "export HISTSIZE=500\n",
