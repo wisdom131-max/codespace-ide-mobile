@@ -19,7 +19,10 @@ import com.codespace.ide.lsp.LspManager
  *   1. LSP textDocument/didClose before removing the tab (P24-2)
  *   2. lspOpenedFiles cleanup
  *   3. tab removal from the tabs list
- *   4. activeId fixup (previous tab, else first) + splitId fixup
+ *   4. activeId fixup (previous tab, else first) + SPLIT-VIEW cascade: any
+ *      split view of the closed file is removed too (a split view cannot
+ *      outlive its primary tab — the shared buffer's owner is gone), and if the
+ *      ACTIVE view was that split view, activation falls back to a real tab
  *   5. 30s-idle server-stop grace when no tabs remain for the language
  *
  * Call sites:
@@ -42,7 +45,6 @@ internal fun closeEditorTabInternal(
     tab: EditorTab,
     tabs: SnapshotStateList<EditorTab>,
     activeId: MutableState<String?>,
-    splitId: MutableState<String?>,
     lspOpenedFiles: SnapshotStateMap<String, Boolean>,
 ) {
     val idx = tabs.indexOfFirst { it.id == tab.id }
@@ -57,10 +59,14 @@ internal fun closeEditorTabInternal(
         lspOpenedFiles.remove(closedPath)
     }
     tabs.remove(tab)
-    if (activeId.value == tab.id) {
+    // SPLIT-VIEW CASCADE (2026-09-11): close dependent split views of this file
+    // (they share this tab's buffer — with the owner gone they must not linger
+    // as phantom strip entries resolving to a null buffer).
+    val splitIdForClosed = com.codespace.ide.editor.SplitViewStore.idFor(closedPath)
+    com.codespace.ide.editor.SplitViewStore.removeForPath(closedPath)
+    if (activeId.value == tab.id || activeId.value == splitIdForClosed) {
         activeId.value = tabs.getOrNull(idx - 1)?.id ?: tabs.firstOrNull()?.id
     }
-    if (splitId.value == tab.id) splitId.value = null
     // P24-2: Stop server if no more files open for this language (30s grace)
     val remainingForLang = tabs.count { it.language == closedLang }
     if (remainingForLang == 0 && LspManager.isServerRunning(closedLang)) {

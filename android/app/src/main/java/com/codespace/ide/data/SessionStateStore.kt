@@ -132,7 +132,6 @@ class SessionStateStore(private val context: Context) {
         val activeFilePath: String? = null,
         val openFilePaths: List<String> = emptyList(),
         val pinnedFilePaths: List<String> = emptyList(),
-        val splitFilePath: String? = null,
         val editorFontSize: Int = 13,
     )
 
@@ -163,7 +162,6 @@ class SessionStateStore(private val context: Context) {
             put("activeFilePath",  state.activeFilePath)
             put("openFilePaths",   JSONArray(state.openFilePaths))
             put("pinnedFilePaths", JSONArray(state.pinnedFilePaths))
-            put("splitFilePath",   state.splitFilePath)
             put("editorFontSize",  state.editorFontSize)
         }.toString()
 
@@ -184,7 +182,6 @@ class SessionStateStore(private val context: Context) {
                 activeFilePath = obj.optString("activeFilePath").takeIf { !it.isNullOrBlank() },
                 openFilePaths  = strList("openFilePaths"),
                 pinnedFilePaths = strList("pinnedFilePaths"),
-                splitFilePath  = obj.optString("splitFilePath").takeIf { !it.isNullOrBlank() },
                 editorFontSize = obj.optInt("editorFontSize", 13),
             )
         } catch (_: Exception) { null }

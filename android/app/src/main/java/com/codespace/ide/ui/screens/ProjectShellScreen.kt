@@ -4453,105 +4453,16 @@ private fun PssEditorColumn(
                 .clip(WorkspaceShapes.EditorShape)
         ) {
 
-        // Editor tab bar — scrolling tabs + fixed split-editor button overlay
-        if (editorTabs.isNotEmpty()) {
-            Box(Modifier.fillMaxWidth().height(35.dp).background(TabBarBg)) {
-            Row(
-                Modifier.fillMaxWidth().height(35.dp)
-                    .horizontalScroll(rememberScrollState()),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                var tabContextMenuFor by remember { mutableStateOf<String?>(null) }
-                editorTabs.forEach { tab ->
-                    val isActive = tab == activeEditorTab
-                    Box {
-                        Column(Modifier.clickable { pushNavEntry(activeEditorTab, scrollTargetLine); activeEditorTab = tab }
-                            .combinedClickable(
-                                onClick = { activeEditorTab = tab },
-                                onLongClick = { tabContextMenuFor = tab },
-                            )
-                            .background(if (isActive) TabActiveBg else TabInactiveBg)) {
-                            Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(tab.substringAfterLast("/"), fontSize = 13.sp,
-                                    color = if (isActive) TabText else TabTextInactive, maxLines = 1)
-                                Spacer(Modifier.width(6.dp))
-                                Icon(Icons.Default.Close, null, tint = TabTextInactive,
-                                    modifier = Modifier.size(14.dp).clickable {
-                                        editorTabs.remove(tab)
-                                        if (activeEditorTab == tab) activeEditorTab = editorTabs.lastOrNull()
-                                    })
-                            }
-                            if (isActive) Box(Modifier.fillMaxWidth().height(1.dp).background(TabActiveIndicator))
-                            else Spacer(Modifier.height(1.dp))
-                        }
-                        DropdownMenu(
-                            expanded = tabContextMenuFor == tab,
-                            onDismissRequest = { tabContextMenuFor = null },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Close", fontSize = 13.sp) },
-                                onClick = {
-                                    editorTabs.remove(tab)
-                                    if (activeEditorTab == tab) activeEditorTab = editorTabs.lastOrNull()
-                                    tabContextMenuFor = null
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Close Others", fontSize = 13.sp) },
-                                onClick = {
-                                    editorTabs.removeAll { it != tab }
-                                    activeEditorTab = tab
-                                    tabContextMenuFor = null
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Close All", fontSize = 13.sp) },
-                                onClick = {
-                                    editorTabs.clear()
-                                    activeEditorTab = null
-                                    tabContextMenuFor = null
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Close Saved", fontSize = 13.sp) },
-                                onClick = {
-                                    // Keep only dirty tabs — since we auto-save, all are "saved"
-                                    // This closes all tabs (none are unsaved in our model)
-                                    editorTabs.clear()
-                                    activeEditorTab = null
-                                    tabContextMenuFor = null
-                                },
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("Copy Path", fontSize = 13.sp) },
-                                onClick = {
-                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("path", tab))
-                                    Toast.makeText(context, "Path copied", Toast.LENGTH_SHORT).show()
-                                    tabContextMenuFor = null
-                                },
-                            )
-                        }
-                    }
-                    Box(Modifier.width(1.dp).height(35.dp).background(DividerColor))
-                }
-            }
-            // Split Editor button — fixed at right edge, does NOT scroll with tabs
-            Box(
-                Modifier.align(Alignment.CenterEnd).size(35.dp)
-                    .clickable { onShowNotification("Split editor — coming soon", "info") },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(id = com.codespace.ide.R.drawable.ic_vs_split_editor),
-                    contentDescription = "Split Editor",
-                    tint = TabTextInactive,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            } // end Box overlay
-        }
+        // TAB-STRIP CONSOLIDATION (2026-09-11): the shell's 35dp mirror strip was
+        // REMOVED to reclaim vertical space — EditorPane's own strip (the
+        // authoritative one) is the single tab strip. Its long-press context menu
+        // and split button were ported INTO EditorPane's strip, and the shell's
+        // theme colors are passed down via tabColors so the surviving strip keeps
+        // the removed strip's themed active-tab highlight (no more white/light
+        // strip look — active tab uses the workbench theme's active color).
+        // NOTE: this mirror-only strip's Close/X button never actually closed the
+        // tab durably anyway — it mutated this mirror list, which the pane's next
+        // reactive sync resurrected. EditorPane's X (authoritative) always worked.
 
         // Breadcrumb
         if (activeEditorTab != null) {
@@ -4690,6 +4601,17 @@ private fun PssEditorColumn(
                     closeRootRequest = closeRootRequest,
                     onCloseRootHandled = onCloseRootHandled,
                     onTabsChanged = { paths, active -> syncEditorTabsFromPane(editorTabs, activeEditorTabMs, paths, active) },
+                    // TAB-STRIP CONSOLIDATION: pass the workbench theme's tab colors so the
+                    // surviving strip matches the removed shell strip's active-tab look.
+                    tabColors = com.codespace.ide.ui.panes.EditorTabColors(
+                        barBg = TabBarBg,
+                        activeBg = TabActiveBg,
+                        inactiveBg = TabInactiveBg,
+                        activeIndicator = TabActiveIndicator,
+                        text = TabText,
+                        textInactive = TabTextInactive,
+                        divider = DividerColor,
+                    ),
                 )
             } else {
                 Box(

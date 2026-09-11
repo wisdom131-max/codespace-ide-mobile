@@ -37,7 +37,6 @@ object SessionHandoffManager {
                     put("activePanel",    s.activePanel    ?: "")
                     put("bottomTab",      s.bottomTab      ?: "")
                     put("activeFilePath", s.activeFilePath ?: "")
-                    put("splitFilePath",  s.splitFilePath  ?: "")
                     put("showBottomPanel", s.showBottomPanel)
                     put("openFilePaths",  JSONArray(s.openFilePaths))
                     put("pinnedFilePaths", JSONArray(s.pinnedFilePaths))
@@ -76,7 +75,6 @@ object SessionHandoffManager {
                     activePanel     = s.optString("activePanel").ifBlank { null },
                     bottomTab       = s.optString("bottomTab").ifBlank { null },
                     activeFilePath  = s.optString("activeFilePath").ifBlank { null },
-                    splitFilePath   = s.optString("splitFilePath").ifBlank { null },
                     showBottomPanel = s.optBoolean("showBottomPanel", true),
                     openFilePaths   = arr("openFilePaths"),
                     pinnedFilePaths = arr("pinnedFilePaths"),

@@ -892,12 +892,75 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // parameter from outside (like the format button updating tabs[idx].content)
     // has no effect — the editor keeps showing the old text because 'remember'
     // only initializes once.
+    // SPLIT-LIVE-SYNC (2026-09-11): REAL external-content synchronization.
+    //
+    // The old effect only moved the CURSOR to content.length — it never replaced
+    // the text, so a CodeEditor whose content param changed externally kept
+    // showing stale text forever (masked until now because tab switches remount
+    // via key(active.id)). With tab-based split views two CodeEditors bind to the
+    // SAME EditorTab buffer, so when the peer view edits, this instance receives
+    // a new content param and MUST take it — VS Code "one model, two views".
+    //
+    // Contract:
+    // - Replace text with the new content (the model always wins).
+    // - Preserve THIS view's cursor/selection by mapping it through the edit:
+    //   common-prefix/suffix diff locates the changed region; offsets before it
+    //   stay put, offsets after it shift by the length delta, offsets inside it
+    //   clamp to its end. (Cursor jump only when the peer edited AT our cursor.)
+    // - Anchor the viewport when the edit happened ABOVE the visible region:
+    //   shift vScroll by the net line-count delta of the changed region so the
+    //   text under the user's eyes does not jump (VS Code scroll-anchoring).
+    // - DO NOT call onContentChange — this sync is a RECEIPT, not an edit; an
+    //   echo write would falsely mark the shared buffer dirty.
+    // - Tag as ProgrammaticTextChange (no trigger authority: no completion/hover
+    //   spam from the peer's edit), which also makes the next real echo skip.
+    fun externalContentSync(newText: String, reason: String) {
+        val oldText = value.text
+        if (oldText == newText) return
+        val minLen = minOf(oldText.length, newText.length)
+        var p = 0
+        while (p < minLen && oldText[p] == newText[p]) p++
+        var sfx = 0
+        while (sfx < minLen - p && oldText[oldText.length - 1 - sfx] == newText[newText.length - 1 - sfx]) sfx++
+        val editStart = p
+        val removedLen = oldText.length - p - sfx
+        val insertedLen = newText.length - p - sfx
+        val oldSelStart = value.selection.start
+        val oldSelEnd = value.selection.end
+        fun mapOffset(off: Int): Int = when {
+            off <= editStart -> off
+            off >= editStart + removedLen -> off - removedLen + insertedLen
+            else -> editStart + insertedLen
+        }.coerceIn(0, newText.length)
+        val newSelStart = mapOffset(oldSelStart)
+        val newSelEnd = mapOffset(oldSelEnd)
+        // Viewport anchoring: only when the edit region starts strictly above the
+        // first visible line does the content under the viewport shift; correct
+        // vScroll by the net line delta of the changed region so the visible
+        // text stays put.
+        val lhPxSync = editorMetrics.lineHeightPx
+        val firstVisibleLine = if (lhPxSync > 0) (vScroll.value / lhPxSync).toInt() else 0
+        val editStartLine = oldText.substring(0, editStart).count { it == '\n' }
+        if (editStartLine < firstVisibleLine) {
+            val oldRegion = if (removedLen > 0) oldText.substring(editStart, editStart + removedLen) else ""
+            val newRegion = if (insertedLen > 0) newText.substring(editStart, editStart + insertedLen) else ""
+            val lineDelta = newRegion.count { it == '\n' } - oldRegion.count { it == '\n' }
+            if (lineDelta != 0 && vScroll.maxValue > 0) {
+                vScroll.scrollTo((vScroll.value + lineDelta * lhPxSync).coerceIn(0, vScroll.maxValue))
+            }
+        }
+        value = TextFieldValue(newText, TextRange(newSelStart, newSelEnd))
+        editorEvent = EditorEvent.ProgrammaticTextChange(newText, newSelEnd)
+        AppOutputLog.log("EXTERNAL_CONTENT_SYNC: " + reason + " (replaced " + oldText.length + " -> " + newText.length + " chars)", "lsp")
+    }
+
     LaunchedEffect(content) {
-        // FIX: Only react to external content changes (file reload, format button).
-        // Skip when we just fired UserTyping/ProgrammaticTextChange — the content
-        // param update is our own echo and value.text already matches.
+        // FIX: Only react to external content changes (file reload, format button,
+        // SPLIT-LIVE-SYNC peer edit). Skip when we just fired UserTyping /
+        // ProgrammaticTextChange — the content param update is our own echo and
+        // value.text already matches.
         if (value.text != content && editorEvent !is EditorEvent.UserTyping && editorEvent !is EditorEvent.ProgrammaticTextChange) {
-            programmaticCursorMove(content.length, "content_reload")
+            externalContentSync(content, "content_param_change")
         }
     }
 

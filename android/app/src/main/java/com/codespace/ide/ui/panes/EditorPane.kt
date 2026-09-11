@@ -4,6 +4,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -36,6 +37,7 @@ import org.json.JSONArray
 import com.codespace.ide.editor.PeekDefResult
 import com.codespace.ide.editor.FileCache
 import com.codespace.ide.editor.MergeConflictParser
+import com.codespace.ide.editor.resolveActiveTab
 import com.codespace.ide.editor.ConflictHunk
 import com.codespace.ide.editor.ConflictResolution
 import com.codespace.ide.editor.DocumentFormatter
@@ -141,6 +143,7 @@ fun findFileByName(root: java.io.File, name: String, maxDepth: Int = 10): java.i
 
 
 @Composable
+@kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun EditorPane(
     openFilePath: String? = null,
     onFileOpened: (() -> Unit)? = null,
@@ -182,7 +185,7 @@ fun EditorPane(
     /** MULTI-ROOT (Part B): set to a root path by ProjectShellScreen when the user
      * removes that root from the workspace — EditorPane closes every open tab
      * under that root via the SHARED closeEditorTabInternal path (same code as the
-     * tab X button: didClose first, then tab removal and activeId/splitId fixup). */
+     * tab X button: didClose first, then tab removal and activeId fixup). */
     closeRootRequest: String? = null,
     /** MULTI-ROOT (Part B): invoked after closeRootRequest has been handled so the
      * shell can clear its request state. */
@@ -195,6 +198,9 @@ fun EditorPane(
      * list, and root-removal tab-close branch always see LIVE data — same
      * reactive-binding principle as WorkspaceRootsStore (no manual refresh). */
     onTabsChanged: ((openPaths: List<String>, activePath: String?) -> Unit)? = null,
+    /** TAB-STRIP CONSOLIDATION: theme colors passed by the shell so the surviving
+     *  strip matches the removed shell strip's themed active-tab highlight. */
+    tabColors: EditorTabColors = EditorTabColors(),
 ) {
     val context = LocalContext.current
     val orientation = LocalConfiguration.current.orientation
@@ -206,7 +212,7 @@ fun EditorPane(
     // External reload trigger — re-reads the active file from disk (used by external replace)
     LaunchedEffect(reloadTrigger) {
         if (reloadTrigger > 0) {
-            val activeTab = tabs.firstOrNull { it.id == activeId }
+            val activeTab = resolveActiveTab(activeId, tabs)
             if (activeTab != null && activeTab.path.startsWith("/")) {
                 try {
                     val fileContent = java.io.File(activeTab.path).readText()
@@ -229,32 +235,32 @@ fun EditorPane(
     // Phase R: Gated behind ProjectSettingsStore.formatOnSaveEnabled
     LaunchedEffect(formatOnSaveTrigger) {
         if (formatOnSaveTrigger > 0) {
-            val activeTab = tabs.firstOrNull { it.id == activeId }
+            val activeTab = resolveActiveTab(activeId, tabs)
             if (activeTab != null && activeTab.path.startsWith("/")) {
                 if (ProjectSettingsStore.formatOnSaveEnabled.value) {
                     formatting = true
                     try {
                         val result = DocumentFormatter.format(context, activeTab.path, activeTab.language)
                         if (result.success && result.formattedContent != null && result.formattedContent != activeTab.content) {
-                            val idx = tabs.indexOfFirst { it.id == activeId }
+                            val idx = tabs.indexOfFirst { it.id == activeTab.id }
                             if (idx >= 0) {
                                 tabs[idx] = activeTab.copy(content = result.formattedContent, isDirty = false)
                                 try { File(activeTab.path).writeText(result.formattedContent); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
                             }
                         } else {
-                            val idx = tabs.indexOfFirst { it.id == activeId }
+                            val idx = tabs.indexOfFirst { it.id == activeTab.id }
                             if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
                         }
                     } catch (_: Exception) {
                         try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
-                        val idx = tabs.indexOfFirst { it.id == activeId }
+                        val idx = tabs.indexOfFirst { it.id == activeTab.id }
                         if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
                     }
                     formatting = false
                 } else {
                     // Format on Save disabled — just save the file
                     try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
-                    val idx = tabs.indexOfFirst { it.id == activeId }
+                    val idx = tabs.indexOfFirst { it.id == activeTab.id }
                     if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
                 }
                 // Notify LSP that the file was saved
@@ -269,10 +275,10 @@ fun EditorPane(
     }
     // R3-A: Save current file — called by Ctrl+S from CodeEditor
     val saveCurrentFile: () -> Unit = {
-        val activeTab = tabs.firstOrNull { it.id == activeId }
+        val activeTab = resolveActiveTab(activeId, tabs)
         if (activeTab != null && activeTab.path.startsWith("/")) {
             try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
-            val idx = tabs.indexOfFirst { it.id == activeId }
+            val idx = tabs.indexOfFirst { it.id == activeTab.id }
             if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
             // Notify LSP that the file was saved
             try {
@@ -391,7 +397,7 @@ fun EditorPane(
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(5000)
-            val active = tabs.firstOrNull { it.id == activeId }
+            val active = resolveActiveTab(activeId, tabs)
             if (active != null && LspManager.isSupported(active.language)) {
                 val alive = LspManager.isServerRunning(active.language)
                 val wasAlive = lspLastKnownAlive[active.language] ?: false
@@ -415,8 +421,6 @@ fun EditorPane(
             }
         }
     }
-    val splitIdState = remember { mutableStateOf<String?>(null) }
-    var splitId by splitIdState
 
     // MULTI-ROOT (Part B): when the user removes a workspace root in the Explorer,
     // ProjectShellScreen sets closeRootRequest. Close every open tab under that root
@@ -435,7 +439,7 @@ fun EditorPane(
                 com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] MULTI-ROOT: closing " + toClose.size + " tab(s) under removed root " + root + " (shared close path, didClose first)", "lsp")
             }
             toClose.forEach { tab ->
-                closeEditorTabInternal(context, tab, tabs, activeIdState, splitIdState, lspOpenedFiles)
+                closeEditorTabInternal(context, tab, tabs, activeIdState, lspOpenedFiles)
             }
             onCloseRootHandled?.invoke()
         }
@@ -470,7 +474,7 @@ fun EditorPane(
             val frameFile = activeFrame?.file ?: stack.firstOrNull()?.file ?: ""
             val frameLine = activeFrame?.line ?: stack.firstOrNull()?.line ?: -1
             val frameName = frameFile.substringAfterLast('/')
-            val activeTab = tabs.firstOrNull { it.id == activeId }
+            val activeTab = resolveActiveTab(activeId, tabs)
             val editorName = activeTab?.path?.substringAfterLast('/') ?: ""
             val matches = frameName.isNotEmpty() && editorName.isNotEmpty() && frameName == editorName
             debugCurrentLine = if (matches) frameLine + 1 else 0
@@ -545,13 +549,11 @@ fun EditorPane(
             val restoredPaths: List<String>
             val restoredActive: String?
             val restoredPinned: List<String>
-            val restoredSplit: String?
             if (store != null) {
                 val state = store.loadShellState(pid)
                 restoredPaths  = state?.openFilePaths ?: emptyList()
                 restoredActive = state?.activeFilePath
                 restoredPinned = state?.pinnedFilePaths ?: emptyList()
-                restoredSplit  = state?.splitFilePath
                 // Restore per-file scroll and cursor positions
                 store.loadScrollPositions(pid).forEach { (p, line) -> tabScrollLines[p] = line }
                 store.loadCursors(pid).forEach { (p, off) -> tabCursorOffsets[p] = off }
@@ -561,7 +563,6 @@ fun EditorPane(
                 restoredPaths  = legacy
                 restoredActive = legacyActive
                 restoredPinned = emptyList()
-                restoredSplit  = null
             }
             restoredPaths.forEach { path ->
                 val file = File(path)
@@ -579,9 +580,6 @@ fun EditorPane(
                 }
             }
             pinnedPaths.addAll(restoredPinned.filter { p -> tabs.any { it.path == p } })
-            if (restoredSplit != null && tabs.any { it.path == restoredSplit }) {
-                splitId = restoredSplit
-            }
             activeId = tabs.firstOrNull { it.path == restoredActive }?.id ?: tabs.firstOrNull()?.id
         }
     }
@@ -631,7 +629,15 @@ fun EditorPane(
         if (openFilePath != null) {
             val existing = tabs.firstOrNull { it.path == openFilePath }
             if (existing != null) {
-                activeId = existing.id
+                // SPLIT-VIEW GUARD: the shell's activeEditorTab mirror sync round-trips
+                // back through this effect. When a split view of the SAME file is the
+                // active view, that round-trip must NOT yank the user back to the
+                // primary tab — the report already resolved the path, so this is a
+                // no-op unless the user actually switched files.
+                val splitIdForPath = com.codespace.ide.editor.SplitViewStore.idFor(openFilePath)
+                if (activeId != splitIdForPath) {
+                    activeId = existing.id
+                }
             } else {
                 val name = File(openFilePath).name
                 val content = loadFileContent(openFilePath)
@@ -668,22 +674,24 @@ fun EditorPane(
         androidx.compose.runtime.snapshotFlow { tabs.map { it.path } to activeId }
             .collect { state ->
                 val (paths, activeIdNow) = state
-                callback(paths, tabs.firstOrNull { it.id == activeIdNow }?.path)
+                // SPLIT-VIEW: a split id resolves to its primary tab's path, so the
+                // shell mirror (breadcrumb, problems badge, open editors) keeps
+                // pointing at the real file while a split view is active.
+                callback(paths, resolveActiveTab(activeIdNow, tabs)?.path)
             }
     }
 
     // ── Workspace memory: persist on every state change ─────────────────
     val currentTabList = tabs.toList()
-    LaunchedEffect(currentTabList, activeId, pinnedPaths.toList(), splitId) {
+    LaunchedEffect(currentTabList, activeId, pinnedPaths.toList()) {
         val store = sessionStateStore
         val pid = projectId
         if (store != null && pid != null) {
             val state = SessionStateStore.ShellState(
                 projectId      = pid,
-                activeFilePath = tabs.firstOrNull { it.id == activeId }?.path,
+                activeFilePath = resolveActiveTab(activeId, tabs)?.path,
                 openFilePaths  = tabs.map { it.path },
                 pinnedFilePaths = pinnedPaths.toList(),
-                splitFilePath  = splitId?.let { id -> tabs.firstOrNull { it.id == id }?.path },
                 // activePanel / bottomTab / showBottomPanel managed by ProjectShellScreen
             )
             store.saveShellState(pid, state)
@@ -815,52 +823,203 @@ fun EditorPane(
     // No sample tabs — editor starts empty, waiting for Explorer
 
     Column(Modifier.fillMaxSize()) {
-        // Tab bar
+        // Tab bar — the SINGLE surviving strip (shell's 35dp mirror strip removed
+        // 2026-09-11; its long-press context menu was ported HERE, and its themed
+        // colors are passed down via tabColors so this strip keeps the removed
+        // strip's active-tab look).
         if (tabs.isNotEmpty()) {
             Row(
                 Modifier
                     .fillMaxWidth()
                     .height(28.dp)
-                    .background(TabBarBg)
+                    .background(tabColors.barBg)
                     .horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.Bottom,
             ) {
+                var tabContextMenuFor by remember { mutableStateOf<String?>(null) }
                 tabs.forEach { tab ->
                     val isActive = tab.id == activeId
-                    Column(
-                        Modifier
-                            .clickable { activeId = tab.id }
-                            .background(if (isActive) TabActiveBg else TabInactiveBg)
-                    ) {
-                        Row(
-                            Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                    Box {
+                        Column(
+                            Modifier
+                                .combinedClickable(
+                                    onClick = { activeId = tab.id },
+                                    onLongClick = { tabContextMenuFor = tab.id },
+                                )
+                                .background(if (isActive) tabColors.activeBg else tabColors.inactiveBg)
                         ) {
-                            Text(
-                                (if (tab.isDirty) "● " else "") + tab.name,
-                                fontSize = 11.sp,
-                                color = if (isActive) TabText else TabTextInactive,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.widthIn(max = 120.dp),
+                            Row(
+                                Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    (if (tab.isDirty) "● " else "") + tab.name,
+                                    fontSize = 11.sp,
+                                    color = if (isActive) tabColors.text else tabColors.textInactive,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 120.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = tabColors.textInactive,
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clickable {
+                                            // MULTI-ROOT (Part B): extracted to EditorTabClose.kt —
+                                            // ONE shared close path for the X button and root removal.
+                                            closeEditorTabInternal(context, tab, tabs, activeIdState, lspOpenedFiles)
+                                        },
+                                )
+                            }
+                            if (isActive) Box(Modifier.fillMaxWidth().height(1.dp).background(tabColors.activeIndicator))
+                        }
+                        // Long-press context menu — ported from the removed shell strip
+                        // (Close Others/All/Saved/Copy Path lived ONLY there). This version
+                        // operates on the AUTHORITATIVE tab list (the shell version mutated
+                        // the mirror, whose entries the pane's next sync resurrected).
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = tabContextMenuFor == tab.id,
+                            onDismissRequest = { tabContextMenuFor = null },
+                        ) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Close", fontSize = 13.sp) },
+                                onClick = {
+                                    closeEditorTabInternal(context, tab, tabs, activeIdState, lspOpenedFiles)
+                                    tabContextMenuFor = null
+                                },
                             )
-                            Spacer(Modifier.width(6.dp))
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Close",
-                                tint = TabTextInactive,
-                                modifier = Modifier
-                                    .size(14.dp)
-                                    .clickable {
-                                        // MULTI-ROOT (Part B): extracted to EditorTabClose.kt —
-                                        // ONE shared close path for the X button and root removal.
-                                        closeEditorTabInternal(context, tab, tabs, activeIdState, splitIdState, lspOpenedFiles)
-                                    },
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Close Others", fontSize = 13.sp) },
+                                onClick = {
+                                    tabs.toList().forEach { other ->
+                                        if (other.id != tab.id) closeEditorTabInternal(context, other, tabs, activeIdState, lspOpenedFiles)
+                                    }
+                                    activeId = tab.id
+                                    tabContextMenuFor = null
+                                },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Close All", fontSize = 13.sp) },
+                                onClick = {
+                                    tabs.toList().forEach { other ->
+                                        closeEditorTabInternal(context, other, tabs, activeIdState, lspOpenedFiles)
+                                    }
+                                    tabContextMenuFor = null
+                                },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Close Saved", fontSize = 13.sp) },
+                                onClick = {
+                                    tabs.toList().filter { !it.isDirty }.forEach { saved ->
+                                        closeEditorTabInternal(context, saved, tabs, activeIdState, lspOpenedFiles)
+                                    }
+                                    tabContextMenuFor = null
+                                },
+                            )
+                            androidx.compose.material3.HorizontalDivider()
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Copy Path", fontSize = 13.sp) },
+                                onClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("path", tab.path))
+                                    Toast.makeText(context, "Path copied", Toast.LENGTH_SHORT).show()
+                                    tabContextMenuFor = null
+                                },
                             )
                         }
-                        if (isActive) Box(Modifier.fillMaxWidth().height(1.dp).background(TabActiveIndicator))
                     }
-                    Box(Modifier.width(1.dp).height(28.dp).background(DividerColor))
+                    Box(Modifier.width(1.dp).height(28.dp).background(tabColors.divider))
+                }
+                // SPLIT-VIEW tab entries (tab-based split, 2026-09-11): live-synced
+                // second views of an open file, rendered right after the real tabs.
+                // "⫽" prefix marks them; dirty state mirrors the shared buffer.
+                com.codespace.ide.editor.SplitViewStore.views.forEach { sv ->
+                    val isActive = sv.id == activeId
+                    val primary = tabs.firstOrNull { it.path == sv.path }
+                    Box {
+                        Column(
+                            Modifier
+                                .combinedClickable(
+                                    onClick = { activeId = sv.id },
+                                    onLongClick = { tabContextMenuFor = sv.id },
+                                )
+                                .background(if (isActive) tabColors.activeBg else tabColors.inactiveBg)
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    (if (primary?.isDirty == true) "● " else "") + "⫽ " + (primary?.name ?: "…"),
+                                    fontSize = 11.sp,
+                                    color = if (isActive) tabColors.text else tabColors.textInactive,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 120.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Close Split View",
+                                    tint = tabColors.textInactive,
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clickable {
+                                            com.codespace.ide.editor.SplitViewStore.removeById(sv.id)
+                                            if (activeId == sv.id) activeId = primary?.id
+                                        },
+                                )
+                            }
+                            if (isActive) Box(Modifier.fillMaxWidth().height(1.dp).background(tabColors.activeIndicator))
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = tabContextMenuFor == sv.id,
+                            onDismissRequest = { tabContextMenuFor = null },
+                        ) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Close Split View", fontSize = 13.sp) },
+                                onClick = {
+                                    com.codespace.ide.editor.SplitViewStore.removeById(sv.id)
+                                    if (activeId == sv.id) activeId = primary?.id
+                                    tabContextMenuFor = null
+                                },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Copy Path", fontSize = 13.sp) },
+                                onClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("path", sv.path))
+                                    Toast.makeText(context, "Path copied", Toast.LENGTH_SHORT).show()
+                                    tabContextMenuFor = null
+                                },
+                            )
+                        }
+                    }
+                    Box(Modifier.width(1.dp).height(28.dp).background(tabColors.divider))
+                }
+                // SPLIT-VIEW toggle — VS Code semantics: duplicate the ACTIVE file as
+                // a live-synced second view (its own tab entry, independent cursor/
+                // scroll). Tap again with the split already present to remove it.
+                IconButton(
+                    onClick = {
+                        val activeTab = resolveActiveTab(activeId, tabs)
+                        if (activeTab != null) {
+                            val newActive = com.codespace.ide.editor.SplitViewStore.toggleFor(activeTab.path)
+                            activeId = newActive ?: activeTab.id
+                        }
+                    },
+                    modifier = Modifier.size(35.dp),
+                ) {
+                    Icon(
+                        painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.ic_vs_split_editor),
+                        contentDescription = "Split Editor",
+                        tint = if (resolveActiveTab(activeId, tabs)?.let { com.codespace.ide.editor.SplitViewStore.hasFor(it.path) } == true)
+                            androidx.compose.ui.graphics.Color(0xFF007ACC) else androidx.compose.ui.graphics.Color(0xFF858585),
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
                 // Split view button
                 IconButton(onClick = {
@@ -897,7 +1056,7 @@ fun EditorPane(
                 // P22-E: Format Document button (built-in regex formatter)
                 IconButton(
                     onClick = {
-                        val activeTab = tabs.firstOrNull { it.id == activeId }
+                        val activeTab = resolveActiveTab(activeId, tabs)
                         if (activeTab != null && !formatting) {
                             formatting = true
                             kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -953,7 +1112,7 @@ fun EditorPane(
                 // P25-LSP: Format document button — calls LSP formatting when available
                 IconButton(
                     onClick = {
-                        val tab = tabs.firstOrNull { it.id == activeId }
+                        val tab = resolveActiveTab(activeId, tabs)
                         if (tab != null && LspManager.isServerRunning(tab.language)) {
                             val uri = LspManager.fileUriFromHostPath(context, tab.path)
                             if (uri != null) {
@@ -979,12 +1138,12 @@ fun EditorPane(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = run {
-                                val t = tabs.firstOrNull { it.id == activeId }
+                                val t = resolveActiveTab(activeId, tabs)
                                 if (t != null && LspManager.isServerRunning(t.language)) Color(0xFF4EC9B0) else TabTextInactive
                             },
                         )
                         // P37-3: tiny LSP/regex label under the icon
-                        val t = tabs.firstOrNull { it.id == activeId }
+                        val t = resolveActiveTab(activeId, tabs)
                         Text(
                             if (t != null && LspManager.isServerRunning(t.language)) "LSP" else "",
                             fontSize = 7.sp,
@@ -1007,9 +1166,6 @@ fun EditorPane(
                         )
                         Text("sel", fontSize = 6.sp, color = Color(0xFF858585))
                     }
-                }
-                IconButton(onClick = { splitId = if (splitId == null) activeId else null }, modifier = Modifier.size(35.dp)) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Split", tint = TabTextInactive, modifier = Modifier.size(16.dp))
                 }
                 // P2-9 Bookmarks panel toggle
                 IconButton(onClick = { showBookmarkPanel = !showBookmarkPanel }, modifier = Modifier.size(35.dp)) {
@@ -1074,7 +1230,7 @@ fun EditorPane(
             }
         }
 
-        val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
+        val active = resolveActiveTab(activeId, tabs) ?: tabs.firstOrNull()
 
         // TEST-70-FIX: Watch master LSP toggle — restart server when re-enabled
         LaunchedEffect(ProjectSettingsStore.lspEnabled.value) {
@@ -1629,9 +1785,12 @@ fun EditorPane(
         }
 
         if (active != null) {
-            val splitTab = splitId?.let { id -> tabs.firstOrNull { it.id == id && it.id != active.id } }
-            if (splitTab != null) {
-                Row(Modifier.fillMaxSize()) {
+                // ── PRESERVED FROM OLD SPLIT BRANCH (2026-09-11): the blame fetch and the
+                // LSP status banner previously lived ONLY inside the half-built split
+                // render branch — in the normal path blameData was never fetched (the
+                // Git Blame toggle was dead) and lspStatusMessage had no visible UI.
+                // Extracted here so BOTH the primary tab and split views get them.
+                // (Conflict detection needs no extraction: this branch has its own copy.)
                     // P20-A: Fetch git blame data
                     if (showBlame && active != null) {
                         val blamePath = active.path
@@ -1662,15 +1821,6 @@ fun EditorPane(
                             }
                         }
                     }
-                    // P22-D: Detect merge conflicts in current file
-                    val detectedConflicts = remember(active.content) {
-                        if (MergeConflictParser.hasConflicts(active.content)) {
-                            MergeConflictParser.parse(active.content)
-                        } else null
-                    }
-                    if (conflictHunks != detectedConflicts) {
-                        conflictHunks = detectedConflicts
-                    }
                     // P24: LSP status banner — visible in editor when server fails
                     lspStatusMessage?.let { msg ->
                         androidx.compose.foundation.layout.Row(
@@ -1694,81 +1844,6 @@ fun EditorPane(
                             }
                         }
                     }
-                    CodeEditor(
-                        content = active.content,
-                        language = active.language,
-                        fontSize = fontSize,
-                        savedContent = active.savedContent,
-                        onContentChange = { newText ->
-                            val idx = tabs.indexOfFirst { it.id == active.id }
-                            if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
-                            if (active.path.startsWith("/")) {
-                                try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
-                            }
-                            // Phase P: Publish lint diagnostics to central store (debounced)
-                            DiagnosticPublisher.publishLintDiagnostics(active.path, newText)
-                        },
-                        onInsertHandler = onInsertRequest,
-                        modifier = Modifier.weight(1f),
-                        wordWrap = wordWrap,
-                        showInlayHints = showInlayHints,
-                        toggles = toggles,
-                        formatSelectionTrigger = formatSelectionTrigger,
-                        scrollToLine = scrollToLine,
-                        findReplaceOpen = findReplaceOpen,
-                        onFindReplaceClose = { findReplaceOpen = false; onFindBarOpenChanged?.invoke(false) },
-                        onFindReplaceOpen = { findReplaceOpen = true },
-                        externalFindQuery = externalFindQuery,
-                        externalFindBarOpen = externalFindBarOpen,
-                        externalCaseSensitive = externalCaseSensitive,
-                        externalWholeWord = externalWholeWord,
-                        externalUseRegex = externalUseRegex,
-                        goToLineOpen = goToLineOpen,
-                        onGoToLineClose = { goToLineOpen = false },
-                        onGoToLineOpen = { goToLineOpen = true },
-                        onSave = saveCurrentFile,
-                        breakpointLines = fileBreakpoints[active.path] ?: emptySet(),
-                        debugCurrentLine = debugCurrentLine,
-                        onBreakpointToggle = { line ->
-                            val cur = fileBreakpoints[active.path] ?: emptySet()
-                            fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
-                            udm?.toggleBreakpoint(active.path, line)
-                            // [BAND-DIAG]: 0-based gutter line as tapped and stored.
-                            com.codespace.ide.diagnostics.AppOutputLog.log(
-                                "[BAND-DIAG] toggle: gutterLine0=" + line + " file=" + active.path.takeLast(40), "lsp")
-                        },
-                        projectRoot = projectRootPath,
-                        currentFilePath = active.path,
-                        onAiFixRequest = onAiFixRequest,
-                        onAiGhostTextRequest = onAiGhostTextRequest,
-                        semanticTokens = lspSemanticRanges,
-                        onFontSizeChange = onFontSizeChange,
-                    )
-                    Box(Modifier.width(1.dp).fillMaxHeight().background(DividerColor))
-                    CodeEditor(
-                        content = splitTab.content,
-                        language = splitTab.language,
-                        fontSize = fontSize,
-                        onContentChange = {},
-                        onInsertHandler = onInsertRequest,
-                        modifier = Modifier.weight(1f),
-                        wordWrap = wordWrap,
-                        showInlayHints = showInlayHints,
-                        toggles = toggles,
-                        formatSelectionTrigger = formatSelectionTrigger,
-                        findReplaceOpen = findReplaceOpen,
-                        onFindReplaceClose = { findReplaceOpen = false },
-                        onFindReplaceOpen = { findReplaceOpen = true },
-                        goToLineOpen = goToLineOpen,
-                        onGoToLineClose = { goToLineOpen = false },
-                        onGoToLineOpen = { goToLineOpen = true },
-                        onSave = saveCurrentFile,
-                        projectRoot = projectRootPath,
-                        currentFilePath = active.path,
-                        onFontSizeChange = onFontSizeChange,
-                    )
-                }
-            } else {
                 // ── Sticky Scroll header (computed above unconditionally) ───────────
                 if (stickyScope != null) {
                     Box(
@@ -1788,7 +1863,10 @@ fun EditorPane(
                         )
                     }
                 }
-                key(active.id) {
+                // SPLIT-VIEW: key on the VIEW id (tab id OR "split::<path>") — each
+                // view gets its OWN CodeEditor instance state (cursor/scroll/selection)
+                // while both bind the same buffer via resolveActiveTab.
+                key(activeId) {
                     // P22-D: Detect merge conflicts in current file
                     val detectedConflicts = remember(active.content) {
                         if (MergeConflictParser.hasConflicts(active.content)) {
@@ -2288,7 +2366,7 @@ fun EditorPane(
                                             if (edit != null) {
                                                 val newText = com.codespace.ide.lsp.applyWorkspaceEdit(edit, active.content, uri)
                                                 if (newText != null && newText != active.content) {
-                                                    val idx = tabs.indexOfFirst { it.id == activeId }
+                                                    val idx = tabs.indexOfFirst { it.id == active.id }
                                                     if (idx >= 0) {
                                                         tabs[idx] = active.copy(content = newText, isDirty = true)
                                                         try { java.io.File(active.path).writeText(newText) } catch (_: Exception) {}
@@ -2448,7 +2526,6 @@ fun EditorPane(
                 }
                 // P38: Hover popup now rendered inside CodeEditor as a compact overlay
                 // (moved from here to CodeEditor.kt for scroll-offset + landscape fix)
-            }
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
