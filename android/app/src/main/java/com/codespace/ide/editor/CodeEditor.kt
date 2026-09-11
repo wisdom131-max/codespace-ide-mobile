@@ -920,20 +920,41 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
     LaunchedEffect(scrollToLine) {
         if (scrollToLine > 0) {
-            val lineHeightPx = editorMetrics.lineHeightPx
-            val scrollTarget = ((scrollToLine - 1) * lineHeightPx).toInt()
-            vScroll.animateScrollTo(scrollTarget.coerceAtMost(vScroll.maxValue))
+            // LINE-JUMP-READY-FIX (2026-09-11): when a file is opened via `ide open
+            // file:42` (OSC 7777) or a terminal path-tap, the CodeEditor REMOUNTS
+            // (key(active.id)) and this effect fires BEFORE the first layout pass —
+            // vScroll.maxValue was still 0, so animateScrollTo(coerceAtMost(0)) went
+            // nowhere and the jump was silently lost: file opened, no scroll, no
+            // visible highlight. The in-editor chevron Go-to-Line never hit this
+            // because its editor was long laid out. Fix: do highlight + cursor move
+            // immediately (they do not need layout), then RETRY the scroll until
+            // the layout reports a real maxValue. Short files that fit the viewport
+            // legitimately keep maxValue == 0 — the retry just times out for them.
             highlightTargetLine = scrollToLine
             highlightBlinkStart = System.currentTimeMillis()
             // Test 33/40 fix: Also move the cursor to the target line so that
             // clicking an error or outline entry positions the cursor there,
             // not just scrolling to it.
             // Phase A: Use positionMapper for O(1) offset lookup (was: manual loop)
+            // LINE-JUMP-READY-FIX: cursor move runs BEFORE the scroll retry loop —
+            // it needs no layout, and short (viewport-fitting) files would otherwise
+            // wait out the full retry window before the cursor lands.
             val targetLineIdx = scrollToLine - 1  // convert 1-based to 0-based
             if (targetLineIdx >= 0) {
                 val clampedOffset = positionMapper.lineStart(targetLineIdx)
                 try { focusRequester.requestFocus() } catch (_: Exception) {}
                 programmaticCursorMove(clampedOffset, "scroll_to_line")
+            }
+            var attempts = 0
+            while (attempts < 20) {
+                if (vScroll.maxValue > 0) {
+                    val lineHeightPx = editorMetrics.lineHeightPx
+                    val scrollTarget = ((scrollToLine - 1) * lineHeightPx).toInt()
+                    vScroll.animateScrollTo(scrollTarget.coerceAtMost(vScroll.maxValue))
+                    break
+                }
+                kotlinx.coroutines.delay(50)
+                attempts++
             }
             // Use coroutineScope so highlight cleanup survives scrollToLine being reset to 0
             coroutineScope.launch {
