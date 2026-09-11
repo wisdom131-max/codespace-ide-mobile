@@ -113,6 +113,28 @@ object ConnectorsApiClient {
         }
     }
 
+    /**
+     * GET the absolute OAuth callback URL (code + state) — OAUTH-CALLBACK-FIX
+     * (2026-09-10): the in-app WebView used to intercept the callback with
+     * shouldOverrideUrlLoading() returning true, which CANCELS the navigation —
+     * the backend never received the authorization code, the token exchange never
+     * ran, and the Hub row never flipped to Connected even though the consent
+     * screen completed. No auth header: the callback is a public endpoint; the
+     * signed `state` param identifies the user (minted by the backend in auth-url).
+     * Returns the backend's {ok, message} so the Hub can toast real failures
+     * instead of silently showing a still-disconnected row.
+     */
+    fun completeOAuthCallback(callbackUrl: String): Result<String> = runCatching {
+        val req = Request.Builder().url(callbackUrl).get().build()
+        client.newCall(req).execute().use { resp ->
+            val bodyStr = resp.body?.string().orEmpty()
+            val ok = runCatching { JSONObject(bodyStr).optBoolean("ok", false) }.getOrNull() ?: resp.isSuccessful
+            val msg = runCatching { JSONObject(bodyStr).optString("message") }.getOrNull()
+            if (!ok) error(msg?.takeIf { it.isNotBlank() } ?: "OAuth failed (HTTP ${resp.code}): ${bodyStr.take(300)}")
+            msg ?: "Connected"
+        }
+    }
+
     /** GET /connectors/{service}/auth-url — mint the provider's OAuth consent URL. */
     fun fetchAuthUrl(accessToken: String, service: String, context: Context? = null): Result<String> = runCatching {
         val req = Request.Builder()

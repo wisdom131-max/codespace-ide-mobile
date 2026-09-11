@@ -33,6 +33,18 @@ public final class TerminalRenderer {
 
     private final float[] asciiMeasures = new float[127];
 
+    // BATCH-G-STYLE (2026-09-10): VS Code-style visual link styling for plain-text
+    // file paths ("src/Main.kt:42", "debug_test.py:13"). The tap resolver (TerminalPane
+    // A3, IdeTerminalBridge.resolveTappedFileLink) has worked since P2 but paths were
+    // visually indistinguishable from plain text. This pass runs AFTER each row's normal
+    // rendering and redraws recognized tokens with link color + underline. The whitelist
+    // is a strict SUBSET of what the tap resolver accepts, so anything underlined is
+    // guaranteed tappable (the reverse may not hold — fine, matches VS Code behavior).
+    private static final java.util.regex.Pattern LINK_TOKEN = java.util.regex.Pattern.compile(
+        "[^\\s]+\\.(kt|kts|java|py|js|ts|md|json|xml|gradle|yml|yaml|txt|sh|c|cpp|rs|go|rb|php|css|html)(:\\d+)?(?=\\s|$)");
+    private static final int LINK_COLOR = 0xFF3794FF; // VS Code terminal link blue
+    private final Paint mLinkPaint = new Paint();
+
     public TerminalRenderer(int textSize, Typeface typeface) {
         mTextSize = textSize;
         mTypeface = typeface;
@@ -45,6 +57,12 @@ public final class TerminalRenderer {
         mFontAscent = (int) Math.ceil(mTextPaint.ascent());
         mFontLineSpacingAndAscent = mFontLineSpacing + mFontAscent;
         mFontWidth = mTextPaint.measureText("X");
+
+        mLinkPaint.setTypeface(typeface);
+        mLinkPaint.setAntiAlias(true);
+        mLinkPaint.setTextSize(textSize);
+        mLinkPaint.setUnderlineText(true);
+        mLinkPaint.setColor(LINK_COLOR);
 
         StringBuilder sb = new StringBuilder(" ");
         for (int i = 0; i < asciiMeasures.length; i++) {
@@ -153,6 +171,56 @@ public final class TerminalRenderer {
             }
             drawTextRun(canvas, line, palette, heightOffset, lastRunStartColumn, columnWidthSinceLastRun, lastRunStartIndex, charsSinceLastRun,
                 measuredWidthForRun, cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor || lastRunInsideSelection);
+
+            // BATCH-G-STYLE: redraw plain-text file-path tokens with link color + underline
+            drawFileLinkTokens(canvas, line, charsUsedInLine, heightOffset);
+        }
+    }
+
+    /**
+     * BATCH-G-STYLE: scans a rendered row for file-path tokens and redraws them with
+     * link color + underline. Skips rows without '.' or '/' (fast exit), skips tokens
+     * containing any char whose terminal cell width is not exactly 1 (surrogates,
+     * wide CJK/emoji, combining marks) so the monospace geometry stays exact.
+     */
+    private void drawFileLinkTokens(Canvas canvas, char[] text, int charsUsed, float y) {
+        if (charsUsed <= 0) return;
+        String rowStr = new String(text, 0, charsUsed);
+        // stripTrailing to avoid styling padding spaces region
+        int endTrim = charsUsed;
+        while (endTrim > 0 && Character.isWhitespace(text[endTrim - 1])) endTrim--;
+        if (endTrim <= 0) return;
+        rowStr = new String(text, 0, endTrim);
+        if (rowStr.indexOf('.') == -1 && rowStr.indexOf('/') == -1) return;
+        java.util.regex.Matcher m = LINK_TOKEN.matcher(rowStr);
+        while (m.find()) {
+            int startIdx = m.start();
+            int len = m.end() - startIdx;
+            // All chars in the token must be plain width-1 chars (no surrogates/wide/combining)
+            boolean plain = true;
+            for (int i = 0; i < len; i++) {
+                char c = text[startIdx + i];
+                if (Character.isHighSurrogate(c) || Character.isLowSurrogate(c) || WcWidth.width(c) != 1) {
+                    plain = false;
+                    break;
+                }
+            }
+            if (!plain) continue;
+            // Column offset of the token start = accumulated cell widths of the row prefix
+            int col = 0;
+            for (int i = 0; i < startIdx; i++) {
+                char c = text[i];
+                if (Character.isHighSurrogate(c)) {
+                    int cp = Character.toCodePoint(c, text[i + 1]);
+                    col += Math.max(WcWidth.width(cp), 0);
+                    i++; // skip low surrogate
+                } else {
+                    int w = WcWidth.width(c);
+                    if (w > 0) col += w;
+                }
+            }
+            float left = col * mFontWidth;
+            canvas.drawTextRun(text, startIdx, len, startIdx, len, left, y - mFontLineSpacingAndAscent, false, mLinkPaint);
         }
     }
 

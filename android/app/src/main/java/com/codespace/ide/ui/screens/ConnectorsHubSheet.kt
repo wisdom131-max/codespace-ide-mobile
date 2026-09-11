@@ -56,12 +56,20 @@ internal fun ConnectorsHubSheet(
     var loading by remember { mutableStateOf(true) }
     // In-app OAuth WebView dialog — avoids returning to external browser flow
     var oauthWebViewUrl by remember { mutableStateOf<String?>(null) }
+    // OAUTH-CALLBACK-FIX (2026-09-10): captured callback URL - the app itself hits
+    // it via ConnectorsApiClient.completeOAuthCallback (the WebView cancels the
+    // navigation, so the backend would otherwise NEVER receive the code).
+    var oauthCallbackUrl by remember { mutableStateOf<String?>(null) }
     // Phase 1: PAT paste-token dialog target (Sentry/Vercel/Cloudflare/PostHog/Stripe/Railway/Render)
     var patDialogStatus by remember { mutableStateOf<ConnectorsApiClient.ConnectorStatus?>(null) }
     var pendingOAuthId by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
     var busyService by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
+    // HUB-GITHUB-PROPAGATION: live GitHub Device Flow state (SecureTokenStore keys —
+    // the same ones Settings > Accounts and Source Control read/write).
+    var githubUser by remember { mutableStateOf(SecureTokenStore(context).githubUsername) }
+    var showGithubDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(refreshKey) {
         if (accessToken.isBlank()) {
@@ -255,15 +263,42 @@ internal fun ConnectorsHubSheet(
                 HorizontalDivider(color = Color(0xFF3C3C3C))
                 Spacer(Modifier.height(8.dp))
 
-                // GitHub — separate, already-working Device Flow system (Settings > Accounts)
+                // GitHub — HUB-GITHUB-PROPAGATION (2026-09-10): was a dead pointer row
+                // that only dismissed the sheet. Now shows the LIVE SecureTokenStore state
+                // (same keys Settings > Accounts writes and Source Control reads), offers
+                // the identical Device Flow sign-in from the Hub, and signs out on tap when
+                // connected — so the Hub finally propagates to the shared auth state.
                 ConnectorRow(
                     icon = Icons.Default.Code,
                     name = "GitHub",
-                    subtitle = "Sign in from Settings > Accounts",
+                    subtitle = if (githubUser != null)
+                        "Connected as $githubUser — tap to sign out"
+                    else
+                        "Sign in with device code (same as Settings > Accounts)",
                     color = Color(0xFF6E40C9),
                     menuText = MenuText,
-                    onClick = { onDismiss() }
+                    onClick = {
+                        if (githubUser != null) {
+                            val tokenStore = SecureTokenStore(context)
+                            tokenStore.githubToken = null
+                            tokenStore.githubUsername = null
+                            githubUser = null
+                            toast = "Signed out of GitHub"
+                        } else {
+                            showGithubDialog = true
+                        }
+                    }
                 )
+                if (showGithubDialog) {
+                    HubGitHubSignInDialog(
+                        onDismiss = { showGithubDialog = false },
+                        onSuccess = { username ->
+                            showGithubDialog = false
+                            githubUser = username
+                            toast = "✓ Connected to GitHub as $username"
+                        },
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 // SSH
                 ConnectorRow(
@@ -355,10 +390,13 @@ internal fun ConnectorsHubSheet(
                                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                     val url = request.url.toString()
                                     if (url.startsWith(callbackBase)) {
-                                        // OAuth callback received — close the dialog and refresh status
+                                        // OAUTH-CALLBACK-FIX (2026-09-10): returning true here CANCELS
+                                        // the navigation - the backend never received the code, the exchange
+                                        // never ran, and the row never flipped to Connected. Capture, close,
+                                        // and the effect below delivers the URL to the backend.
+                                        oauthCallbackUrl = url
                                         oauthWebViewUrl = null
                                         pendingOAuthId = null
-                                        refreshKey++
                                         return true
                                     }
                                     return false
@@ -370,6 +408,29 @@ internal fun ConnectorsHubSheet(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+        }
+    }
+
+    // OAUTH-CALLBACK-FIX: deliver the captured callback to the backend - the WebView
+    // cancels the callback navigation, so the app GETs the URL itself and toasts the
+    // backend's {ok, message} (previously a failed exchange was indistinguishable
+    // from success - the row just silently stayed 'Tap to connect').
+    oauthCallbackUrl?.let { cbUrl ->
+        LaunchedEffect(cbUrl) {
+            oauthCallbackUrl = null
+            val result = withContext(Dispatchers.IO) {
+                ConnectorsApiClient.completeOAuthCallback(cbUrl)
+            }
+            result.fold(
+                onSuccess = { msg ->
+                    toast = "\u2713 " + msg
+                    refreshKey++
+                },
+                onFailure = { e ->
+                    toast = "Connect failed: " + (e.message ?: "unknown error")
+                    refreshKey++
+                },
+            )
         }
     }
 }
