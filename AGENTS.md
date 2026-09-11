@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-11 09:40 WAT
+> Last updated: 2026-09-11 11:55 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 8fe79a8 |
-| CI build | pending (8fe79a8 pushed 2026-09-11; #2708/#2709 FAILED on orphan brace, fixed by 8fe79a8) |
+| Latest commit | 7dbcac7 |
+| CI build | pending (7dbcac7 pushed 2026-09-11; #2710/#2711 FAILED on local-fun order, fixed by 7dbcac7) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2422,5 +2422,32 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 9. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence.
 10. Item 4 PerfProbe re-verify AFTER items 2/3/6/7 retests.
 11. Item 1 full single-input-box redesign — ON HOLD pending VS Code BYOK research verdict (research complete, awaiting Wisdom's decision).
+12. Debugger P3 (run-to-cursor, inline values) — queued.
+13. Batch J deferred; chat-command testing deferred until model configured.
+
+---
+
+### [2026-09-11 11:55 WAT] — AI Agent: Claude, Commit 7dbcac7, CI Build pending (#2712)
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**Commit:** 7dbcac7 | **CI Build:** pending (#2712; #2710 + #2711 FAILED)
+
+**[BUILD-FIX]** What made the last 4 builds fail: #2708 (8ebfab3) + #2709 (docs 4ea5624) = orphan closing brace in CodeEditor.kt — the KeyInsertDispatcher patch flattened a nested wrapper but left the outer closer; CodeEditor composable closed at line 1687, KSP 'Expecting a top level declaration' from 1688 on. Fixed by 8fe79a8 (verified KSP then passed). #2710 (8fe79a8) + #2711 (docs 20a18d5) = NEW error further down the compile: TerminalPane.kt:772 'Unresolved reference: writeToDisplay' — writeToDisplay is a LOCAL function inside the TerminalPane composable and Kotlin locals must be declared BEFORE use; the new LOCK-CD call site sat above the declaration. Fix: moved writeToDisplay above toggleTabRootLock (currentView declared at 672, still above it; all other call sites 855+ still after it). Brace balance re-verified vs 49b3d4e baseline.
+
+**Files touched:** ui/panes/TerminalPane.kt (function moved, +6/-5)
+
+**Next on roadmap (ALL pending items):**
+1. Confirm 7dbcac7 CI green; Wisdom installs codespace-ide-arm64-v8a artifact.
+2. RETEST MC (items 2+3): MC chip accent highlight ON; double-tap second cursor ([MC-DIAG] in Output lsp channel); Esc clears cursors + chip; split-view parity; undo/redo chips.
+3. RETEST locked-root ide open (item 6): lock to NON-primary root, expect "[LOCK] cwd ->" echo, then `ide open <file>:LINE` opens + jumps; lock survives app restart.
+4. RETEST Gemini AQ. key (item 1): paste accepted, Save + live check pass.
+5. RETEST zero-tab noise (item 7): FIRED/DROPPED lines stop with all tabs closed; suppression summaries during chatty installs; UI smooth.
+6. 49b3d4e line-jump retest if not yet done: `ide open file:42` on a NOT-already-open file — scroll + gold highlight + cursor on line 42. Only if STILL broken: approved shared-jumpToLine() extraction refactor.
+7. d01f288 batch retest if not yet done: OAuth row flip + toast; Hub GitHub device-flow + sign-out; terminal link styling + tap.
+8. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
+9. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence.
+10. Item 4 PerfProbe re-verify AFTER items 2/3/6/7 retests.
+11. Item 1 AI-key redesign decision: recommendation delivered (demote isValid() to soft warning, live check as sole validator, keep detect() as paste-route prompt, custom model-ID entry) — awaiting Wisdom's call.
 12. Debugger P3 (run-to-cursor, inline values) — queued.
 13. Batch J deferred; chat-command testing deferred until model configured.
