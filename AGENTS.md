@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-09 07:35 WAT
+> Last updated: 2026-09-11 05:40 WAT
 
 ---
 
@@ -29,8 +29,9 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 3f39b8b |
-| CI build | #2700 GREEN (2026-09-10) |
+| Latest commit | d01f288 |
+| CI build | pending (d01f288 pushed 2026-09-11) |
+| On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
 | CodeEditor.kt lines | 5,933 |
@@ -2269,3 +2270,28 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 5. Batch H/I connectors + OAuth re-test after fresh sign-in.
 6. Debugger P3 (run-to-cursor, inline values) — queued.
 7. Batch J deferred; chat-command testing deferred until model configured.
+
+---
+
+### [2026-09-11 05:40 WAT] — AI Agent: Claude, Commit d01f288, CI Build pending
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**Commit:** d01f288 | **CI Build:** pending
+
+**On-device #2700 retest results (Wisdom):** squiggle PASS (handler FIRED + MATCHED + both red underlines, CLOSED), debug band PASS (first attempt never paused — bad test not regression, CLOSED), PAT Railway/Render PASS (CLOSED), debug ANR PASS (CLOSED), terminal path tap PASS. OAuth connect flow opens + consents but row never flips; MCP walkthrough rejected for missing literal values (agent error — fixed below, no code change).
+
+**What was fixed:**
+- [CONNECTORS][OAUTH-CALLBACK-FIX] Hub OAuth rows never flipped to Connected: the in-app WebView's shouldOverrideUrlLoading returned true on the callback URL, which CANCELS the navigation — the backend NEVER received the authorization code, the exchange never ran. New ConnectorsApiClient.completeOAuthCallback() GETs the captured callback URL itself (state param identifies the user; no auth header needed); the Hub now toasts the backend {ok,message}, so a failed exchange is visible instead of silently leaving 'Tap to connect'.
+- [CONNECTORS][HUB-GITHUB-PROPAGATION] Repro (user): Settings > Accounts GitHub sign-in correctly propagates to Source Control, Hub connect did not. Root cause: the Hub's GitHub row was a dead pointer (dismiss only) and GitHub is NOT a backend connector — the shared state is SecureTokenStore.githubToken/githubUsername, written only by the Device Flow. New HubGitHubSignInDialog.kt runs the IDENTICAL Device Flow from the Hub writing the SAME keys; Hub row now shows live state, sign-in, and tap-to-sign-out.
+- [UI][BATCH-G-STYLE] Terminal file paths now visually styled: TerminalRenderer post-pass redraws file-path tokens (extension whitelist, width-1 chars only) with VS Code link blue + underline, after each row's normal render. Styled tokens are a strict SUBSET of the tappable resolver's matches (anything underlined is tappable).
+
+**Files touched:** data/ConnectorsApiClient.kt, ui/screens/ConnectorsHubSheet.kt, ui/screens/HubGitHubSignInDialog.kt (NEW), view/TerminalRenderer.java
+
+**Next on roadmap (ALL pending items):**
+1. Confirm d01f288 CI green; Wisdom installs codespace-ide-arm64-v8a artifact.
+2. RETEST (d01f288 batch only): (a) OAuth row flip — connect any OAuth provider (GitLab/Notion/Jira/Linear/Figma/HuggingFace; Canva owner-only until review; Discord expected to fail, SPA app type — report the toast); row must flip to Connected within seconds + green toast; a failed exchange now shows its real error in the toast. (b) Hub GitHub row — signed-out subtitle 'Sign in with device code'; tap -> device-code dialog; approve on github.com; toast 'Connected to GitHub as <user>'; row subtitle flips; SOURCE CONTROL panel must now show signed in without relaunch. Sign-out via row tap clears both. (c) Terminal link styling — `echo src/Main.kt:42` and a real compile error: path + :line renders blue underlined; tap still opens the file.
+3. MCP Batch D items 2-9 retest with literal walkthrough (agent to supply copy-paste values: name linkdemo, command npx -y @modelcontextprotocol/server-everything).
+4. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence line (still unconfirmed).
+5. Debugger P3 (run-to-cursor, inline values) — queued.
+6. Batch J deferred; chat-command testing deferred until model configured.
