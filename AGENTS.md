@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-11 05:40 WAT
+> Last updated: 2026-09-11 07:05 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | d01f288 |
-| CI build | pending (d01f288 pushed 2026-09-11) |
+| Latest commit | 358952d |
+| CI build | pending (358952d pushed 2026-09-11; d01f288 CI status unknown — check Actions) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2295,3 +2295,37 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 4. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence line (still unconfirmed).
 5. Debugger P3 (run-to-cursor, inline values) — queued.
 6. Batch J deferred; chat-command testing deferred until model configured.
+
+---
+
+### [2026-09-11 07:05 WAT] — AI Agent: Claude, Commit 358952d, CI Build pending
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**Commit:** 358952d | **CI Build:** pending
+
+**Context:** User confirmed the gold band rendering code itself works fine on-device. Investigation (code-audit, no guessing) found the one-line-above drift originates in a CALLER, not the band:
+
+**What was fixed:**
+- [DAP][LINE-BASE-FIX] ProjectShellScreen main-terminal onOpenFileAtLine passed the 0-BASED line (OSC 7777 + terminal tap detector both deliver 0-based) straight into scrollTargetLine, which EditorPane/CodeEditor's scrollToLine treats as 1-BASED — so `ide open file:42`, terminal path-tap, and Problems-style jumps from the MAIN terminal all landed one line ABOVE the target. The other two call sites (file-search ~1842, split terminal ~4848) already convert with +1; this site now does too. Band/highlight rendering code untouched (user-verified correct).
+
+**Zero-tab LSP/perf activity audit (research findings, NO code change yet — awaiting go-ahead):**
+- EditorPane DOES tear down on last-tab close (DisposableEffect onDispose -> LspManager.stopAll(); didClose via shared close path). The "activity with no file open" comes from four sources that survive tab close:
+  1. Stale SQUIGGLE-DIAG diagnostics handler is NEVER unregistered from LspDiagnosticsHandler.handlerMap on dispose — every server publishDiagnostics after that logs "handler FIRED -> DROPPED live tab mismatch" lines to Output.
+  2. Three global scheduled executors (autoClose 1s tick, memoryMonitor 10s, healthCheck) are created once and never stopped at project scope (only full teardown) — silent but live.
+  3. Server stderr drains (every [LSP][lang][stderr] line -> Output) plus long-running installs (debugpy 300s logToOutput, pylsp self-heal) keep streaming AFTER tabs close until the process ends.
+  4. AppOutputLog routes EVERY line through Handler.post to the main thread (500-line ring buffer) — a stderr flood from any of the above janks the whole UI with zero tabs open, which matches the reported "frame-drop pattern with no file open".
+- PerfProbe itself dies with the editor (frame loop is inside CodeEditor) — [perf] lines cannot continue at zero tabs; what continues is [lsp]-channel noise.
+- PROPOSED (not implemented): unregister diagnostics handler in EditorPane onDispose; drop stderr/stderr-watchdog lines when no tab is open for that language (or gate [stderr] lines to a rate limit); cap AppOutputLog posts per second.
+
+**Files touched:** ui/screens/ProjectShellScreen.kt
+
+**Next on roadmap (ALL pending items):**
+1. Confirm 358952d CI green; Wisdom installs codespace-ide-arm64-v8a artifact.
+2. RETEST (358952d, single item): from the MAIN terminal, `ide open src/Main.kt:42` (or tap a styled path:line link) — file must open with the gold highlight ON line 42, not 41.
+3. d01f288 batch retest if not yet done: (a) OAuth row flip (GitLab/Notion/Jira/Linear/Figma/HuggingFace; Canva owner-only; Discord expected fail with toast); (b) Hub GitHub device-code dialog + Source Control sign-in propagation + sign-out; (c) terminal link styling blue underline + tap still opens.
+4. MCP Batch D items 2-9 retest with literal walkthrough (name linkdemo, command npx -y @modelcontextprotocol/server-everything).
+5. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence (child count, oom_score_adj, cgroup).
+6. Zero-tab noise fix decision: approve/decline the 3 proposed telemetry-quieting changes above.
+7. Debugger P3 (run-to-cursor, inline values) — queued.
+8. Batch J deferred; chat-command testing deferred until model configured.
