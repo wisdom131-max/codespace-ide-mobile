@@ -198,6 +198,10 @@ dependencies {
     // AndroidX annotation
     implementation("androidx.annotation:annotation:1.8.0")
 
+    // jtokkit — REAL BPE tokenizer (o200k_base / cl100k_base) for chat context counting.
+    // Exact for OpenAI-family models; close proxy for DeepSeek/xAI/custom OpenAI-compatible.
+    implementation("com.knuddels:jtokkit:1.1.0")
+
     // Tar/XZ extraction for Ubuntu rootfs
     implementation("org.apache.commons:commons-compress:1.26.0")
     implementation("org.tukaani:xz:1.9")

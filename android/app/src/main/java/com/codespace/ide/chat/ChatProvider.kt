@@ -49,7 +49,48 @@ interface ChatProvider {
 
     /** The ONE entry point the chat panel calls. All HTTP shape logic lives inside the provider. */
     suspend fun complete(request: ChatRequest): String
+
+    /**
+     * STREAMING (2026-09-11, VS Code lm-parity round): streams content deltas to
+     * onDelta as they arrive and returns the FULL final text (identical contract to
+     * complete(), so the agentic tool loop is unchanged). DEFAULT = blocking
+     * complete() fallback — providers migrate one at a time, nothing breaks.
+     */
+    suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String =
+        complete(request)
+
+    /**
+     * RICH MODEL METADATA (2026-09-11): ChatModelInfo carries display name, real
+     * context window, tool-call support. DEFAULT wraps fetchModels() — additive,
+     * existing providers keep working unchanged. Providers with richer /models
+     * responses (OpenRouter context_length, Gemini inputTokenLimit) override.
+     */
+    suspend fun fetchModelInfos(apiKey: String?): List<ChatModelInfo> =
+        fetchModels(apiKey).map { ChatModelInfo(it) }
+
+    /**
+     * TOKEN COUNTING (2026-09-11): vendor-REAL count of the exact request the
+     * provider is about to send (Gemini :countTokens endpoint, Anthropic
+     * /v1/messages/count_tokens, jtokkit BPE for OpenAI-family). null = caller
+     * falls back to TokenCounter's heuristic estimate. Never throws.
+     */
+    suspend fun countTokens(request: ChatRequest): Int? = null
 }
+
+/**
+ * Per-model metadata surfaced to the UI (model picker, context gauge).
+ * Mirrors VS Code's LanguageModelChatInformation, trimmed to what the app consumes.
+ */
+data class ChatModelInfo(
+    /** Vendor model id — same string used in "provider:model" selections. */
+    val id: String,
+    /** Human-readable name (vendor display name when available). */
+    val displayName: String = id,
+    /** Real vendor-reported input context window, when the /models response carries it. */
+    val maxInputTokens: Int? = null,
+    /** Whether the model supports tool/function calling, when known. */
+    val supportsToolCalling: Boolean? = null,
+)
 
 /** Everything a provider needs to answer one turn. convMsgs includes the leading system entry. */
 data class ChatRequest(

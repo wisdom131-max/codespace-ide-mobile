@@ -58,6 +58,84 @@ class AnthropicProvider : ChatProvider {
         json.getJSONArray("content").getJSONObject(0).getString("text")
     }
 
+    /**
+     * STREAMING (2026-09-11): Anthropic SSE — content_block_delta events carry
+     * delta.text. Assembles the same full text as complete() and forwards deltas.
+     */
+    override suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String =
+        withContext(Dispatchers.IO) {
+            val apiKey = request.apiKey ?: throw Exception(unavailableMessage())
+            val body = JSONObject()
+                .put("model", request.model)
+                .put("max_tokens", 4096)
+                .put("system", request.systemPrompt)
+                .put("messages", OpenAiCompatibleTransport.stripSystemMessage(request.convMsgs))
+                .put("stream", true)
+                .toString()
+            val streamClient = http.newBuilder()
+                .readTimeout(180, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val resp = streamClient.newCall(
+                Request.Builder()
+                    .url("https://api.anthropic.com/v1/messages")
+                    .header("x-api-key", apiKey)
+                    .header("anthropic-version", "2023-06-01")
+                    .header("Content-Type", "application/json")
+                    .post(body.toRequestBody("application/json".toMediaType()))
+                    .build()
+            ).execute()
+            if (!resp.isSuccessful) throw Exception(OpenAiCompatibleTransport.transportError("Claude API error", resp))
+            val sb = StringBuilder()
+            val reader = resp.body?.byteStream()?.bufferedReader()
+            try {
+                while (true) {
+                    val line = reader?.readLine() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val payload = line.substring(5).trim()
+                    if (payload.isEmpty()) continue
+                    val obj = try { JSONObject(payload) } catch (_: Exception) { continue }
+                    when (obj.optString("type")) {
+                        "content_block_delta" -> {
+                            val text = obj.optJSONObject("delta")?.optString("text") ?: ""
+                            if (text.isNotEmpty()) { sb.append(text); onDelta(text) }
+                        }
+                        "error" -> throw Exception("Claude stream error: " + obj.optJSONObject("error")?.optString("message"))
+                        "message_stop" -> return@withContext sb.toString()
+                    }
+                }
+            } finally {
+                try { reader?.close() } catch (_: Exception) { }
+            }
+            sb.toString()
+        }
+
+    /**
+     * TOKEN COUNT (2026-09-11): REAL count via Anthropic's /v1/messages/count_tokens
+     * endpoint — exact for the exact request shape. null on any failure → caller
+     * falls back to the heuristic estimate.
+     */
+    override suspend fun countTokens(request: ChatRequest): Int? = withContext(Dispatchers.IO) {
+        val apiKey = request.apiKey ?: return@withContext null
+        try {
+            val body = JSONObject()
+                .put("model", request.model)
+                .put("system", request.systemPrompt)
+                .put("messages", OpenAiCompatibleTransport.stripSystemMessage(request.convMsgs))
+                .toString()
+            val resp = http.newCall(
+                Request.Builder()
+                    .url("https://api.anthropic.com/v1/messages/count_tokens")
+                    .header("x-api-key", apiKey)
+                    .header("anthropic-version", "2023-06-01")
+                    .header("Content-Type", "application/json")
+                    .post(body.toRequestBody("application/json".toMediaType()))
+                    .build()
+            ).execute()
+            if (!resp.isSuccessful) return@withContext null
+            JSONObject(resp.body?.string() ?: "").optInt("input_tokens", 0).takeIf { it > 0 }
+        } catch (_: Exception) { null }
+    }
+
     /** Live model list from GET /v1/models (Models API). */
     override suspend fun fetchModels(apiKey: String?): List<String> = withContext(Dispatchers.IO) {
         if (apiKey.isNullOrBlank()) return@withContext emptyList()

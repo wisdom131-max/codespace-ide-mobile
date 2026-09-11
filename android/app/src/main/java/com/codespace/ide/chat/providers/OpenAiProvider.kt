@@ -2,6 +2,7 @@ package com.codespace.ide.chat.providers
 
 import com.codespace.ide.chat.ChatProvider
 import com.codespace.ide.chat.ChatRequest
+import com.codespace.ide.chat.TokenCounter
 import com.codespace.ide.data.SecureTokenStore
 
 /** OpenAI - https://api.openai.com/v1/chat/completions, Bearer auth, OpenAI-compatible shape. */
@@ -33,4 +34,14 @@ class OpenAiProvider : ChatProvider {
             .filter { it.startsWith("gpt-") }
             .take(40)
     }
+    /** STREAMING: OpenAI-compatible SSE — one transport implementation covers the family. */
+    override suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String =
+        OpenAiCompatibleTransport.callStreaming(
+            "https://api.openai.com/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta,
+        )
+
+    /** TOKEN COUNT: jtokkit BPE (exact for OpenAI models, close proxy for the family). */
+    override suspend fun countTokens(request: ChatRequest): Int? =
+        TokenCounter.countOpenAiCompatible(request.systemPrompt, request.convMsgs, request.model)
+
 }

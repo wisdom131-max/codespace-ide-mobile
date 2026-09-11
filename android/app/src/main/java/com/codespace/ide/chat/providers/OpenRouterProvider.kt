@@ -2,6 +2,7 @@ package com.codespace.ide.chat.providers
 
 import com.codespace.ide.chat.ChatProvider
 import com.codespace.ide.chat.ChatRequest
+import com.codespace.ide.chat.TokenCounter
 import com.codespace.ide.data.SecureTokenStore
 
 /** OpenRouter - OpenAI-compatible /api/v1/chat/completions shape, "vendor/model" names. */
@@ -26,6 +27,22 @@ class OpenRouterProvider : ChatProvider {
             request.apiKey ?: "", request.model, request.convMsgs,
         )
 
+    /**
+     * RICH METADATA (2026-09-11): OpenRouter's public /models returns the REAL
+     * context_length per model — the context gauge's most accurate live source.
+     * Falls back to id-only ChatModelInfo (context null) on any parse/HTTP problem.
+     */
+    override suspend fun fetchModelInfos(apiKey: String?): List<com.codespace.ide.chat.ChatModelInfo> {
+        val vendors = setOf("anthropic/", "openai/", "google/", "deepseek/", "meta-llama/", "qwen/", "mistralai/")
+        return try {
+            OpenAiCompatibleTransport.fetchModelInfos("https://openrouter.ai/api/v1/models", bearer = false)
+                .filter { m -> vendors.any { m.id.startsWith(it) } }
+                .take(60)
+        } catch (_: Exception) {
+            super.fetchModelInfos(apiKey)
+        }
+    }
+
     /** Live model list from GET /api/v1/models - major vendors only, capped. */
     override suspend fun fetchModels(apiKey: String?): List<String> {
         val vendors = setOf("anthropic/", "openai/", "google/", "deepseek/", "meta-llama/", "qwen/", "mistralai/")
@@ -34,4 +51,14 @@ class OpenRouterProvider : ChatProvider {
             .filter { m -> vendors.any { m.startsWith(it) } }
             .take(60)
     }
+    /** STREAMING: OpenAI-compatible SSE — one transport implementation covers the family. */
+    override suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String =
+        OpenAiCompatibleTransport.callStreaming(
+            "https://openrouter.ai/api/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta,
+        )
+
+    /** TOKEN COUNT: jtokkit BPE (exact for OpenAI models, close proxy for the family). */
+    override suspend fun countTokens(request: ChatRequest): Int? =
+        TokenCounter.countOpenAiCompatible(request.systemPrompt, request.convMsgs, request.model)
+
 }

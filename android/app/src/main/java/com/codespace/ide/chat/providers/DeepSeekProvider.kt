@@ -2,6 +2,7 @@ package com.codespace.ide.chat.providers
 
 import com.codespace.ide.chat.ChatProvider
 import com.codespace.ide.chat.ChatRequest
+import com.codespace.ide.chat.TokenCounter
 import com.codespace.ide.data.SecureTokenStore
 
 /** DeepSeek - OpenAI-compatible /v1/chat/completions shape. */
@@ -32,4 +33,14 @@ class DeepSeekProvider : ChatProvider {
         if (apiKey.isNullOrBlank()) return emptyList()
         return OpenAiCompatibleTransport.fetchModelList("https://api.deepseek.com/models", apiKey)
     }
+    /** STREAMING: OpenAI-compatible SSE — one transport implementation covers the family. */
+    override suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String =
+        OpenAiCompatibleTransport.callStreaming(
+            "https://api.deepseek.com/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta,
+        )
+
+    /** TOKEN COUNT: jtokkit BPE (exact for OpenAI models, close proxy for the family). */
+    override suspend fun countTokens(request: ChatRequest): Int? =
+        TokenCounter.countOpenAiCompatible(request.systemPrompt, request.convMsgs, request.model)
+
 }

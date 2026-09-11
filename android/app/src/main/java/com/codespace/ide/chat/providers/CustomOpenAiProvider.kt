@@ -2,6 +2,7 @@ package com.codespace.ide.chat.providers
 
 import com.codespace.ide.chat.ChatProvider
 import com.codespace.ide.chat.ChatRequest
+import com.codespace.ide.chat.TokenCounter
 import com.codespace.ide.chat.CustomEndpointStore
 import com.codespace.ide.data.SecureTokenStore
 
@@ -69,4 +70,18 @@ class CustomOpenAiProvider : ChatProvider {
         return OpenAiCompatibleTransport.fetchModelList(modelsUrl(base), apiKey)
             .take(60)
     }
+
+    /** STREAMING: OpenAI-compatible SSE against the user's configured server. */
+    override suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String {
+        val base = CustomEndpointStore.baseUrl
+            ?: throw Exception("No custom endpoint URL set. Add one in Settings → AI Providers → Custom Endpoint.")
+        return OpenAiCompatibleTransport.callStreaming(
+            chatUrl(base), request.apiKey ?: "", request.model, request.convMsgs, onDelta,
+        )
+    }
+
+    /** TOKEN COUNT: jtokkit BPE (exact for OpenAI models, close proxy for the family). */
+    override suspend fun countTokens(request: ChatRequest): Int? =
+        TokenCounter.countOpenAiCompatible(request.systemPrompt, request.convMsgs, request.model)
+
 }

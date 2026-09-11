@@ -83,6 +83,17 @@ private enum class ChatMode { ASK, AGENT, PLAN }
 // ── Data ──────────────────────────────────────────────────────────────────────
 private data class ChatMsg(val role: String, val text: String)
 
+/**
+ * STREAMING (2026-09-11): events chat() surfaces to the panel's live bubble.
+ * IterationStart clears the bubble for each agentic round-trip; Delta grows it;
+ * ToolDone appends a status line after each executed tool.
+ */
+private sealed interface ChatStreamEvent {
+    data class IterationStart(val index: Int) : ChatStreamEvent
+    data class Delta(val text: String) : ChatStreamEvent
+    data class ToolDone(val tool: String) : ChatStreamEvent
+}
+
 private const val PREFS_CHAT = "copilot_chat"
 private const val KEY_MSGS   = "messages_v2"
 
@@ -213,25 +224,7 @@ private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): List<S
         models.map { "${provider.id}:${it}" }
     }.distinct()
 
-private suspend fun chat(
-    model: String,
-    messages: List<ChatMsg>,
-    mode: ChatMode,
-    context: Context,
-    tokenStore: SecureTokenStore? = null,
-    onOpenFile: ((String) -> Unit)? = null,
-    onSwitchToPreview: ((String) -> Unit)? = null,
-    projectRootPath: String? = null,
-    currentFilePath: String? = null,
-    openFilePaths: List<String> = emptyList(),
-): String = withContext(Dispatchers.IO) {
-    // P41-X: Build workspace context for AI prompts
-    val workspaceCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
-    // MCP: lazy first-chat discovery — spawns enabled external MCP servers once,
-    // tools/list results feed the external-tools docs block below.
-    com.codespace.ide.agent.McpClientManager.ensureDiscovered(context)
-    
-    val systemPrompt = when (mode) {
+private fun buildSystemPrompt(mode: ChatMode, context: Context, workspaceCtx: String): String = when (mode) {
         ChatMode.ASK   -> "You are a helpful coding assistant inside VN Code. Answer concisely." + 
             if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
         ChatMode.AGENT -> """
@@ -296,10 +289,82 @@ commands work (apt, git, node, python3). Android host commands do NOT work here.
             if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
     }
 
-    // Build conversation as mutable JSON array
+/** Full request conversation (leading system entry + history) — shared by chat() and the context gauge. */
+private fun convMsgsOf(systemPrompt: String, messages: List<ChatMsg>): JSONArray {
     val convMsgs = JSONArray()
     convMsgs.put(JSONObject().put("role", "system").put("content", systemPrompt))
     messages.forEach { convMsgs.put(JSONObject().put("role", it.role).put("content", it.text)) }
+    return convMsgs
+}
+
+/**
+ * CONTEXT GAUGE (2026-09-11): per-provider REAL token count (Gemini :countTokens /
+ * Anthropic count_tokens / jtokkit BPE), heuristic estimate fallback; live-or-static
+ * context window via TokenCounter. Never throws, never blocks >5s.
+ */
+private suspend fun computeContextUsage(
+    model: String,
+    systemPrompt: String,
+    convMsgs: JSONArray,
+    tokenStore: SecureTokenStore?,
+): Pair<Int?, Int?> {
+    val colonIdx = model.indexOf(':')
+    if (colonIdx <= 0) return null to null
+    val providerId = model.substring(0, colonIdx)
+    val provider = ChatProviderRegistry.byId(providerId) ?: return null to null
+    val apiModel = model.substring(colonIdx + 1)
+    val key = try { tokenStore?.aiKey(providerId.uppercase()) } catch (_: Exception) { null }
+    val req = ChatRequest(apiModel, systemPrompt, convMsgs, key)
+    val used = try {
+        kotlinx.coroutines.withTimeoutOrNull(5000) { provider.countTokens(req) }
+    } catch (_: Exception) { null }
+        ?: com.codespace.ide.chat.TokenCounter.countOpenAiCompatible(systemPrompt, convMsgs, apiModel)
+    val max = com.codespace.ide.chat.TokenCounter.modelContextLimit(provider, apiModel, key)
+    return used to max
+}
+
+/** Recomputes the gauge for the conversation the NEXT send will carry. Fire-and-forget. */
+private suspend fun updateContextGauge(
+    selectedModel: String,
+    mode: ChatMode,
+    context: Context,
+    tokenStore: SecureTokenStore?,
+    messages: List<ChatMsg>,
+    projectRootPath: String?,
+    currentFilePath: String?,
+    openFilePaths: List<String>,
+    onComputed: (Int?, Int?) -> Unit,
+) {
+    try {
+        val wsCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
+        val systemPrompt = buildSystemPrompt(mode, context, wsCtx)
+        val usage = computeContextUsage(selectedModel, systemPrompt, convMsgsOf(systemPrompt, messages), tokenStore)
+        onComputed(usage.first, usage.second)
+    } catch (_: Exception) { }
+}
+
+private suspend fun chat(
+    model: String,
+    messages: List<ChatMsg>,
+    mode: ChatMode,
+    context: Context,
+    tokenStore: SecureTokenStore? = null,
+    onOpenFile: ((String) -> Unit)? = null,
+    onSwitchToPreview: ((String) -> Unit)? = null,
+    projectRootPath: String? = null,
+    currentFilePath: String? = null,
+    openFilePaths: List<String> = emptyList(),
+    onStreamEvent: ((ChatStreamEvent) -> Unit)? = null,
+): String = withContext(Dispatchers.IO) {
+    // P41-X: Build workspace context for AI prompts
+    val workspaceCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
+    // MCP: lazy first-chat discovery — spawns enabled external MCP servers once,
+    // tools/list results feed the external-tools docs block below.
+    com.codespace.ide.agent.McpClientManager.ensureDiscovered(context)
+    
+    val systemPrompt = buildSystemPrompt(mode, context, workspaceCtx)
+
+    val convMsgs = convMsgsOf(systemPrompt, messages)
 
     // Agentic loop: call model -> parse tool calls -> execute -> feed results -> repeat
     val maxIterations = 10
@@ -311,10 +376,15 @@ commands work (apt, git, node, python3). Android host commands do NOT work here.
     val provider = if (colonIdx > 0) ChatProviderRegistry.byId(providerPrefix) else null
 
     for (iteration in 0 until maxIterations) {
+        onStreamEvent?.invoke(ChatStreamEvent.IterationStart(iteration))
+        val deltaSink: ((String) -> Unit)? =
+            onStreamEvent?.let { sink -> { d: String -> sink(ChatStreamEvent.Delta(d)) } }
         val content = if (provider != null) {
             val apiModel = model.substring(colonIdx + 1)
             if (!provider.isAvailable(tokenStore)) throw Exception(provider.unavailableMessage())
-            provider.complete(ChatRequest(apiModel, systemPrompt, convMsgs, tokenStore?.aiKey(providerPrefix.uppercase())))
+            val req = ChatRequest(apiModel, systemPrompt, convMsgs, tokenStore?.aiKey(providerPrefix.uppercase()))
+            if (deltaSink != null) provider.completeStreaming(req, deltaSink)
+            else provider.complete(req)
         } else {
             throw Exception("'$model' is not a registered chat provider. Add an API key in Settings first.")
         }
@@ -342,6 +412,7 @@ commands work (apt, git, node, python3). Android host commands do NOT work here.
                 } else {
                     result.lineSequence().firstOrNull()?.take(200) ?: result.take(200)
                 }
+                onStreamEvent?.invoke(ChatStreamEvent.ToolDone(toolName))
                 toolResults.append("[Tool: $toolName] Result:\n$resultForTranscript\n\n")
                 // Auto-open file in editor + switch preview when AI writes a visual file
                 if (approved && toolName == "write_file") {
@@ -401,6 +472,9 @@ internal fun CopilotChatPanelOverlay(
     var mode          by remember { mutableStateOf(ChatMode.ASK) }
     var chatInput     by remember { mutableStateOf("") }
     var chatLoading   by remember { mutableStateOf(false) }
+    var liveStreamText by remember { mutableStateOf("") }
+    var ctxUsed        by remember { mutableStateOf<Int?>(null) }
+    var ctxMax         by remember { mutableStateOf<Int?>(null) }
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
@@ -436,6 +510,14 @@ internal fun CopilotChatPanelOverlay(
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
+    // STREAMING: keep the live bubble in view — scroll every ~120 chars so we don't
+    // fight recomposition on every delta.
+    LaunchedEffect(liveStreamText.length / 120, chatLoading) {
+        if (chatLoading && liveStreamText.isNotEmpty() && messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size)
+        }
+    }
+
     fun send(userText: String) {
         if (userText.isBlank() || chatLoading) return
         val msg = ChatMsg("user", userText)
@@ -443,10 +525,18 @@ internal fun CopilotChatPanelOverlay(
         chatInput = ""
         error = ""
         chatLoading = true
+        liveStreamText = ""
         scope.launch {
             try {
                 com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
-                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview)
+                val sink: ((ChatStreamEvent) -> Unit) = { ev ->
+                    when (ev) {
+                        is ChatStreamEvent.IterationStart -> liveStreamText = ""
+                        is ChatStreamEvent.Delta -> liveStreamText += ev.text
+                        is ChatStreamEvent.ToolDone -> liveStreamText += "\n⚙ " + ev.tool + " — done"
+                    }
+                }
+                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, onStreamEvent = sink)
                 messages.add(ChatMsg("assistant", reply))
                 saveHistory(context, messages.toList())
             } catch (e: Exception) {
@@ -454,6 +544,13 @@ internal fun CopilotChatPanelOverlay(
                 messages.add(ChatMsg("assistant", "Error: ${e.message}"))
             } finally {
                 chatLoading = false
+                liveStreamText = ""
+                // CONTEXT GAUGE: estimate for the NEXT send — unawaited, never delays the reply
+                scope.launch {
+                    updateContextGauge(selectedModel, mode, context, tokenStore, messages.toList(), null, null, emptyList()) { u, m ->
+                        ctxUsed = u; ctxMax = m
+                    }
+                }
             }
         }
     }
@@ -597,15 +694,13 @@ internal fun CopilotChatPanelOverlay(
                 }
                 if (chatLoading) {
                     item {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = colors.accent,
-                                strokeWidth = 2.dp,
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("Thinking...", color = colors.textSecondary, fontSize = 11.sp)
-                        }
+                        LiveStreamIndicator(
+                            liveText = liveStreamText,
+                            accent = colors.accent,
+                            surface = colors.surface,
+                            text = colors.text,
+                            textSecondary = colors.textSecondary,
+                        )
                     }
                 }
             }
@@ -624,6 +719,15 @@ internal fun CopilotChatPanelOverlay(
             }
 
             HorizontalDivider(color = colors.surface)
+
+            // ── Context gauge (running per-turn token usage) ─────────────────────
+            ChatContextGauge(
+                usedTokens = ctxUsed,
+                maxTokens = ctxMax,
+                textSecondary = colors.textSecondary,
+                warning = Color(0xFFF59E0B),
+                error = Color(0xFFEF4444),
+            )
 
             // ── Input ─────────────────────────────────────────────────────────
             Row(
@@ -792,6 +896,9 @@ internal fun CopilotChatPanelInline(
     var mode          by remember { mutableStateOf(ChatMode.ASK) }
     var chatInput     by remember { mutableStateOf("") }
     var chatLoading   by remember { mutableStateOf(false) }
+    var liveStreamText by remember { mutableStateOf("") }
+    var ctxUsed        by remember { mutableStateOf<Int?>(null) }
+    var ctxMax         by remember { mutableStateOf<Int?>(null) }
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) } // Item3: chat-panel overflow menu
@@ -881,6 +988,14 @@ internal fun CopilotChatPanelInline(
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
+    // STREAMING: keep the live bubble in view — scroll every ~120 chars so we don't
+    // fight recomposition on every delta.
+    LaunchedEffect(liveStreamText.length / 120, chatLoading) {
+        if (chatLoading && liveStreamText.isNotEmpty() && messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size)
+        }
+    }
+
     fun send(userText: String) {
         if (userText.isBlank() || chatLoading) return
         val msg = ChatMsg("user", userText)
@@ -888,10 +1003,18 @@ internal fun CopilotChatPanelInline(
         chatInput = ""
         error = ""
         chatLoading = true
+        liveStreamText = ""
         scope.launch {
             try {
                 com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
-                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths)
+                val sink: ((ChatStreamEvent) -> Unit) = { ev ->
+                    when (ev) {
+                        is ChatStreamEvent.IterationStart -> liveStreamText = ""
+                        is ChatStreamEvent.Delta -> liveStreamText += ev.text
+                        is ChatStreamEvent.ToolDone -> liveStreamText += "\n⚙ " + ev.tool + " — done"
+                    }
+                }
+                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink)
                 messages.add(ChatMsg("assistant", reply))
                 // Phase 1 C3: request_connector ran mid-loop -> inline Connect card
                 com.codespace.ide.agent.AgentConnectorManager.consumePendingConnectCard()?.let { svc ->
@@ -904,6 +1027,13 @@ internal fun CopilotChatPanelInline(
                 persistSessions()
             } finally {
                 chatLoading = false
+                liveStreamText = ""
+                // CONTEXT GAUGE: estimate for the NEXT send — unawaited, never delays the reply
+                scope.launch {
+                    updateContextGauge(selectedModel, mode, context, tokenStore, messages.toList(), projectRootPath, currentFilePath, openFilePaths) { u, m ->
+                        ctxUsed = u; ctxMax = m
+                    }
+                }
             }
         }
     }
@@ -1167,9 +1297,13 @@ internal fun CopilotChatPanelInline(
             }
             if (chatLoading) {
                 item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                        CircularProgressIndicator(Modifier.padding(8.dp).size(20.dp), strokeWidth = 2.dp, color = colors.accent)
-                    }
+                    LiveStreamIndicator(
+                        liveText = liveStreamText,
+                        accent = colors.accent,
+                        surface = colors.assistantBubble,
+                        text = colors.text,
+                        textSecondary = colors.textSecondary,
+                    )
                 }
             }
         }
@@ -1177,6 +1311,15 @@ internal fun CopilotChatPanelInline(
         if (error.isNotEmpty()) {
             Text(error, fontSize = 10.sp, color = Color(0xFFEF4444), modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
         }
+
+        // ── Context gauge (running per-turn token usage) ─────────────────────
+        ChatContextGauge(
+            usedTokens = ctxUsed,
+            maxTokens = ctxMax,
+            textSecondary = colors.textSecondary,
+            warning = Color(0xFFF59E0B),
+            error = Color(0xFFEF4444),
+        )
 
         // ── Input ─────────────────────────────────────────────────────────
         Row(
