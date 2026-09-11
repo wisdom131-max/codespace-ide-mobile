@@ -1684,7 +1684,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 }
             }
         }
-    }
     DisposableEffect(Unit) {
         currentInsertDispatcher?.register(insertHandler)
         onDispose { currentInsertDispatcher?.unregister(insertHandler) }
