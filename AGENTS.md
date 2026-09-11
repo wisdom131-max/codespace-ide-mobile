@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-11 20:35 WAT
+> Last updated: 2026-09-11 22:20 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 8ccca5e |
-| CI build | #2719 pending (8ccca5e split rewrite); #2717/#2718 GREEN (a8a7220 build-fix, 278a660 docs) |
+| Latest commit | 2a17033 |
+| CI build | #2722 GREEN (2a17033; split rewrite + 2 build fixes b4de0e9/2a17033) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2538,3 +2538,22 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 10. Item 4 PerfProbe re-verify AFTER items 2/3/6/7/9 retests.
 11. Debugger P3 (run-to-cursor, inline values) — queued.
 12. Batch J deferred; chat-command testing deferred until model configured.
+
+### [2026-09-11 22:20 WAT] — AI Agent: Claude, Commits b4de0e9 + 2a17033 (build-fixes for 8ccca5e), CI #2722 GREEN
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**[BUILD-FIX]** #2719-#2721 FAILED on CodeEditor.kt:949 (externalContentSync viewport-anchoring scroll), fixed in b4de0e9 + 2a17033, GREEN at #2722: (a) externalContentSync had to become `suspend fun` — ScrollState.scrollTo is suspend, and the helper is called from LaunchedEffect(content) which IS a coroutine. (b) KOTLIN PITFALL (NEW, do not repeat): in THIS project's Compose build, ScrollState.scrollTo/animateScrollTo take **Int** pixel values — the green baseline (CodeEditor.kt:699 `vScroll.animateScrollTo((vScroll.value + scrollBy).coerceIn(0, vScroll.maxValue))`, :756 `vScroll.scrollTo(vScroll.maxValue)`) passes Ints. Do NOT `.toFloat()`/`0f`-convert scroll args — you get 'inferred type is Float but Int was expected'. Keep the whole expression Int: `(vScroll.value + (lineDelta * lhPxSync).toInt()).coerceIn(0, vScroll.maxValue)` — only the lineHeightPx (Float) product gets .toInt().
+
+**Next on roadmap (ALL pending items):**
+1. RETEST batch (gate for validation change): MC chip + double-tap second cursor; locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet; ide open file:42 fresh-tab jump.
+2. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint pointed at a real OpenAI-compatible server.
+3. STREAMING retest (1731b4d): ASK-mode streams visibly; AGENT mode per-iteration stream + tool-done lines; context gauge values + amber/red thresholds.
+4. SPLIT retest (8ccca5e): split button creates "⫽" entry; edits live-sync between views (cursor preserved in inactive view); split X closes view only; primary close cascades split; blame toggle works in normal mode; LSP banner shows on slow/failed server start; strip active-tab matches workbench theme; long-press tab menu items work; shell strip gone (~63dp reclaimed).
+5. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+6. TAB-STRIP PEEK — PARKED by user decision, do NOT build until design settled.
+7. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
+8. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence.
+9. Item 4 PerfProbe re-verify AFTER items 1-4/7/8 retests.
+10. Debugger P3 (run-to-cursor, inline values) — queued.
+11. Batch J deferred; chat-command testing deferred until model configured.
