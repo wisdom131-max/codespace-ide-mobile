@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-11 16:25 WAT
+> Last updated: 2026-09-11 20:35 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | a8a7220 |
-| CI build | #2717 pending (a8a7220 build-fix); #2714/#2715/#2716 FAILED (padding overload mix + jtokkit .size, fixed in a8a7220) |
+| Latest commit | 8ccca5e |
+| CI build | #2719 pending (8ccca5e split rewrite); #2717/#2718 GREEN (a8a7220 build-fix, 278a660 docs) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2510,3 +2510,31 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 8. Item 4 PerfProbe re-verify AFTER items 2/3/6/7 retests.
 9. Debugger P3 (run-to-cursor, inline values) — queued.
 10. Batch J deferred; chat-command testing deferred until model configured.
+
+### [2026-09-11 20:35 WAT] — AI Agent: Claude, Commit 8ccca5e, CI Build pending (#2719)
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**[SPLIT] (user-approved plan, Part A + SplitViewStore + Part C; tab-strip PEEK deliberately PARKED until user settles design):** OLD half-built split system DELETED — invisible splitId toggle (KeyboardArrowDown IconButton), read-only split render branch (Row + 2 CodeEditors), splitFilePath session persistence (field removed from SessionStateStore + SessionHandoffManager). NEW tab-based split: SplitViewStore (editor/SplitViewStore.kt) — split = LIVE-SYNCED SECOND VIEW of the active file, shown as its own strip entry prefixed with the VS Code split glyph; distinct "split::<path>" ids so it never collides with tab dedupe (tabs.none{path}) or LSP ownership (primary tab owns the didOpen/didChange/didClose document; split edits flow through the shared buffer). One buffer, two views: both CodeEditors bind the same EditorTab; key(activeId) remount gives each view independent cursor/scroll. Split button (ic_vs_split_editor, accent-tinted when active) in EditorPane strip trailing icons: toggles split for active file. EditorPane: @OptIn(ExperimentalFoundationApi) + tabColors param; strip shows split entries (dirty state mirrors shared buffer); strip X closes the split view only; long-press context menu on strip entries (Close/Close Others/Close All/Close Saved/Copy Path) — ported from removed shell strip, but on the AUTHORITATIVE list via closeEditorTabInternal. resolveActiveTab() top-level resolver replaces ALL 11 `firstOrNull{id==activeId}` lookups (split ids map to primary buffer; format/save/LSP effects work identically in split views); companion write-index lookups now target resolved buffer id. closeEditorTabInternal (EditorTabClose.kt): splitId param removed; SPLIT-VIEW CASCADE — closing a primary tab removes its dependent split views; activeId fixup covers active-split case. openFilePath effect guard: shell mirror round-trip no longer yanks user out of an active split view. onTabsChanged reports RESOLVED primary path while a split is active (breadcrumb/badge/open-editors unaffected; split views not added to mirror list).
+
+**[SPLIT-LIVE-SYNC] (CodeEditor):** external-content sync FIXED — old effect only moved cursor to content.length and NEVER replaced text (stale text forever on external content change; masked by key remounts). New externalContentSync(): common-prefix/suffix diff locates edit region; replaces text; maps cursor/selection through the edit (before stays, after shifts by delta, inside clamps to region end); viewport anchored when edit is above the visible region (vScroll shifted by net line delta); tagged ProgrammaticTextChange (no trigger authority, no completion spam); NO echo onContentChange (would false-mark the shared buffer dirty). Split views now see each other's edits live.
+
+**[BLAME-FIX] (pre-existing latent bug found during split deletion):** the git blame FETCH and the LSP status banner UI lived ONLY inside the old split render branch — in the normal path blameData was never fetched (Git Blame toggle was dead: set showBlame, nothing populated data) and lspStatusMessage (Starting server/LSP unavailable/OOM notices) had NO visible reader. Both blocks EXTRACTED to the top of the normal editor branch — blame + banner now work for every editor view including split views.
+
+**[UI] TAB-STRIP CONSOLIDATION:** shell 35dp mirror strip (ProjectShellScreen) REMOVED — EditorPane's 28dp strip is the single strip (~63dp vertical reclaimed). Shell passes workbench theme colors down via new EditorTabColors (ui/panes/EditorTabColors.kt): surviving strip gets the removed strip's themed active-tab highlight + themed bar/inactive/text/divider (no more hardcoded white-on-light strip regardless of theme). Ported shell-strip-only functionality: long-press context menu (above) + split button (above). Nav history note: tab-click pushNavEntry existed only on the removed mirror strip — nav back/forward still push on file opens/go-to-def; tab switches no longer add nav entries (pre-existing behavior for EditorPane strip anyway). Also: the removed strip's X button never closed durably (mutated the mirror list, which the pane's next sync resurrected) — EditorPane's X always was the working one.
+
+**Files touched:** editor/SplitViewStore.kt (new); ui/panes/EditorTabColors.kt (new); editor/CodeEditor.kt (externalContentSync + effect); ui/panes/EditorPane.kt (old split system removed, strip rewrite, resolver wiring, guards, @OptIn, tabColors param); ui/panes/EditorTabClose.kt (cascade + signature); data/SessionStateStore.kt + data/SessionHandoffManager.kt (splitFilePath removed); ui/screens/ProjectShellScreen.kt (mirror strip removed, tabColors passed)
+
+**Next on roadmap (ALL pending items):**
+1. Confirm #2719 CI green; install newest APK.
+2. RETEST batch (gate for validation change): MC chip + double-tap second cursor; locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet; ide open file:42 fresh-tab jump.
+3. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint pointed at a real OpenAI-compatible server.
+4. STREAMING retest (1731b4d): ASK-mode streams visibly; AGENT mode per-iteration stream + tool-done lines; context gauge values + amber/red thresholds.
+5. SPLIT retest (8ccca5e): split button creates "⫽" entry; edits live-sync between views (cursor preserved in inactive view); split X closes view only; primary close cascades split; blame toggle works in normal mode; LSP banner shows on slow/failed server start; strip active-tab matches workbench theme; long-press tab menu items work; shell strip gone (~63dp reclaimed).
+6. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+7. TAB-STRIP PEEK — PARKED by user decision, do NOT build until design settled (user wants firmer conclusion first).
+8. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
+9. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence.
+10. Item 4 PerfProbe re-verify AFTER items 2/3/6/7/9 retests.
+11. Debugger P3 (run-to-cursor, inline values) — queued.
+12. Batch J deferred; chat-command testing deferred until model configured.
