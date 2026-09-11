@@ -914,7 +914,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     //   echo write would falsely mark the shared buffer dirty.
     // - Tag as ProgrammaticTextChange (no trigger authority: no completion/hover
     //   spam from the peer's edit), which also makes the next real echo skip.
-    fun externalContentSync(newText: String, reason: String) {
+    suspend fun externalContentSync(newText: String, reason: String) {
         val oldText = value.text
         if (oldText == newText) return
         val minLen = minOf(oldText.length, newText.length)
@@ -946,7 +946,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val newRegion = if (insertedLen > 0) newText.substring(editStart, editStart + insertedLen) else ""
             val lineDelta = newRegion.count { it == '\n' } - oldRegion.count { it == '\n' }
             if (lineDelta != 0 && vScroll.maxValue > 0) {
-                vScroll.scrollTo((vScroll.value + lineDelta * lhPxSync).coerceIn(0, vScroll.maxValue))
+                vScroll.scrollTo((vScroll.value + lineDelta * lhPxSync).toFloat().coerceIn(0f, vScroll.maxValue.toFloat()))
             }
         }
         value = TextFieldValue(newText, TextRange(newSelStart, newSelEnd))
