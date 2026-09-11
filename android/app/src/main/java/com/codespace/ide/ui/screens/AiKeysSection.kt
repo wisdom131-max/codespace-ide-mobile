@@ -178,7 +178,7 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                 ) {
                     if (state.urlSaved) {
                         Text("Endpoint saved", style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(end = 8.dp, vertical = 10.dp))
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
                     }
                     Button(
                         shape = RoundedCornerShape(10.dp),

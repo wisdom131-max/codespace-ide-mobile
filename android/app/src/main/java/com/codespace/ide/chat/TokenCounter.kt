@@ -54,7 +54,7 @@ object TokenCounter {
     /** Real BPE count of one text blob for the model; heuristic fallback. */
     fun count(text: String, model: String): Int {
         val enc = encodingFor(model) ?: return heuristic(text)
-        return try { enc.encode(text).size } catch (_: Throwable) { heuristic(text) }
+        return try { enc.encode(text).size() } catch (_: Throwable) { heuristic(text) }
     }
 
     /** Rough estimate when no real tokenizer exists: ~4 chars per token. */
