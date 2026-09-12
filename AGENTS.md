@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-12 11:15 WAT
+> Last updated: 2026-09-12 11:55 WAT
 
 ---
 
@@ -2643,3 +2643,27 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 12. Item 4 PerfProbe re-verify AFTER items 2/3/5/6/10/11 retests.
 13. Debugger P3 (run-to-cursor, inline values) — queued.
 14. Batch J deferred; chat-command testing deferred until model configured.
+
+### [2026-09-12 11:55 WAT] — AI Agent: Claude, Retest report + research (no code changes)
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**[DECISION][SCM] CLONE-STORAGE CANCELLED (user decision 2026-09-12):** cloned repos STAY in app-private storage exactly as they are. The workspace-root relocation plan is DEAD — do NOT implement, do not re-propose. The clone-only remove dialog (X behavior from 2f97101) stays as-is.
+
+**[MC] TEST E DIAGNOSED (no fix yet, user wants architecture research first):** the smoking-gun log pair (pre/post with no engine lines, len 13->13, primary 1..1 -> 0..0, extras frozen) is decoded: applyFanOut has a `?: return` early-exit BEFORE the diffEdit-null case — it fired because oldText == newText, i.e. the event was a SELECTION-ONLY change (caret moved 1->0, zero characters deleted), not a delete. The engine was invoked but bailed at the null-diff guard; extras are only ever updated on TEXT-changing events. Structural finding: any selection-only or buffer-mutating path that does not pass through the onValueChange fan-out block (caret taps, IME caret moves, composition, programmatic edits) silently desyncs extras. VS Code research done (real source: cursorCollection.ts, cursor.ts, cursorTypeOperations.ts, cursorDeleteOperations.ts from microsoft/vscode main); full 4-question report delivered in chat; user deciding between restructure (single chokepoint) vs patch. MC-DELETE-DIAG logs STAY until the decision lands and the fix ships.
+
+**Retest results recorded:** A (split inline in breadcrumb) CONFIRMED. B (gold band 5s auto-dismiss) CONFIRMED. C (gutter numbers at all scroll depths) CONFIRMED. D (clone-only dialog + plain X for local folders) CONFIRMED. E diagnosed above, fix pending architecture decision.
+
+**Next on roadmap (ALL pending items):**
+1. MC DECISION (user pending): restructure multi-cursor so ALL cursor updates go through ONE chokepoint (VS Code Cursor.trigger/setStates model) vs patch the selection-only bypass. Report delivered in chat 2026-09-12.
+2. After decision + fix: remove MC-DELETE-DIAG logs, MC retest (2 cursors, type, delete x4+, verify extras mirror every event incl. selection-only).
+3. RETEST batch A (gate for validation change): MC chip + double-tap second cursor; locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+4. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint against a real OpenAI-compatible server.
+5. STREAMING retest (1731b4d): ASK-mode streams visibly; AGENT mode per-iteration stream + tool-done lines; context gauge values + amber/red thresholds.
+6. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+7. TAB-STRIP PEEK — PARKED by user decision, do NOT build until design settled.
+8. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
+9. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence; audit process cgroup/watchdog for SIGKILL/9.
+10. Item 4 PerfProbe re-verify AFTER items above retest.
+11. Debugger P3 (run-to-cursor, inline values) — queued.
+12. Batch J deferred; chat-command testing deferred until model configured.
