@@ -2813,7 +2813,7 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 
 **RULES REMINDER:** 1. TWO-REPO: codespace-ide-mobile only (proot -> ubuntu-proot-test). 2. CHANGE LOG bottom entry every commit. 3. TAGS. 4. Current State table updated. 5. NEVER re-do done work. 6. Roadmap lists ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v minimum. 8. 64KB limit: new UI = new file + single-line call.
 
-**Commit:** (SHA after commit) | CI: pending
+**Commit:** ad13a49 | CI: build triggered, result pending
 **What was built (Round 3 — context & attachment system, VS Code attach-context port):**
 - CHATATTACHMENT MODEL: chat/ChatAttachment.kt (NEW) — ChatAttachment (FILE / SELECTION kinds) + ChatAttachmentInjector. Attached content rides the LAST user message of the outgoing request only (never saved history). Caps: 12k/file, 24k total, truncation noted. Never throws. Language-tagged fenced blocks from extension map.
 - #FILE TOKENS: "#relative/path.ext" typed in the message auto-resolves against the project root and attaches (extension required so normal hashtags are untouched). Resolved at send, merged with explicit chips, deduped.
