@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-12 17:50 WAT
+> Last updated: 2026-09-12 18:05 WAT
 
 ---
 
@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | #2744 GREEN (ad13a49, R3 attachments) — R1+R2+R3 live. APK artifact: codespace-ide-arm64-v8a |
+| CI build | #2744 GREEN (ad13a49, R3 attachments) — R1+R2+R3 live. Round-4 commit pending CI. APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2844,6 +2844,48 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 7. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
 8. R1 RE-TEST: markdown rendering, code Copy/Insert, Stop mid-stream (+FlowGate case), Retry, /commands, session rename.
 9. R2 RE-TEST: AGENTS.md rule followed, chip toggle + persistence, copilot-instructions.md rename, CLAUDE.md combo, agent_prompt CLI block.
+10. MC RE-TEST on #2735 APK: MC chip + double-tap second cursor; BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity; [MC-TRIPWIRE] lines check.
+11. RETEST batch A (gate for validation change): locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+12. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.
+13. STREAMING retest (1731b4d): ASK streams; AGENT per-iteration stream + tool-done lines; gauge thresholds.
+14. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+15. TAB-STRIP PEEK — PARKED (user decision). Custom-model-ID entry — PARKED (separate future item).
+16. MCP Batch D items 2-9 retest; Exit-9 next occurrence + [EXIT9-PHANTOM-DIAG]; Debugger P3 (run-to-cursor, inline values); Batch J deferred.
+
+---
+
+## [2026-09-12 18:05 WAT] — AI Agent: Copilot Chat Parity Round 4 (of 10) [CHAT][AI]
+
+**RULES REMINDER:** 1. TWO-REPO: codespace-ide-mobile only (proot -> ubuntu-proot-test). 2. CHANGE LOG bottom entry every commit. 3. TAGS. 4. Current State table updated. 5. NEVER re-do done work. 6. Roadmap lists ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v minimum. 8. 64KB limit: new UI = new file + single-line call.
+
+**Commit:** (SHA after commit) | CI: pending
+**What was built (Round 4 — typed entries + real error/tool parts + selection attach):**
+- TYPED CHATENTRY: ChatMsg gains a derived `kind` (USER / ASSISTANT / ERROR / TOOL / CONNECT_CARD). Persistence unchanged (role+text only) — old histories with "Error:" replies auto-classify to ERROR on load. Rendering branches on kind, not string sniffing.
+- REAL ERROR PARTS: errors now render as a distinct red-bordered bubble with ErrorOutline icon (ChatErrorBubble) — no longer a fake plain assistant reply. Old saved errors render correctly too (prefix stripped at render).
+- TOOL TRANSCRIPT CHIPS: chat() AGENT-mode tool runs now leave a compact tools-used chip in the transcript (ChatToolChip: build icon + comma tool list, dimmed monospace) between the user message and the reply. Accumulated from ToolDone stream events; persisted as role "tool" (renders on history reload).
+- SELECTION ATTACH (R3 follow-through): new editor/EditorSelectionStore.kt — CodeEditor publishes every non-empty selection change (one guarded call in the existing onValueChange path; no composable-body inline code). The attach picker gains a top row "Attach current editor selection" (file + char count) when a live selection exists → SELECTION-kind ChatAttachment, content injected as quoted snippet.
+
+**Files touched:** editor/EditorSelectionStore.kt (NEW), editor/CodeEditor.kt (1-line selection publish), ui/screens/ChatEntryExtras.kt (NEW: ChatToolChip + ChatErrorBubble), ui/screens/CopilotChatPanelOverlay.kt (ChatEntryKind, items branches, sink accumulation, TOOL entry, picker call), ui/screens/ChatAttachPicker.kt (selection row + onPickSelection)
+
+**Round-4 test batch (run on green APK):**
+- R4-1: AGENT mode task that uses tools (e.g. "list the files in this project") — transcript shows a small tools chip between your message and the reply; chip survives app restart.
+- R4-2: Send a request with a bad/missing API key — error renders as red-bordered bubble with warning icon, NOT plain text.
+- R4-3: Old chat history with previous errors — they render as error bubbles now.
+- R4-4: Select text in the editor → paperclip → first row shows "Attach current editor selection" with file + char count → tap → chip appears → ask "explain this selection" — answer references the actual selected code.
+- R4-5: Selection chip renders with file name; sending works; selection content NOT saved into session history (only the request).
+- R4-6: Collapse selection (tap elsewhere in editor) → reopen picker → row still shows the LAST selection (by design).
+- R4-7: User bubbles, markdown replies, connect cards — unchanged (regression check).
+
+**Next on roadmap (ALL pending items):**
+1. ROUND 5 — Model Auto default, pinning/favorites, per-mode model; FlowGate permission levels.
+2. ROUND 6 — DIFF/APPLY/CHECKPOINT (WRITTEN PRE-PLAN REQUIRED before build — user gate).
+3. ROUND 7 — Plan review UI, todos, follow-ups, feedback, find-in-chat.
+4. ROUND 8 — Voice, images, queue, export/import.
+5. ROUND 9 — Skills/agents/hooks/subagents (flag scope BEFORE building if bigger than scoped — user gate).
+6. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+7. R1 RE-TEST: markdown rendering, code Copy/Insert, Stop mid-stream (+FlowGate case), Retry, /commands, session rename.
+8. R2 RE-TEST: AGENTS.md rule followed, chip toggle + persistence, copilot-instructions.md rename, CLAUDE.md combo, agent_prompt CLI block.
+9. R3 RE-TEST: paperclip picker, chip attach/remove, #file tokens, implicit-context toggle + persistence, caps, hashtag safety.
 10. MC RE-TEST on #2735 APK: MC chip + double-tap second cursor; BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity; [MC-TRIPWIRE] lines check.
 11. RETEST batch A (gate for validation change): locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
 12. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.

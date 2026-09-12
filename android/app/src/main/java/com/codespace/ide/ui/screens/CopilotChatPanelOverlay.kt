@@ -82,7 +82,27 @@ private val DefaultChatColors = ChatPanelColors(
 private enum class ChatMode { ASK, AGENT, PLAN }
 
 // ── Data ──────────────────────────────────────────────────────────────────────
-private data class ChatMsg(val role: String, val text: String)
+private enum class ChatEntryKind {
+    USER, ASSISTANT, ERROR, TOOL, CONNECT_CARD;
+    companion object {
+        fun of(role: String, text: String): ChatEntryKind = when {
+            role == "user" -> USER
+            role == "card_connect" -> CONNECT_CARD
+            role == "tool" -> TOOL
+            text.startsWith("Error:") -> ERROR
+            else -> ASSISTANT
+        }
+    }
+}
+
+// R4-TYPED-ENTRY: one message model for the transcript; kind drives rendering.
+// Persistence unchanged (save/load still write role+text only) — old histories
+// with "Error:" replies auto-classify to ERROR on load via the of() heuristic.
+private data class ChatMsg(
+    val role: String,
+    val text: String,
+    val kind: ChatEntryKind = ChatEntryKind.of(role, text),
+)
 
 /**
  * STREAMING (2026-09-11): events chat() surfaces to the panel's live bubble.
@@ -1116,14 +1136,17 @@ internal fun CopilotChatPanelInline(
         chatJob = scope.launch {
             try {
                 com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
+                val toolsUsed = mutableListOf<String>()
                 val sink: ((ChatStreamEvent) -> Unit) = { ev ->
                     when (ev) {
                         is ChatStreamEvent.IterationStart -> liveStreamText = ""
                         is ChatStreamEvent.Delta -> liveStreamText += ev.text
-                        is ChatStreamEvent.ToolDone -> liveStreamText += "\n⚙ " + ev.tool + " — done"
+                        is ChatStreamEvent.ToolDone -> { liveStreamText += "\n⚙ " + ev.tool + " — done"; toolsUsed.add(ev.tool) }
                     }
                 }
                 val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
+                // R4-TYPED-ENTRY: tools-used transcript chip rides before the reply
+                if (toolsUsed.isNotEmpty()) messages.add(ChatMsg("tool", toolsUsed.distinct().joinToString(", ")))
                 messages.add(ChatMsg("assistant", reply))
                 // Phase 1 C3: request_connector ran mid-loop -> inline Connect card
                 com.codespace.ide.agent.AgentConnectorManager.consumePendingConnectCard()?.let { svc ->
@@ -1407,6 +1430,10 @@ internal fun CopilotChatPanelInline(
                         surface = colors.surface,
                         onConnect = { onOpenConnectors?.invoke() },
                     )
+                } else if (msg.kind == ChatEntryKind.TOOL) {
+                    ChatToolChip(text = msg.text, colors = colors)
+                } else if (msg.kind == ChatEntryKind.ERROR) {
+                    ChatErrorBubble(text = msg.text.removePrefix("Error: "), colors = colors)
                 } else {
                 val isUser = msg.role == "user"
                 Row(
@@ -1488,6 +1515,10 @@ internal fun CopilotChatPanelInline(
             ChatAttachPickerDialog(
                 projectRoot = projectRootPath,
                 onPick = { a ->
+                    if (attachments.none { it.path == a.path }) attachments = attachments + a
+                    showAttachPicker = false
+                },
+                onPickSelection = { a ->
                     if (attachments.none { it.path == a.path }) attachments = attachments + a
                     showAttachPicker = false
                 },

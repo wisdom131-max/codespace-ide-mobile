@@ -134,6 +134,8 @@ internal fun ChatAttachPickerDialog(
     onPick: (ChatAttachment) -> Unit,
     onDismiss: () -> Unit,
     colors: ChatPanelColors,
+    // R4-ATTACH-SELECTION: non-null enables the "current editor selection" row
+    onPickSelection: ((ChatAttachment) -> Unit)? = null,
 ) {
     if (projectRoot.isNullOrBlank()) { onDismiss(); return }
     var query by remember { mutableStateOf("") }
@@ -157,6 +159,53 @@ internal fun ChatAttachPickerDialog(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                 )
+                // R4-ATTACH-SELECTION: attach the editor's live selection (VS Code parity)
+                val liveSel = remember { com.codespace.ide.editor.EditorSelectionStore.take() }
+                if (liveSel != null && onPickSelection != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable {
+                                val f = File(liveSel.filePath)
+                                val rel = try {
+                                    if (f.path.startsWith(projectRoot)) f.relativeTo(File(projectRoot)).path else f.name
+                                } catch (_: Exception) { f.name }
+                                onPickSelection(
+                                    ChatAttachment(
+                                        path = liveSel.filePath,
+                                        relPath = rel,
+                                        name = f.name,
+                                        kind = ChatAttachment.Kind.SELECTION,
+                                        selText = liveSel.selText,
+                                    )
+                                )
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Highlight, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text(
+                                "Attach current editor selection",
+                                fontSize = 11.sp,
+                                color = colors.text,
+                            )
+                            Text(
+                                liveSel.filePath.substringAfterLast('/') + " — " +
+                                    liveSel.selText.count { it != '\n' }.toString() + " chars selected",
+                                fontSize = 9.sp,
+                                color = colors.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },

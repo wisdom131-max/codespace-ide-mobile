@@ -2277,6 +2277,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                         } else if (newValue.selection != value.selection) {
                             editorEvent = EditorEvent.UserSelection(newValue.selection.start, newValue.selection.end)
+                            // R4-ATTACH-SELECTION: publish live selection for chat attach
+                            EditorSelectionStore.record(currentFilePath, newValue.text, newValue.selection.start, newValue.selection.end)
                         }
                         // IME-FIX: When IME commits text (transition from composing to
                         // not composing with text change), the push() above already
