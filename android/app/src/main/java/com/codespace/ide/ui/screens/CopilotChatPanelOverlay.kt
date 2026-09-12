@@ -301,10 +301,20 @@ commands work (apt, git, node, python3). Android host commands do NOT work here.
 }
 
 /** Full request conversation (leading system entry + history) — shared by chat() and the context gauge. */
-private fun convMsgsOf(systemPrompt: String, messages: List<ChatMsg>): JSONArray {
+private fun convMsgsOf(
+    systemPrompt: String,
+    messages: List<ChatMsg>,
+    attachments: List<com.codespace.ide.chat.ChatAttachment> = emptyList(),
+): JSONArray {
     val convMsgs = JSONArray()
     convMsgs.put(JSONObject().put("role", "system").put("content", systemPrompt))
-    messages.forEach { convMsgs.put(JSONObject().put("role", it.role).put("content", it.text)) }
+    // R3-ATTACH: attached file/selection content rides the LAST user message
+    val attBlock = com.codespace.ide.chat.ChatAttachmentInjector.buildBlock(attachments)
+    val lastUserIdx = messages.indexOfLast { it.role == "user" }
+    messages.forEachIndexed { i, m ->
+        val content = if (i == lastUserIdx && attBlock.isNotEmpty()) m.text + "\n\n" + attBlock else m.text
+        convMsgs.put(JSONObject().put("role", m.role).put("content", content))
+    }
     return convMsgs
 }
 
@@ -366,16 +376,21 @@ private suspend fun chat(
     currentFilePath: String? = null,
     openFilePaths: List<String> = emptyList(),
     onStreamEvent: ((ChatStreamEvent) -> Unit)? = null,
+    includeImplicitCtx: Boolean = true,
+    attachments: List<com.codespace.ide.chat.ChatAttachment> = emptyList(),
 ): String = withContext(Dispatchers.IO) {
     // P41-X: Build workspace context for AI prompts
-    val workspaceCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
+    // R3-ATTACH: includeImplicitCtx=false turns OFF the implicit workspace
+    // context (explicit attachments/auto-instructions only) — VS Code parity.
+    val workspaceCtx = if (includeImplicitCtx)
+        WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths) else ""
     // MCP: lazy first-chat discovery — spawns enabled external MCP servers once,
     // tools/list results feed the external-tools docs block below.
     com.codespace.ide.agent.McpClientManager.ensureDiscovered(context)
     
     val systemPrompt = buildSystemPrompt(mode, context, workspaceCtx, projectRootPath)
 
-    val convMsgs = convMsgsOf(systemPrompt, messages)
+    val convMsgs = convMsgsOf(systemPrompt, messages, attachments)
 
     // Agentic loop: call model -> parse tool calls -> execute -> feed results -> repeat
     val maxIterations = 10
@@ -933,6 +948,17 @@ internal fun CopilotChatPanelInline(
             projectRootPath?.let { com.codespace.ide.agent.AutoInstructionsProvider.isEnabled(context, it) } ?: true
         )
     }
+    // R3-ATTACH: pending file attachments (clear on send) + implicit ctx toggle
+    var attachments by remember(projectRootPath) {
+        mutableStateOf<List<com.codespace.ide.chat.ChatAttachment>>(emptyList())
+    }
+    var showAttachPicker by remember { mutableStateOf(false) }
+    var implicitCtxOn by remember {
+        mutableStateOf(
+            context.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
+                .getBoolean("implicit_workspace_ctx", true)
+        )
+    }
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
     var selectedModel by remember { mutableStateOf(chatModelSelectionInitial(context, tokenStore)) }
     // 404-fix: fetch the LIVE model lists once when the panel first composes,
@@ -1078,6 +1104,10 @@ internal fun CopilotChatPanelInline(
             return
         }
         val msg = ChatMsg("user", userText)
+        // R3-ATTACH: merge explicit chips + "#file" tokens; chips clear on send
+        val hashAtts = com.codespace.ide.chat.ChatAttachmentInjector.resolveHashTokens(userText, projectRootPath)
+        val sendAtts = (attachments + hashAtts).distinctBy { it.path }
+        attachments = emptyList()
         messages.add(msg)
         chatInput = ""
         error = ""
@@ -1093,7 +1123,7 @@ internal fun CopilotChatPanelInline(
                         is ChatStreamEvent.ToolDone -> liveStreamText += "\n⚙ " + ev.tool + " — done"
                     }
                 }
-                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink)
+                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
                 messages.add(ChatMsg("assistant", reply))
                 // Phase 1 C3: request_connector ran mid-loop -> inline Connect card
                 com.codespace.ide.agent.AgentConnectorManager.consumePendingConnectCard()?.let { svc ->
@@ -1446,11 +1476,43 @@ internal fun CopilotChatPanelInline(
             colors = colors,
         )
 
+        // R3-ATTACH: pending attachment chips + picker dialog
+        if (attachments.isNotEmpty()) {
+            ChatAttachmentChips(
+                attachments = attachments,
+                onRemove = { a -> attachments = attachments.filterNot { it == a } },
+                colors = colors,
+            )
+        }
+        if (showAttachPicker) {
+            ChatAttachPickerDialog(
+                projectRoot = projectRootPath,
+                onPick = { a ->
+                    if (attachments.none { it.path == a.path }) attachments = attachments + a
+                    showAttachPicker = false
+                },
+                onDismiss = { showAttachPicker = false },
+                colors = colors,
+            )
+        }
+
         // ── Input ─────────────────────────────────────────────────────────
         Row(
             Modifier.fillMaxWidth().padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            IconButton(onClick = { showAttachPicker = true }, enabled = !chatLoading && !projectRootPath.isNullOrBlank()) {
+                Icon(Icons.Default.AttachFile, "Attach file to chat", tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+            }
+            IconButton(onClick = {
+                implicitCtxOn = !implicitCtxOn
+                context.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
+                    .edit().putBoolean("implicit_workspace_ctx", implicitCtxOn).apply()
+            }) {
+                Icon(Icons.Default.AccountTree, "Implicit workspace context on/off",
+                    tint = if (implicitCtxOn) colors.accent else colors.textSecondary,
+                    modifier = Modifier.size(18.dp))
+            }
             OutlinedTextField(
                 value = chatInput,
                 onValueChange = { chatInput = it },

@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-12 17:20 WAT
+> Last updated: 2026-09-12 17:50 WAT
 
 ---
 
@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | #2740 GREEN (29964c8) — R1 chat-parity live (882c63b + fix 9391978). Round-2 commit pending CI. APK artifact: codespace-ide-arm64-v8a |
+| CI build | #2742 GREEN (8f83693) — R1+R2 live. Round-3 commit pending CI. APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2799,6 +2799,51 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 7. ROUND 9 — Skills/agents/hooks/subagents (flag scope BEFORE building if bigger than scoped — user gate).
 8. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
 9. R1 RE-TEST on #2739+ APK: markdown rendering, code Copy/Insert, Stop mid-stream (+FlowGate card case), Retry, /commands, session rename (R1-1..R7 batch in the R1 entry above).
+10. MC RE-TEST on #2735 APK: MC chip + double-tap second cursor; BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity; [MC-TRIPWIRE] lines check.
+11. RETEST batch A (gate for validation change): locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+12. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.
+13. STREAMING retest (1731b4d): ASK streams; AGENT per-iteration stream + tool-done lines; gauge thresholds.
+14. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+15. TAB-STRIP PEEK — PARKED (user decision). Custom-model-ID entry — PARKED (separate future item).
+16. MCP Batch D items 2-9 retest; Exit-9 next occurrence + [EXIT9-PHANTOM-DIAG]; Debugger P3 (run-to-cursor, inline values); Batch J deferred.
+
+---
+
+## [2026-09-12 17:50 WAT] — AI Agent: Copilot Chat Parity Round 3 (of 10) [CHAT][AI]
+
+**RULES REMINDER:** 1. TWO-REPO: codespace-ide-mobile only (proot -> ubuntu-proot-test). 2. CHANGE LOG bottom entry every commit. 3. TAGS. 4. Current State table updated. 5. NEVER re-do done work. 6. Roadmap lists ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v minimum. 8. 64KB limit: new UI = new file + single-line call.
+
+**Commit:** (SHA after commit) | CI: pending
+**What was built (Round 3 — context & attachment system, VS Code attach-context port):**
+- CHATATTACHMENT MODEL: chat/ChatAttachment.kt (NEW) — ChatAttachment (FILE / SELECTION kinds) + ChatAttachmentInjector. Attached content rides the LAST user message of the outgoing request only (never saved history). Caps: 12k/file, 24k total, truncation noted. Never throws. Language-tagged fenced blocks from extension map.
+- #FILE TOKENS: "#relative/path.ext" typed in the message auto-resolves against the project root and attaches (extension required so normal hashtags are untouched). Resolved at send, merged with explicit chips, deduped.
+- ATTACH PICKER: ChatAttachPicker.kt (NEW) — paperclip icon in the input row opens an in-app project-file picker (recursive walk, skip .git/node_modules/build/etc, ≤512KB files, 400 entries cap, search filter). Tap = attach. UI-rule compliant (12dp dialog, 12h/10v items).
+- ATTACHMENT CHIPS: removable chips above the input (one per pending attachment, accent-bordered, X to remove); all chips clear on send (VS Code parity).
+- IMPLICIT-CONTEXT TOGGLE: tree icon in the input row turns implicit workspace context ON (accent) / OFF (grey) per user preference, persisted in copilot_chat prefs. OFF = system prompt gets auto-instructions + explicit attachments ONLY — no workspace tree/open-files/current-file block. Applies to chat() via new includeImplicitCtx param; gauge/convMsgsOf plumbing unchanged for defaults.
+- SELECTION kind is modeled but not yet wired (no live editor-selection source readable from the panel yet) — deferred to R4 with the typed-entry refactor.
+
+**Files touched:** chat/ChatAttachment.kt (NEW), ui/screens/ChatAttachPicker.kt (NEW), ui/screens/CopilotChatPanelOverlay.kt (convMsgsOf attachments param, chat() includeImplicitCtx+attachments, inline send() merge + pass-through, input-row icons, chips+dialog)
+
+**Round-3 test batch (run on green APK):**
+- R3-1: Paperclip → picker opens with project files; search filters; tap a file → chip appears above input with the rel path.
+- R3-2: Send with a chip attached — ask "what does this file do" — answer references the actual file content (not just the path).
+- R3-3: Chip X removes it; send after removing — answer no longer has the file content.
+- R3-4: Type "#src/Main.kt style question" (a real project file) — model receives that file's content even without opening the picker.
+- R3-5: Tree icon OFF (grey) + send — no workspace tree in effect (ask "what files are in my project" — it should NOT be able to list them); ON (accent) — it can.
+- R3-6: Toggle persists across app restart.
+- R3-7: Attach a >12KB file — answer notes truncation / no crash; attach 3 files — total cap respected.
+- R3-8: Regular text with #hashtags (e.g. "fix #bug please") — NOT attached, no crash.
+
+**Next on roadmap (ALL pending items):**
+1. ROUND 4 — Typed ChatEntry refactor + rich tool-call rendering + real error parts + SELECTION attach wiring.
+2. ROUND 5 — Model Auto default, pinning/favorites, per-mode model; FlowGate permission levels.
+3. ROUND 6 — DIFF/APPLY/CHECKPOINT (WRITTEN PRE-PLAN REQUIRED before build — user gate).
+4. ROUND 7 — Plan review UI, todos, follow-ups, feedback, find-in-chat.
+5. ROUND 8 — Voice, images, queue, export/import.
+6. ROUND 9 — Skills/agents/hooks/subagents (flag scope BEFORE building if bigger than scoped — user gate).
+7. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+8. R1 RE-TEST: markdown rendering, code Copy/Insert, Stop mid-stream (+FlowGate case), Retry, /commands, session rename.
+9. R2 RE-TEST: AGENTS.md rule followed, chip toggle + persistence, copilot-instructions.md rename, CLAUDE.md combo, agent_prompt CLI block.
 10. MC RE-TEST on #2735 APK: MC chip + double-tap second cursor; BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity; [MC-TRIPWIRE] lines check.
 11. RETEST batch A (gate for validation change): locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
 12. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.
