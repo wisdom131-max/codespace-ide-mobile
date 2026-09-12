@@ -4464,36 +4464,6 @@ private fun PssEditorColumn(
         // tab durably anyway — it mutated this mirror list, which the pane's next
         // reactive sync resurrected. EditorPane's X (authoritative) always worked.
 
-        // ── Split toggle row — SPLIT-RELOCATE (2026-09-12) ──────────────────────
-        // The split editor toggle lives in its OWN separate row at the VERY TOP of
-        // the editor area (above the breadcrumb and the Find/zoom/wrap/nav toolbar),
-        // button pinned at the right edge — the exact level + right-edge position it
-        // had before the split-view rewrite. The 8ccca5e strip consolidation had moved
-        // it into EditorPane's SCROLLING tab strip, so its position drifted with tab
-        // content. It flips the GLOBAL SplitViewStore directly; EditorPane's
-        // LaunchedEffect focuses the newly created split view and falls back to the
-        // primary tab when the active split is removed.
-        if (activeEditorTab != null) {
-            Box(
-                Modifier.fillMaxWidth().height(28.dp).background(BgColor),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Box(
-                    Modifier.size(28.dp).padding(end = 4.dp).clickable {
-                        com.codespace.ide.editor.SplitViewStore.toggleFor(activeEditorTab!!)
-                    },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.ic_vs_split_editor),
-                        contentDescription = "Split Editor",
-                        tint = if (com.codespace.ide.editor.SplitViewStore.hasFor(activeEditorTab!!)) TabActiveIndicator else TabTextInactive,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-        }
-
         // Breadcrumb
         if (activeEditorTab != null) {
             Row(
@@ -4504,6 +4474,27 @@ private fun PssEditorColumn(
                 parts.forEachIndexed { idx, part ->
                     Text(part, fontSize = 12.sp, color = if (idx == parts.lastIndex) TabText else TabTextInactive, maxLines = 1)
                     if (idx < parts.lastIndex) Icon(Icons.Default.ChevronRight, null, tint = TabTextInactive, modifier = Modifier.size(14.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                // SPLIT-RELOCATE-2 (2026-09-12, user request): the split editor toggle
+                // sits INLINE at the right end of the BREADCRUMB row — one row for both,
+                // reclaiming the dedicated 28dp split row entirely. (History: 8ccca5e had
+                // it in the scrolling tab strip so it drifted; fix 1 gave it its own row;
+                // the user wants zero extra rows.) It flips the GLOBAL SplitViewStore
+                // directly; EditorPane's LaunchedEffect focuses the newly created split
+                // view and falls back to the primary tab on removal.
+                Box(
+                    Modifier.size(22.dp).clickable {
+                        com.codespace.ide.editor.SplitViewStore.toggleFor(activeEditorTab!!)
+                    },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.ic_vs_split_editor),
+                        contentDescription = "Split Editor",
+                        tint = if (com.codespace.ide.editor.SplitViewStore.hasFor(activeEditorTab!!)) TabActiveIndicator else TabTextInactive,
+                        modifier = Modifier.size(16.dp),
+                    )
                 }
             }
             HorizontalDivider(color = DividerColor)

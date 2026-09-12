@@ -1103,7 +1103,20 @@ fun ExplorerSidePanel(
                                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             Icon(Icons.Default.Close, null, tint = MutedColor,
                                 modifier = Modifier.size(12.dp).clickable {
-                                    rootRemoveTarget = rootPath
+                                    // CLONE-ONLY-DIALOG (2026-09-12, user request): the
+                                    // delete-files confirmation applies ONLY to git-cloned
+                                    // repo roots (a .git directory exists at the root).
+                                    // Locally created folders remove with a plain X —
+                                    // the list entry goes away, files stay untouched.
+                                    val rootHostDir = com.codespace.ide.terminal.IdeTerminalBridge.guestPathToHostFile(context, rootPath)
+                                        ?: java.io.File(rootPath).takeIf { it.exists() }
+                                    if (rootHostDir != null && java.io.File(rootHostDir, ".git").exists()) {
+                                        rootRemoveTarget = rootPath
+                                    } else {
+                                        WorkspaceRootsStore.removeRoot(context, projectId, rootPath)
+                                        onWorkspaceRootRemoved?.invoke(rootPath)
+                                        onShowNotification?.invoke("Removed " + rootFile.name, "success")
+                                    }
                                 })
                         }
                     }

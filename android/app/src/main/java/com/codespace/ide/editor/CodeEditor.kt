@@ -718,6 +718,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
     }
+    // GOLDBAND-AUTO-DISMISS (2026-09-12, user request): the gold highlight band
+    // clears itself 5s after appearing instead of lingering at low alpha forever.
+    LaunchedEffect(highlightTargetLine, highlightBlinkStart) {
+        if (highlightTargetLine > 0) {
+            kotlinx.coroutines.delay(5000)
+            highlightTargetLine = 0
+        }
+    }
     val hScroll = rememberScrollState()
     // HSCROLL-FIX: Paint-based per-line width measurer (Sora Editor pattern).
     // Replaces the unreliable TextLayoutResult.getLineRight() approach.
@@ -1950,45 +1958,50 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // P50-VIRT: Gutter virtualization — only render visible lines to handle infinite files without lag.
             // Previously the gutter rendered ALL lines as composables, causing OOM and jank on 1000+ line files.
             val viewportHeightPx = vScroll.viewportSize.toFloat().coerceAtLeast(1f)
-            val visibleCount = ((viewportHeightPx / with(scrollDensity) { lineHeightDp.toPx() }).toInt() + 8) // +8 buffer for smooth scroll
-            // GUTTER-VIRT-FIX (2026-09-12): the estimate below assumed every line is
-            // exactly lineHeightPx tall, but the gutter rows are POSITIONED at the REAL
-            // TextLayoutResult line tops (EditorLinePositioning, GUTTER-ALIGN FIX).
-            // Compose line geometry (font natural height, first-line padding, leading)
-            // drifts from the uniform grid, and the mismatch GROWS with scroll depth:
-            // after scrolling, the first few VISIBLE lines fell OUTSIDE
-            // [topVisibleIdx, bottomVisibleIdx] and rendered with no gutter row - line
-            // numbers missing near the top (the +8 buffer only protected the bottom
-            // edge). When the layout is available and its line count matches the
-            // gutter's display lines (no word wrap), find the first visible line by
-            // binary search on the REAL line tops/bottoms; fall back to the uniform
-            // grid on the first frame and under word wrap (same behavior as before).
-            // SMART-CAST-FIX (#2724/#2728 failures): textLayoutResult is a delegated
-            // mutableStateOf property - Kotlin cannot smart-cast it after a null
-            // check, so capture it into a plain local first. Named gutterVirtLayout
-            // because a DIFFERENT pre-existing local 'gutterLayout' (GUTTER-ALIGN
-            // fix, row positioning below) already lives in this scope.
-            val gutterVirtLayout = textLayoutResult
-            val topVisibleIdx = if (gutterVirtLayout != null && gutterVirtLayout.lineCount == displayLines.size && gutterVirtLayout.lineCount > 0) {
-                var lo = 0
-                var hi = gutterVirtLayout.lineCount - 1
-                var firstVisible = 0
-                while (lo <= hi) {
-                    val mid = (lo + hi) ushr 1
-                    if (gutterVirtLayout.getLineBottom(mid) > vScroll.value) {
-                        firstVisible = mid
-                        hi = mid - 1
-                    } else {
-                        lo = mid + 1
-                    }
+            // GUTTER-VIRT-REWORK (2026-09-12): ONE calculation. The virtualized window
+            // is derived from the SAME geometry that positions the gutter rows
+            // (EditorLinePositioning + the real TextLayoutResult). The previous
+            // uniform-grid estimate drifted from the real line tops as scroll depth
+            // grew, dropping the topmost visible numbers; the earlier parallel fix
+            // kept TWO competing calculations. Now binary search on content-space row
+            // geometry: first row whose bottom is below the viewport top, last row
+            // whose top is above the viewport bottom, plus small overscan. On the
+            // first frame (layout == null) the positioning functions fall back to the
+            // uniform grid INTERNALLY, so window and rendered rows are always
+            // consistent - there is exactly one source of truth.
+            val gutterLayout = textLayoutResult
+            val gutterLhPx = editorMetrics.lineHeightPx
+            val gutterRowCount = displayLines.size
+            val viewportTopPx = vScroll.value
+            val viewportBottomPx = vScroll.value + viewportHeightPx
+            var loV = 0
+            var hiV = gutterRowCount - 1
+            var firstVisibleRow = 0
+            while (loV <= hiV) {
+                val mid = (loV + hiV) ushr 1
+                val rowBottom = EditorLinePositioning.visualLineTopPx(gutterLayout, mid, gutterLhPx) +
+                    EditorLinePositioning.visualLineHeightPx(gutterLayout, mid, gutterLhPx)
+                if (rowBottom > viewportTopPx) {
+                    firstVisibleRow = mid
+                    hiV = mid - 1
+                } else {
+                    loV = mid + 1
                 }
-                (firstVisible - 2).coerceAtLeast(0)
-            } else {
-                (vScroll.value / with(scrollDensity) { lineHeightDp.toPx() }).toInt().coerceAtLeast(0)
             }
-            val bottomVisibleIdx = (topVisibleIdx + visibleCount).coerceAtMost(visualLineMapper.visualLineCount)
-            val topSpacerLines = topVisibleIdx.coerceAtLeast(0)
-            val bottomSpacerLines = (visualLineMapper.visualLineCount - bottomVisibleIdx).coerceAtLeast(0)
+            loV = firstVisibleRow
+            hiV = gutterRowCount - 1
+            var lastVisibleRow = firstVisibleRow
+            while (loV <= hiV) {
+                val mid = (loV + hiV) ushr 1
+                if (EditorLinePositioning.visualLineTopPx(gutterLayout, mid, gutterLhPx) < viewportBottomPx) {
+                    lastVisibleRow = mid
+                    loV = mid + 1
+                } else {
+                    hiV = mid - 1
+                }
+            }
+            val topVisibleIdx = (firstVisibleRow - 2).coerceAtLeast(0)
+            val bottomVisibleIdx = (lastVisibleRow + 3).coerceAtMost(gutterRowCount)
 
             // GUTTER-ALIGN FIX (VS Code viewOverlays / Sora getRowTop pattern): each gutter
             // row is positioned and sized from the SAME text layout that renders the code
@@ -2002,8 +2015,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // (topVisibleIdx..bottomVisibleIdx) still limits how many rows are composed.
             // Falls back to the old grid when the layout is not yet available (first
             // frame) so there is no regression at startup.
-            val gutterLayout = textLayoutResult
-            val gutterLhPx = editorMetrics.lineHeightPx
+            // (gutterLayout / gutterLhPx now declared ONCE above - same values feed
+            // the window computation and the row positioning: single source of truth.)
             val gutterVisibleTop = topVisibleIdx.coerceAtMost(displayLines.size)
             val gutterVisibleBottom = bottomVisibleIdx.coerceAtMost(displayLines.size)
             Box(modifier = Modifier.padding(horizontal = 4.dp).width(72.dp)) {
@@ -2396,6 +2409,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         // pushEditOperations + cursor-state-computer). Replaces the old
                         // length-delta guessing and manual fanShift/primaryAdjust math.
                         if (extraCursors.isNotEmpty()) {
+                            // MC-DELETE-DIAG (2026-09-12): the user reports multi-cursor
+                            // breaking after ~3 deletes with no detail yet. Log the full
+                            // transaction (before AND after) so the next repro tells us
+                            // exactly which invariant breaks: cursor offsets, ranges, text
+                            // length. Channel: lsp. Remove once the bug is fixed.
+                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                "[MC-DELETE-DIAG] pre: len=" + value.text.length + " primary=" + value.selection.min + ".." + value.selection.max +
+                                    " extras=" + extraCursors.joinToString(",") { it.min.toString() + ".." + it.max }, "lsp")
                             val fanOut = MultiCursorEngine.applyFanOut(
                                 oldText = value.text,
                                 newText = updatedValue.text,
@@ -2403,6 +2424,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 primaryNew = updatedValue.selection,
                                 extras = extraCursors,
                             )
+                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                "[MC-DELETE-DIAG] post: len=" + fanOut.text.length + " primary=" + fanOut.primary.min + ".." + fanOut.primary.max +
+                                    " extras=" + fanOut.extras.joinToString(",") { it.min.toString() + ".." + it.max }, "lsp")
                             extraCursors = fanOut.extras
                             if (fanOut.text != updatedValue.text || fanOut.primary != updatedValue.selection) {
                                 updatedValue = updatedValue.copy(text = fanOut.text, selection = fanOut.primary)
