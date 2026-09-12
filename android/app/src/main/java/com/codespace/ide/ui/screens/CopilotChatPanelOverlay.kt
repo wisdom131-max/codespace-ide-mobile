@@ -1,6 +1,6 @@
-// ⚠️ DEAD CODE — DO NOT EDIT OR RELY ON THIS FILE
-// Replaced by CopilotChatPanelInline (wired inside ProjectShellScreen.kt).
-// This overlay is never invoked. Kept for reference only.
+// NOTE: The `CopilotChatPanelOverlay` composable near the top of this file is
+// DEAD (never invoked, kept for reference). Everything from `CopilotChatPanelInline`
+// down is LIVE — it is the chat panel wired inside ProjectShellScreen.kt.
 
 package com.codespace.ide.ui.screens
 
@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -888,6 +889,9 @@ internal fun CopilotChatPanelInline(
     openFilePaths: List<String> = emptyList(),
     // Item3: open Connectors Hub from the chat panel overflow menu
     onOpenConnectors: (() -> Unit)? = null,
+    // R1-CHAT-PARITY: insert-at-cursor bridge for chat code blocks — routes
+    // through the shared dispatcher so code lands in the focused editor.
+    keyInsertDispatcher: com.codespace.ide.editor.KeyInsertDispatcher? = null,
 ) {
     val context   = LocalContext.current
     val scope     = rememberCoroutineScope()
@@ -902,6 +906,17 @@ internal fun CopilotChatPanelInline(
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) } // Item3: chat-panel overflow menu
+    // R1-CHAT-PARITY: cancelable in-flight chat job + session-rename dialog target
+    var chatJob by remember { mutableStateOf<Job?>(null) }
+    var renameTargetId by remember { mutableStateOf<String?>(null) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val copyCodeToClipboard: (String) -> Unit = { code ->
+        clipboard.setText(androidx.compose.ui.text.AnnotatedString(code))
+        android.widget.Toast.makeText(context, "Code copied", android.widget.Toast.LENGTH_SHORT).show()
+    }
+    val insertCodeAtCursor: ((String) -> Unit)? = keyInsertDispatcher?.let { d ->
+        { code: String -> d.dispatch(code) }
+    }
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
     var selectedModel by remember { mutableStateOf(chatModelSelectionInitial(context, tokenStore)) }
     // 404-fix: fetch the LIVE model lists once when the panel first composes,
@@ -984,6 +999,47 @@ internal fun CopilotChatPanelInline(
         if (wasActive) switchSession(sessions.first().id)
     }
 
+    // ── R1-CHAT-PARITY: slash commands ──────────────────────────────────────
+    // Intercepted in send() before the model call; each maps to a UI action.
+    fun handleCommand(name: String, arg: String) {
+        when (name) {
+            "clear" -> { messages.clear(); persistSessions() }
+            "new" -> startNewSession()
+            "rename" -> {
+                if (arg.isNotBlank()) {
+                    activeSession.title = arg.take(40)
+                    saveSessions(context, sessions)
+                } else {
+                    renameTargetId = activeSessionId
+                }
+            }
+            "models" -> showModelMenu = true
+            "tools" -> {
+                messages.add(ChatMsg("assistant", com.codespace.ide.chat.ChatSlashCommands.toolsText()))
+                persistSessions()
+            }
+            "help" -> {
+                messages.add(ChatMsg("assistant", com.codespace.ide.chat.ChatSlashCommands.helpText()))
+                persistSessions()
+            }
+            else -> messages.add(ChatMsg("assistant", "Unknown command: /$name — try /help"))
+        }
+    }
+
+    // ── R1-CHAT-PARITY: stop the in-flight generation ──────────────────────
+    // Cancels the coroutine (streaming reads cooperate via ensureActive) and
+    // keeps whatever streamed so far as a partial reply.
+    fun stopChat() {
+        chatJob?.cancel()
+        com.codespace.ide.agent.AgentFlowGate.pending.value = null
+        if (liveStreamText.isNotBlank()) {
+            messages.add(ChatMsg("assistant", liveStreamText + "\n\n_[stopped]_"))
+        }
+        chatLoading = false
+        liveStreamText = ""
+        chatJob = null
+    }
+
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
@@ -998,13 +1054,20 @@ internal fun CopilotChatPanelInline(
 
     fun send(userText: String) {
         if (userText.isBlank() || chatLoading) return
+        // R1-CHAT-PARITY: slash commands never reach the model
+        val cmd = com.codespace.ide.chat.ChatSlashCommands.parse(userText)
+        if (cmd != null) {
+            chatInput = ""
+            handleCommand(cmd.name, cmd.arg)
+            return
+        }
         val msg = ChatMsg("user", userText)
         messages.add(msg)
         chatInput = ""
         error = ""
         chatLoading = true
         liveStreamText = ""
-        scope.launch {
+        chatJob = scope.launch {
             try {
                 com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
                 val sink: ((ChatStreamEvent) -> Unit) = { ev ->
@@ -1021,6 +1084,8 @@ internal fun CopilotChatPanelInline(
                     messages.add(ChatMsg("card_connect", svc))
                 }
                 persistSessions()
+            } catch (ce: kotlinx.coroutines.CancellationException) {
+                // Stop button / disposal — stopChat() already finalized state.
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
                 messages.add(ChatMsg("assistant", "Error: ${e.message}"))
@@ -1036,6 +1101,18 @@ internal fun CopilotChatPanelInline(
                 }
             }
         }
+    }
+
+    // ── R1-CHAT-PARITY: retry last turn ──────────────────────────────────────
+    // Drops everything after the last user message (its replies included) and
+    // re-sends that same question through the normal send() path.
+    fun retryLastTurn() {
+        if (chatLoading) return
+        val lastUserIdx = messages.indexOfLast { it.role == "user" }
+        if (lastUserIdx < 0) return
+        val userText = messages[lastUserIdx].text
+        while (messages.size > lastUserIdx) messages.removeAt(messages.size - 1)
+        send(userText)
     }
 
     // P39: auto-send AI code actions (Explain/Optimize/etc) delivered from the editor's
@@ -1123,6 +1200,8 @@ internal fun CopilotChatPanelInline(
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Text(s.title, fontSize = 11.sp, color = colors.text, fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
                                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    Icon(Icons.Default.Edit, "Rename session", tint = colors.textSecondary,
+                                        modifier = Modifier.size(12.dp).clickable { renameTargetId = s.id })
                                     if (sessions.size > 1) {
                                         Icon(Icons.Default.Close, "Delete session", tint = colors.textSecondary,
                                             modifier = Modifier.size(12.dp).clickable { deleteSession(s.id) })
@@ -1155,6 +1234,14 @@ internal fun CopilotChatPanelInline(
                 Text("Copilot Chat", color = colors.text, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (messages.any { it.role == "user" } && !chatLoading) {
+                    Icon(
+                        Icons.Default.Refresh, "Retry last turn",
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(16.dp).clickable { retryLastTurn() },
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
                 Box {
                     Text(
                         selectedModel.take(12),
@@ -1285,12 +1372,20 @@ internal fun CopilotChatPanelInline(
                         color = if (isUser) colors.userBubble else colors.assistantBubble,
                         modifier = Modifier.widthIn(max = 280.dp),
                     ) {
-                        Text(
-                            msg.text,
-                            Modifier.padding(12.dp),
-                            fontSize = 13.sp,
-                            color = if (isUser) Color.White else colors.text,
-                        )
+                        if (isUser) {
+                            Text(msg.text, Modifier.padding(12.dp), fontSize = 13.sp, color = Color.White)
+                        } else {
+                            ChatMarkdownBody(
+                                text = msg.text,
+                                textColor = colors.text,
+                                accent = colors.accent,
+                                surface = colors.surface,
+                                divider = colors.divider,
+                                onCopyCode = copyCodeToClipboard,
+                                onInsertCode = insertCodeAtCursor,
+                                modifier = Modifier.padding(12.dp),
+                            )
+                        }
                     }
                 }
                 }
@@ -1342,14 +1437,36 @@ internal fun CopilotChatPanelInline(
                     unfocusedContainerColor = colors.inputBg,
                 ),
             )
-            IconButton(
-                onClick = { scope.launch { send(chatInput) } },
-                enabled = !chatLoading && chatInput.isNotBlank(),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = colors.accent)
+            if (chatLoading) {
+                IconButton(onClick = { stopChat() }) {
+                    Icon(Icons.Default.Stop, contentDescription = "Stop", tint = Color(0xFFEF4444))
+                }
+            } else {
+                IconButton(
+                    onClick = { send(chatInput) },
+                    enabled = chatInput.isNotBlank(),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = colors.accent)
+                }
             }
         }
             } // end chat column
+        }
+
+        // R1-CHAT-PARITY: session rename dialog (row pencil icon or /rename)
+        renameTargetId?.let { tid ->
+            val target = sessions.find { it.id == tid }
+            if (target != null) {
+                SessionRenameDialog(
+                    currentTitle = target.title,
+                    onDismiss = { renameTargetId = null },
+                    onConfirm = { nt ->
+                        target.title = nt
+                        saveSessions(context, sessions)
+                        renameTargetId = null
+                    },
+                )
+            }
         }
 
         // P-FLOW: Approve/Reject floating card for Manual Flow Mode

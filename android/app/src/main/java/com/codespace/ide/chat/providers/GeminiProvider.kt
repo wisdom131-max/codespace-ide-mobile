@@ -4,6 +4,8 @@ import com.codespace.ide.chat.ChatProvider
 import com.codespace.ide.chat.ChatRequest
 import com.codespace.ide.data.SecureTokenStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -88,15 +90,19 @@ class GeminiProvider : ChatProvider {
                 .readTimeout(180, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
             val url = "https://generativelanguage.googleapis.com/v1beta/models/" + request.model + ":streamGenerateContent?alt=sse&key=" + apiKey
-            val resp = streamClient.newCall(
+            // R1-STOP: hold the Call for cancel-abort (see OpenAiCompatibleTransport)
+            val call = streamClient.newCall(
                 Request.Builder().url(url).header("Content-Type", "application/json")
                     .post(body.toRequestBody("application/json".toMediaType())).build()
-            ).execute()
+            )
+            val resp = call.execute()
             if (!resp.isSuccessful) throw Exception(OpenAiCompatibleTransport.transportError("Gemini API error", resp))
             val sb = StringBuilder()
             val reader = resp.body?.byteStream()?.bufferedReader()
             try {
                 while (true) {
+                    // R1-STOP: cancel point — throws on the next line after Stop
+                    currentCoroutineContext().ensureActive()
                     val line = reader?.readLine() ?: break
                     if (!line.startsWith("data:")) continue
                     val payload = line.substring(5).trim()
@@ -114,6 +120,7 @@ class GeminiProvider : ChatProvider {
                     }
                 }
             } finally {
+                try { call.cancel() } catch (_: Exception) { }
                 try { reader?.close() } catch (_: Exception) { }
             }
             sb.toString()

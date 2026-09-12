@@ -4814,6 +4814,7 @@ private fun PssEditorColumn(
             CopilotChatPanelInline(
                 onClose = { showChatPanel = false },
                 onOpenConnectors = onOpenConnectorsHub,
+                keyInsertDispatcher = keyInsertDispatcher,
                 pendingPrompt = pendingChatPrompt,
                 onPendingPromptConsumed = { pendingChatPrompt = null },
                 colors = ChatPanelColors(

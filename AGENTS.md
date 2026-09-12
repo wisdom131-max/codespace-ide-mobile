@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-12 13:20 WAT
+> Last updated: 2026-09-12 14:55 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | c0068b5 |
-| CI build | #2735 GREEN (c0068b5; MC chokepoint restructure e02d216 + scope fix c0068b5). APK artifact: codespace-ide-arm64-v8a |
+| Latest commit | (see CHANGE LOG bottom) |
+| CI build | #2735 GREEN (c0068b5, MC chokepoint); Round-1 chat-parity commit pending CI. APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2718,3 +2718,48 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 10. Debugger P3 (run-to-cursor, inline values) — queued.
 11. Batch J deferred; chat-command testing deferred until model configured.
 12. Custom-model-ID entry — PARKED as its own future item (do not bundle).
+
+---
+
+## [2026-09-12 14:55 WAT] — AI Agent: Copilot Chat Parity Round 1 (of 10) [CHAT]
+
+**RULES REMINDER:** 1. TWO-REPO: codespace-ide-mobile only (proot -> ubuntu-proot-test). 2. CHANGE LOG bottom entry every commit. 3. TAGS. 4. Current State table updated. 5. NEVER re-do done work. 6. Roadmap lists ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v minimum. 8. 64KB limit: new UI = new file + single-line call.
+
+**Commit:** (SHA after commit) | CI: pending
+**What was built (Round 1 — chat basics & rendering foundation):**
+- MARKDOWN RENDERING: assistant messages now render markdown (ChatMarkdown.kt — Compose-native parser; the WebView/HTML MarkdownRenderer is preview-only). Supports fenced code blocks, headers, ordered/unordered lists, blockquotes, rules, tables (monospace rows), inline bold/italic/`code`/links (styled). User bubbles stay plain text.
+- CODE BLOCK ACTIONS: every fenced block gets Copy (clipboard + toast) and Insert-at-cursor (routed through the shared KeyInsertDispatcher -> focused editor; hidden when no editor owns the slot).
+- STOP BUTTON: Send turns into a red Stop while generating. chatJob tracked + cancelled; CancellationException handled separately in send() (no fake 'Error:' bubble); partial stream text is kept as a reply marked _[stopped]_. Streaming loops (OpenAiCompatibleTransport + GeminiProvider) now check ensureActive() per line and cancel the OkHttp Call in finally — Stop aborts a stalled read instead of waiting out the 180s timeout. Cancelling also clears a pending FlowGate approval so the dialog can't orphan.
+- RETRY: header refresh icon (visible when a user message exists) drops everything after the last user message and re-sends it. No duplicate user bubble.
+- SESSION RENAME: pencil icon on every session row + /rename command; SessionRenameDialog extracted to ChatSessionDialogs.kt.
+- SLASH COMMANDS: ChatSlashCommands.kt (pure Kotlin, no UI state). /clear /new /rename [title] /models (opens picker) /tools (lists the 31 builtin AgentTools via new AgentTools.toolNames()) /help. Unknown /commands get a notice; anything without a leading / goes to the model as before.
+- CopilotChatPanelOverlay.kt header comment corrected (the file's inline panel is LIVE, only the top overlay is dead).
+
+**Files touched:** chat/ChatSlashCommands.kt (NEW), ui/screens/ChatMarkdown.kt (NEW), ui/screens/ChatSessionDialogs.kt (NEW), ui/screens/CopilotChatPanelOverlay.kt, ui/screens/ProjectShellScreen.kt (pass keyInsertDispatcher), agent/AgentTools.kt (toolNames()), chat/providers/OpenAiCompatibleTransport.kt (cancel-aware streaming), chat/providers/GeminiProvider.kt (cancel-aware streaming)
+
+**Round-1 test batch (run on green APK):**
+- R1-1: ask for a markdown answer (headers, list, table, code block) — verify rendering.
+- R1-2: code block Copy (toast + paste works) and Insert-at-cursor (code lands at focused editor caret).
+- R1-3: long generation + Stop mid-stream — stops within ~1 line, partial reply kept, no error bubble.
+- R1-4: Stop while a FlowGate approval card is up — dialog dismisses, nothing orphaned.
+- R1-5: Retry after a reply — original question re-sent, no duplicate bubbles.
+- R1-6: /help, /tools, /models, /clear, /new, /rename Test title, unknown command notice.
+- R1-7: rename via session-row pencil icon; rename persists across app restart.
+
+**Next on roadmap (ALL pending items):**
+1. ROUND 2 — Generic auto-instructions FEATURE: AutoInstructionsProvider detects AGENTS.md / copilot-instructions.md / .github/copilot-instructions.md / CLAUDE.md in ANY user project root, prepends to system prompt (in-app chat + CLI /system-prompt endpoint), attached-chip indicator + per-project toggle.
+2. ROUND 3 — Context & attachment system (attachment chips, attach-file picker, explicit implicit-context toggles, #file/#selection).
+3. ROUND 4 — Typed ChatEntry refactor + rich tool-call rendering + real error parts.
+4. ROUND 5 — Model Auto default, pinning/favorites, per-mode model; FlowGate permission levels.
+5. ROUND 6 — DIFF/APPLY/CHECKPOINT (WRITTEN PRE-PLAN REQUIRED before build — user gate).
+6. ROUND 7 — Plan review UI, todos, follow-ups, feedback, find-in-chat.
+7. ROUND 8 — Voice, images, queue, export/import.
+8. ROUND 9 — Skills/agents/hooks/subagents (flag scope BEFORE building if bigger than scoped — user gate).
+9. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+10. MC RE-TEST on #2735 APK: MC chip + double-tap second cursor; with 2+ cursors — type, BACKSPACE/DELETE x4+ (original 3-delete breakage), select-drag, tap elsewhere (collapse), undo/redo after multi-delete, split-pane parity. Check Output [lsp] for [MC-TRIPWIRE] lines.
+11. RETEST batch A (gate for validation change): locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+12. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real OpenAI-compatible server.
+13. STREAMING retest (1731b4d): ASK streams; AGENT per-iteration stream + tool-done lines; context gauge thresholds.
+14. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+15. TAB-STRIP PEEK — PARKED (user decision). Custom-model-ID entry — PARKED (separate future item).
+16. MCP Batch D items 2-9 retest; Exit-9 next occurrence + [EXIT9-PHANTOM-DIAG]; Debugger P3 (run-to-cursor, inline values); Batch J deferred; chat-command testing deferred until model configured.

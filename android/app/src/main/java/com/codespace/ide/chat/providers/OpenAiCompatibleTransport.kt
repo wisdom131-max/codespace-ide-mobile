@@ -1,6 +1,8 @@
 package com.codespace.ide.chat.providers
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -94,19 +96,25 @@ internal object OpenAiCompatibleTransport {
         val streamClient = http.newBuilder()
             .readTimeout(180, java.util.concurrent.TimeUnit.SECONDS)
             .build()
-        val resp = streamClient.newCall(
+        // R1-STOP: hold the Call so a cancelled coroutine aborts the socket read
+        // immediately instead of waiting out the 180s read timeout.
+        val call = streamClient.newCall(
             Request.Builder()
                 .url(url)
                 .header("Authorization", "Bearer $apiKey")
                 .header("Content-Type", "application/json")
                 .post(body.toRequestBody(jsonMedia))
                 .build()
-        ).execute()
+        )
+        val resp = call.execute()
         if (!resp.isSuccessful) throw Exception(transportError("API error", resp))
         val sb = StringBuilder()
         val reader = resp.body?.byteStream()?.bufferedReader()
         try {
             while (true) {
+                // R1-STOP: cancel point — Stop button cancels the chat job, this
+                // throws on the very next line read, finally cancels the call.
+                currentCoroutineContext().ensureActive()
                 val line = reader?.readLine() ?: break
                 if (!line.startsWith("data:")) continue
                 val payload = line.substring(5).trim()
@@ -122,6 +130,8 @@ internal object OpenAiCompatibleTransport {
                 if (text.isNotEmpty()) { sb.append(text); onDelta(text) }
             }
         } finally {
+            // R1-STOP: no-op on normal completion; aborts a stalled read on cancel
+            try { call.cancel() } catch (_: Exception) { }
             try { reader?.close() } catch (_: Exception) { }
         }
         sb.toString()

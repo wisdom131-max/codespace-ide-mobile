@@ -137,6 +137,23 @@ You can use multiple tools in sequence. When done, give a final summary.
         }.toList()
     }
 
+    // R1-CHAT-PARITY: canonical builtin tool name list. MUST stay in sync with
+    // the `when` branches in executeTool below (a mismatch only affects the
+    // /tools chat listing, never execution). MCP tools (mcp_<server>_<tool>)
+    // are dynamic and NOT listed here — they surface via McpClientManager.
+    private val BUILTIN_TOOL_NAMES: List<String> = listOf(
+        "run_command", "read_file", "write_file", "list_files", "search_files",
+        "git_commit_push", "git_pull_rebase", "git_branch", "git_status", "git_diff",
+        "save_secret", "get_secret", "detect_secrets", "web_fetch", "web_search",
+        "save_memory", "read_memory", "delete_memory",
+        "list_connectors", "connect_service", "use_connector", "request_connector",
+        "create_entity", "read_entities", "update_entity", "delete_entity",
+        "schedule_task", "list_tasks", "cancel_task", "upload_file", "install_package",
+    )
+
+    /** Builtin tool names for the /tools chat command (see BUILTIN_TOOL_NAMES). */
+    fun toolNames(): List<String> = BUILTIN_TOOL_NAMES
+
     fun hasToolCalls(text: String): Boolean = TOOL_REGEX.containsMatchIn(text)
     fun stripToolCalls(text: String): String = text.replace(TOOL_REGEX, "").trim()
 
