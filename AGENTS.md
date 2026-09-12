@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-12 11:55 WAT
+> Last updated: 2026-09-12 13:20 WAT
 
 ---
 
@@ -29,12 +29,12 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 2f97101 |
-| CI build | #2729 GREEN (b00101c) -> #2731 pending (2f97101; #2729 retest batch: split-inline, gold-band dismiss, gutter rework, MC diag, clone-only dialog) |
+| Latest commit | c0068b5 |
+| CI build | #2735 GREEN (c0068b5; MC chokepoint restructure e02d216 + scope fix c0068b5). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
-| CodeEditor.kt lines | 5,939 |
+| CodeEditor.kt lines | 5,939 (+ McEditTransaction.kt 190) |
 
 ---
 
@@ -2667,3 +2667,54 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 10. Item 4 PerfProbe re-verify AFTER items above retest.
 11. Debugger P3 (run-to-cursor, inline values) — queued.
 12. Batch J deferred; chat-command testing deferred until model configured.
+
+---
+
+## [2026-09-12 13:20 WAT] — AI Agent: Claude Sonnet 5 (Base44)
+
+**Commit:** e02d216 (restructure) + c0068b5 (build fix) | **CI:** #2734 FAIL -> #2735 GREEN
+
+**RULES REMINDER:** TWO-REPO (main only) | changelog at bottom | tags | rounded corners + padding | no sub-agents | no re-do | Kotlin pitfalls | 64KB extraction | roadmap continuity.
+
+### [MC] Chokepoint restructure — the single door (user-approved)
+User approved the ONE-DOOR restructure (VS Code Cursor.trigger/setStates model) over patching the selection-only bypass. The selection-only bypass WAS the smoking gun for the 2026-09-12 stale-extras diagnosis.
+
+- NEW `android/app/src/main/java/com/codespace/ide/editor/McEditTransaction.kt` — the single door for ALL cursor-state changes while MC is active:
+  - `apply(...)`: called from onValueChange. Dispatches on the event class: TEXT CHANGE -> MultiCursorEngine fan-out; SELECTION-ONLY -> VS Code click semantics, collapse to one cursor (the stale-extras bug class is now structurally impossible).
+  - `mapExternal(old, new, extras, site)`: for external/programmatic edits (format, snippet, find/replace, undo/redo, externalContentSync). Marker-style mapping (r.start/r.end orientation preserved), NEVER fans out (edit already happened once).
+  - Permanent `[MC-TRIPWIRE]` logging of every MC-active transaction (raw writers will trip it); `warn()` emitted when a raw writer is detected.
+- `CodeEditor.kt`:
+  - onValueChange fan-out block replaced with ONE chokepoint call.
+  - `programmaticTextChange` / `externalContentSync` own extras consequences at the door.
+  - `programmaticCursorMove` + tap/double-tap/long-press selection writers -> collapse (VS Code).
+  - Tab-indent / Shift+Tab snippet-transform raw writes routed through the door.
+  - Removed ALL 23 in-file EditShiftHelper pre-shift call sites (door computes extras exactly once; pre-shifted callers would double-shift).
+  - `extraCursorsState` remember + delegate moved ABOVE the R3-C door functions (line 884) — Kotlin scope rule: locals are invisible to local functions declared above them (this was CI #2734's failure: 9x Unresolved reference).
+- `CompletionPopupOverlay.kt`, `RenameDialogOverlay.kt`, `LightbulbMenuOverlay.kt`, `SnippetChoicesPopup.kt`: remaining 12 pre-shift call sites removed (same reason).
+- `ToolbarUndoRedoHandler.kt`: snapshot restore ORDER flipped — text first, THEN snapshot extras, so the chokepoint does not double-map snapshot-coordinate extras through the undo diff.
+- `MultiCursorEngine.kt`: MC-DELETE-DIAG logs removed (promoted to permanent tripwire); `shiftPos` made public for the chokepoint; engine pure again.
+
+**Files touched:** editor/McEditTransaction.kt (NEW), editor/CodeEditor.kt, editor/MultiCursorEngine.kt, editor/ToolbarUndoRedoHandler.kt, editor/CompletionPopupOverlay.kt, editor/RenameDialogOverlay.kt, editor/LightbulbMenuOverlay.kt, editor/SnippetChoicesPopup.kt
+
+### Copilot Chat parity research (real microsoft/vscode sources, 2026-09-12)
+Verified from the live repo (Copilot now ships in core as `extensions/copilot/`):
+- Context/memory: NO implicit cross-session model memory. Per-request assembly = history + attached variables (#file etc.) + `ComputeAutomaticInstructions` (auto-attaches AGENTS.md/copilot-instructions.md, pattern-applyTo instruction files, CLAUDE.md + .claude/rules compat). Sessions persisted as serialized ChatModel files in workspaceStorage (max 400, `chatSessionStore.ts`).
+- Input buttons: mode picker (Ask/Plan/Agent/custom .agent.md, `modePickerActionItem.ts`), model picker with Auto row = toggle "Choose a model automatically" + effort-tier radios (`modelPickerAutoRow.ts`), MenuId.ChatInput toolbar.
+- Custom agents: `/create-agent` skill (SKILL.md in extensions/copilot/assets/prompts/skills/) writes `.agent.md`; PromptsType {instructions,prompt,agent,skill,hook}; sources incl. agents-workspace/personal + extension contribution.
+- Skills: SKILL.md files; `skillTool.ts` = a language-model TOOL that reads SKILL.md + lists sibling files into `<skill-context>` (inline mode or fork mode); `copilot-skill://` scheme for built-ins.
+- Copilot icon: codicon glyph family in core font — `copilot` 0xec1e + copilot-large/warning/blocked/not-connected/unavailable/in-progress (`codiconsLibrary.ts`).
+- Status bar: `chatStatusEntry.ts` — `$(copilot)` + state variants (unavailable=disabled/untrusted, warning=quota, unavailable=completions off, snooze), prominent kind on quota, persisted quota-resume state, dashboard tooltip on click.
+
+**Next on roadmap (ALL pending items):**
+1. MC RE-TEST on #2735 APK: MC chip + double-tap second cursor; with 2+ cursors — type, BACKSPACE/DELETE x4+ (the original 3-delete breakage), select-drag, tap elsewhere (must collapse to 1), undo/redo after multi-delete, split-pane parity. Check Output [lsp] for [MC-TRIPWIRE] lines (any = raw writer found, report them).
+2. RETEST batch A (gate for validation change): locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+3. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint against a real OpenAI-compatible server.
+4. STREAMING retest (1731b4d): ASK-mode streams; AGENT-mode per-iteration stream + tool-done lines; context gauge + amber/red thresholds.
+5. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+6. COPILOT-PARITY DECISION (user pending): which of the researched directions to adopt for our chat panel (context-variable system, AGENTS.md auto-instructions, .agent.md custom agents, SKILL.md skills, codicon copilot glyph for floating chat bubble, Copilot status-bar entry). Report delivered in chat 2026-09-12.
+7. TAB-STRIP PEEK — PARKED by user decision, do NOT build until design settled.
+8. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
+9. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence; audit process cgroup/watchdog for SIGKILL/9.
+10. Debugger P3 (run-to-cursor, inline values) — queued.
+11. Batch J deferred; chat-command testing deferred until model configured.
+12. Custom-model-ID entry — PARKED as its own future item (do not bundle).
