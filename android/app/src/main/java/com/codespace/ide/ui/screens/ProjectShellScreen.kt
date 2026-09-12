@@ -4546,6 +4546,26 @@ private fun PssEditorColumn(
                 // CodeEditor's OWN working find bar (see EditorPane's
                 // externalFindBarOpen sync), which already shows its own live
                 // match count ("2/3" etc.) right next to its Find field.
+                // SPLIT-RELOCATE (2026-09-12): the split editor toggle now lives HERE,
+                // pinned at the right end of this fixed toolbar (matching its
+                // pre-rewrite fixed right-edge position; the 8ccca5e strip consolidation
+                // had moved it into the scrolling tab strip, so it drifted with tab
+                // content). It flips the GLOBAL SplitViewStore; EditorPane's
+                // LaunchedEffect focuses the created view / falls back to the primary
+                // tab on removal.
+                Box(
+                    Modifier.size(28.dp).clickable {
+                        com.codespace.ide.editor.SplitViewStore.toggleFor(activeEditorTab!!)
+                    },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.ic_vs_split_editor),
+                        contentDescription = "Split Editor",
+                        tint = if (com.codespace.ide.editor.SplitViewStore.hasFor(activeEditorTab!!)) TabActiveIndicator else TabTextInactive,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
             }
             HorizontalDivider(color = DividerColor)
         }

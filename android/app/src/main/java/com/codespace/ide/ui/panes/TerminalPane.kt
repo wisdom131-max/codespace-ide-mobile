@@ -311,7 +311,7 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                         val linkToken = word.trim()
                         if (linkToken.isNotEmpty() && (linkToken.contains('/') || linkToken.contains('.'))) {
                             val resolved = com.codespace.ide.terminal.IdeTerminalBridge
-                                .resolveTappedFileLink(v.context, v.mTermSession, linkToken, projectId)
+                                .resolveTappedFileLink(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke())
                             if (resolved != null) {
                                 onFileLinkTap?.invoke(resolved.first.absolutePath, resolved.second)
                                 return
@@ -344,6 +344,9 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     // Project context for the tap resolver's workspace-root fallback (set at
     // view creation from the composable's projectId param).
     var projectId: String? = null
+    // LOCKED-ROOT (2026-09-12): provider for the tap resolver's locked-root guard -
+    // returns the ACTIVE terminal tab's lockedRootPath at tap time (null = unlocked).
+    var lockedRootProvider: (() -> String?)? = null
     var onNewTab:      (() -> Unit)? = null
     var onCloseTab:    (() -> Unit)? = null
     var onPrevTab:     (() -> Unit)? = null
@@ -957,7 +960,8 @@ internal fun TerminalPane(
                 val wd = validLock ?: loadWorkspacePath(ctx, projectId)
                 val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd))
                 if (onOpenFileAtLine != null) {
-                    com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!)
+                    com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!,
+                        lockedRootProvider = { tabs.firstOrNull { it.id == id }?.lockedRootPath })
                 }
                 com.codespace.ide.terminal.IdeTerminalBridge.installIdeCli(ctx)
                 if (idx >= 0) {
@@ -1927,6 +1931,8 @@ internal fun TerminalPane(
                             viewClient.currentTextSize = terminalFontSize
                             // A3: project context for tap-to-open resolution
                             viewClient.projectId = projectId
+                            // LOCKED-ROOT (2026-09-12): tap resolver reads the ACTIVE tab's lock
+                            viewClient.lockedRootProvider = { tabs.firstOrNull { it.id == activeId }?.lockedRootPath }
                             // Propagate pinch-zoom font changes back to Compose state + SharedPrefs
                             viewClient.onFontSizeChanged = { newSize ->
                                 prefs.edit().putInt("KEY_FONTSIZE", newSize).apply()

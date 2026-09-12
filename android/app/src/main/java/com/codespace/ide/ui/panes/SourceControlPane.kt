@@ -1691,6 +1691,8 @@ private fun CloneDialog(
     onRefresh: () -> Unit,
 ) {
     var cloneUrl by remember { mutableStateOf("") }
+    // RECLONE-FIX (2026-09-12): opt-in overwrite for leftover destination directories
+    var overwriteExisting by remember { mutableStateOf(false) }
     var destDir by remember { mutableStateOf("") }
     var cloning by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -1721,6 +1723,17 @@ private fun CloneDialog(
                     modifier = Modifier.fillMaxWidth(),
                     textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextColor),
                 )
+                // RECLONE-FIX (2026-09-12): shown when the destination already exists
+                // from a previous clone (root removed in Explorer but directory left
+                // behind). Ticking it deletes the old directory before re-cloning.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(
+                        checked = overwriteExisting,
+                        onCheckedChange = { overwriteExisting = it },
+                        enabled = !cloning,
+                    )
+                    Text("Overwrite existing directory", fontSize = 11.sp, color = MutedColor)
+                }
                 if (cloning) {
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1737,7 +1750,7 @@ private fun CloneDialog(
                     if (cloneUrl.isNotBlank() && destDir.isNotBlank()) {
                         cloning = true
                         scope.launch {
-                            val (ok, msg) = scmState.cloneRepo(hostPath, cloneUrl.trim(), destDir.trim())
+                            val (ok, msg) = scmState.cloneRepo(hostPath, cloneUrl.trim(), destDir.trim(), overwriteExisting)
                             cloning = false
                             onResult(msg)
                             if (ok) {

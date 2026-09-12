@@ -53,6 +53,14 @@ object IdeTerminalBridge {
         context: Context,
         session: com.termux.terminal.TerminalSession,
         openFileAtLine: (path: String, line: Int) -> Unit,
+        /**
+         * LOCKED-ROOT (2026-09-12): returns the SENDING terminal tab's locked root at
+         * open time (null = unlocked). The ide script resolves relative names against
+         * the shell cwd (the locked root), but an ABSOLUTE guest path or a stale cwd
+         * could still name a file in a different root - the guard refuses those and
+         * prints a [LOCK] line into the terminal so the refusal is visible.
+         */
+        lockedRootProvider: (() -> String?)? = null,
     ) {
         val appCtx = context.applicationContext
         val main = android.os.Handler(android.os.Looper.getMainLooper())
@@ -67,6 +75,25 @@ object IdeTerminalBridge {
                     if (host == null) {
                         AppOutputLog.log("OSC 7777: path not found on host (guest=" + path + ")", CHANNEL)
                         return@post
+                    }
+                    // LOCKED-ROOT (2026-09-12): fail closed for locked terminals - see
+                    // attachOscIdeOpen docs. Refused opens print a visible [LOCK] line.
+                    val lockRoot = lockedRootProvider?.invoke()
+                    if (lockRoot != null) {
+                        val lockCanonical = try { File(lockRoot).canonicalPath } catch (_: Exception) { File(lockRoot).absolutePath }
+                        val hostCanonical = try { host!!.canonicalPath } catch (_: Exception) { host!!.absolutePath }
+                        val inside = hostCanonical == lockCanonical || hostCanonical.startsWith(lockCanonical.trimEnd('/') + "/")
+                        if (!inside) {
+                            AppOutputLog.log("[OSC 7777] LOCKED terminal refused open of '" + path + "' - outside locked root '" + lockCanonical + "'", CHANNEL)
+                            try {
+                                val em = session.getEmulator()
+                                if (em != null) {
+                                    val msg = ("\r\n[LOCK] ide open refused: '" + path + "' is outside this terminal's locked root\r\n").toByteArray(Charsets.UTF_8)
+                                    em.append(msg, msg.size)
+                                }
+                            } catch (_: Exception) {}
+                            return@post
+                        }
                     }
                     // OSC line numbers are 1-based human numbers ("Main.kt:42");
                     // the shell lambda expects 0-based. Absent (-1) = no line.
@@ -120,7 +147,38 @@ object IdeTerminalBridge {
      *   3. token relative to the session shell's real cwd (TerminalSession.getCwd,
      *      which reads /proc/PID/cwd - a HOST path) - first as-is, then guest-translated
      */
+    /**
+     * LOCKED-ROOT WRAPPER (2026-09-12): cross-root leak fix. A terminal locked to a
+     * workspace root must FAIL CLOSED for files outside that root - the terminal
+     * file-link tap used to fall back to searching EVERY workspace root of the
+     * project ([TAP] branch 4), so a terminal locked to Root A happily opened Root
+     * B's "2.md" through the all-roots fallback. When [lockedRoot] is non-null
+     * (the sending terminal tab's lock at tap time), the resolution may only land
+     * INSIDE that root; anything else is refused. Unlocked terminals keep the old
+     * behavior (build-output paths resolve against any root).
+     */
     fun resolveTappedFileLink(
+        context: Context,
+        session: com.termux.terminal.TerminalSession?,
+        token: String,
+        projectId: String? = null,
+        lockedRoot: String? = null,
+    ): Pair<File, Int>? {
+        val resolved = resolveTappedFileLinkUnscoped(context, session, token, projectId)
+        if (resolved == null) return null
+        if (lockedRoot != null) {
+            val lockCanonical = try { File(lockedRoot).canonicalPath } catch (_: Exception) { File(lockedRoot).absolutePath }
+            val resCanonical = try { resolved.first.canonicalPath } catch (_: Exception) { resolved.first.absolutePath }
+            val inside = resCanonical == lockCanonical || resCanonical.startsWith(lockCanonical.trimEnd('/') + "/")
+            if (!inside) {
+                AppOutputLog.log("[TAP] LOCKED terminal refused '" + token + "' - '" + resCanonical + "' is outside locked root '" + lockCanonical + "'", CHANNEL)
+                return null
+            }
+        }
+        return resolved
+    }
+
+    fun resolveTappedFileLinkUnscoped(
         context: Context,
         session: com.termux.terminal.TerminalSession?,
         token: String,

@@ -258,6 +258,13 @@ fun ExplorerSidePanel(
     // automatically. No manual refresh key needed.
     val workspaceRoots = WorkspaceRootsStore.observeRoots(context, projectId)
     var showDeviceFolders by remember { mutableStateOf(false) }
+    // ROOT-REMOVE (2026-09-12): pending workspace-root removal confirmation. The root
+    // switcher's close icon used to remove the root from the LIST in one tap, leaving
+    // the underlying directory on disk - re-cloning the same repo then failed with
+    // git's raw "destination path already exists" error. The dialog now offers
+    // "Remove & delete files" (cleans the directory so a re-clone works) or
+    // "Remove only".
+    var rootRemoveTarget by remember { mutableStateOf<String?>(null) }
 
     // ── Image preview state ──
     var previewImagePath by remember { mutableStateOf<String?>(null) }
@@ -1096,12 +1103,54 @@ fun ExplorerSidePanel(
                                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             Icon(Icons.Default.Close, null, tint = MutedColor,
                                 modifier = Modifier.size(12.dp).clickable {
-                                    WorkspaceRootsStore.removeRoot(context, projectId, rootPath)
-                                    onWorkspaceRootRemoved?.invoke(rootPath)
+                                    rootRemoveTarget = rootPath
                                 })
                         }
                     }
                     HorizontalDivider(color = DividerColor, thickness = 1.dp)
+                }
+
+                // ROOT-REMOVE dialog (2026-09-12): see rootRemoveTarget declaration.
+                rootRemoveTarget?.let { targetRoot ->
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { rootRemoveTarget = null },
+                        title = { androidx.compose.material3.Text("Remove workspace root", fontSize = 14.sp, color = TextColor) },
+                        text = {
+                            androidx.compose.material3.Text(
+                                "Remove '" + java.io.File(targetRoot).name + "' from this project? The files stay on disk unless you also delete them.",
+                                fontSize = 12.sp, color = MutedColor)
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(onClick = {
+                                WorkspaceRootsStore.removeRoot(context, projectId, targetRoot)
+                                onWorkspaceRootRemoved?.invoke(targetRoot)
+                                // Delete the underlying directory (guest path translated to
+                                // host first). Guard: refuse to delete anything shallower
+                                // than 3 path segments (storage roots, app dirs).
+                                val hostDir = com.codespace.ide.terminal.IdeTerminalBridge.guestPathToHostFile(context, targetRoot)
+                                    ?: java.io.File(targetRoot).takeIf { it.exists() }
+                                var note = "directory left on disk"
+                                if (hostDir != null) {
+                                    val canon = try { hostDir.canonicalPath } catch (_: Exception) { hostDir.absolutePath }
+                                    val segs = canon.split('/').filter { it.isNotEmpty() }
+                                    if (segs.size >= 3 && hostDir.deleteRecursively()) {
+                                        note = "directory deleted"
+                                    } else if (segs.size < 3) {
+                                        note = "directory NOT deleted (path too close to a storage root)"
+                                    }
+                                }
+                                onShowNotification?.invoke("Removed " + java.io.File(targetRoot).name + " - " + note, "success")
+                                rootRemoveTarget = null
+                            }) { androidx.compose.material3.Text("Remove & delete files", fontSize = 12.sp, color = androidx.compose.ui.graphics.Color(0xFFE06C75)) }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = {
+                                WorkspaceRootsStore.removeRoot(context, projectId, targetRoot)
+                                onWorkspaceRootRemoved?.invoke(targetRoot)
+                                rootRemoveTarget = null
+                            }) { androidx.compose.material3.Text("Remove only", fontSize = 12.sp) }
+                        },
+                    )
                 }
 
                 // weight(1f): this LazyColumn is a DIRECT child of the outer explorer

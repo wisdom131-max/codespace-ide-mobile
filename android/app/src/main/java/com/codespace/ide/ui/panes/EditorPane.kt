@@ -823,6 +823,27 @@ fun EditorPane(
     // No sample tabs — editor starts empty, waiting for Explorer
 
     Column(Modifier.fillMaxSize()) {
+        // SPLIT-RELOCATE (2026-09-12): the toggle now lives in the SHELL's editor
+        // toolbar (ProjectShellScreen) and flips the global SplitViewStore directly.
+        // This effect keeps the ACTIVE view consistent no matter where the toggle was
+        // tapped: (a) a split created for the active primary tab auto-focuses the new
+        // view; (b) if the ACTIVE view is a split that was removed, fall back to its
+        // primary tab (the old inline strip handler did both).
+        LaunchedEffect(com.codespace.ide.editor.SplitViewStore.views.size) {
+            val currentTab = resolveActiveTab(activeId, tabs)
+            if (currentTab != null) {
+                if (activeId == currentTab.id && com.codespace.ide.editor.SplitViewStore.hasFor(currentTab.path)) {
+                    activeId = com.codespace.ide.editor.SplitViewStore.idFor(currentTab.path)
+                }
+            } else {
+                val removedPath = com.codespace.ide.editor.SplitViewStore.pathOf(activeId)
+                if (removedPath != null) {
+                    val primary = tabs.firstOrNull { it.path == removedPath }
+                    activeId = primary?.id ?: tabs.firstOrNull()?.id ?: activeId
+                }
+            }
+        }
+
         // Tab bar — the SINGLE surviving strip (shell's 35dp mirror strip removed
         // 2026-09-11; its long-press context menu was ported HERE, and its themed
         // colors are passed down via tabColors so this strip keeps the removed
@@ -1000,27 +1021,12 @@ fun EditorPane(
                     }
                     Box(Modifier.width(1.dp).height(28.dp).background(tabColors.divider))
                 }
-                // SPLIT-VIEW toggle — VS Code semantics: duplicate the ACTIVE file as
-                // a live-synced second view (its own tab entry, independent cursor/
-                // scroll). Tap again with the split already present to remove it.
-                IconButton(
-                    onClick = {
-                        val activeTab = resolveActiveTab(activeId, tabs)
-                        if (activeTab != null) {
-                            val newActive = com.codespace.ide.editor.SplitViewStore.toggleFor(activeTab.path)
-                            activeId = newActive ?: activeTab.id
-                        }
-                    },
-                    modifier = Modifier.size(35.dp),
-                ) {
-                    Icon(
-                        painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.ic_vs_split_editor),
-                        contentDescription = "Split Editor",
-                        tint = if (resolveActiveTab(activeId, tabs)?.let { com.codespace.ide.editor.SplitViewStore.hasFor(it.path) } == true)
-                            androidx.compose.ui.graphics.Color(0xFF007ACC) else androidx.compose.ui.graphics.Color(0xFF858585),
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
+                // SPLIT-RELOCATE (2026-09-12): the split toggle IconButton MOVED OUT of this
+                // scrolling strip (it drifted with tab content, and the user wants it back
+                // at the fixed editor toolbar) - it now lives in ProjectShellScreen's
+                // editor toolbar row. It flips the GLOBAL SplitViewStore directly; the
+                // LaunchedEffect near this strip focuses the created view and falls back
+                // to the primary tab on removal.
                 // Split view button
                 IconButton(onClick = {
                     findReplaceOpen = !findReplaceOpen
@@ -2522,6 +2528,14 @@ fun EditorPane(
                         } else null,
                         // P41-W: LSP Semantic Tokens
                         semanticTokens = lspSemanticRanges,
+                        // LINE-JUMP-RESTORE (2026-09-12): the 8ccca5e split rewrite rebuilt
+                        // this CodeEditor invocation and DROPPED the scrollToLine argument -
+                        // EditorPane's internal scrollToLine state (fed from scrollToLineParam:
+                        // OSC 7777 `ide open file:42`, terminal path taps, Problems/debug
+                        // stack) never reached CodeEditor, so the file opened with NO scroll,
+                        // gold band, or cursor move. The retry-loop fix inside CodeEditor was
+                        // correct - the wiring was missing here.
+                        scrollToLine = scrollToLine,
                     )
                 }
                 // P38: Hover popup now rendered inside CodeEditor as a compact overlay

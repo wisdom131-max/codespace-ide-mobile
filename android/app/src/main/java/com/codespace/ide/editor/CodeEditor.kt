@@ -1951,7 +1951,35 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // Previously the gutter rendered ALL lines as composables, causing OOM and jank on 1000+ line files.
             val viewportHeightPx = vScroll.viewportSize.toFloat().coerceAtLeast(1f)
             val visibleCount = ((viewportHeightPx / with(scrollDensity) { lineHeightDp.toPx() }).toInt() + 8) // +8 buffer for smooth scroll
-            val topVisibleIdx = (vScroll.value / with(scrollDensity) { lineHeightDp.toPx() }).toInt().coerceAtLeast(0)
+            // GUTTER-VIRT-FIX (2026-09-12): the estimate below assumed every line is
+            // exactly lineHeightPx tall, but the gutter rows are POSITIONED at the REAL
+            // TextLayoutResult line tops (EditorLinePositioning, GUTTER-ALIGN FIX).
+            // Compose line geometry (font natural height, first-line padding, leading)
+            // drifts from the uniform grid, and the mismatch GROWS with scroll depth:
+            // after scrolling, the first few VISIBLE lines fell OUTSIDE
+            // [topVisibleIdx, bottomVisibleIdx] and rendered with no gutter row - line
+            // numbers missing near the top (the +8 buffer only protected the bottom
+            // edge). When the layout is available and its line count matches the
+            // gutter's display lines (no word wrap), find the first visible line by
+            // binary search on the REAL line tops/bottoms; fall back to the uniform
+            // grid on the first frame and under word wrap (same behavior as before).
+            val topVisibleIdx = if (textLayoutResult != null && textLayoutResult.lineCount == displayLines.size && textLayoutResult.lineCount > 0) {
+                var lo = 0
+                var hi = textLayoutResult.lineCount - 1
+                var firstVisible = 0
+                while (lo <= hi) {
+                    val mid = (lo + hi) ushr 1
+                    if (textLayoutResult.getLineBottom(mid) > vScroll.value) {
+                        firstVisible = mid
+                        hi = mid - 1
+                    } else {
+                        lo = mid + 1
+                    }
+                }
+                (firstVisible - 2).coerceAtLeast(0)
+            } else {
+                (vScroll.value / with(scrollDensity) { lineHeightDp.toPx() }).toInt().coerceAtLeast(0)
+            }
             val bottomVisibleIdx = (topVisibleIdx + visibleCount).coerceAtMost(visualLineMapper.visualLineCount)
             val topSpacerLines = topVisibleIdx.coerceAtLeast(0)
             val bottomSpacerLines = (visualLineMapper.visualLineCount - bottomVisibleIdx).coerceAtLeast(0)
@@ -2450,27 +2478,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .focusRequester(focusRequester)
                         .pointerInput(Unit) {
                             detectTapGestures(
+                                // MC-TAP-OVERLAY (2026-09-12): multi-cursor double-tap moved to a
+                                // transparent overlay ABOVE the text field (McTapOverlay.kt) - Compose's
+                                // BasicTextField consumes tap events in its inner gesture handler, so
+                                // this outer detectTapGestures never received them on-device (that was
+                                // the never-found "single-view MC failure"; native word-select masked it
+                                // in MC-off mode). This handler now only does MC-off word-select.
                                 onDoubleTap = { offset ->
                                     textLayoutResult?.let { layout ->
                                         val charOffset = layout.getOffsetForPosition(offset)
-                                        if (MultiCursorModeStore.enabled) {
-                                            // MC mode: add/remove a cursor at this position
-                                            val atPrimary = charOffset == value.selection.min
-                                            val existing = extraCursors.find { it.min == charOffset }
-                                            extraCursors = when {
-                                                atPrimary -> extraCursors
-                                                existing != null -> extraCursors - existing
-                                                else -> MultiCursorEngine.normalize(extraCursors + TextRange(charOffset))
-                                            }
-                                            AppOutputLog.log("[MC-DIAG] double-tap in MC mode at offset $charOffset — extraCursors=" + extraCursors.size, "lsp")
-                                        } else {
-                                            // MC off: double-tap word-selects (native-style)
-                                            val (wordStart, wordEnd) = WordBoundary.findWordBoundaries(value.text, charOffset)
-                                            value = value.copy(selection = TextRange(wordStart, wordEnd))
-                                            editorEvent = EditorEvent.UserSelection(wordStart, wordEnd)
-                                            val cPos2 = positionMapper.offsetToPosition(wordEnd)
-                                            onCursorChange?.invoke(cPos2.line, cPos2.column)
-                                        }
+                                        val (wordStart, wordEnd) = WordBoundary.findWordBoundaries(value.text, charOffset)
+                                        value = value.copy(selection = TextRange(wordStart, wordEnd))
+                                        editorEvent = EditorEvent.UserSelection(wordStart, wordEnd)
+                                        val cPos2 = positionMapper.offsetToPosition(wordEnd)
+                                        onCursorChange?.invoke(cPos2.line, cPos2.column)
                                         try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
                                     }
                                 },
@@ -2978,6 +2999,47 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             },
                         )),
                 )
+
+                // MC-TAP-OVERLAY (2026-09-12): while multi-cursor mode is ON, a transparent
+                // Box ABOVE the text surface is the hit target for ALL taps, so our gesture
+                // handling actually receives them (the BasicTextField's internal tap handler
+                // consumed events before the modifier-attached detector could fire - see the
+                // onDoubleTap note above). Drags still reach the scroll containers (they are
+                // ancestors in the hit path; tap detection does not consume drag movement).
+                // MC off = no overlay = fully native text-field behavior. Extracted to
+                // McTapOverlay.kt per the JVM 64KB method rule.
+                if (MultiCursorModeStore.enabled) {
+                    McTapOverlay(
+                        layoutProvider = { textLayoutResult },
+                        onDoubleTapAt = { charOffset ->
+                            val atPrimary = charOffset == value.selection.min
+                            val existing = extraCursors.find { it.min == charOffset }
+                            extraCursors = when {
+                                atPrimary -> extraCursors
+                                existing != null -> extraCursors - existing
+                                else -> MultiCursorEngine.normalize(extraCursors + TextRange(charOffset))
+                            }
+                            AppOutputLog.log("[MC-DIAG] overlay double-tap at offset $charOffset - extraCursors=" + extraCursors.size, "lsp")
+                            try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
+                        },
+                        onTapAt = { pos ->
+                            value = value.copy(selection = TextRange(pos))
+                            editorEvent = EditorEvent.UserCursorMove(pos)
+                            val cPos = positionMapper.offsetToPosition(pos)
+                            onCursorChange?.invoke(cPos.line, cPos.column)
+                            try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
+                        },
+                        onLongPressAt = { charOffset ->
+                            val (wordStart, wordEnd) = WordBoundary.findWordBoundaries(value.text, charOffset)
+                            value = value.copy(selection = TextRange(wordStart, wordEnd))
+                            editorEvent = EditorEvent.UserSelection(wordStart, wordEnd)
+                            val cPos = positionMapper.offsetToPosition(wordEnd)
+                            onCursorChange?.invoke(cPos.line, cPos.column)
+                            longPressTrigger++
+                            try { focusRequester.requestFocus() } catch (_: IllegalArgumentException) {}
+                        },
+                    )
+                }
 
             }
         }

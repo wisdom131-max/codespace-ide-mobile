@@ -427,9 +427,25 @@ class ScmState(private val context: Context) {
     /**
      * Clone a repository from URL.
      */
-    suspend fun cloneRepo(hostPath: String, url: String, destDir: String): Pair<Boolean, String> =
+    suspend fun cloneRepo(hostPath: String, url: String, destDir: String, overwrite: Boolean = false): Pair<Boolean, String> =
         withContext(Dispatchers.IO) {
             val workdir = resolveWorkdir(hostPath) ?: hostPath
+            // RECLONE-FIX (2026-09-12): removing a workspace root in the Explorer left the
+            // cloned directory on disk, so cloning the same repo/destination again failed
+            // with git's raw "destination path already exists and is not an empty
+            // directory" error. Detect the leftover explicitly and either ask for the
+            // 'Overwrite existing' option or (with it ticked) delete the old directory.
+            val hostRoot = if (java.io.File(hostPath).exists()) hostPath
+                else com.codespace.ide.terminal.IdeTerminalBridge.guestPathToHostFile(context, hostPath)?.absolutePath ?: hostPath
+            val destDirFile = java.io.File(hostRoot, destDir)
+            if (destDirFile.exists() && destDirFile.isDirectory && (destDirFile.listFiles()?.isNotEmpty() == true)) {
+                if (!overwrite) {
+                    return@withContext false to "Destination '" + destDir + "' already exists (left over from a previous clone). Tick 'Overwrite existing' to delete it and re-clone, or pick another destination."
+                }
+                if (!destDirFile.deleteRecursively()) {
+                    return@withContext false to "Could not delete the existing destination '" + destDir + "'. Remove it manually and retry."
+                }
+            }
             when (val r = service.clone(url, destDir, workdir)) {
                 is GitResult.Ok -> true to "Cloned $url"
                 is GitResult.Err -> false to r.error.message
