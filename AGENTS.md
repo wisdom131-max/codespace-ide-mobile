@@ -2725,7 +2725,7 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 
 **RULES REMINDER:** 1. TWO-REPO: codespace-ide-mobile only (proot -> ubuntu-proot-test). 2. CHANGE LOG bottom entry every commit. 3. TAGS. 4. Current State table updated. 5. NEVER re-do done work. 6. Roadmap lists ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v minimum. 8. 64KB limit: new UI = new file + single-line call.
 
-**Commit:** (SHA after commit) | CI: pending
+**Commit:** 882c63b | CI: build triggered, result pending
 **What was built (Round 1 — chat basics & rendering foundation):**
 - MARKDOWN RENDERING: assistant messages now render markdown (ChatMarkdown.kt — Compose-native parser; the WebView/HTML MarkdownRenderer is preview-only). Supports fenced code blocks, headers, ordered/unordered lists, blockquotes, rules, tables (monospace rows), inline bold/italic/`code`/links (styled). User bubbles stay plain text.
 - CODE BLOCK ACTIONS: every fenced block gets Copy (clipboard + toast) and Insert-at-cursor (routed through the shared KeyInsertDispatcher -> focused editor; hidden when no editor owns the slot).
