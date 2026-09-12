@@ -172,8 +172,19 @@ object AgentApiServer {
                 }
 
                 // System prompt for CLI AI tools
-                method == "GET" && path == "/system-prompt" ->
-                    httpJson(200, """{"prompt":${JSONObject.quote(AgentTools.TOOLS_DESCRIPTION + McpClientManager.toolDocs(ctx))}}""")
+                // R2-AUTOINSTR: appends the ACTIVE project's instruction files
+                // (AGENTS.md / copilot-instructions.md / CLAUDE.md) so terminal
+                // AI tools obey the same per-project instructions as the panel.
+                method == "GET" && path == "/system-prompt" -> {
+                    val autoBlock = try {
+                        val pid = com.codespace.ide.data.SessionStateStore(ctx).lastProjectId()
+                        val root = if (pid != null)
+                            com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(ctx, pid) else null
+                        if (root != null && !root.isBlank() && AutoInstructionsProvider.isEnabled(ctx, root))
+                            AutoInstructionsProvider.buildBlock(root) else ""
+                    } catch (_: Exception) { "" }
+                    httpJson(200, """{"prompt":${JSONObject.quote(AgentTools.TOOLS_DESCRIPTION + McpClientManager.toolDocs(ctx) + autoBlock)}}""")
+                }
 
                 
                 // Save a terminal AI session snapshot into the Copilot chat SharedPreferences.

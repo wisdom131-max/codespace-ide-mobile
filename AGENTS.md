@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-12 14:55 WAT
+> Last updated: 2026-09-12 17:20 WAT
 
 ---
 
@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | #2735 GREEN (c0068b5, MC chokepoint); Round-1 chat-parity commit pending CI. APK artifact: codespace-ide-arm64-v8a |
+| CI build | #2740 GREEN (29964c8) — R1 chat-parity live (882c63b + fix 9391978). Round-2 commit pending CI. APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2763,3 +2763,46 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 14. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
 15. TAB-STRIP PEEK — PARKED (user decision). Custom-model-ID entry — PARKED (separate future item).
 16. MCP Batch D items 2-9 retest; Exit-9 next occurrence + [EXIT9-PHANTOM-DIAG]; Debugger P3 (run-to-cursor, inline values); Batch J deferred; chat-command testing deferred until model configured.
+
+---
+
+## [2026-09-12 17:20 WAT] — AI Agent: Copilot Chat Parity Round 2 (of 10) [CHAT][AI]
+
+**RULES REMINDER:** 1. TWO-REPO: codespace-ide-mobile only (proot -> ubuntu-proot-test). 2. CHANGE LOG bottom entry every commit. 3. TAGS. 4. Current State table updated. 5. NEVER re-do done work. 6. Roadmap lists ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v minimum. 8. 64KB limit: new UI = new file + single-line call.
+
+**Commit:** (SHA after commit) | CI: pending
+**What was built (Round 2 — generic auto-instructions, VS Code ComputeAutomaticInstructions port):**
+- AUTOINSTRUCTIONSPROVIDER: agent/AutoInstructionsProvider.kt — detects AGENTS.md, copilot-instructions.md, .github/copilot-instructions.md, CLAUDE.md in ANY user project root (host-side File reads, no proot). All found files attach in priority order; caps: 8k chars/file, 16k total (truncation noted in block). NEVER throws — broken reads skip the file. Per-project opt-out persisted in SharedPreferences (default ON).
+- SYSTEM PROMPT: buildSystemPrompt now takes projectRootPath; the instruction block prepends to the workspace-context suffix in ALL THREE modes (ASK/AGENT/PLAN). chat() passes its existing projectRootPath through.
+- CLI ENDPOINT: AgentApiServer GET /system-prompt now resolves the LAST-ACTIVE project (SessionStateStore.lastProjectId -> ProjectPathResolver) and appends the same instruction block — terminal AI tools (agent_prompt) obey the same per-project instructions as the panel.
+- CHIP UI: ChatContextChip.kt (new file, single-line call from panel above the input, after the context gauge). Visible ONLY when the project has instruction files; shows file names ("AGENTS.md +1"); tap toggles ON/OFF for THIS project (accent border when on). UI-rule compliant (8dp corners, 12h/10v padding).
+- R1 postmortem: #2737 failure root-caused (internal fn exposing private MdBlock type) — pitfall saved to memory; fix 9391978 GREEN in #2739.
+
+**Files touched:** agent/AutoInstructionsProvider.kt (NEW), ui/screens/ChatContextChip.kt (NEW), ui/screens/CopilotChatPanelOverlay.kt (buildSystemPrompt + chip wiring), agent/AgentApiServer.kt (/system-prompt endpoint)
+
+**Round-2 test batch (run on green APK):**
+- R2-1: Create AGENTS.md in a project root with a style rule (e.g. 'Always answer in bullet points'); open chat in that project; ask anything — answer should follow the rule.
+- R2-2: Chip appears above input listing AGENTS.md; tap OFF, send again — rule no longer followed; tap ON — followed again.
+- R2-3: Rename file to copilot-instructions.md — still detected (chip shows new name, block attaches).
+- R2-4: Put CLAUDE.md alongside AGENTS.md — chip shows 'AGENTS.md +1'; both files' rules visible in answers.
+- R2-5: Toggle persists: toggle OFF, kill app, reopen chat in same project — chip shows OFF and rules not applied.
+- R2-6: In a DIFFERENT project without instruction files — no chip, no behavior change.
+- R2-7: Terminal: `agent_prompt | head -40` shows the PROJECT INSTRUCTIONS block when a project with AGENTS.md is active.
+
+**Next on roadmap (ALL pending items):**
+1. ROUND 3 — Context & attachment system (attachment chips, attach-file picker, explicit implicit-context toggles, #file/#selection).
+2. ROUND 4 — Typed ChatEntry refactor + rich tool-call rendering + real error parts.
+3. ROUND 5 — Model Auto default, pinning/favorites, per-mode model; FlowGate permission levels.
+4. ROUND 6 — DIFF/APPLY/CHECKPOINT (WRITTEN PRE-PLAN REQUIRED before build — user gate).
+5. ROUND 7 — Plan review UI, todos, follow-ups, feedback, find-in-chat.
+6. ROUND 8 — Voice, images, queue, export/import.
+7. ROUND 9 — Skills/agents/hooks/subagents (flag scope BEFORE building if bigger than scoped — user gate).
+8. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+9. R1 RE-TEST on #2739+ APK: markdown rendering, code Copy/Insert, Stop mid-stream (+FlowGate card case), Retry, /commands, session rename (R1-1..R7 batch in the R1 entry above).
+10. MC RE-TEST on #2735 APK: MC chip + double-tap second cursor; BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity; [MC-TRIPWIRE] lines check.
+11. RETEST batch A (gate for validation change): locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+12. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.
+13. STREAMING retest (1731b4d): ASK streams; AGENT per-iteration stream + tool-done lines; gauge thresholds.
+14. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+15. TAB-STRIP PEEK — PARKED (user decision). Custom-model-ID entry — PARKED (separate future item).
+16. MCP Batch D items 2-9 retest; Exit-9 next occurrence + [EXIT9-PHANTOM-DIAG]; Debugger P3 (run-to-cursor, inline values); Batch J deferred.

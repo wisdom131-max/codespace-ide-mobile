@@ -225,9 +225,20 @@ private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): List<S
         models.map { "${provider.id}:${it}" }
     }.distinct()
 
-private fun buildSystemPrompt(mode: ChatMode, context: Context, workspaceCtx: String): String = when (mode) {
-        ChatMode.ASK   -> "You are a helpful coding assistant inside VN Code. Answer concisely." + 
-            if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
+private fun buildSystemPrompt(mode: ChatMode, context: Context, workspaceCtx: String, projectRootPath: String? = null): String {
+    // R2-AUTOINSTR: per-project instruction files (AGENTS.md / copilot-instructions.md /
+    // .github/copilot-instructions.md / CLAUDE.md) auto-attach to EVERY request,
+    // opt-out per project via the chip or prefs.
+    val autoBlock = try {
+        if (!projectRootPath.isNullOrBlank() &&
+            com.codespace.ide.agent.AutoInstructionsProvider.isEnabled(context, projectRootPath)) {
+            com.codespace.ide.agent.AutoInstructionsProvider.buildBlock(projectRootPath)
+        } else ""
+    } catch (_: Exception) { "" }
+    val tail = (if (autoBlock.isNotEmpty()) "\n\n$autoBlock" else "") +
+        (if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else "")
+    return when (mode) {
+        ChatMode.ASK   -> "You are a helpful coding assistant inside VN Code. Answer concisely." + tail
         ChatMode.AGENT -> """
 You are an autonomous coding agent running inside VN Code — a VS Code-style
 Android IDE with a built-in Ubuntu Linux terminal (no root needed).
@@ -284,11 +295,10 @@ All run_command calls execute inside the Ubuntu proot terminal. Standard Linux
 commands work (apt, git, node, python3). Android host commands do NOT work here.
 
 """ + AgentTools.TOOLS_DESCRIPTION +
-            com.codespace.ide.agent.McpClientManager.toolDocs(context) +
-            if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
-        ChatMode.PLAN  -> "You are a planning assistant inside VN Code. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution." +
-            if (workspaceCtx.isNotEmpty()) "\n\n$workspaceCtx" else ""
+            com.codespace.ide.agent.McpClientManager.toolDocs(context) + tail
+        ChatMode.PLAN  -> "You are a planning assistant inside VN Code. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution." + tail
     }
+}
 
 /** Full request conversation (leading system entry + history) — shared by chat() and the context gauge. */
 private fun convMsgsOf(systemPrompt: String, messages: List<ChatMsg>): JSONArray {
@@ -363,7 +373,7 @@ private suspend fun chat(
     // tools/list results feed the external-tools docs block below.
     com.codespace.ide.agent.McpClientManager.ensureDiscovered(context)
     
-    val systemPrompt = buildSystemPrompt(mode, context, workspaceCtx)
+    val systemPrompt = buildSystemPrompt(mode, context, workspaceCtx, projectRootPath)
 
     val convMsgs = convMsgsOf(systemPrompt, messages)
 
@@ -917,6 +927,12 @@ internal fun CopilotChatPanelInline(
     val insertCodeAtCursor: ((String) -> Unit)? = keyInsertDispatcher?.let { d ->
         { code: String -> d.dispatch(code) }
     }
+    // R2-AUTOINSTR: chip toggle state for THIS project's instruction files
+    var autoInstrEnabled by remember(projectRootPath) {
+        mutableStateOf(
+            projectRootPath?.let { com.codespace.ide.agent.AutoInstructionsProvider.isEnabled(context, it) } ?: true
+        )
+    }
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
     var selectedModel by remember { mutableStateOf(chatModelSelectionInitial(context, tokenStore)) }
     // 404-fix: fetch the LIVE model lists once when the panel first composes,
@@ -1414,6 +1430,20 @@ internal fun CopilotChatPanelInline(
             textSecondary = colors.textSecondary,
             warning = Color(0xFFF59E0B),
             error = Color(0xFFEF4444),
+        )
+
+        // R2-AUTOINSTR: chip shows when the project has instruction files
+        AutoInstructionsChip(
+            projectRoot = projectRootPath,
+            enabled = autoInstrEnabled,
+            onToggle = {
+                if (!projectRootPath.isNullOrBlank()) {
+                    val newState = !autoInstrEnabled
+                    autoInstrEnabled = newState
+                    com.codespace.ide.agent.AutoInstructionsProvider.setEnabled(context, projectRootPath, newState)
+                }
+            },
+            colors = colors,
         )
 
         // ── Input ─────────────────────────────────────────────────────────
