@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | #2751 GREEN (02f156d, R5 model/pinning/permissions) — R1..R5 live. APK artifact: codespace-ide-arm64-v8a |
+| CI build | #2751 GREEN (02f156d, R5) — R6 pending CI (this push: pending-edits staging/review/apply). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2933,6 +2933,63 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 8. R3 RE-TEST: paperclip picker, chip attach/remove, #file tokens, implicit-context toggle + persistence, caps, hashtag safety.
 9. R4 RE-TEST: tool chips, error bubbles, old-history error reclass, selection attach (R4-1..R4-7 above).
 10. R5 RE-TEST: batch above (R5-1..R5-8).
+11. MC RE-TEST on #2735 APK: MC chip + double-tap second cursor; BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity; [MC-TRIPWIRE] lines check.
+12. RETEST batch A (gate for validation change): locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+13. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.
+14. STREAMING retest (1731b4d): ASK streams; AGENT per-iteration stream + tool-done lines; gauge thresholds.
+15. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+16. TAB-STRIP PEEK — PARKED (user decision). Custom-model-ID entry — PARKED (separate future item).
+17. MCP Batch D items 2-9 retest; Exit-9 next occurrence + [EXIT9-PHANTOM-DIAG]; Debugger P3 (run-to-cursor, inline values); Batch J deferred.\n
+---
+
+## [2026-09-12 19:55 WAT] — AI Agent: Claude Sonnet 5.6 (R6-PENDING-EDITS)
+
+**Commit:** (this push) | **CI:** pending — build number to follow in next entry
+
+**RULES REMINDER:** 1. TWO-REPO: Main IDE -> codespace-ide-mobile | Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY. 2. CHANGE LOG: every commit -> entry at BOTTOM with timestamp, SHA, CI #+pass/fail. 3. TAGS. 4. Current State table updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI: rounded 8-12dp + padding 12h/10v.
+
+### What was built (R6_PREPLAN.md v2 — all 5 locked decisions, owner-approved)
+
+1. **PendingChangesStore.kt (NEW, chat/)** — per-session in-memory staging buffer (decision #4). write_file in AGENT mode STAGES instead of writing disk. Read-through overlay (readFile/searchFiles show the model its staged versions). Apply = temp-file + rename write with pre-apply checkpoint to .versionhistory (1MB cap, decision #5, same retention-20 format as ExplorerPane local history). FAIL-CLOSED drift verification (owner-mandated): disk-staged entries verify disk==base before writing; unreadable/indeterminate -> BLOCKED (surfaced for manual decision, never silent apply). DRIFT auto-rebases the entry base to current disk so the review diff IS the apply-over-disk preview. forceApply = explicit user override bypassing verification (still checkpoints). undoLastApply = one-tap restore of the last apply batch.
+
+2. **Staging UNGATED (decision #1)** — chat() tool loop: write_file in AGENT mode stages and SKIPS AgentFlowGate.awaitApproval entirely (content that cannot reach disk needs no gate; run_command unchanged, still level-gated). ChatPermissionStore doc updated. Auto-open of visual files now skips staged writes (file not on disk yet).
+
+3. **ChatDiffReviewCard.kt (NEW, ui/screens/)** — multi-diff review card riding at the end of the transcript (rounded 12dp, padded per UI rule). Per-file: name/path, NEW FILE tag, Apply/Discard, expand -> inline diff via EXISTING GitDiffAnalyzer (no new engine). DIFF BUDGET (decision #5): >2M LCS cell product refuses inline expansion (summary only, Apply/Discard still available — VS Code maxComputationTimeMs:5000 equivalent for phone CPU). DRIFT row: warning + Apply-anyway/Discard. BLOCKED row: red note + Force-apply/Discard. Footer: Undo last apply. Apply All stops at first conflict.
+
+4. **Buffer-centric staging (decision #3)** — NEW editor/EditorBufferStore.kt: EditorPane publishes open-tab buffers from its existing workspace-memory effect; staging takes base from the OPEN BUFFER when the file is open, disk otherwise. Apply refresh routes through EditorPane's NEW appliedTick observer -> tab content rewrite -> CodeEditor content-param -> existing cursor-mapped externalContentSync (no dialog, no toast). Drift check retained ONLY for disk-staged entries — the acknowledged §4.5 divergence from VS Code (their agent edits the live working copy; ours usually isn't open, so disk-under-staged-edit risk is compensated by the fail-closed check).
+
+5. **ONE undo entry per apply (decision #2)** — CodeEditor content LaunchedEffect: consumeUndoGate(path) -> pushForce pre-apply snapshot BEFORE externalContentSync replaces text (SingleModelEditStackElement precedent: single toolbar-undo steps back the whole chat apply). Plus checkpoint restore = disk-level undo (VS Code "Undo Requests" precedent).
+
+6. AGENT system prompt rules updated: edits are staged proposals; "say Staged [file] — review and tap Apply"; never use run_command (sed/tee) for edits.
+
+**Files touched:** chat/PendingChangesStore.kt (NEW), editor/EditorBufferStore.kt (NEW), ui/screens/ChatDiffReviewCard.kt (NEW), agent/AgentTools.kt (read/search overlay), agent/ChatPermissionStore.kt (doc), ui/screens/CopilotChatPanelOverlay.kt (tool loop + prompt + card item + session registration), ui/panes/EditorPane.kt (buffer publish + appliedTick refresh), editor/CodeEditor.kt (undo gate, 2 lines).
+
+**Known simplifications:** session registration only in CopilotChatPanelInline (the shell's live panel); staged entries from the legacy Overlay panel bucket under "default" session. Staged NEW files not yet on disk are not searchable via search_files until applied (walk only sees disk). DRIFT "Re-diff" button re-reads disk; base rebase already happened at drift detection.
+
+### R6 RE-TEST BATCH (install newest green APK first)
+- R6-1 (AGENT): ask the agent to edit an existing file. Expect: NO file on disk changed; reply says "Staged ..."; card appears at transcript bottom with the file, +/- counts.
+- R6-2: expand the card row -> inline diff (green adds). Tap Apply -> file changes on disk; card empties; if the file was open, editor updates with cursor preserved.
+- R6-3 (decision #2): after applying to an OPEN file, tap toolbar UNDO once -> the whole apply reverts in one step; REDO restores it.
+- R6-4: Discard instead -> disk + editor untouched, card empties.
+- R6-5 (multi-file): ask for edits to 2-3 files -> card lists all; Apply All writes all; discard-all path too.
+- R6-6 (staging free): permission level MANUAL + AGENT write_file -> NO approval card appears (staging ungated); run_command in the same task DOES show the approval card.
+- R6-7 (iteration): after a staged edit, ask the agent to further modify the same file -> it reads its staged version (result says [staged pending version]) and stages the new proposal.
+- R6-8 (drift, decision #3 disk-side): ask agent to edit a file that is NOT open; then change that file on disk yourself (terminal echo > file); tap Apply in the card -> DRIFT warning shows, apply refuses; "Apply anyway" writes; OR Discard.
+- R6-9 (fail-closed): make the staged file unreadable on disk (chmod 000 via terminal), tap Apply -> BLOCKED message, no write; Force apply (manual decision) writes; chmod back.
+- R6-10: checkpoint: after an apply, Output/Explorer .versionhistory shows <name>/<stamp>_prechat.bak (files <=1MB); card footer "Undo last apply" restores pre-chat content.
+- R6-11: diff budget: stage a very large generated file (ask agent to write >1500 lines x big base) -> card shows summary, no inline diff, Apply still works.
+
+**Next on roadmap (ALL pending items):**
+1. R6 CI result + re-test batch above (R6-1..R6-11).
+2. ROUND 7 — Plan review UI, todos, follow-ups, feedback, find-in-chat.
+3. ROUND 8 — Voice, images, queue, export/import.
+4. ROUND 9 — Skills/agents/hooks/subagents (flag scope BEFORE building if bigger than scoped — user gate).
+5. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+6. R1 RE-TEST: markdown rendering, code Copy/Insert, Stop mid-stream (+FlowGate case), Retry, /commands, session rename.
+7. R2 RE-TEST: AGENTS.md rule followed, chip toggle + persistence, copilot-instructions.md rename, CLAUDE.md combo, agent_prompt CLI block.
+8. R3 RE-TEST: paperclip picker, chip attach/remove, #file tokens, implicit-context toggle + persistence, caps, hashtag safety.
+9. R4 RE-TEST: tool chips, error bubbles, old-history error reclass, selection attach (R4-1..R4-7).
+10. R5 RE-TEST: batch R5-1..R5-8 (permission levels, pinning, per-mode models, AUTO resolution).
 11. MC RE-TEST on #2735 APK: MC chip + double-tap second cursor; BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity; [MC-TRIPWIRE] lines check.
 12. RETEST batch A (gate for validation change): locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
 13. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.

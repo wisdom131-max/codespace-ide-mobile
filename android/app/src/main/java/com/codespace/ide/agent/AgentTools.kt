@@ -212,6 +212,12 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     private fun readFile(path: String): String {
+        // R6-PENDING-EDITS: read-through overlay — when a chat edit for this path
+        // is staged pending review, the model sees its OWN staged version, not disk
+        // (VS Code parity: the agent reasons about the file as it believes it to be).
+        com.codespace.ide.chat.PendingChangesStore.overlayFor(path)?.let { staged ->
+            return "[staged pending version — not yet on disk]\n" + staged.take(8000)
+        }
         val file = File(path)
         if (!file.exists()) return "File not found: $path"
         if (file.isDirectory) return "Path is a directory: $path"
@@ -244,10 +250,19 @@ You can use multiple tools in sequence. When done, give a final summary.
         dir.walkTopDown().take(500).forEach { f ->
             if (f.isFile && f.length() < 100_000) {
                 try {
-                    f.useLines { lines ->
-                        lines.forEachIndexed { i, line ->
+                    // R6-PENDING-EDITS: staged files search the STAGED content
+                    val stagedContent = com.codespace.ide.chat.PendingChangesStore.overlayFor(f.absolutePath)
+                    if (stagedContent != null) {
+                        stagedContent.lineSequence().forEachIndexed { i, line ->
                             if (line.contains(pattern, ignoreCase = true))
                                 results.add("${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
+                        }
+                    } else {
+                        f.useLines { lines ->
+                            lines.forEachIndexed { i, line ->
+                                if (line.contains(pattern, ignoreCase = true))
+                                    results.add("${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
+                            }
                         }
                     }
                 } catch (_: Exception) {}

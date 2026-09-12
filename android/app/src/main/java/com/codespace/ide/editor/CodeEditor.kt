@@ -996,6 +996,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // ProgrammaticTextChange — the content param update is our own echo and
         // value.text already matches.
         if (value.text != content && editorEvent !is EditorEvent.UserTyping && editorEvent !is EditorEvent.ProgrammaticTextChange) {
+            // R6-UNDO-ENTRY (decision #2): when this content change came from a chat
+            // Apply, push ONE force undo snapshot of the PRE-APPLY state first —
+            // a single toolbar-undo steps back the whole chat apply (VS Code
+            // SingleModelEditStackElement precedent: one labeled element per edit).
+            if (com.codespace.ide.chat.PendingChangesStore.consumeUndoGate(currentFilePath)) {
+                snapshotUndo.pushForce(
+                    com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                        value.text, value.selection, extraCursors))
+            }
             externalContentSync(content, "content_param_change")
         }
     }

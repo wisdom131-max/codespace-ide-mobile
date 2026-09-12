@@ -35,6 +35,12 @@ object ChatPermissionStore {
      * Tools AUTO_SAFE lets through: read-only local + git inspection + memory
      * reads + connector listings. Anything that writes, executes, deletes,
      * spends money, or reaches the network as a mutation stays gated.
+     *
+     * R6-PENDING-EDITS (decision #1): `write_file` is NO LONGER GATED AT ANY
+     * LEVEL in AGENT mode — it stages into PendingChangesStore (content that
+     * cannot reach disk needs no approval gate; the human gate is the
+     * user-initiated Apply). The tool loop skips awaitApproval() for staged
+     * writes; everything else (run_command especially) is unchanged.
      */
     val SAFE_TOOLS: Set<String> = setOf(
         "read_file", "list_files", "search_files",

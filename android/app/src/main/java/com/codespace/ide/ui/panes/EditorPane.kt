@@ -222,6 +222,28 @@ fun EditorPane(
             }
         }
     }
+
+    // R6-PENDING-EDITS: after a user-initiated chat Apply (or checkpoint restore),
+    // refresh EVERY open tab whose file was written to disk. The active tab's
+    // content change flows into CodeEditor's content param and replaces text via
+    // the existing cursor-mapped externalContentSync path; the undo gate inside
+    // CodeEditor pushes exactly ONE undo snapshot per apply (decision #2).
+    LaunchedEffect(com.codespace.ide.chat.PendingChangesStore.appliedTick.value) {
+        if (com.codespace.ide.chat.PendingChangesStore.appliedTick.value > 0) {
+            val appliedPaths = com.codespace.ide.chat.PendingChangesStore.lastAppliedPaths()
+            if (appliedPaths.isNotEmpty()) {
+                tabs.indices.forEach { i ->
+                    val t = tabs[i]
+                    if (t.path in appliedPaths && t.path.startsWith("/")) {
+                        try {
+                            val refreshed = java.io.File(t.path).readText()
+                            tabs[i] = t.copy(content = refreshed, isDirty = false)
+                        } catch (_: Exception) { }
+                    }
+                }
+            }
+        }
+    }
     // P20-A: Git Blame
     var showBlame by remember { mutableStateOf(false) }
     var blameData by remember { mutableStateOf<Map<Int, com.codespace.ide.editor.BlameLine>?>(null) }
@@ -684,6 +706,10 @@ fun EditorPane(
     // ── Workspace memory: persist on every state change ─────────────────
     val currentTabList = tabs.toList()
     LaunchedEffect(currentTabList, activeId, pinnedPaths.toList()) {
+        // R6-PENDING-EDITS: publish open-tab buffers so chat staging stages
+        // against the live buffer (decision #3) — String references, no copies.
+        com.codespace.ide.editor.EditorBufferStore.sync(
+            tabs.map { it.path }, tabs.map { it.content })
         val store = sessionStateStore
         val pid = projectId
         if (store != null && pid != null) {

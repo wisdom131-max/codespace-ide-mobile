@@ -283,11 +283,17 @@ Android IDE with a built-in Ubuntu Linux terminal (no root needed).
 
 ## CRITICAL RULES — follow these on every response
 
-### 1. Files you write are opened automatically
-When you use write_file, the file is AUTOMATICALLY opened in the editor AND the
-correct preview mode is switched on for visual files (SVG → SVG mode, HTML → HTML mode).
-You do NOT need to tell the user to navigate anywhere or enter a path.
-Just say "Done — [filename] is now open in the editor" (and for visuals: "and showing in Preview").
+### 1. Your file edits are STAGED as pending proposals
+When you use write_file the edit does NOT land on disk immediately — it is staged
+as a pending change. The user reviews your proposed edits (with diffs) and taps
+Apply to write them to disk. Keep working normally:
+- Later reads of a file you edited return YOUR staged version, so you can keep
+  iterating with write_file across multiple steps.
+- Do NOT tell the user the file "is now open" — instead say
+  "Staged [filename] — review and tap Apply in the chat to save it to disk."
+- Do not use run_command (sed, tee, git checkout) to edit files — command-driven
+  writes bypass the pending buffer. Use write_file for ALL file edits.
+- Visual files (SVG/HTML/MD) open in the editor and Preview AFTER the user applies.
 
 ### 2. Write visuals to the project root or /root/
 - SVG files:  /root/preview.svg   (auto-opens in Preview → SVG mode)
@@ -443,12 +449,27 @@ private suspend fun chat(
             val toolCalls = AgentTools.parseToolCalls(content)
             val toolResults = StringBuilder()
             for ((toolName, toolArgs) in toolCalls) {
+                // R6-PENDING-EDITS (decision #1): in AGENT mode, write_file STAGES
+                // into PendingChangesStore instead of writing disk — staging is
+                // UNGATED at every permission level (content that cannot reach disk
+                // needs no approval gate). Only Apply, which the user initiates from
+                // the review card, ever writes to disk.
+                val stagedMsg: String? = if (mode == ChatMode.AGENT && toolName == "write_file") {
+                    try {
+                        com.codespace.ide.chat.PendingChangesStore.stage(
+                            toolArgs.getString("path"), toolArgs.getString("content"))
+                    } catch (_: Exception) { null }
+                } else null
                 // P-FLOW: In Manual flow mode, pause and wait for the user to tap
                 // Approve/Reject on the floating card before running this tool call.
                 // In Auto mode (default), awaitApproval() returns true immediately.
+                // Staged writes skip the gate entirely (decision #1).
                 val argsSummary = toolArgs.toString().take(160)
-                val approved = com.codespace.ide.agent.AgentFlowGate.awaitApproval(context, toolName, argsSummary)
-                val result = if (approved) {
+                val approved = stagedMsg != null ||
+                    com.codespace.ide.agent.AgentFlowGate.awaitApproval(context, toolName, argsSummary)
+                val result = if (stagedMsg != null) {
+                    stagedMsg
+                } else if (approved) {
                     AgentTools.executeTool(toolName, toolArgs, context)
                 } else {
                     "Skipped — rejected by user in Manual Flow Mode."
@@ -461,7 +482,9 @@ private suspend fun chat(
                 onStreamEvent?.invoke(ChatStreamEvent.ToolDone(toolName))
                 toolResults.append("[Tool: $toolName] Result:\n$resultForTranscript\n\n")
                 // Auto-open file in editor + switch preview when AI writes a visual file
-                if (approved && toolName == "write_file") {
+                // R6: staged writes skip auto-open — the file is NOT on disk yet and
+                // must not be opened in the editor until the user applies it.
+                if (approved && toolName == "write_file" && stagedMsg == null) {
                     val writtenPath = try { toolArgs.getString("path") } catch (_: Exception) { "" }
                     if (writtenPath.isNotBlank()) {
                         val lower = writtenPath.lowercase()
@@ -1023,6 +1046,14 @@ internal fun CopilotChatPanelInline(
     var activeSessionId by remember { mutableStateOf(sessions.first().id) }
     val activeSession: ChatSession = sessions.find { it.id == activeSessionId } ?: sessions.first()
 
+    // R6-PENDING-EDITS: the staging buffer is session-scoped — register the live
+    // session + project root so staged entries and checkpoints bind to the
+    // project the user is working in.
+    LaunchedEffect(activeSession.id, projectRootPath) {
+        com.codespace.ide.chat.PendingChangesStore.activeSessionId = activeSession.id
+        com.codespace.ide.chat.PendingChangesStore.activeProjectRoot = projectRootPath
+    }
+
     // Sessions sidebar visibility: auto-reveals once the panel is dragged wide enough,
     // but the chevron lets you pin it open/closed regardless of current width.
     var sessionsPinned by remember { mutableStateOf<Boolean?>(null) } // null = auto (width-based)
@@ -1467,6 +1498,21 @@ internal fun CopilotChatPanelInline(
                         }
                     }
                 }
+                }
+            }
+            // R6-PENDING-EDITS: review card rides at the end of the transcript
+            // while THIS session has staged proposals. revision.value is read in
+            // composition so any store mutation (stage/apply/discard/drift) recomposes.
+            val pendingEntries = com.codespace.ide.chat.PendingChangesStore.revision.value.let {
+                com.codespace.ide.chat.PendingChangesStore.pendingFor(activeSession.id)
+            }
+            if (pendingEntries.isNotEmpty()) {
+                item {
+                    ChatDiffReviewCard(
+                        pending = pendingEntries,
+                        sessionId = activeSession.id,
+                        colors = colors,
+                    )
                 }
             }
             if (chatLoading) {
