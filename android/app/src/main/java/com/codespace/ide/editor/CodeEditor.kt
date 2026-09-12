@@ -878,6 +878,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         foldedRanges = foldedRanges,
         lspFoldingRanges = lspFoldingRanges,
     )
+    // ── Multi-cursor state ───────────────────────────────────────────────
+    // Declared EARLY (scope-order rule: local vals/funs above a local declaration cannot
+// see it) so the R3-C door functions below can own the MC chokepoint consequences.
+    val extraCursorsState = remember { mutableStateOf<List<androidx.compose.ui.text.TextRange>>(emptyList()) }
+    var extraCursors by extraCursorsState
     // R3-C: Cause-tagged selection event helpers — atomically set value + editorEvent + log.
     // Every programmatic value mutation should go through these instead of raw value = ...
     fun programmaticCursorMove(offset: Int, reason: String) {
@@ -1597,10 +1602,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // then reset value back to the old text, making the inserted character vanish.
     val currentOnContentChange by rememberUpdatedState(onContentChange)
     val currentInsertDispatcher by rememberUpdatedState(onInsertHandler)
-    // ── Multi-cursor state ───────────────────────────────────────────────
-    // Moved here (before LaunchedEffect) so the Esc key handler can reference it.
-    val extraCursorsState = remember { mutableStateOf<List<androidx.compose.ui.text.TextRange>>(emptyList()) }
-    var extraCursors by extraCursorsState
     // MULTI-CURSOR-MODE-GLOBAL: when ON, double-tap adds/removes cursors; when OFF,
     // double-tap word-selects (native-style). The flag now lives in
     // MultiCursorModeStore so the extra-keys MC chip can render live state and ALL
