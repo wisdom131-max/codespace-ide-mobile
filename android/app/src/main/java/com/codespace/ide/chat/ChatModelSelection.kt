@@ -84,10 +84,13 @@ object ChatModelSelection {
         return try {
             val activeId = tokenStore?.aiKey("active")?.lowercase()
             val active = activeId?.let { ChatProviderRegistry.byId(it) }
-            if (active != null && active.isAvailable(tokenStore)) {
+            if (active != null && active.isAvailable(tokenStore) && !active.defaultModelIsPlaceholder) {
                 active.id + ":" + active.defaultModel
             } else {
-                ChatProviderRegistry.available(tokenStore).firstOrNull()
+                // CUSTOM-ENDPOINT-FIX: Auto must never resolve to a placeholder
+                // default ("custom:custom-model") — skip placeholder providers.
+                ChatProviderRegistry.available(tokenStore)
+                    .firstOrNull { !it.defaultModelIsPlaceholder }
                     ?.let { it.id + ":" + it.defaultModel } ?: model
             }
         } catch (_: Exception) { model }

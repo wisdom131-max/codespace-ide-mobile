@@ -24,7 +24,7 @@ data class ChatAttachment(
     /** IMAGE only: sniffed MIME type (image/jpeg, image/png, image/gif, image/webp). */
     val mimeType: String? = null,
 ) {
-    enum class Kind { FILE, SELECTION, IMAGE }
+    enum class Kind { FILE, SELECTION, IMAGE, AUDIO }
 }
 
 object ChatAttachmentInjector {

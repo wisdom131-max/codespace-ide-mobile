@@ -244,6 +244,7 @@ private fun relativeTime(ts: Long): String {
 // Adding a provider = one self-contained registration (see com.codespace.ide.chat).
 private fun registeredModelEntries(tokenStore: SecureTokenStore?): List<String> =
     ChatProviderRegistry.available(tokenStore)
+        .filter { !it.defaultModelIsPlaceholder } // CUSTOM-ENDPOINT-FIX: never list "custom-model" as real
         .map { "${it.id}:${it.defaultModel}" }
 
 /**
@@ -253,13 +254,35 @@ private fun registeredModelEntries(tokenStore: SecureTokenStore?): List<String> 
  * its own /models endpoint and merges it with the defaults, so the picker always
  * shows models that actually exist right now. Entries stay "providerId:model".
  */
-private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): List<String> =
-    ChatProviderRegistry.available(tokenStore).flatMap { provider ->
+/**
+ * CUSTOM-ENDPOINT-FIX (a)+(b): live model entries PLUS per-provider fetch-failure
+ * reasons. A failed fetch no longer silently degrades to the placeholder default —
+ * the picker shows real models when the list loads, or a "no models: <reason>"
+ * error row when it does not. fetchModelList now throws with the parsed vendor
+ * message, so the reason here is the REAL failure (404, auth, bad payload, ...).
+ */
+private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): Pair<List<String>, List<Triple<String, String, String>>> {
+    val entries = mutableListOf<String>()
+    val errors = mutableListOf<Triple<String, String, String>>()
+    for (provider in ChatProviderRegistry.available(tokenStore)) {
         val key = try { tokenStore?.aiKey(provider.id.uppercase()) } catch (_: Exception) { null }
-        val live = try { provider.fetchModels(key) } catch (_: Exception) { emptyList() }
-        val models = (listOf(provider.defaultModel) + live).distinct()
-        models.map { "${provider.id}:${it}" }
-    }.distinct()
+        val live = try { provider.fetchModels(key) } catch (e: Exception) { null }
+        if (live == null) {
+            errors.add(Triple(provider.id, provider.displayName, (e.message ?: "unreachable").take(90)))
+            // non-placeholder providers keep their (real) default model listed
+            if (!provider.defaultModelIsPlaceholder) entries.add("${provider.id}:${provider.defaultModel}")
+        } else {
+            if (live.isEmpty() && provider.defaultModelIsPlaceholder) {
+                // reachable but zero models — still not pickable; say so.
+                errors.add(Triple(provider.id, provider.displayName, "endpoint returned no models"))
+            }
+            val models = if (provider.defaultModelIsPlaceholder) live
+                else (listOf(provider.defaultModel) + live).distinct()
+            models.forEach { entries.add("${provider.id}:${it}") }
+        }
+    }
+    return entries.distinct() to errors.toList()
+}
 
 private fun buildSystemPrompt(mode: ChatMode, context: Context, workspaceCtx: String, projectRootPath: String? = null): String {
     // R2-AUTOINSTR: per-project instruction files (AGENTS.md / copilot-instructions.md /
@@ -474,6 +497,13 @@ private suspend fun chat(
         }
         com.codespace.ide.chat.ChatImageAttachments.toRequestImages(attachments)
     } else emptyList()
+    // R9-AUDIO: audio clips ride the same structured-parts path (iteration 0 only).
+    val requestAudios = if (attachments.any { it.kind == com.codespace.ide.chat.ChatAttachment.Kind.AUDIO }) {
+        if (provider != null && !provider.supportsAudio) {
+            throw Exception("Audio attachments are not supported by ${provider.displayName}. Remove the audio chips or switch models.")
+        }
+        com.codespace.ide.chat.ChatImageAttachments.toRequestAudios(attachments)
+    } else emptyList()
 
     for (iteration in 0 until maxIterations) {
         onStreamEvent?.invoke(ChatStreamEvent.IterationStart(iteration))
@@ -485,6 +515,7 @@ private suspend fun chat(
             val req = ChatRequest(
                 apiModel, systemPrompt, convMsgs, tokenStore?.aiKey(providerPrefix.uppercase()),
                 if (iteration == 0) requestImages else emptyList(),
+                if (iteration == 0) requestAudios else emptyList(),
             )
             if (deltaSink != null) provider.completeStreaming(req, deltaSink)
             else provider.complete(req)
@@ -619,10 +650,12 @@ internal fun CopilotChatPanelOverlay(
     // so the picker only ever offers models that exist right now. Falls back to
     // defaults if the network call fails.
     var liveModelsFetched by remember { mutableStateOf(false) }
+    var modelFetchErrors by remember { mutableStateOf(emptyList<Triple<String, String, String>>()) }
     LaunchedEffect(liveModelsFetched) {
         if (!liveModelsFetched) {
             liveModelsFetched = true
-            val live = fetchLiveModelEntries(tokenStore)
+            val (live, errs) = fetchLiveModelEntries(tokenStore)
+            if (errs.isNotEmpty()) { /* dead panel — errors only surfaced in the live picker */ }
             if (live.isNotEmpty()) {
                 availModels = live
                 // keep current selection valid; if it vanished (retired model),
@@ -1084,10 +1117,12 @@ internal fun CopilotChatPanelInline(
     // so the picker only ever offers models that exist right now. Falls back to
     // defaults if the network call fails.
     var liveModelsFetched by remember { mutableStateOf(false) }
+    var modelFetchErrors by remember { mutableStateOf(emptyList<Triple<String, String, String>>()) }
     LaunchedEffect(liveModelsFetched) {
         if (!liveModelsFetched) {
             liveModelsFetched = true
-            val live = fetchLiveModelEntries(tokenStore)
+            val (live, errs) = fetchLiveModelEntries(tokenStore)
+            modelFetchErrors = errs
             if (live.isNotEmpty()) {
                 availModels = live
                 // keep current selection valid; if it vanished (retired model),
@@ -1372,10 +1407,19 @@ internal fun CopilotChatPanelInline(
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             try {
-                val att = com.codespace.ide.chat.ChatImageAttachments.importFromUri(context, uri)
+                // R9-AUDIO: one picker row, two media types — route by declared MIME
+                // (extension fallback for providers that report no type).
+                val declared = try { context.contentResolver.getType(uri) } catch (_: Exception) { null }
+                val lname = (uri.lastPathSegment ?: "").lowercase()
+                val isAudio = (declared != null && declared.startsWith("audio/")) ||
+                    (declared == null && (lname.endsWith(".mp3") || lname.endsWith(".wav")))
+                val att = if (isAudio)
+                    com.codespace.ide.chat.ChatImageAttachments.importAudioFromUri(context, uri)
+                else
+                    com.codespace.ide.chat.ChatImageAttachments.importFromUri(context, uri)
                 if (attachments.none { it.path == att.path }) attachments = attachments + att
             } catch (e: Exception) {
-                android.widget.Toast.makeText(context, e.message ?: "Could not attach image", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, e.message ?: "Could not attach media", android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -1520,6 +1564,7 @@ internal fun CopilotChatPanelInline(
                     selectedModel = selectedModel,
                     availModels = availModels,
                     pinned = pinnedModels,
+                    errors = modelFetchErrors,
                     colors = colors,
                     expanded = showModelMenu,
                     onExpandedChange = { showModelMenu = it },
@@ -1778,7 +1823,11 @@ internal fun CopilotChatPanelInline(
         }
 
         if (error.isNotEmpty()) {
-            Text(error, fontSize = 10.sp, color = Color(0xFFEF4444), modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
+            Text(
+                com.codespace.ide.chat.providers.OpenAiCompatibleTransport.stripRawError(error),
+                fontSize = 10.sp, color = Color(0xFFEF4444),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+            )
         }
 
         // R8-QUEUE: queued-message chip (auto-sends when the current turn ends)
@@ -1828,7 +1877,7 @@ internal fun CopilotChatPanelInline(
                     if (attachments.none { it.path == a.path }) attachments = attachments + a
                     showAttachPicker = false
                 },
-                onPickImage = { imageLauncher.launch("image/*") },
+                onPickImage = { imageLauncher.launch("*/*") },
                 onDismiss = { showAttachPicker = false },
                 colors = colors,
             )

@@ -14,6 +14,7 @@ class OpenAiProvider : ChatProvider {
     override val defaultModel = "gpt-5.5"
     override val isLocal = false
     override val requiresApiKey = true
+    override val supportsAudio = true
 
     override fun isAvailable(tokenStore: SecureTokenStore?): Boolean =
         !tokenStore?.aiKey(id.uppercase()).isNullOrBlank()
@@ -24,7 +25,7 @@ class OpenAiProvider : ChatProvider {
     override suspend fun complete(request: ChatRequest): String =
         OpenAiCompatibleTransport.call(
             "https://api.openai.com/v1/chat/completions",
-            request.apiKey ?: "", request.model, request.convMsgs, request.images,
+            request.apiKey ?: "", request.model, request.convMsgs, request.images, request.audios,
         )
 
     /** Live model list from GET /v1/models - chat-capable gpt-* IDs only, newest defaults first. */
@@ -37,7 +38,7 @@ class OpenAiProvider : ChatProvider {
     /** STREAMING: OpenAI-compatible SSE — one transport implementation covers the family. */
     override suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String =
         OpenAiCompatibleTransport.callStreaming(
-            "https://api.openai.com/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta, request.images,
+            "https://api.openai.com/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta, request.images, request.audios,
         )
 
     /** TOKEN COUNT: jtokkit BPE (exact for OpenAI models, close proxy for the family). */

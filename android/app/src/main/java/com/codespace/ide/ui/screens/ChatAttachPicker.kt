@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -106,7 +107,11 @@ internal fun ChatAttachmentChips(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        if (att.kind == ChatAttachment.Kind.IMAGE) Icons.Default.Image else Icons.Default.Description,
+                        when (att.kind) {
+    ChatAttachment.Kind.IMAGE -> Icons.Default.Image
+    ChatAttachment.Kind.AUDIO -> Icons.Default.MusicNote
+    else -> Icons.Default.Description
+},
                         null,
                         tint = colors.accent,
                         modifier = Modifier.padding(end = 4.dp).height(12.dp).width(12.dp),
@@ -227,8 +232,8 @@ internal fun ChatAttachPickerDialog(
                             modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
                         )
                         Column {
-                            Text("Attach image from device", fontSize = 11.sp, color = colors.text)
-                            Text("JPEG / PNG / GIF / WebP — max 5 MB, sent with your next message",
+                            Text("Attach image or audio from device", fontSize = 11.sp, color = colors.text)
+                            Text("Images: JPEG/PNG/GIF/WebP \u2264 5 MB · Audio: MP3/WAV \u2264 10 MB — sent with your next message",
                                 fontSize = 9.sp, color = colors.textSecondary, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis)
                         }

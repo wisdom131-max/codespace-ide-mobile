@@ -22,10 +22,42 @@ import java.io.File
  * never persisted into session history). Files are COPIED into app-private
  * chat-images/ storage at attach time so the content grant survives the pick.
  */
+/**
+ * R9-AUDIO (2026-09-13): AUDIO attachments ride the same structured-parts path as
+ * images. Accepted: MP3 + WAV (OpenAI input_audio supports exactly wav|mp3;
+ * Gemini inline_data accepts both). Custom Endpoint gets this by construction —
+ * it is the same transport as the OpenAI family. Anthropic/xAI/DeepSeek refuse
+ * with a clear chat() gate message (no vendor audio input documented).
+ */
 object ChatImageAttachments {
 
     /** Hard cap per image — keeps base64 (~1.37x) well under vendor request limits. */
     const val MAX_IMAGE_BYTES: Long = 5L * 1024 * 1024
+
+    /** Hard cap per audio clip (1 min of WAV ≈ 10 MB — cap matches). */
+    const val MAX_AUDIO_BYTES: Long = 10L * 1024 * 1024
+
+    private val AUDIO_EXT_BY_MIME = mapOf(
+        "audio/mpeg" to "mp3", "audio/mp3" to "mp3",
+        "audio/wav" to "wav", "audio/x-wav" to "wav", "audio/wave" to "wav",
+    )
+
+    private val AUDIO_FORMAT_BY_MIME = mapOf(
+        "audio/mpeg" to "mp3", "audio/mp3" to "mp3",
+        "audio/wav" to "wav", "audio/x-wav" to "wav", "audio/wave" to "wav",
+    )
+
+    /** Resolve a picked audio clip's MIME (declared type, then extension). MP3/WAV only. */
+    fun sniffAudioMime(context: Context, uri: Uri, fallbackName: String): String? {
+        val declared = try { context.contentResolver.getType(uri) } catch (_: Exception) { null }
+        if (declared != null && declared in AUDIO_EXT_BY_MIME) return declared
+        val byExt = fallbackName.substringAfterLast('.', "").lowercase()
+        return when (byExt) {
+            "mp3" -> "audio/mpeg"
+            "wav" -> "audio/wav"
+            else -> null
+        }
+    }
 
     private val EXT_BY_MIME = mapOf(
         "image/jpeg" to "jpg", "image/png" to "png",
@@ -104,6 +136,69 @@ object ChatImageAttachments {
             kind = ChatAttachment.Kind.IMAGE,
             mimeType = mime,
         )
+    }
+
+    /**
+     * R9-AUDIO: copy a picked audio clip into filesDir/chat-images (same dir —
+     * the same 7-day prune covers it) and return an AUDIO attachment. Throws with
+     * a user-readable message when too large / unsupported format.
+     */
+    fun importAudioFromUri(context: Context, uri: Uri): ChatAttachment {
+        val mime = sniffAudioMime(context, uri, uri.lastPathSegment ?: "audio")
+            ?: throw Exception("Unsupported audio format. Use MP3 or WAV.")
+        val ext = AUDIO_EXT_BY_MIME[mime] ?: "mp3"
+        val dir = File(context.filesDir, "chat-images").apply { mkdirs() }
+        val dest = File(dir, "audio-" + System.currentTimeMillis() + "." + ext)
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                dest.outputStream().use { output ->
+                    val buf = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val r = input.read(buf)
+                        if (r < 0) break
+                        total += r
+                        if (total > MAX_AUDIO_BYTES) {
+                            throw Exception("Audio is too large (max 10 MB).")
+                        }
+                        output.write(buf, 0, r)
+                    }
+                }
+            } ?: throw Exception("Could not read the picked audio.")
+        } catch (e: Exception) {
+            dest.delete()
+            throw e
+        }
+        if (dest.length() == 0L) {
+            dest.delete()
+            throw Exception("Could not read the picked audio.")
+        }
+        return ChatAttachment(
+            path = dest.absolutePath,
+            relPath = dest.name,
+            name = dest.name,
+            kind = ChatAttachment.Kind.AUDIO,
+            mimeType = mime,
+        )
+    }
+
+    /** R9-AUDIO: build the request audio list (base64) for the send path. FAIL-CLOSED like images. */
+    fun toRequestAudios(attachments: List<ChatAttachment>): List<ChatRequestAudio> {
+        val audios = attachments.filter { it.kind == ChatAttachment.Kind.AUDIO }
+        if (audios.isEmpty()) return emptyList()
+        return audios.map { att ->
+            try {
+                val bytes = File(att.path).readBytes()
+                ChatRequestAudio(
+                    mimeType = att.mimeType ?: "audio/mpeg",
+                    base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
+                    format = AUDIO_FORMAT_BY_MIME[att.mimeType ?: "audio/mpeg"] ?: "mp3",
+                    name = att.name,
+                )
+            } catch (_: Exception) {
+                throw Exception("Attached audio '" + att.name + "' could not be read. Remove the chip and re-attach it.")
+            }
+        }
     }
 
     /**

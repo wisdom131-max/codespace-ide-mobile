@@ -28,7 +28,7 @@ class XaiProvider : ChatProvider {
     override suspend fun complete(request: ChatRequest): String =
         OpenAiCompatibleTransport.call(
             "https://api.x.ai/v1/chat/completions",
-            request.apiKey ?: "", request.model, request.convMsgs, request.images,
+            request.apiKey ?: "", request.model, request.convMsgs, request.images, request.audios,
         )
 
     /** Live model list from GET /v1/models - grok-* chat IDs only. */
@@ -41,7 +41,7 @@ class XaiProvider : ChatProvider {
     /** STREAMING: OpenAI-compatible SSE — one transport implementation covers the family. */
     override suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String =
         OpenAiCompatibleTransport.callStreaming(
-            "https://api.x.ai/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta, request.images,
+            "https://api.x.ai/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta, request.images, request.audios,
         )
 
     /** TOKEN COUNT: jtokkit BPE (exact for OpenAI models, close proxy for the family). */

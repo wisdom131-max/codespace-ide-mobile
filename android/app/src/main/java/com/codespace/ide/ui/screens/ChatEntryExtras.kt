@@ -21,6 +21,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -79,6 +83,16 @@ internal fun ChatErrorBubble(
     text: String,
     colors: ChatPanelColors,
 ) {
+    // CUSTOM-ENDPOINT-FIX (c): the transport tucks the raw vendor JSON behind a
+    // RAW_RESPONSE block — show the clean one-liner, expand for the raw body.
+    val rawStart = text.indexOf("\nRAW_RESPONSE_BEGIN\n")
+    val cleanText = if (rawStart >= 0) text.substring(0, rawStart).trim() else text
+    val rawText = if (rawStart >= 0) {
+        val rest = text.substring(rawStart + "\nRAW_RESPONSE_BEGIN\n".length)
+        val endIdx = rest.indexOf("\nRAW_RESPONSE_END")
+        if (endIdx >= 0) rest.substring(0, endIdx) else rest
+    } else ""
+    var showRaw by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.Start,
@@ -99,11 +113,32 @@ internal fun ChatErrorBubble(
                     modifier = Modifier.size(14.dp),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    text,
-                    fontSize = 12.sp,
-                    color = colors.text,
-                )
+                Column {
+                    Text(
+                        cleanText,
+                        fontSize = 12.sp,
+                        color = colors.text,
+                    )
+                    if (rawText.isNotEmpty()) {
+                        Text(
+                            if (showRaw) "Hide raw response" else "Show raw response",
+                            fontSize = 10.sp,
+                            color = colors.accent,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .clickable { showRaw = !showRaw },
+                        )
+                        if (showRaw) {
+                            Text(
+                                rawText,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = colors.textSecondary,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
     }

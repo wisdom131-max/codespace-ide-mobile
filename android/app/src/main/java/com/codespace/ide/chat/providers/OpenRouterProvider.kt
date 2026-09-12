@@ -14,6 +14,7 @@ class OpenRouterProvider : ChatProvider {
     override val defaultModel = "anthropic/claude-sonnet-5"
     override val isLocal = false
     override val requiresApiKey = true
+    override val supportsAudio = true
 
     override fun isAvailable(tokenStore: SecureTokenStore?): Boolean =
         !tokenStore?.aiKey(id.uppercase()).isNullOrBlank()
@@ -24,7 +25,7 @@ class OpenRouterProvider : ChatProvider {
     override suspend fun complete(request: ChatRequest): String =
         OpenAiCompatibleTransport.call(
             "https://openrouter.ai/api/v1/chat/completions",
-            request.apiKey ?: "", request.model, request.convMsgs, request.images,
+            request.apiKey ?: "", request.model, request.convMsgs, request.images, request.audios,
         )
 
     /**
@@ -54,7 +55,7 @@ class OpenRouterProvider : ChatProvider {
     /** STREAMING: OpenAI-compatible SSE — one transport implementation covers the family. */
     override suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String =
         OpenAiCompatibleTransport.callStreaming(
-            "https://openrouter.ai/api/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta, request.images,
+            "https://openrouter.ai/api/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta, request.images, request.audios,
         )
 
     /** TOKEN COUNT: jtokkit BPE (exact for OpenAI models, close proxy for the family). */

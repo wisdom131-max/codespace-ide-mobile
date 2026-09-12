@@ -32,6 +32,8 @@ class CustomOpenAiProvider : ChatProvider {
     // non-real so a misconfigured send fails with the SERVER's error text,
     // which names the real problem.
     override val defaultModel = "custom-model"
+    override val supportsAudio = true
+    override val defaultModelIsPlaceholder = true
     override val isLocal = false
     override val requiresApiKey = true
 
@@ -59,7 +61,7 @@ class CustomOpenAiProvider : ChatProvider {
             ?: throw Exception("No custom endpoint URL set. Add one in Settings → AI Providers → Custom Endpoint.")
         return OpenAiCompatibleTransport.call(
             chatUrl(base),
-            request.apiKey ?: "", request.model, request.convMsgs, request.images,
+            request.apiKey ?: "", request.model, request.convMsgs, request.images, request.audios,
         )
     }
 
@@ -76,7 +78,7 @@ class CustomOpenAiProvider : ChatProvider {
         val base = CustomEndpointStore.baseUrl
             ?: throw Exception("No custom endpoint URL set. Add one in Settings → AI Providers → Custom Endpoint.")
         return OpenAiCompatibleTransport.callStreaming(
-            chatUrl(base), request.apiKey ?: "", request.model, request.convMsgs, onDelta, request.images,
+            chatUrl(base), request.apiKey ?: "", request.model, request.convMsgs, onDelta, request.images, request.audios,
         )
     }
 

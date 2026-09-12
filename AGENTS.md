@@ -3245,3 +3245,35 @@ Full findings below in chat reply. Root cause confirmed in source: CustomOpenAiP
 11. STREAMING retest (1731b4d): ASK streams; AGENT stream + tool-done lines; gauge thresholds.
 12. TAB-STRIP PEEK — PARKED. Custom-model-ID entry — PARKED (superseded by the custom-endpoint fix plan above, will fold in once approved).
 13. MCP Batch D items 2-9 retest; Exit-9 + [EXIT9-PHANTOM-DIAG]; Debugger P3; Batch J deferred.
+
+## [2026-09-13 00:30 WAT] — AI Agent: Claude Sonnet 5.6 (CUSTOM-ENDPOINT-FIX 1-3 + R9-AUDIO + FULL PAYLOAD AUDIT)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] CUSTOM-ENDPOINT-FIX items 1-3 (Wisdom approved) + R9-AUDIO
+1. **(a) No more fake "custom-model" row:** new ChatProvider.defaultModelIsPlaceholder flag (Custom only). registeredModelEntries + fetchLiveModelEntries + resolveAuto ALL skip placeholder defaults — the literal "custom-model" string can never be picked, sent, or auto-resolved again. Picker shows real fetched models only.
+2. **(b) Fetch failures surfaced:** OpenAiCompatibleTransport.fetchModelList now THROWS the parsed vendor error (was: silent emptyList which made the placeholder look like the only model). fetchLiveModelEntries records per-provider failure reasons -> NEW warning rows in the model picker ("\u26A0 Custom Endpoint — no models: <reason>"); Settings live-check REJECTED line now appends the real reason ("\u2717 Key rejected (or unreachable) — <reason>").
+3. **(c) Clean vendor errors + raw behind expand:** transportErrorParts parses error.message (OpenAI-family error shape) into a clean one-liner with status code; raw body (\u2264400 chars) rides behind a RAW_RESPONSE block. ChatErrorBubble shows the clean line + "Show raw response" expand toggle; the small input-row error strips the raw block. Every provider error path now goes through this (all providers use transportError).
+4. **R9-AUDIO (Custom multimodal mandate):** ChatAttachment.Kind.AUDIO + ChatRequestAudio + supportsAudio flag. Audio attach via the same picker row (now "Attach image or audio from device", launches */*, routes by MIME: MP3/WAV, \u226410MB, stored in chat-images/ with same 7-day prune). OpenAI-family transport adds input_audio parts (data+format wav|mp3) to the last user message — Custom Endpoint gets vision AND audio by construction. Gemini: audio inline_data parts (vendor-supported). Gate: chat() refuses audio sends on providers without supportsAudio (xAI/DeepSeek/Anthropic: no vendor audio input docs) with a clear message.
+
+### [AUDIT] Full payload audit (post-Gemini-miss, Wisdom-mandated)
+- FILE + SELECTION attachments: ATTACHED CONTEXT text block merged into convMsgs by convMsgsOf -> IDENTICAL for all 7 providers (text path, no per-provider code). VERIFIED live send path passes attachments + #file tokens end-to-end. The old CopilotChatPanelOverlay composable (line ~597) is DEAD CODE (unreachable; only CopilotChatPanelInline is used) — its send() drops attachments but nothing calls it. Cleanup recommended later.
+- IMAGES: OpenAI/xAI/DeepSeek/OpenRouter/Custom = image_url data-URL parts via withImages (verified at every call site incl. streaming); Anthropic = base64 source blocks (verified); Gemini = FIXED in 18a08ef (#2763 GREEN).
+- AUDIO: existed NOWHERE before this commit (no Kind, no request field, no transport parts). Shipped now (above).
+- OTHER RIDERS: system prompt (workspace ctx, R2 auto-instructions, MCP docs, R7 plan guard), tool docs + tool-call parsing — all TEXT-path, provider-agnostic, no per-provider divergence. countTokens per provider affects gauge display only. Streaming: all 7 providers implement real completeStreaming.
+
+**Files touched:** chat/ChatProvider.kt, chat/providers/OpenAiCompatibleTransport.kt, chat/providers/{OpenAi,Xai,DeepSeek,OpenRouter,CustomOpenAi,Gemini}Provider.kt, chat/ChatImageAttachments.kt, chat/ChatAttachment.kt, chat/ChatModelSelection.kt, ui/screens/CopilotChatPanelOverlay.kt, ui/screens/ChatModelMenuButton.kt, ui/screens/ChatAttachPicker.kt, ui/screens/ChatEntryExtras.kt, ui/screens/AiKeysSection.kt.
+
+**Re-test (add to batch):** CE-1: custom endpoint with working /models -> picker lists REAL models only, no "custom-model" row. CE-2: custom endpoint with bad URL/key -> picker shows "\u26A0 Custom Endpoint — no models: <reason>" row; Settings live check shows the real reason. CE-3: send to a bogus model id -> clean one-line error in chat bubble, "Show raw response" expands the vendor JSON. CE-4: Auto mode with custom as active provider -> resolves to a NON-placeholder provider's model. AU-1: attach MP3/WAV chip (MusicNote icon), ask "transcribe this audio" on OpenAI/Custom -> model references the audio. AU-2: audio chip on Gemini -> works (inline_data). AU-3: audio chip on Anthropic/xAI/DeepSeek -> clear "Audio attachments are not supported by X" refusal, no silent failure.
+
+**Next on roadmap (ALL pending items):**
+1. This build green -> re-test CE-1..CE-4, AU-1..AU-3, V2/V3/V4 vision (V2 = Gemini now fixed in #2763).
+2. MULTI-KEY PLAN (researched, delivered in chat) — AWAITING Wisdom review, NO CODE.
+3. Item 4 TLS/Cloudflare diagnostic logging — ON HOLD per Wisdom (diagnostics first).
+4. R6 re-test R6-1..R6-10; R7 re-test R7-1..R7-7; R8 re-test R8-1..R8-6; MC-3 tap-collapse.
+5. R1-R5 re-test batches (prior entries).
+6. RETEST batch A (locked-root, AQ. paste, zero-tab quiet); streaming retest; MCP Batch D; Exit-9; Debugger P3; Batch J.
+7. Round 9 Skills/agents/hooks (scope flag first); Round 10 status-bar/settings/history/a11y.
+8. PEEK — PARKED. Dead CopilotChatPanelOverlay composable cleanup — recommended, not scheduled.

@@ -31,6 +31,8 @@ internal fun ChatModelMenuButton(
     selectedModel: String,
     availModels: List<String>,
     pinned: List<String>,
+    /** CUSTOM-ENDPOINT-FIX (a)+(b): (id, displayName, reason) fetch failures, shown as warning rows. */
+    errors: List<Triple<String, String, String>> = emptyList(),
     colors: ChatPanelColors,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
@@ -57,6 +59,24 @@ internal fun ChatModelMenuButton(
                 text = { Text("Auto" + if (isAuto) "  ✓" else "", fontSize = 12.sp) },
                 onClick = { onPick(com.codespace.ide.chat.ChatModelSelection.AUTO_MODEL); onExpandedChange(false) },
             )
+            // CUSTOM-ENDPOINT-FIX: providers whose live model list FAILED get a
+            // visible warning row — never a silent placeholder entry.
+            errors.filter { (eid, _, _) -> availModels.none { m -> m.startsWith(eid + ":") } }
+                .forEach { (_, name, reason) ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "\u26A0 " + name + " — no models: " + reason,
+                                fontSize = 10.sp,
+                                color = colors.textSecondary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        onClick = { },
+                        enabled = false,
+                    )
+                }
             if (pinned.isNotEmpty()) {
                 DropdownMenuItem(
                     text = { Text("Pinned", fontSize = 10.sp, color = colors.textSecondary) },

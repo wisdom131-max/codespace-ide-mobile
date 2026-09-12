@@ -34,9 +34,10 @@ internal object OpenAiCompatibleTransport {
     internal suspend fun call(
         url: String, apiKey: String, model: String, convMsgs: JSONArray,
         images: List<com.codespace.ide.chat.ChatRequestImage> = emptyList(),
+        audios: List<com.codespace.ide.chat.ChatRequestAudio> = emptyList(),
     ): String =
         withContext(Dispatchers.IO) {
-            val body = JSONObject().put("model", model).put("messages", withImages(convMsgs, images)).toString()
+            val body = JSONObject().put("model", model).put("messages", withImages(convMsgs, images, audios)).toString()
             val resp = http.newCall(
                 Request.Builder()
                     .url(url)
@@ -63,8 +64,9 @@ internal object OpenAiCompatibleTransport {
     internal fun withImages(
         convMsgs: JSONArray,
         images: List<com.codespace.ide.chat.ChatRequestImage>,
+        audios: List<com.codespace.ide.chat.ChatRequestAudio> = emptyList(),
     ): JSONArray {
-        if (images.isEmpty()) return convMsgs
+        if (images.isEmpty() && audios.isEmpty()) return convMsgs
         val out = JSONArray()
         for (i in 0 until convMsgs.length()) out.put(convMsgs.get(i))
         for (i in (out.length() - 1) downTo 0) {
@@ -77,6 +79,15 @@ internal object OpenAiCompatibleTransport {
                     JSONObject().put("type", "image_url").put(
                         "image_url",
                         JSONObject().put("url", "data:" + img.mimeType + ";base64," + img.base64),
+                    )
+                )
+            }
+            // R9-AUDIO: OpenAI input_audio part shape (platform.openai.com docs)
+            for (aud in audios) {
+                parts.put(
+                    JSONObject().put("type", "input_audio").put(
+                        "input_audio",
+                        JSONObject().put("data", aud.base64).put("format", aud.format),
                     )
                 )
             }
@@ -131,8 +142,9 @@ internal object OpenAiCompatibleTransport {
         convMsgs: JSONArray,
         onDelta: (String) -> Unit,
         images: List<com.codespace.ide.chat.ChatRequestImage> = emptyList(),
+        audios: List<com.codespace.ide.chat.ChatRequestAudio> = emptyList(),
     ): String = withContext(Dispatchers.IO) {
-        val body = JSONObject().put("model", model).put("messages", withImages(convMsgs, images)).put("stream", true).toString()
+        val body = JSONObject().put("model", model).put("messages", withImages(convMsgs, images, audios)).put("stream", true).toString()
         val streamClient = http.newBuilder()
             .readTimeout(180, java.util.concurrent.TimeUnit.SECONDS)
             .build()
@@ -183,27 +195,61 @@ internal object OpenAiCompatibleTransport {
      * model-not-found (retired default model IDs), not auth. The vendor's error body is
      * now included so the panel shows the real reason.
      */
-    internal fun transportError(prefix: String, resp: okhttp3.Response): String {
+    /**
+     * CUSTOM-ENDPOINT-FIX (c): parse the vendor error body into a CLEAN one-line
+     * message (error.message / message fields — the OpenAI-family error shape),
+     * falling back to the raw snippet. Returns (clean, raw) — the raw body rides
+     * behind a RAW_RESPONSE marker so error UIs can tuck it behind an expand.
+     */
+    internal fun transportErrorParts(prefix: String, resp: okhttp3.Response): Pair<String, String> {
         val body = try { resp.body?.string() } catch (_: Exception) { null }
-        val snippet = if (body.isNullOrBlank()) "" else " " + body.take(160).replace("\n", " ")
-        return prefix + " (" + resp.code + ")." + snippet
+        val clean = try {
+            val obj = JSONObject(body ?: "")
+            val msg = obj.optJSONObject("error")?.optString("message")
+                ?: obj.optString("message")
+            if (msg.isNotBlank()) prefix + " (" + resp.code + "): " + msg else ""
+        } catch (_: Exception) { "" }
+        val fallback = prefix + " (" + resp.code + ")." +
+            (if (body.isNullOrBlank()) "" else " " + body.take(160).replace("\n", " "))
+        return (if (clean.isNotEmpty()) clean else fallback) to (body?.take(400) ?: "")
     }
 
-    /** Shared OpenAI-compatible GET /models lister (OpenAI, DeepSeek, OpenRouter). */
+    /** Clean vendor error + raw body behind a RAW_RESPONSE block (ChatErrorBubble expands it). */
+    internal fun transportError(prefix: String, resp: okhttp3.Response): String {
+        val (clean, raw) = transportErrorParts(prefix, resp)
+        if (raw.isBlank()) return clean
+        return clean + "\n\nRAW_RESPONSE_BEGIN\n" + raw + "\nRAW_RESPONSE_END"
+    }
+
+    /** Strips the RAW_RESPONSE block for single-line error surfaces (input error Text). */
+    internal fun stripRawError(message: String): String =
+        message.substringBefore("\nRAW_RESPONSE_BEGIN").trim()
+
+    /**
+     * Shared OpenAI-compatible GET /models lister (OpenAI, DeepSeek, OpenRouter, xAI, Custom).
+     * CUSTOM-ENDPOINT-FIX (b): FAILS LOUD — an HTTP error or a malformed body now
+     * THROWS with the parsed vendor message instead of silently returning an
+     * empty list (which made the placeholder "custom-model" look like the only
+     * real model). Callers that want soft-failure catch it themselves.
+     */
     internal suspend fun fetchModelList(url: String, apiKey: String, bearer: Boolean = true): List<String> =
         withContext(Dispatchers.IO) {
-            try {
-                val builder = Request.Builder().url(url)
-                if (bearer) builder.header("Authorization", "Bearer $apiKey")
-                val resp = http.newCall(builder.get().build()).execute()
-                if (!resp.isSuccessful) return@withContext emptyList()
-                val arr = JSONObject(resp.body?.string() ?: "").getJSONArray("data")
-                val out = ArrayList<String>(arr.length())
-                for (i in 0 until arr.length()) {
-                    val id = arr.getJSONObject(i).optString("id")
-                    if (id.isNotEmpty()) out.add(id)
-                }
-                out
-            } catch (_: Exception) { emptyList() }
+            val builder = Request.Builder().url(url)
+            if (bearer) builder.header("Authorization", "Bearer $apiKey")
+            val resp = http.newCall(builder.get().build()).execute()
+            if (!resp.isSuccessful) {
+                val (clean, _) = transportErrorParts("Model list fetch failed", resp)
+                throw Exception(clean)
+            }
+            val bodyText = resp.body?.string() ?: throw Exception("Model list fetch failed: empty response body.")
+            val arr = try { JSONObject(bodyText).getJSONArray("data") } catch (_: Exception) {
+                throw Exception("Model list fetch failed: response was not an OpenAI /models JSON payload.")
+            }
+            val out = ArrayList<String>(arr.length())
+            for (i in 0 until arr.length()) {
+                val id = arr.getJSONObject(i).optString("id")
+                if (id.isNotEmpty()) out.add(id)
+            }
+            out
         }
 }

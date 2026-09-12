@@ -85,6 +85,23 @@ interface ChatProvider {
      * then refuses the send with a clear message instead of a silent API failure.
      */
     val supportsImages: Boolean get() = true
+
+    /**
+     * R9-AUDIO: whether this provider's API accepts audio attachments. false by
+     * default — chat() refuses the send with a clear message instead of a silent
+     * API failure. OpenAI / OpenRouter / Custom Endpoint / Gemini override true
+     * (vendor docs support audio input parts); Anthropic, xAI, DeepSeek keep false.
+     */
+    val supportsAudio: Boolean get() = false
+
+    /**
+     * CUSTOM-ENDPOINT-FIX: when true, defaultModel is a PLACEHOLDER, not a real
+     * vendor model — it must NEVER appear as a pickable entry (the server would
+     * reject it with "Invalid model"). The picker only lists real models fetched
+     * from the provider's own /models endpoint for such providers, and shows an
+     * error row when that fetch fails.
+     */
+    val defaultModelIsPlaceholder: Boolean get() = false
 }
 
 /**
@@ -115,11 +132,26 @@ data class ChatRequest(
      * convMsgs as the ATTACHED CONTEXT block; images NEVER enter the text path.
      */
     val images: List<ChatRequestImage> = emptyList(),
+    /**
+     * R9-AUDIO: audio attachments riding the LAST user message (same rules as
+     * images). OpenAI-family: {type:"input_audio"} parts; Gemini: inline_data
+     * with an audio mime_type. Providers without supportsAudio refuse via chat().
+     */
+    val audios: List<ChatRequestAudio> = emptyList(),
 )
 
 /** One base64 image sent with a request (vendor docs: JPEG/PNG/GIF/WebP accepted). */
 data class ChatRequestImage(
     val mimeType: String,
     val base64: String,
+    val name: String,
+)
+
+/** One base64 audio clip sent with a request. Vendor part: OpenAI input_audio (wav|mp3), Gemini inline_data. */
+data class ChatRequestAudio(
+    val mimeType: String,
+    val base64: String,
+    /** OpenAI input_audio "format" field: "wav" or "mp3" (derived from the mime type). */
+    val format: String,
     val name: String,
 )

@@ -317,6 +317,7 @@ private data class AiKeyUiState(
     val routeCandidate: String? = null,
     val liveStatus: LiveStatus = LiveStatus.UNCHECKED,
     val liveModelCount: Int = 0,
+    val liveError: String? = null,
     // Custom-endpoint URL editor (provider id "custom" only)
     val urlDraft: String = "",
     val urlError: String? = null,
@@ -333,7 +334,8 @@ private fun keyStatusLine(provider: ChatProvider, hasKey: Boolean, state: AiKeyU
         LiveStatus.UNCHECKED -> "✓ Key saved · tap Replace to update" + suffix
         LiveStatus.CHECKING  -> "✓ Key saved · checking…" + suffix
         LiveStatus.LIVE      -> "✓ Key saved · live: ${state.liveModelCount} models" + suffix
-        LiveStatus.REJECTED  -> "✗ Key rejected (or unreachable)" + suffix
+        LiveStatus.REJECTED  -> "✗ Key rejected (or unreachable)" +
+            (state.liveError?.let { " — " + it } ?: "") + suffix
     }
 }
 
@@ -345,11 +347,20 @@ private fun runLiveCheck(
 ) {
     scope.launch {
         val key = tokenStore.aiKey(provider.id.uppercase())
-        val models = try { provider.fetchModels(key) } catch (_: Exception) { emptyList() }
+        // CUSTOM-ENDPOINT-FIX (b): fetchModelList now throws the REAL failure
+        // (HTTP status + vendor message) — surface it instead of "unreachable".
+        var fetchError: String? = null
+        val models = try {
+            provider.fetchModels(key)
+        } catch (e: Exception) {
+            fetchError = e.message?.take(120)
+            emptyList()
+        }
         val current = uiStates[provider.id] ?: AiKeyUiState()
         uiStates[provider.id] = current.copy(
             liveStatus = if (models.isNotEmpty()) LiveStatus.LIVE else LiveStatus.REJECTED,
             liveModelCount = models.size,
+            liveError = fetchError,
         )
     }
 }

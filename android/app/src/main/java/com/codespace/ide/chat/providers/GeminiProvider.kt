@@ -30,6 +30,7 @@ class GeminiProvider : ChatProvider {
     // gemini-3.8-flash is the corrected default; on-device send is the final live check.
     override val defaultModel = "gemini-3.8-flash"
     override val isLocal = false
+    override val supportsAudio = true
     override val requiresApiKey = true
 
     private val http = OkHttpClient()
@@ -47,19 +48,32 @@ class GeminiProvider : ChatProvider {
      * images ride the LAST user message as extra {inline_data:{mime_type, data}}
      * parts (ai.google.dev vision docs shape).
      */
-    private fun buildContents(convMsgs: JSONArray, images: List<com.codespace.ide.chat.ChatRequestImage> = emptyList()): JSONArray {
+    private fun buildContents(
+        convMsgs: JSONArray,
+        images: List<com.codespace.ide.chat.ChatRequestImage> = emptyList(),
+        audios: List<com.codespace.ide.chat.ChatRequestAudio> = emptyList(),
+    ): JSONArray {
         val contents = JSONArray()
         val stripped = OpenAiCompatibleTransport.stripSystemMessage(convMsgs)
         for (i in 0 until stripped.length()) {
             val m = stripped.getJSONObject(i)
             val role = if (m.optString("role") == "assistant") "model" else "user"
             val parts = JSONArray().put(JSONObject().put("text", m.optString("content")))
-            if (images.isNotEmpty() && i == stripped.length() - 1 && role == "user") {
+            if ((images.isNotEmpty() || audios.isNotEmpty()) && i == stripped.length() - 1 && role == "user") {
                 for (img in images) {
                     parts.put(
                         JSONObject().put(
                             "inline_data",
                             JSONObject().put("mime_type", img.mimeType).put("data", img.base64),
+                        )
+                    )
+                }
+                // R9-AUDIO: Gemini accepts audio as inline_data with an audio mime_type
+                for (aud in audios) {
+                    parts.put(
+                        JSONObject().put(
+                            "inline_data",
+                            JSONObject().put("mime_type", aud.mimeType).put("data", aud.base64),
                         )
                     )
                 }
@@ -71,7 +85,7 @@ class GeminiProvider : ChatProvider {
 
     override suspend fun complete(request: ChatRequest): String = withContext(Dispatchers.IO) {
         val apiKey = request.apiKey ?: throw Exception(unavailableMessage())
-        val contents = buildContents(request.convMsgs, request.images)
+        val contents = buildContents(request.convMsgs, request.images, request.audios)
         val body = JSONObject()
             .put("contents", contents)
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", request.systemPrompt))))
@@ -97,7 +111,7 @@ class GeminiProvider : ChatProvider {
         withContext(Dispatchers.IO) {
             val apiKey = request.apiKey ?: throw Exception(unavailableMessage())
             val body = JSONObject()
-                .put("contents", buildContents(request.convMsgs, request.images))
+                .put("contents", buildContents(request.convMsgs, request.images, request.audios))
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", request.systemPrompt))))
                 .toString()
             val streamClient = http.newBuilder()
