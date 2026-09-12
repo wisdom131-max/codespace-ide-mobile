@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | R6 dc5ea2d FAILED #2753 (mutableStateSetOf + decl-order); fix pushed, CI pending. Last GREEN: #2751 (02f156d, R5). APK artifact: codespace-ide-arm64-v8a |
+| CI build | #2754 GREEN (996a6be, R6 pending-edits staging/review/apply) — R1..R6 live. APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -3001,7 +3001,7 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 
 ## [2026-09-12 20:05 WAT] — AI Agent: Claude Sonnet 5.6 [BUILD-FIX] R6: #2753 compile errors
 
-**Commit:** (this push) | **CI:** #2753 dc5ea2d FAILED — compileProdDebugKotlin; fix in this push, CI pending
+**Commit:** 996a6be | **CI:** #2754 GREEN (fix for #2753 compile failures)
 
 **RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
 
