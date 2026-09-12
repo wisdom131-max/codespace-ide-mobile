@@ -58,7 +58,7 @@ private val BULLET_RE = Regex("^([-*])\\s+")
 private val ORDERED_RE = Regex("^\\d+[.)]\\s+")
 private val TABLE_SEP_RE = Regex("^\\|?[\\s:|-]+\\|?$")
 
-internal fun parseMarkdownBlocks(md: String): List<MdBlock> {
+private fun parseMarkdownBlocks(md: String): List<MdBlock> {
     val blocks = ArrayList<MdBlock>()
     val lines = md.split('\n')
     var i = 0
