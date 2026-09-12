@@ -21,11 +21,10 @@ data class ChatAttachment(
     val name: String,
     val kind: Kind = Kind.FILE,
     val selText: String? = null,  // SELECTION only: the selected snippet
-) {
-    enum class Kind { FILE, SELECTION, IMAGE }
-
     /** IMAGE only: sniffed MIME type (image/jpeg, image/png, image/gif, image/webp). */
     val mimeType: String? = null,
+) {
+    enum class Kind { FILE, SELECTION, IMAGE }
 }
 
 object ChatAttachmentInjector {
