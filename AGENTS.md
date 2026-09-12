@@ -3277,3 +3277,12 @@ Full findings below in chat reply. Root cause confirmed in source: CustomOpenAiP
 6. RETEST batch A (locked-root, AQ. paste, zero-tab quiet); streaming retest; MCP Batch D; Exit-9; Debugger P3; Batch J.
 7. Round 9 Skills/agents/hooks (scope flag first); Round 10 status-bar/settings/history/a11y.
 8. PEEK — PARKED. Dead CopilotChatPanelOverlay composable cleanup — recommended, not scheduled.
+
+## [2026-09-13 00:55 WAT] — AI Agent: Claude Sonnet 5.6 (BUILD-FIX #2764)
+
+**Commit:** (this push) | **CI:** #2764 FAILED — one Kotlin error
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] #2764: catch-scoped `e` referenced outside its catch block
+CopilotChatPanelOverlay.kt:271 — `catch (e: Exception) { null }` assigns null but `e` ceases to exist outside the catch; the next line read `e.message` ('Unresolved reference: e'). Fixed the same pattern already used in AiKeysSection: hoist `var fetchError: String? = null`, assign inside catch, read after. Roadmap unchanged from the previous entry (all items as listed there).

@@ -266,9 +266,10 @@ private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): Pair<L
     val errors = mutableListOf<Triple<String, String, String>>()
     for (provider in ChatProviderRegistry.available(tokenStore)) {
         val key = try { tokenStore?.aiKey(provider.id.uppercase()) } catch (_: Exception) { null }
-        val live = try { provider.fetchModels(key) } catch (e: Exception) { null }
+        var fetchError: String? = null
+        val live = try { provider.fetchModels(key) } catch (e: Exception) { fetchError = e.message; null }
         if (live == null) {
-            errors.add(Triple(provider.id, provider.displayName, (e.message ?: "unreachable").take(90)))
+            errors.add(Triple(provider.id, provider.displayName, (fetchError ?: "unreachable").take(90)))
             // non-placeholder providers keep their (real) default model listed
             if (!provider.defaultModelIsPlaceholder) entries.add("${provider.id}:${provider.defaultModel}")
         } else {
