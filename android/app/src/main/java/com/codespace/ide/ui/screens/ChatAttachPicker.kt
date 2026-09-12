@@ -185,7 +185,7 @@ internal fun ChatAttachPickerDialog(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
-                            Icons.Default.Highlight, null,
+                            Icons.Default.ContentCopy, null,
                             tint = colors.accent,
                             modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
                         )
