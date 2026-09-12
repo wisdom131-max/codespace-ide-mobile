@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | #2751 GREEN (02f156d, R5) — R6 pending CI (this push: pending-edits staging/review/apply). APK artifact: codespace-ide-arm64-v8a |
+| CI build | R6 dc5ea2d FAILED #2753 (mutableStateSetOf + decl-order); fix pushed, CI pending. Last GREEN: #2751 (02f156d, R5). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2996,4 +2996,39 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 14. STREAMING retest (1731b4d): ASK streams; AGENT per-iteration stream + tool-done lines; gauge thresholds.
 15. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
 16. TAB-STRIP PEEK — PARKED (user decision). Custom-model-ID entry — PARKED (separate future item).
-17. MCP Batch D items 2-9 retest; Exit-9 next occurrence + [EXIT9-PHANTOM-DIAG]; Debugger P3 (run-to-cursor, inline values); Batch J deferred.
+17. MCP Batch D items 2-9 retest; Exit-9 next occurrence + [EXIT9-PHANTOM-DIAG]; Debugger P3 (run-to-cursor, inline values); Batch J deferred.\n
+---
+
+## [2026-09-12 20:05 WAT] — AI Agent: Claude Sonnet 5.6 [BUILD-FIX] R6: #2753 compile errors
+
+**Commit:** (this push) | **CI:** #2753 dc5ea2d FAILED — compileProdDebugKotlin; fix in this push, CI pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### What was fixed
+Two errors, both in NEW R6 code:
+1. ChatDiffReviewCard.kt — `mutableStateSetOf` is UNRESOLVED: this project's Compose Runtime predates 1.6 (SnapshotStateSet). Replaced with `remember { mutableStateOf(setOf<String>()) }` + set add/subtract toggling (recomposition via .value read).
+2. CodeEditor.kt — `snapshotUndo` declared at (old) 1600 but referenced by the R6 undo-gate inside the content LaunchedEffect at ~1004: local-declaration-order rule (#2734 class). Hoisted the unconditional `val snapshotUndo = remember {...}` above `externalContentSync` (slot-safe reorder, same fix class as extraCursorsState #2734); SnapshotUndoInit call untouched at its position.
+
+**Files touched:** ui/screens/ChatDiffReviewCard.kt, editor/CodeEditor.kt.
+
+**R6 re-test batch unchanged:** R6-1..R6-11 (previous entry).
+
+**Next on roadmap (ALL pending items):**
+1. R6 CI green -> Wisdom installs codespace-ide-arm64-v8a -> R6-1..R6-11.
+2. ROUND 7 — Plan review UI, todos, follow-ups, feedback, find-in-chat.
+3. ROUND 8 — Voice, images, queue, export/import.
+4. ROUND 9 — Skills/agents/hooks/subagents (scope flag BEFORE build — user gate).
+5. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+6. R1 RE-TEST: markdown rendering, code Copy/Insert, Stop mid-stream, Retry, /commands, session rename.
+7. R2 RE-TEST: AGENTS.md rule, chip toggle + persistence, copilot-instructions.md rename, CLAUDE.md combo, agent_prompt CLI block.
+8. R3 RE-TEST: paperclip picker, chip attach/remove, #file tokens, implicit-context toggle, caps, hashtag safety.
+9. R4 RE-TEST: tool chips, error bubbles, old-history error reclass, selection attach.
+10. R5 RE-TEST: R5-1..R5-8 (permission levels, pinning, per-mode models, AUTO resolution).
+11. MC RE-TEST on #2735 APK: chip + double-tap, BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity, [MC-TRIPWIRE].
+12. RETEST batch A: locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+13. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.
+14. STREAMING retest (1731b4d): ASK streams; AGENT stream + tool-done lines; gauge thresholds.
+15. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+16. TAB-STRIP PEEK — PARKED. Custom-model-ID entry — PARKED.
+17. MCP Batch D items 2-9 retest; Exit-9 + [EXIT9-PHANTOM-DIAG]; Debugger P3; Batch J deferred.

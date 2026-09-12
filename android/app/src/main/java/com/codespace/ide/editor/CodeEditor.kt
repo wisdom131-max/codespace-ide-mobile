@@ -943,6 +943,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     //   echo write would falsely mark the shared buffer dirty.
     // - Tag as ProgrammaticTextChange (no trigger authority: no completion/hover
     //   spam from the peer's edit), which also makes the next real echo skip.
+    // R2-1/R2-2: Undo/redo manager — snapshot-based O(1) undo/redo stack.
+    // MUST be declared before EVERY reference: the keyboard toolbar handler,
+    // and the content LaunchedEffect's R6 chat-apply undo gate below.
+    val snapshotUndo = remember { com.codespace.ide.editor.undo.SnapshotUndoManager() }
+
     suspend fun externalContentSync(newText: String, reason: String) {
         val oldText = value.text
         if (oldText == newText) return
@@ -1594,10 +1599,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P22-L: Peek Definition result — inline code preview (class moved to top-level)
     var peekDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
 
-    // R2-1/R2-2: Undo/redo manager — snapshot-based O(1) undo/redo stack.
-    // MUST be declared before the keyboard toolbar handler (LaunchedEffect below)
-    // which references snapshotUndo and undoRedoInProgress for toolbar undo/redo.
-    val snapshotUndo = remember { com.codespace.ide.editor.undo.SnapshotUndoManager() }
+    // R6-UNDO-ENTRY: snapshotUndo moved ABOVE externalContentSync (R3-C rule:
+    // locals must be declared textually before every reference — the content
+    // LaunchedEffect's chat-apply undo gate references it). Unconditional
+    // top-level remember reorder is slot-safe (same fix as extraCursorsState, #2734).
     SnapshotUndoInit(snapshotUndo, content, value, editorEvent)
     var undoRedoInProgress by remember { mutableStateOf(false) }
 

@@ -16,7 +16,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateSetOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -59,7 +59,8 @@ internal fun ChatDiffReviewCard(
     colors: ChatPanelColors,
 ) {
     val scope = rememberCoroutineScope()
-    val expanded = remember { mutableStateSetOf<String>() }
+    // expand-tracking via plain Set state (mutableStateSetOf needs Compose Runtime 1.6+, not present)
+    val expandedPaths = remember { mutableStateOf(setOf<String>()) }
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -92,9 +93,10 @@ internal fun ChatDiffReviewCard(
             Spacer(Modifier.height(8.dp))
 
             pending.forEach { entry ->
-                PendingFileRow(entry = entry, expanded = entry.path in expanded, colors = colors,
+                PendingFileRow(entry = entry, expanded = entry.path in expandedPaths.value, colors = colors,
                     onToggleExpand = {
-                        if (entry.path in expanded) expanded.remove(entry.path) else expanded.add(entry.path)
+                        val cur = expandedPaths.value
+                        expandedPaths.value = if (entry.path in cur) cur - entry.path else cur + entry.path
                     },
                     onApply = { scope.launch { withContext(Dispatchers.IO) { PendingChangesStore.apply(entry.path) } } },
                     onForceApply = { scope.launch { withContext(Dispatchers.IO) { PendingChangesStore.forceApply(entry.path) } } },
