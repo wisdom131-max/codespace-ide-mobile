@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-12 10:05 WAT
+> Last updated: 2026-09-12 10:33 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | beb78e1 |
-| CI build | #2722 GREEN (2a17033) -> #2724/#2726 pending (f12e366 regression batch + beb78e1 split-row placement fix) |
+| Latest commit | b00101c |
+| CI build | #2729 GREEN (b00101c; f12e366 6-fix batch + beb78e1 split-row placement + 2 build fixes 6abc3ec/b00101c) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2581,6 +2581,26 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 2. RETEST batch A (gate for validation change): MC chip + double-tap second cursor; locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
 3. RETEST batch B (f12e366, all six items): (a) split icon fixed at right of shell editor toolbar, creates/focuses split entry, edits live-sync between views, cursor preserved in inactive view, strip X closes view only, primary close cascades; (b) `ide open file:42` fresh-tab jump lands on line 42 with gold band; (c) scroll deep in a long file — top visible lines keep gutter numbers; (d) MC-mode double-tap adds/removes second cursor, tap places cursor, long-press selects word; drag scroll still works in MC mode; MC off = fully native taps; (e) terminal locked to root A: tap/`ide open` a root-B file is REFUSED ([LOCK] line), unlocked tab still opens any root; (f) remove a cloned repo's root via Explorer X -> dialog -> Remove & delete files -> directory gone -> re-clone same dest works (and Overwrite checkbox path works).
 4. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint pointed at a real OpenAI-compatible server.
+5. STREAMING retest (1731b4d): ASK-mode streams visibly; AGENT mode per-iteration stream + tool-done lines; context gauge values + amber/red thresholds.
+6. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+7. TAB-STRIP PEEK — PARKED by user decision, do NOT build until design settled.
+8. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
+9. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence; audit process cgroup/watchdog for SIGKILL/9.
+10. Item 4 PerfProbe re-verify AFTER items 2/3/4/8/9 retests.
+11. Debugger P3 (run-to-cursor, inline values) — queued.
+12. Batch J deferred; chat-command testing deferred until model configured.
+
+### [2026-09-12 10:33 WAT] — AI Agent: Claude, Commits 6abc3ec + b00101c (build-fixes for f12e366), CI #2729 GREEN
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**[BUILD-FIX]** #2724-#2728 FAILED on CodeEditor.kt gutter virtualization block, fixed in 6abc3ec + b00101c, GREEN at #2729: (a) #2724/#2725 — KOTLIN PITFALL (NEW, do not repeat): delegated state properties (var X by remember { mutableStateOf<T?>(null) }) CANNOT be smart-cast after a null check ('Smart cast to TextLayoutResult is impossible, property has open or custom getter'). Capture a plain local first: val local = X; if (local != null && local.member...). (b) #2728 — my smart-cast local was named `gutterLayout`, which COLLIDED with a pre-existing local `gutterLayout` further down the SAME scope (GUTTER-ALIGN fix's row-positioning local): 'Conflicting declarations'. Renamed to `gutterVirtLayout`. LESSON: before introducing any local, grep the enclosing composable for the same identifier — the same fix area had been touched before.
+
+**Next on roadmap (ALL pending items):**
+1. Install newest APK (#2729, b00101c; artifact codespace-ide-arm64-v8a).
+2. RETEST batch A (gate for validation change): MC chip + double-tap second cursor; locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+3. RETEST batch B (all six f12e366/beb78e1 items): (a) split icon in its OWN top row (above breadcrumb + Find/zoom toolbar, right-edge pinned), creates/focuses split entry; edits live-sync between views; cursor preserved in inactive view; strip X closes view only; primary close cascades; (b) `ide open file:42` fresh-tab jump lands on line 42 with gold band; (c) scroll deep in a long file — top visible lines keep gutter numbers; (d) MC-mode double-tap adds/removes second cursor, tap places cursor, long-press selects word; drag scroll works in MC mode; MC off = fully native taps; (e) terminal locked to root A: tap/`ide open` root-B file REFUSED ([LOCK] line); unlocked tab opens any root; (f) Explorer X on cloned repo root -> dialog -> Remove & delete files -> directory gone -> re-clone same dest works (+ Overwrite checkbox path).
+4. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint against a real OpenAI-compatible server.
 5. STREAMING retest (1731b4d): ASK-mode streams visibly; AGENT mode per-iteration stream + tool-done lines; context gauge values + amber/red thresholds.
 6. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
 7. TAB-STRIP PEEK — PARKED by user decision, do NOT build until design settled.
