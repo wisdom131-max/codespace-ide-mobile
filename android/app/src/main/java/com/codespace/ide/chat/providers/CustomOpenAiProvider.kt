@@ -59,7 +59,7 @@ class CustomOpenAiProvider : ChatProvider {
             ?: throw Exception("No custom endpoint URL set. Add one in Settings → AI Providers → Custom Endpoint.")
         return OpenAiCompatibleTransport.call(
             chatUrl(base),
-            request.apiKey ?: "", request.model, request.convMsgs,
+            request.apiKey ?: "", request.model, request.convMsgs, request.images,
         )
     }
 
@@ -76,7 +76,7 @@ class CustomOpenAiProvider : ChatProvider {
         val base = CustomEndpointStore.baseUrl
             ?: throw Exception("No custom endpoint URL set. Add one in Settings → AI Providers → Custom Endpoint.")
         return OpenAiCompatibleTransport.callStreaming(
-            chatUrl(base), request.apiKey ?: "", request.model, request.convMsgs, onDelta,
+            chatUrl(base), request.apiKey ?: "", request.model, request.convMsgs, onDelta, request.images,
         )
     }
 

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -105,7 +106,8 @@ internal fun ChatAttachmentChips(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        Icons.Default.Description, null,
+                        if (att.kind == ChatAttachment.Kind.IMAGE) Icons.Default.Image else Icons.Default.Description,
+                        null,
                         tint = colors.accent,
                         modifier = Modifier.padding(end = 4.dp).height(12.dp).width(12.dp),
                     )
@@ -137,6 +139,8 @@ internal fun ChatAttachPickerDialog(
     colors: ChatPanelColors,
     // R4-ATTACH-SELECTION: non-null enables the "current editor selection" row
     onPickSelection: ((ChatAttachment) -> Unit)? = null,
+    // R8-VISION: non-null enables the "attach image from device" row
+    onPickImage: (() -> Unit)? = null,
 ) {
     if (projectRoot.isNullOrBlank()) { onDismiss(); return }
     var query by remember { mutableStateOf("") }
@@ -204,6 +208,29 @@ internal fun ChatAttachPickerDialog(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                        }
+                    }
+                }
+                // R8-VISION: attach an image from the device (multimodal request)
+                if (onPickImage != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable { onPickImage() }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Image, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text("Attach image from device", fontSize = 11.sp, color = colors.text)
+                            Text("JPEG / PNG / GIF / WebP — max 5 MB, sent with your next message",
+                                fontSize = 9.sp, color = colors.textSecondary, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }

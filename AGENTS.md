@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | R7-halt-fix + R8 (queue/voice/export) pushed, CI pending. Last GREEN: #2754 (996a6be, R6). APK artifact: codespace-ide-arm64-v8a |
+| CI build | R8-vision ALL providers + halt-fix pushed, CI pending. Last GREEN: #2754 (996a6be, R6). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -3162,3 +3162,52 @@ Single compile error (ChatPlanStore.kt:62): `plans[sessionId] = (plans[sessionId
 15. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
 16. TAB-STRIP PEEK — PARKED. Custom-model-ID entry — PARKED.
 17. MCP Batch D items 2-9 retest; Exit-9 + [EXIT9-PHANTOM-DIAG]; Debugger P3; Batch J deferred.
+
+## [2026-09-12 21:45 WAT] — AI Agent: Claude Sonnet 5.6 (R8-VISION-ALL-PROVIDERS + VOICE-VERIFIED)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### Part 1 — VOICE PERMISSION CLAIM VERIFIED (no code change needed)
+Checked against AOSP framework source (android.googlesource.com, RecognizerIntent.java + SpeechRecognizer.java):
+- ACTION_RECOGNIZE_SPEECH (what we launch) starts the recognizer ACTIVITY in ANOTHER app's process (Google's speech service) — the mic permission belongs to THAT app, not the caller. The javadoc's only mandated handling is ActivityNotFoundException, which we already catch ("No speech recognizer installed" toast).
+- SpeechRecognizer (the bound-service API — NOT what we use) is the one that requires the caller to hold RECORD_AUDIO (javadoc: "the application must have android.Manifest.permission.RECORD_AUDIO permission to use this class"). We never call it.
+Conclusion: zero runtime permission needed, no silent-fail/crash path on first tap.
+
+### Part 2 — R8 VISION: images in chat, ALL providers (not a subset)
+1. [DOCS] Provider-by-provider vision support VERIFIED from vendor docs (2026-09-12): OpenAI (platform.openai.com image_url content parts), xAI (docs.x.ai same chat/completions shape), DeepSeek (api-docs.deepseek.com/guides/vision — deepseek-flash accepts images via "standard OpenAI-compatible Chat Completions format"), OpenRouter (OpenAI-compatible image_url), Gemini (ai.google.dev inline_data), Anthropic (docs.claude.com base64 source blocks). ALL support vision — no provider needed the "not supported" branch; the graceful flag exists anyway.
+2. [UI] ATTACH FLOW: ChatAttachPicker dialog gains "Attach image from device" row -> system file picker (image/*). NEW chat/ChatImageAttachments.kt: copies the pick into app-private filesDir/chat-images/ (survives the content grant), byte-sniffs the real format (JPEG/PNG/GIF/WebP magic numbers, resolver mime, extension fallback — DeepSeek docs: format detected from content), hard 5MB cap with clear toasts, 7-day prune on app start (CodeSpaceApplication hook). IMAGE chips use the Image icon, removable like any attachment, clear on send.
+3. [RESTRUCTURE] REQUEST PIPELINE: ChatRequest gains images: List<ChatRequestImage> (mime, base64, name) — default empty, zero churn for existing callers. ChatProvider gains supportsImages (default true; chat() refuses the send with "Image attachments are not supported by <provider>. Remove the image chips or switch models." — clear message, never silent). Images ride ONLY the first request's LAST user message (vendor rule: user messages only; tool-result iterations excluded). Images NEVER enter the text path (ChatAttachmentInjector skips IMAGE kind) and never persist into session history.
+4. [BUILD-FIX] VENDOR SHAPES: OpenAI-family (OpenAi/Xai/DeepSeek/OpenRouter/Custom) one transport helper withImages() — last user content becomes [{type:text},{type:image_url, image_url:{url:"data:<mime>;base64,..."}}]; Gemini buildContents appends {inline_data:{mime_type,data}} parts; Anthropic buildMessages uses {type:image, source:{type:base64, media_type, data}} blocks. Streaming + non-streaming both pass request.images. Custom endpoint passthrough: if the user's server lacks vision, ITS real error text surfaces (no silent failure).
+5. [DOCS] Known accepted limitation v1: the context gauge underestimates when images are attached (images are billed as vendor-side image tokens, not in the text count).
+
+**Files touched:** chat/ChatProvider.kt, chat/ChatAttachment.kt, chat/ChatImageAttachments.kt (NEW), chat/providers/OpenAiCompatibleTransport.kt, OpenAiProvider.kt, XaiProvider.kt, DeepSeekProvider.kt, OpenRouterProvider.kt, CustomOpenAiProvider.kt, GeminiProvider.kt, AnthropicProvider.kt, ui/screens/ChatAttachPicker.kt, ui/screens/CopilotChatPanelOverlay.kt, CodeSpaceApplication.kt.
+
+### R8-VISION re-test batch (R8V-1..R8V-8) — ADD to the device batch
+- R8V-1 Paperclip -> "Attach image from device" -> pick a JPEG -> chip appears (Image icon); attach 2 images.
+- R8V-2 Send "what is in this image?" with Gemini -> model describes it (inline_data path works).
+- R8V-3 Same with OpenAI/DeepSeek/xAI/OpenRouter -> image_url path works.
+- R8V-4 Same with Claude -> base64 source path works.
+- R8V-5 Pick a >5MB image -> clear "Image is too large (max 5 MB)" toast, nothing attaches.
+- R8V-6 Unsupported format (e.g. a .txt renamed) -> "Unsupported image format" toast.
+- R8V-7 Image chip + text attach together in one message -> both arrive (text block + image parts).
+- R8V-8 Attach image, switch model between providers -> shape conversion follows the active provider.
+
+**Next on roadmap (ALL pending items):**
+1. This build green -> Wisdom installs codespace-ide-arm64-v8a -> R7-1..R7-12 + R8-1..R8-10 + R8V-1..R8V-8 (one device session).
+2. R6 RE-TEST: R6-1..R6-11 (staging/apply/drift/undo) — still untested on device.
+3. ROUND 9 — Skills/agents/hooks/subagents (scope flag BEFORE build — user gate).
+4. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+5. R1 RE-TEST: markdown rendering, code Copy/Insert, Stop mid-stream, Retry, /commands, session rename.
+6. R2 RE-TEST: AGENTS.md rule, chip toggle + persistence, copilot-instructions.md rename, CLAUDE.md combo, agent_prompt CLI block.
+7. R3 RE-TEST: paperclip picker, chip attach/remove, #file tokens, implicit-context toggle, caps, hashtag safety.
+8. R4 RE-TEST: tool chips, error bubbles, old-history error reclass, selection attach.
+9. R5 RE-TEST: R5-1..R5-8 (permission levels, pinning, per-mode models, AUTO resolution).
+10. MC RE-TEST on #2735 APK: chip + double-tap, BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity, [MC-TRIPWIRE].
+11. RETEST batch A: locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+12. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.
+13. STREAMING retest (1731b4d): ASK streams; AGENT stream + tool-done lines; gauge thresholds.
+14. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+15. TAB-STRIP PEEK — PARKED. Custom-model-ID entry — PARKED.
+16. MCP Batch D items 2-9 retest; Exit-9 + [EXIT9-PHANTOM-DIAG]; Debugger P3; Batch J deferred.

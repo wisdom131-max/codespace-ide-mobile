@@ -34,13 +34,42 @@ class AnthropicProvider : ChatProvider {
     override fun unavailableMessage(): String =
         "No $displayName API key found. Add it in Settings."
 
+    /**
+     * R8-VISION: Anthropic image blocks (docs.claude.com/en/docs/build-with-claude/vision):
+     * the LAST user message becomes [{type:"text"}, {type:"image", source:{type:"base64",
+     * media_type, data}}]. Images in user messages only (vendor rule).
+     */
+    private fun buildMessages(convMsgs: JSONArray, images: List<com.codespace.ide.chat.ChatRequestImage>): JSONArray {
+        val msgs = OpenAiCompatibleTransport.stripSystemMessage(convMsgs)
+        if (images.isEmpty()) return msgs
+        for (i in (msgs.length() - 1) downTo 0) {
+            val m = msgs.getJSONObject(i)
+            if (m.optString("role") != "user") continue
+            val parts = JSONArray()
+            parts.put(JSONObject().put("type", "text").put("text", m.optString("content")))
+            for (img in images) {
+                parts.put(
+                    JSONObject().put("type", "image").put(
+                        "source",
+                        JSONObject().put("type", "base64")
+                            .put("media_type", img.mimeType)
+                            .put("data", img.base64),
+                    )
+                )
+            }
+            m.put("content", parts)
+            break
+        }
+        return msgs
+    }
+
     override suspend fun complete(request: ChatRequest): String = withContext(Dispatchers.IO) {
         val apiKey = request.apiKey ?: throw Exception(unavailableMessage())
         val body = JSONObject()
             .put("model", request.model)
             .put("max_tokens", 4096)
             .put("system", request.systemPrompt)
-            .put("messages", OpenAiCompatibleTransport.stripSystemMessage(request.convMsgs))
+            .put("messages", buildMessages(request.convMsgs, request.images))
             .toString()
         val resp = http.newCall(
             Request.Builder()
@@ -69,7 +98,7 @@ class AnthropicProvider : ChatProvider {
                 .put("model", request.model)
                 .put("max_tokens", 4096)
                 .put("system", request.systemPrompt)
-                .put("messages", OpenAiCompatibleTransport.stripSystemMessage(request.convMsgs))
+                .put("messages", buildMessages(request.convMsgs, request.images))
                 .put("stream", true)
                 .toString()
             val streamClient = http.newBuilder()

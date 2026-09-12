@@ -25,7 +25,7 @@ class DeepSeekProvider : ChatProvider {
     override suspend fun complete(request: ChatRequest): String =
         OpenAiCompatibleTransport.call(
             "https://api.deepseek.com/v1/chat/completions",
-            request.apiKey ?: "", request.model, request.convMsgs,
+            request.apiKey ?: "", request.model, request.convMsgs, request.images,
         )
 
     /** Live model list from GET /models (small, curated list). */
@@ -36,7 +36,7 @@ class DeepSeekProvider : ChatProvider {
     /** STREAMING: OpenAI-compatible SSE — one transport implementation covers the family. */
     override suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String =
         OpenAiCompatibleTransport.callStreaming(
-            "https://api.deepseek.com/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta,
+            "https://api.deepseek.com/v1/chat/completions", request.apiKey ?: "", request.model, request.convMsgs, onDelta, request.images,
         )
 
     /** TOKEN COUNT: jtokkit BPE (exact for OpenAI models, close proxy for the family). */

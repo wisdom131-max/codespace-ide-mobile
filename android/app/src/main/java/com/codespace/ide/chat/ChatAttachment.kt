@@ -22,7 +22,10 @@ data class ChatAttachment(
     val kind: Kind = Kind.FILE,
     val selText: String? = null,  // SELECTION only: the selected snippet
 ) {
-    enum class Kind { FILE, SELECTION }
+    enum class Kind { FILE, SELECTION, IMAGE }
+
+    /** IMAGE only: sniffed MIME type (image/jpeg, image/png, image/gif, image/webp). */
+    val mimeType: String? = null,
 }
 
 object ChatAttachmentInjector {
@@ -58,6 +61,9 @@ object ChatAttachmentInjector {
         sb.append("The user explicitly attached the following to this request.\n")
         var total = 0
         for (att in attachments) {
+            // R8-VISION: images ride the request as structured multimodal parts,
+            // never as text — skip them in the text-injection path entirely.
+            if (att.kind == ChatAttachment.Kind.IMAGE) continue
             if (att.kind == ChatAttachment.Kind.SELECTION) {
                 val text = (att.selText ?: "").trim().take(MAX_FILE_CHARS)
                 if (text.isEmpty()) continue

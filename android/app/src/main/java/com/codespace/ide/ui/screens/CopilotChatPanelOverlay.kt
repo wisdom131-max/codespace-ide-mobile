@@ -464,6 +464,17 @@ private suspend fun chat(
     // wraps around whichever one answers.
     val provider = if (colonIdx > 0) ChatProviderRegistry.byId(providerPrefix) else null
 
+    // R8-VISION: image attachments ride ONLY the first request as structured
+    // multimodal parts (vendor shapes converted inside each provider; never
+    // injected as text, never persisted). Iteration >0 re-sends are tool-result
+    // turns — images stay on the original user turn only.
+    val requestImages = if (attachments.any { it.kind == com.codespace.ide.chat.ChatAttachment.Kind.IMAGE }) {
+        if (provider != null && !provider.supportsImages) {
+            throw Exception("Image attachments are not supported by ${provider.displayName}. Remove the image chips or switch models.")
+        }
+        com.codespace.ide.chat.ChatImageAttachments.toRequestImages(attachments)
+    } else emptyList()
+
     for (iteration in 0 until maxIterations) {
         onStreamEvent?.invoke(ChatStreamEvent.IterationStart(iteration))
         val deltaSink: ((String) -> Unit)? =
@@ -471,7 +482,10 @@ private suspend fun chat(
         val content = if (provider != null) {
             val apiModel = model.substring(colonIdx + 1)
             if (!provider.isAvailable(tokenStore)) throw Exception(provider.unavailableMessage())
-            val req = ChatRequest(apiModel, systemPrompt, convMsgs, tokenStore?.aiKey(providerPrefix.uppercase()))
+            val req = ChatRequest(
+                apiModel, systemPrompt, convMsgs, tokenStore?.aiKey(providerPrefix.uppercase()),
+                if (iteration == 0) requestImages else emptyList(),
+            )
             if (deltaSink != null) provider.completeStreaming(req, deltaSink)
             else provider.complete(req)
         } else {
@@ -1353,6 +1367,19 @@ internal fun CopilotChatPanelInline(
         }
     }
 
+    // R8-VISION: attach an image from the device — copied into app-private
+    // chat-images/ storage (survives the content grant), chip removable like any attachment.
+    val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            try {
+                val att = com.codespace.ide.chat.ChatImageAttachments.importFromUri(context, uri)
+                if (attachments.none { it.path == att.path }) attachments = attachments + att
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(context, e.message ?: "Could not attach image", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     // R8-QUEUE: the queued message auto-sends as soon as the current turn ends.
     LaunchedEffect(queuedText, chatLoading) {
         if (queuedText != null && !chatLoading) {
@@ -1801,6 +1828,7 @@ internal fun CopilotChatPanelInline(
                     if (attachments.none { it.path == a.path }) attachments = attachments + a
                     showAttachPicker = false
                 },
+                onPickImage = { imageLauncher.launch("image/*") },
                 onDismiss = { showAttachPicker = false },
                 colors = colors,
             )

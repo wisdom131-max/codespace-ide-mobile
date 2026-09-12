@@ -31,9 +31,12 @@ internal object OpenAiCompatibleTransport {
         return out
     }
 
-    internal suspend fun call(url: String, apiKey: String, model: String, convMsgs: JSONArray): String =
+    internal suspend fun call(
+        url: String, apiKey: String, model: String, convMsgs: JSONArray,
+        images: List<com.codespace.ide.chat.ChatRequestImage> = emptyList(),
+    ): String =
         withContext(Dispatchers.IO) {
-            val body = JSONObject().put("model", model).put("messages", convMsgs).toString()
+            val body = JSONObject().put("model", model).put("messages", withImages(convMsgs, images)).toString()
             val resp = http.newCall(
                 Request.Builder()
                     .url(url)
@@ -46,6 +49,42 @@ internal object OpenAiCompatibleTransport {
             val json = JSONObject(resp.body?.string() ?: "")
             json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
         }
+
+    /**
+     * R8-VISION (OpenAI-family multimodal, one shape for the whole family):
+     * when images are present, the LAST user message's content becomes an array
+     * of {type:"text"} + {type:"image_url"} blocks with data: URLs. Vendor docs
+     * all specify this exact part shape: OpenAI (platform.openai.com — Chat
+     * Completions vision, data URLs), xAI (docs.x.ai — same chat/completions
+     * contract), DeepSeek (api-docs.deepseek.com/guides/vision — "standard
+     * OpenAI-compatible Chat Completions format"), OpenRouter (openrouter.ai
+     * docs — image_url parts). Images in user messages only (vendor rule).
+     */
+    internal fun withImages(
+        convMsgs: JSONArray,
+        images: List<com.codespace.ide.chat.ChatRequestImage>,
+    ): JSONArray {
+        if (images.isEmpty()) return convMsgs
+        val out = JSONArray()
+        for (i in 0 until convMsgs.length()) out.put(convMsgs.get(i))
+        for (i in (out.length() - 1) downTo 0) {
+            val m = out.optJSONObject(i) ?: continue
+            if (m.optString("role") != "user") continue
+            val parts = JSONArray()
+            parts.put(JSONObject().put("type", "text").put("text", m.optString("content")))
+            for (img in images) {
+                parts.put(
+                    JSONObject().put("type", "image_url").put(
+                        "image_url",
+                        JSONObject().put("url", "data:" + img.mimeType + ";base64," + img.base64),
+                    )
+                )
+            }
+            m.put("content", parts)
+            break
+        }
+        return out
+    }
 
     /**
      * RICH METADATA (2026-09-11): GET /models parsed into ChatModelInfo. Carries the
@@ -91,8 +130,9 @@ internal object OpenAiCompatibleTransport {
         model: String,
         convMsgs: JSONArray,
         onDelta: (String) -> Unit,
+        images: List<com.codespace.ide.chat.ChatRequestImage> = emptyList(),
     ): String = withContext(Dispatchers.IO) {
-        val body = JSONObject().put("model", model).put("messages", convMsgs).put("stream", true).toString()
+        val body = JSONObject().put("model", model).put("messages", withImages(convMsgs, images)).put("stream", true).toString()
         val streamClient = http.newBuilder()
             .readTimeout(180, java.util.concurrent.TimeUnit.SECONDS)
             .build()

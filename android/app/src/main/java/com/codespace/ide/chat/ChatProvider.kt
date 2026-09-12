@@ -75,6 +75,16 @@ interface ChatProvider {
      * falls back to TokenCounter's heuristic estimate. Never throws.
      */
     suspend fun countTokens(request: ChatRequest): Int? = null
+
+    /**
+     * R8-VISION: whether this provider's API accepts image attachments. Default
+     * true — verified against every vendor's docs on 2026-09-12: OpenAI/xAI/
+     * DeepSeek/OpenRouter use image_url content parts, Gemini uses inline_data,
+     * Anthropic uses base64 source blocks (see ChatImageAttachments for links).
+     * A provider that genuinely cannot accept images overrides false — chat()
+     * then refuses the send with a clear message instead of a silent API failure.
+     */
+    val supportsImages: Boolean get() = true
 }
 
 /**
@@ -99,4 +109,17 @@ data class ChatRequest(
     val convMsgs: JSONArray,
     /** API key from SecureTokenStore — null for local providers (requiresApiKey = false). */
     val apiKey: String?,
+    /**
+     * R8-VISION: images riding the LAST user message, converted to each vendor's
+     * multimodal part shape inside the provider. Text attachments keep riding
+     * convMsgs as the ATTACHED CONTEXT block; images NEVER enter the text path.
+     */
+    val images: List<ChatRequestImage> = emptyList(),
+)
+
+/** One base64 image sent with a request (vendor docs: JPEG/PNG/GIF/WebP accepted). */
+data class ChatRequestImage(
+    val mimeType: String,
+    val base64: String,
+    val name: String,
 )

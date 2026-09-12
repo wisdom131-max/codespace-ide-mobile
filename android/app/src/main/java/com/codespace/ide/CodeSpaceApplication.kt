@@ -46,6 +46,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         com.codespace.ide.chat.CustomEndpointStore.init(this)
         // R7-PLAN: per-session structured plans (plan tool + ChatPlanCard)
         com.codespace.ide.chat.ChatPlanStore.init(this)
+        com.codespace.ide.chat.ChatImageAttachments.pruneOldImages(this) // R8-VISION: 7-day image hygiene
         // Initialize TextMate engine (loads bundled grammars from assets)
         TextMateEngineHolder.get(this)
         NotificationStore.init(this) // P-NOTIF-RESTRUCTURE: persisted settings + sound
