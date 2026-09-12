@@ -3211,3 +3211,37 @@ Conclusion: zero runtime permission needed, no silent-fail/crash path on first t
 14. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
 15. TAB-STRIP PEEK — PARKED. Custom-model-ID entry — PARKED.
 16. MCP Batch D items 2-9 retest; Exit-9 + [EXIT9-PHANTOM-DIAG]; Debugger P3; Batch J deferred.
+
+## [2026-09-12 23:55 WAT] — AI Agent: Claude Sonnet 5.6 (VISION-GEMINI-ACTUAL-FIX + RESEARCH ONLY: custom-endpoint model bug)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] Gemini vision was NEVER actually wired despite being reported shipped
+Wisdom's V2/V3 retest surfaced "image chip shows, model says no image came through." Traced end-to-end: 6d01708's GeminiProvider.kt edit never landed in the committed diff (confirmed via `git log -- GeminiProvider.kt`: last touch was 1731b4d, R8-vision commit never appears). buildContents() still took only convMsgs; request.images was referenced nowhere in the file. Fixed now: buildContents(convMsgs, images) appends {inline_data:{mime_type,data}} parts to the LAST user message's parts array (ai.google.dev vision shape); both complete() and completeStreaming() now pass request.images. countTokens() intentionally left text-only (estimate, default arg covers it). VERIFIED the other 6 providers (OpenAI/xAI/DeepSeek/OpenRouter/Custom/Anthropic) DO correctly reference request.images at every call site — this was a Gemini-only gap.
+
+### [DOCS] Custom-endpoint model-ID bug — investigated, PLAN ONLY, no code (per Wisdom's explicit gate)
+Full findings below in chat reply. Root cause confirmed in source: CustomOpenAiProvider.defaultModel = "custom-model" (literal placeholder, by design) becomes the ONLY selectable entry whenever OpenAiCompatibleTransport.fetchModelList() fails or returns empty for the user's server — and that failure is swallowed by a bare `catch (_: Exception) { emptyList() }` with zero diagnostic surfaced. Architecture correction: multiple models per single provider/endpoint ALREADY works (registeredModelEntries/fetchLiveModelEntries + ChatModelMenuButton list every fetched "id:model" entry individually) — this is NOT a one-model-per-provider limitation as suspected; VS Code's provideLanguageModelChatInformation multi-model contract is already mirrored at this layer. The actual gaps: (1) silent live-fetch failure with no distinguishing UI state vs a real model, (2) raw truncated vendor JSON in transportError() for send-time errors, (3) TLS ALERT_HANDSHAKE_FAILURE against Cloudflare-fronted origins likely separate (possible JA3/TLS-fingerprint WAF block, not a code defect — needs diagnostic logging to confirm before any fix).
+
+**Files touched:** chat/providers/GeminiProvider.kt.
+
+### VISION re-test — ADD to batch, supersedes prior V2/V3 wording
+- V2 Gemini: attach image, ask "what is in this image?" — now should describe actual content.
+- V3 OpenAI/xAI/DeepSeek (any 2 of these 3): same test — these were ALREADY correctly wired; confirms family baseline.
+- V4 Anthropic: same test — already correctly wired.
+
+**Next on roadmap (ALL pending items):**
+1. This build green -> Wisdom re-runs V2 (Gemini) specifically to confirm the actual fix; if V3/V4 (already-wired providers) still fail, that is a NEW bug, not the one just fixed — report separately.
+2. CUSTOM-ENDPOINT FIX — AWAITING Wisdom's review of the plan (delivered in chat, not yet approved): (a) distinguish "no live models found — check endpoint/key" empty-state from a real model list in the picker; (b) surface the real fetchModelList() failure reason (HTTP status / exception message) instead of silent emptyList(); (c) parse structured vendor error bodies (message field) into a clean one-line error instead of raw JSON, keep raw body expandable; (d) add TLS diagnostic logging (negotiated protocol/cipher) to separate genuine misconfig from a WAF/fingerprint block on Cloudflare-fronted endpoints. NO CODE until Wisdom approves.
+3. R6 RE-TEST: R6-1..R6-11 (staging/apply/drift/undo) — still untested on device.
+4. MC RE-TEST: mostly CONFIRMED via [MC-TRIPWIRE] log (items 1,2,4,5,6,7 confirmed; item 3 tap-to-collapse needs isolated retest — Wisdom retesting separately).
+5. R7 RE-TEST: plan card halt/approve/revise/reject/durable-guard/follow-ups/feedback/find-in-chat — untested.
+6. R8 RE-TEST: queue/voice/export/import — untested.
+7. ROUND 9 — Skills/agents/hooks/subagents (scope flag BEFORE build — user gate).
+8. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+9. R1-R5 RE-TEST batches — still pending (see prior entries for full item lists).
+10. RETEST batch A: locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+11. STREAMING retest (1731b4d): ASK streams; AGENT stream + tool-done lines; gauge thresholds.
+12. TAB-STRIP PEEK — PARKED. Custom-model-ID entry — PARKED (superseded by the custom-endpoint fix plan above, will fold in once approved).
+13. MCP Batch D items 2-9 retest; Exit-9 + [EXIT9-PHANTOM-DIAG]; Debugger P3; Batch J deferred.

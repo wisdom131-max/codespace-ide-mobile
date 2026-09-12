@@ -40,24 +40,38 @@ class GeminiProvider : ChatProvider {
     override fun unavailableMessage(): String =
         "No $displayName API key found. Add it in Settings."
 
-    /** convMsgs → Gemini "contents" shape (assistant→model role mapping). */
-    private fun buildContents(convMsgs: JSONArray): JSONArray {
+    /**
+     * convMsgs → Gemini "contents" shape (assistant→model role mapping).
+     * R8-VISION (2026-09-12, fixed after being missed in the original R8 push —
+     * this file's images param was never wired despite being reported shipped):
+     * images ride the LAST user message as extra {inline_data:{mime_type, data}}
+     * parts (ai.google.dev vision docs shape).
+     */
+    private fun buildContents(convMsgs: JSONArray, images: List<com.codespace.ide.chat.ChatRequestImage> = emptyList()): JSONArray {
         val contents = JSONArray()
         val stripped = OpenAiCompatibleTransport.stripSystemMessage(convMsgs)
         for (i in 0 until stripped.length()) {
             val m = stripped.getJSONObject(i)
             val role = if (m.optString("role") == "assistant") "model" else "user"
-            contents.put(
-                JSONObject().put("role", role)
-                    .put("parts", JSONArray().put(JSONObject().put("text", m.optString("content"))))
-            )
+            val parts = JSONArray().put(JSONObject().put("text", m.optString("content")))
+            if (images.isNotEmpty() && i == stripped.length() - 1 && role == "user") {
+                for (img in images) {
+                    parts.put(
+                        JSONObject().put(
+                            "inline_data",
+                            JSONObject().put("mime_type", img.mimeType).put("data", img.base64),
+                        )
+                    )
+                }
+            }
+            contents.put(JSONObject().put("role", role).put("parts", parts))
         }
         return contents
     }
 
     override suspend fun complete(request: ChatRequest): String = withContext(Dispatchers.IO) {
         val apiKey = request.apiKey ?: throw Exception(unavailableMessage())
-        val contents = buildContents(request.convMsgs)
+        val contents = buildContents(request.convMsgs, request.images)
         val body = JSONObject()
             .put("contents", contents)
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", request.systemPrompt))))
@@ -83,7 +97,7 @@ class GeminiProvider : ChatProvider {
         withContext(Dispatchers.IO) {
             val apiKey = request.apiKey ?: throw Exception(unavailableMessage())
             val body = JSONObject()
-                .put("contents", buildContents(request.convMsgs))
+                .put("contents", buildContents(request.convMsgs, request.images))
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", request.systemPrompt))))
                 .toString()
             val streamClient = http.newBuilder()
