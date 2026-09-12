@@ -1214,37 +1214,92 @@ private fun SectionHeader(text: String, color: Color) {
 }
 
 @Composable
+/**
+ * ROUND 5 (2026-09-12): Flow Mode upgraded from the MANUAL/AUTO binary to
+ * VS Code-style permission levels, backed by ChatPermissionStore (with
+ * migration from the old FlowMode pref). Below the level control, chips show
+ * tools the user opted into via "Always Allow" on the approval card — tap a
+ * chip to revoke.
+ */
 private fun FlowModeRow(accent: Color, textPri: Color, textSec: Color, divider: Color) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var expanded by remember { mutableStateOf(false) }
-    val currentMode = ProjectSettingsStore.flowMode.value
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("Flow Mode", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text(
-                if (currentMode == FlowMode.AUTO)
-                    "Tool calls execute immediately (default)"
-                else
-                    "Each tool call pauses for your approval",
-                color = textSec, fontSize = 11.sp,
-            )
-        }
-        Box {
-            OutlinedButton(onClick = { expanded = true }) {
-                Text(if (currentMode == FlowMode.AUTO) "Auto" else "Manual",
-                    fontSize = 12.sp, color = accent)
+    var level by remember { mutableStateOf(com.codespace.ide.agent.ChatPermissionStore.level(context)) }
+    var autoTools by remember { mutableStateOf(com.codespace.ide.agent.ChatPermissionStore.autoApprovedTools(context)) }
+    val levelLabel = when (level) {
+        com.codespace.ide.agent.ChatFlowLevel.AUTO_ALL -> "Auto"
+        com.codespace.ide.agent.ChatFlowLevel.AUTO_SAFE -> "Safe"
+        com.codespace.ide.agent.ChatFlowLevel.MANUAL -> "Manual"
+    }
+    val levelDesc = when (level) {
+        com.codespace.ide.agent.ChatFlowLevel.AUTO_ALL -> "Tool calls execute immediately (default)"
+        com.codespace.ide.agent.ChatFlowLevel.AUTO_SAFE -> "Read-only tools run; changes need approval"
+        com.codespace.ide.agent.ChatFlowLevel.MANUAL -> "Each tool call pauses for your approval"
+    }
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Agent Permission Level", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(levelDesc, color = textSec, fontSize = 11.sp)
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                DropdownMenuItem(
-                    text = { Text("Auto — execute immediately") },
-                    onClick = { ProjectSettingsStore.setFlowMode(FlowMode.AUTO); expanded = false },
-                )
-                DropdownMenuItem(
-                    text = { Text("Manual — approve each step") },
-                    onClick = { ProjectSettingsStore.setFlowMode(FlowMode.MANUAL); expanded = false },
-                )
+            Box {
+                OutlinedButton(onClick = { expanded = true }) {
+                    Text(levelLabel, fontSize = 12.sp, color = accent)
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Auto — execute everything") },
+                        onClick = {
+                            com.codespace.ide.agent.ChatPermissionStore.setLevel(context, com.codespace.ide.agent.ChatFlowLevel.AUTO_ALL)
+                            level = com.codespace.ide.agent.ChatFlowLevel.AUTO_ALL; expanded = false
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Safe — reads auto, writes ask") },
+                        onClick = {
+                            com.codespace.ide.agent.ChatPermissionStore.setLevel(context, com.codespace.ide.agent.ChatFlowLevel.AUTO_SAFE)
+                            level = com.codespace.ide.agent.ChatFlowLevel.AUTO_SAFE; expanded = false
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Manual — approve each step") },
+                        onClick = {
+                            com.codespace.ide.agent.ChatPermissionStore.setLevel(context, com.codespace.ide.agent.ChatFlowLevel.MANUAL)
+                            level = com.codespace.ide.agent.ChatFlowLevel.MANUAL; expanded = false
+                        },
+                    )
+                }
+            }
+        }
+        // Always-allow list: tap a chip to revoke. Empty in Auto level is normal.
+        if (autoTools.isNotEmpty()) {
+            Text("Always-allowed tools (tap to revoke):",
+                color = textSec, fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 20.dp))
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+            ) {
+                autoTools.sorted().take(4).forEach { t ->
+                    Text(
+                        t,
+                        fontSize = 10.sp, color = accent,
+                        modifier = Modifier
+                            .background(accent.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .clickable {
+                                com.codespace.ide.agent.ChatPermissionStore.disallowTool(context, t)
+                                autoTools = com.codespace.ide.agent.ChatPermissionStore.autoApprovedTools(context)
+                            },
+                    )
+                }
+                if (autoTools.size > 4) {
+                    Text("+" + (autoTools.size - 4), fontSize = 10.sp, color = textSec,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp))
+                }
             }
         }
     }

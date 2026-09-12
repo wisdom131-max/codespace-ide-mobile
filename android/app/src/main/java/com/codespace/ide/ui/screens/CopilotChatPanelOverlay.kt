@@ -447,7 +447,7 @@ private suspend fun chat(
                 // Approve/Reject on the floating card before running this tool call.
                 // In Auto mode (default), awaitApproval() returns true immediately.
                 val argsSummary = toolArgs.toString().take(160)
-                val approved = com.codespace.ide.agent.AgentFlowGate.awaitApproval(toolName, argsSummary)
+                val approved = com.codespace.ide.agent.AgentFlowGate.awaitApproval(context, toolName, argsSummary)
                 val result = if (approved) {
                     AgentTools.executeTool(toolName, toolArgs, context)
                 } else {
@@ -495,12 +495,10 @@ private suspend fun chat(
 // 3. registry default. Never just "first provider" blindly.
 private fun chatModelSelectionInitial(context: android.content.Context, tokenStore: com.codespace.ide.data.SecureTokenStore?): String {
     com.codespace.ide.chat.ChatModelSelection.get(context)?.let { return it }
-    try {
-        val activeId = tokenStore?.aiKey("active")?.lowercase()
-        val provider = activeId?.let { com.codespace.ide.chat.ChatProviderRegistry.byId(it) }
-        if (provider != null) return provider.id + ":" + provider.defaultModel
-    } catch (_: Exception) {}
-    return registeredModelEntries(tokenStore).firstOrNull() ?: ""
+    // R5: fresh installs start on "Auto" — VS Code parity. Resolves at send
+    // time to the active provider's default (same endpoint the old fallback
+    // picked), and follows the Settings provider switch from then on.
+    return com.codespace.ide.chat.ChatModelSelection.AUTO_MODEL
 }
 
 @Composable
@@ -981,6 +979,8 @@ internal fun CopilotChatPanelInline(
     }
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
     var selectedModel by remember { mutableStateOf(chatModelSelectionInitial(context, tokenStore)) }
+    // R5-PINNING: starred favorites shown first in the picker
+    var pinnedModels by remember { mutableStateOf(com.codespace.ide.chat.ChatModelSelection.getPinned(context)) }
     // 404-fix: fetch the LIVE model lists once when the panel first composes,
     // so the picker only ever offers models that exist right now. Falls back to
     // defaults if the network call fails.
@@ -993,7 +993,7 @@ internal fun CopilotChatPanelInline(
                 availModels = live
                 // keep current selection valid; if it vanished (retired model),
                 // snap to the first available current model
-                if (selectedModel !in live) {
+                if (selectedModel != com.codespace.ide.chat.ChatModelSelection.AUTO_MODEL && selectedModel !in live) {
                     val curPrefix = selectedModel.substringBefore(':', "")
                     val sameProvider = live.filter { it.startsWith(curPrefix + ":") }
                     val snapped = sameProvider.firstOrNull() ?: live.firstOrNull() ?: selectedModel
@@ -1002,6 +1002,15 @@ internal fun CopilotChatPanelInline(
                 }
             }
         }
+    }
+
+    // R5-PER-MODE: each chat mode remembers its own model; switching modes
+    // swaps the picker to that mode's last-used model (global selection as
+    // fallback). Never writes back — only picking persists.
+    LaunchedEffect(mode) {
+        val perMode = com.codespace.ide.chat.ChatModelSelection.getForMode(context, mode.name)
+        val target = perMode ?: com.codespace.ide.chat.ChatModelSelection.get(context)
+        if (!target.isNullOrBlank() && target != selectedModel) selectedModel = target
     }
 
     // ── Sessions (UI bucket #5) ─────────────────────────────────────────
@@ -1136,6 +1145,9 @@ internal fun CopilotChatPanelInline(
         chatJob = scope.launch {
             try {
                 com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
+                // R5-AUTO: "auto" never reaches the wire — resolve to the
+                // active provider's default right before dispatch.
+                val effModel = com.codespace.ide.chat.ChatModelSelection.resolveAuto(context, selectedModel, tokenStore)
                 val toolsUsed = mutableListOf<String>()
                 val sink: ((ChatStreamEvent) -> Unit) = { ev ->
                     when (ev) {
@@ -1144,7 +1156,7 @@ internal fun CopilotChatPanelInline(
                         is ChatStreamEvent.ToolDone -> { liveStreamText += "\n⚙ " + ev.tool + " — done"; toolsUsed.add(ev.tool) }
                     }
                 }
-                val reply = chat(selectedModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
+                val reply = chat(effModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
                 // R4-TYPED-ENTRY: tools-used transcript chip rides before the reply
                 if (toolsUsed.isNotEmpty()) messages.add(ChatMsg("tool", toolsUsed.distinct().joinToString(", ")))
                 messages.add(ChatMsg("assistant", reply))
@@ -1164,7 +1176,7 @@ internal fun CopilotChatPanelInline(
                 liveStreamText = ""
                 // CONTEXT GAUGE: estimate for the NEXT send — unawaited, never delays the reply
                 scope.launch {
-                    updateContextGauge(selectedModel, mode, context, tokenStore, messages.toList(), projectRootPath, currentFilePath, openFilePaths) { u, m ->
+                    updateContextGauge(com.codespace.ide.chat.ChatModelSelection.resolveAuto(context, selectedModel, tokenStore), mode, context, tokenStore, messages.toList(), projectRootPath, currentFilePath, openFilePaths) { u, m ->
                         ctxUsed = u; ctxMax = m
                     }
                 }
@@ -1311,27 +1323,21 @@ internal fun CopilotChatPanelInline(
                     )
                     Spacer(Modifier.width(8.dp))
                 }
-                Box {
-                    Text(
-                        selectedModel.take(12),
-                        color = colors.accent, fontSize = 10.sp,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .background(colors.surface, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                            .clickable { showModelMenu = true },
-                    )
-                    DropdownMenu(expanded = showModelMenu, onDismissRequest = { showModelMenu = false }) {
-                        availModels.forEach { m ->
-                            DropdownMenuItem(
-                                text = { Text(m, fontSize = 12.sp) },
-                                onClick = { selectedModel = m; com.codespace.ide.chat.ChatModelSelection.set(context, m); showModelMenu = false },
-                            )
-                        }
-                    }
-                }
+                ChatModelMenuButton(
+                    selectedModel = selectedModel,
+                    availModels = availModels,
+                    pinned = pinnedModels,
+                    colors = colors,
+                    expanded = showModelMenu,
+                    onExpandedChange = { showModelMenu = it },
+                    onPick = { m ->
+                        selectedModel = m
+                        com.codespace.ide.chat.ChatModelSelection.set(context, m)
+                        // R5: per-mode memory — each mode keeps its own model
+                        com.codespace.ide.chat.ChatModelSelection.setForMode(context, mode.name, m)
+                    },
+                    onTogglePin = { pinnedModels = com.codespace.ide.chat.ChatModelSelection.togglePin(context, selectedModel) },
+                )
                 Spacer(Modifier.width(8.dp))
                 Icon(
                     Icons.Default.DeleteOutline, null,
@@ -1597,47 +1603,7 @@ internal fun CopilotChatPanelInline(
         pendingApproval.let { pa ->
             val ap = pa.value
             if (ap != null) {
-                Box(
-                    Modifier.fillMaxSize().background(Color(0x80000000)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Card(
-                        Modifier.width(280.dp).padding(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                        elevation = CardDefaults.cardElevation(8.dp),
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("AI Tool Approval",
-                                color = Color(0xFFE0E0E0),
-                                fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Spacer(Modifier.height(4.dp))
-                            Text("Mode: Manual Flow", fontSize = 11.sp, color = Color(0xFF888888))
-                            Spacer(Modifier.height(12.dp))
-                            Text("Tool: ${ap.toolName}",
-                                color = Color(0xFFCCCCCC), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-                            Spacer(Modifier.height(6.dp))
-                            Text(ap.argsSummary,
-                                color = Color(0xFF999999), fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace, maxLines = 4,
-                                overflow = TextOverflow.Ellipsis)
-                            Spacer(Modifier.height(16.dp))
-                            Row(Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(
-                                    onClick = { com.codespace.ide.agent.AgentFlowGate.reject() },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFCC4444)),
-                                ) { Text("Reject") }
-                                Button(
-                                    onClick = { com.codespace.ide.agent.AgentFlowGate.approve() },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                                ) { Text("Approve") }
-                            }
-                        }
-                    }
-                }
+                ChatApprovalCard(approval = ap)
             }
         }
     }

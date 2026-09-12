@@ -2893,3 +2893,50 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 14. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
 15. TAB-STRIP PEEK — PARKED (user decision). Custom-model-ID entry — PARKED (separate future item).
 16. MCP Batch D items 2-9 retest; Exit-9 next occurrence + [EXIT9-PHANTOM-DIAG]; Debugger P3 (run-to-cursor, inline values); Batch J deferred.
+
+---
+
+## [2026-09-12 18:45 WAT] — AI Agent: Copilot Chat Parity Round 5 (of 10) [CHAT][AI][FLOW]
+
+**RULES REMINDER:** 1. TWO-REPO: codespace-ide-mobile only (proot -> ubuntu-proot-test). 2. CHANGE LOG bottom entry every commit. 3. TAGS. 4. Current State table updated. 5. NEVER re-do done work. 6. Roadmap lists ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v minimum. 8. 64KB limit: new UI = new file + single-line call.
+
+**Commit:** (SHA after commit) | CI: build triggered, result pending
+
+**What was built (Round 5 — Auto model + pinning + per-mode model + permission levels):**
+- AUTO MODEL: picker gains an "Auto" entry (first, with checkmark when active) and it is now the FRESH-INSTALL DEFAULT (VS Code parity). "auto" is never dispatched literally — resolveAuto() maps it to the Settings-active provider's default (or first available) right before the request; the post-send context gauge resolves it too. Live-model snapping never eats the Auto sentinel.
+- PINNING/FAVORITES: starred models sort into their own "Pinned" section at the top of the picker; "Pin/Unpin current model" action in the menu footer. Persisted in ChatModelSelection (pinned_models pref).
+- PER-MODE MODEL: each chat mode (ASK/AGENT/PLAN) remembers its own model (selected_model_<MODE> prefs). Switching mode pills swaps the picker to that mode's last-used model (global fallback); picking a model while in a mode writes both global + mode keys.
+- PERMISSION LEVELS: flat MANUAL/AUTO FlowMode upgraded to VS Code-style 3 levels in NEW agent/ChatPermissionStore.kt: MANUAL (approve every tool), AUTO_SAFE (read-only tools pass: read_file/list_files/search_files/git_status/git_diff/read_memory/read_entities/list_tasks/list_connectors/detect_secrets; writes/commands still ask), AUTO_ALL (default, old Auto). Migration inherits the old flow_mode pref (MANUAL->MANUAL, AUTO->AUTO_ALL).
+- ALWAYS-ALLOW: approval card gains a third action "Always Allow <tool>" — allowlists that tool (applies at every level) and approves the current call. Settings shows the allowlist as revocable chips. mcp_* tools never auto-pass from the allowlist path beyond the level rules (external tools stay gated).
+- 64KB EXTRACTIONS: picker chip -> NEW ChatModelMenuButton.kt (menu state hoisted so the /models slash command still works); approval card -> NEW ChatApprovalCard.kt. Both called with single lines from the live panel.
+
+**Files touched:** chat/ChatModelSelection.kt (Auto + per-mode + pinned + resolveAuto), agent/ChatPermissionStore.kt (NEW), agent/AgentFlowGate.kt (permission consult + onAlwaysAllow callback), ui/screens/ChatModelMenuButton.kt (NEW), ui/screens/ChatApprovalCard.kt (NEW), ui/screens/CopilotChatPanelOverlay.kt (send path effModel, per-mode effect, pinned state, 2 extraction call sites, Auto default), ui/screens/InProjectSettingsDialog.kt (Agent Permission Level row + allowlist chips)
+
+**Round-5 test batch (run on green APK):**
+- R5-1: Fresh state (or clear chat_model_selection prefs) — picker chip reads "Auto"; a send routes to your active provider (check gauge/reply).
+- R5-2: Picker: "Auto" entry at top with checkmark; pick a concrete model, reopen — checkmark on it; pick Auto again — chip reads "Auto".
+- R5-3: Pin current model (footer action) — model moves to a starred "Pinned" section at top; unpin restores. Restart app — pins persist.
+- R5-4: In ASK pick model A; switch to AGENT — picker shows AGENT's model (fallback: global first time); pick model B in AGENT; switch ASK<->AGENT — each mode restores its own model.
+- R5-5: Settings > AI Agent: "Agent Permission Level" shows Auto/Safe/Manual. Set Manual; run an AGENT task with a tool — approval card appears; "Always Allow <tool>" — next call of the same tool runs without a card.
+- R5-6: Set Safe; run a read-only tool (read_file) — no card; then a write (write_file) — card appears.
+- R5-7: Settings chips list the allowlisted tool; tap the chip — revoked; next call asks again.
+- R5-8: /models slash command still opens the picker; gauge shows a plausible value on Auto.
+
+**Next on roadmap (ALL pending items):**
+1. ROUND 6 — DIFF/APPLY/CHECKPOINT (WRITTEN PRE-PLAN REQUIRED before build — user gate).
+2. ROUND 7 — Plan review UI, todos, follow-ups, feedback, find-in-chat.
+3. ROUND 8 — Voice, images, queue, export/import.
+4. ROUND 9 — Skills/agents/hooks/subagents (flag scope BEFORE building if bigger than scoped — user gate).
+5. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+6. R1 RE-TEST: markdown rendering, code Copy/Insert, Stop mid-stream (+FlowGate case), Retry, /commands, session rename.
+7. R2 RE-TEST: AGENTS.md rule followed, chip toggle + persistence, copilot-instructions.md rename, CLAUDE.md combo, agent_prompt CLI block.
+8. R3 RE-TEST: paperclip picker, chip attach/remove, #file tokens, implicit-context toggle + persistence, caps, hashtag safety.
+9. R4 RE-TEST: tool chips, error bubbles, old-history error reclass, selection attach (R4-1..R4-7 above).
+10. R5 RE-TEST: batch above (R5-1..R5-8).
+11. MC RE-TEST on #2735 APK: MC chip + double-tap second cursor; BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity; [MC-TRIPWIRE] lines check.
+12. RETEST batch A (gate for validation change): locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+13. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.
+14. STREAMING retest (1731b4d): ASK streams; AGENT per-iteration stream + tool-done lines; gauge thresholds.
+15. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+16. TAB-STRIP PEEK — PARKED (user decision). Custom-model-ID entry — PARKED (separate future item).
+17. MCP Batch D items 2-9 retest; Exit-9 next occurrence + [EXIT9-PHANTOM-DIAG]; Debugger P3 (run-to-cursor, inline values); Batch J deferred.
