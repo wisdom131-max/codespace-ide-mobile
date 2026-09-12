@@ -882,6 +882,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // Every programmatic value mutation should go through these instead of raw value = ...
     fun programmaticCursorMove(offset: Int, reason: String) {
         val safe = offset.coerceIn(0, value.text.length)
+        // MC-CHOKEPOINT: a programmatic caret jump is selection-only while MC is
+        // active — VS Code click semantics: collapse extras, never leave them stale.
+        if (extraCursors.isNotEmpty()) {
+            extraCursors = com.codespace.ide.editor.McEditTransaction.collapseSelection(
+                extraCursors, "programmaticCursorMove:" + reason)
+        }
         value = value.copy(selection = TextRange(safe))
         editorEvent = EditorEvent.ProgrammaticCursorMove(safe, reason)
         AppOutputLog.log("PROGRAMMATIC_CURSOR_MOVE: $reason -> offset $safe", "lsp")
@@ -889,6 +895,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     fun programmaticTextChange(newText: String, selection: TextRange, reason: String) {
         decorationStore.shiftOnEdit(value.text, newText)
         val safeSel = TextRange(selection.start.coerceIn(0, newText.length), selection.end.coerceIn(0, newText.length))
+        // MC-CHOKEPOINT: the door owns extra-cursor consequences for EVERY programmatic
+        // text writer (snippets, format, line ops, ghost-text, find/replace, undo/redo
+        // text restore). Extras are MAPPED through the edit marker-style (VS Code
+        // selection markers) — never fanned out (the edit already happened once). All
+        // 23 former call-site EditShiftHelper pre-shifts were REMOVED for this: the
+        // door computes them exactly once, so pre-shifted callers would double-shift.
+        if (extraCursors.isNotEmpty()) {
+            extraCursors = com.codespace.ide.editor.McEditTransaction.mapExternal(
+                value.text, newText, extraCursors, "programmaticTextChange:" + reason)
+        }
         value = TextFieldValue(newText, safeSel)
         editorEvent = EditorEvent.ProgrammaticTextChange(newText, safeSel.end)
         onContentChange(newText)
@@ -942,6 +958,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }.coerceIn(0, newText.length)
         val newSelStart = mapOffset(oldSelStart)
         val newSelEnd = mapOffset(oldSelEnd)
+        // MC-CHOKEPOINT: a split-view peer edit (or file reload) is an EXTERNAL edit —
+        // map this view's extra cursors through it marker-style (VS Code one-model-
+        // two-views: peer edits move markers, they do not replay at each cursor).
+        if (extraCursors.isNotEmpty()) {
+            extraCursors = com.codespace.ide.editor.McEditTransaction.mapExternal(
+                oldText, newText, extraCursors, "externalContentSync:" + reason)
+        }
         // Viewport anchoring: only when the edit region starts strictly above the
         // first visible line does the content under the viewport shift; correct
         // vScroll by the net line delta of the changed region so the visible
@@ -1658,11 +1681,22 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         if (selStart != selEnd) {
                             val multiResult = applyMultiLineIndent(value, positionMapper)
                             if (multiResult != null) {
+                                // MC-CHOKEPOINT: raw Tab-indent write — this writer does not
+                                // go through programmaticTextChange, so route extras through
+                                // the door explicitly (map, never fan out).
+                                if (extraCursors.isNotEmpty()) {
+                                    extraCursors = com.codespace.ide.editor.McEditTransaction.mapExternal(
+                                        value.text, multiResult.first.text, extraCursors, "tab_indent_multi")
+                                }
                                 value = multiResult.first
                                 currentOnContentChange(multiResult.second)
                             } else {
                                 val singleResult = applySingleLineTab(value)
                                 if (singleResult != null) {
+                                    if (extraCursors.isNotEmpty()) {
+                                        extraCursors = com.codespace.ide.editor.McEditTransaction.mapExternal(
+                                            value.text, singleResult.first.text, extraCursors, "tab_indent_single")
+                                    }
                                     value = singleResult.first
                                     currentOnContentChange(singleResult.second)
                                 }
@@ -1712,21 +1746,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         } else {
                                             TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                         }
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
                                         programmaticTextChange(finalText, selRange, "snippet_multicursor")
                                     } else {
                                         val newText = value.text.substring(0, expandStart) + snippetText + value.text.substring(cursor)
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                         programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(expandStart, expandStart, snippetText.length)), "snippet_expand")
                                     }
                                 } else {
                                     val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
-                                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                     programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(cursor, cursor, 1)), "tab_insert_snippet")
                                 }
                             } else {
                                 val newText = value.text.substring(0, cursor) + "\t" + value.text.substring(cursor)
-                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                 programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(cursor, cursor, 1)), "tab_insert")
                             }
                         }
@@ -1745,11 +1775,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     if (closing != null) {
                         val newText = value.text.substring(0, selStart) + text + closing + value.text.substring(selEnd)
                         // Place cursor between the pair (e.g. between ( and ))
-                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                         programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(selStart, selStart, 1)), "auto_close_pair")
                     } else {
                         val newText = value.text.substring(0, selStart) + text + value.text.substring(selEnd)
-                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                         programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(selStart, selStart, text.length)), "toolbar_insert")
                     }
                 }
@@ -2408,28 +2436,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         // (MultiCursorEngine.kt mirrors cursor.ts executeEdits ->
                         // pushEditOperations + cursor-state-computer). Replaces the old
                         // length-delta guessing and manual fanShift/primaryAdjust math.
+                        // MC-CHOKEPOINT (2026-09-12 restructure, user-approved): McEditTransaction
+                        // is the SINGLE DOOR for cursor state while multi-cursor is active.
+                        // ONE call handles BOTH event classes:
+                        //  - text changed    -> fan the primary edit out to every extra cursor
+                        //    (VS Code ReplaceCommand-per-cursor via MultiCursorEngine);
+                        //  - selection-only  -> VS Code click semantics: collapse to a single
+                        //    cursor. This is the exact event class that caused the 2026-09-12
+                        //    stale-extras bug: a caret move with no text change used to bail
+                        //    silently at the old early-return and leave the extras frozen at
+                        //    pre-move offsets. Every MC-active transaction logs one compact
+                        //    permanent [MC-TRIPWIRE] line — a writer that bypasses this door
+                        //    is visible by its absence.
                         if (extraCursors.isNotEmpty()) {
-                            // MC-DELETE-DIAG (2026-09-12): the user reports multi-cursor
-                            // breaking after ~3 deletes with no detail yet. Log the full
-                            // transaction (before AND after) so the next repro tells us
-                            // exactly which invariant breaks: cursor offsets, ranges, text
-                            // length. Channel: lsp. Remove once the bug is fixed.
-                            com.codespace.ide.diagnostics.AppOutputLog.log(
-                                "[MC-DELETE-DIAG] pre: len=" + value.text.length + " primary=" + value.selection.min + ".." + value.selection.max +
-                                    " extras=" + extraCursors.joinToString(",") { it.min.toString() + ".." + it.max }, "lsp")
-                            val fanOut = MultiCursorEngine.applyFanOut(
+                            val mcTxn = com.codespace.ide.editor.McEditTransaction.apply(
                                 oldText = value.text,
                                 newText = updatedValue.text,
                                 primaryOld = value.selection,
                                 primaryNew = updatedValue.selection,
                                 extras = extraCursors,
+                                site = "onValueChange",
                             )
-                            com.codespace.ide.diagnostics.AppOutputLog.log(
-                                "[MC-DELETE-DIAG] post: len=" + fanOut.text.length + " primary=" + fanOut.primary.min + ".." + fanOut.primary.max +
-                                    " extras=" + fanOut.extras.joinToString(",") { it.min.toString() + ".." + it.max }, "lsp")
-                            extraCursors = fanOut.extras
-                            if (fanOut.text != updatedValue.text || fanOut.primary != updatedValue.selection) {
-                                updatedValue = updatedValue.copy(text = fanOut.text, selection = fanOut.primary)
+                            extraCursors = mcTxn.extras
+                            if (mcTxn.text != updatedValue.text || mcTxn.primary != updatedValue.selection) {
+                                updatedValue = updatedValue.copy(text = mcTxn.text, selection = mcTxn.primary)
                             }
                         }
 
@@ -2518,6 +2548,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     textLayoutResult?.let { layout ->
                                         val charOffset = layout.getOffsetForPosition(offset)
                                         val (wordStart, wordEnd) = WordBoundary.findWordBoundaries(value.text, charOffset)
+                                        if (extraCursors.isNotEmpty()) {
+                                            extraCursors = com.codespace.ide.editor.McEditTransaction.collapseSelection(extraCursors, "double_tap_select")
+                                        }
                                         value = value.copy(selection = TextRange(wordStart, wordEnd))
                                         editorEvent = EditorEvent.UserSelection(wordStart, wordEnd)
                                         val cPos2 = positionMapper.offsetToPosition(wordEnd)
@@ -2529,6 +2562,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     // Single tap — place cursor at tap position + request focus
                                     textLayoutResult?.let { layout ->
                                         val pos = layout.getOffsetForPosition(offset)
+                                        // MC-CHOKEPOINT: tap while MC active = VS Code click
+                                        // semantics — collapse to a single cursor.
+                                        if (extraCursors.isNotEmpty()) {
+                                            extraCursors = com.codespace.ide.editor.McEditTransaction.collapseSelection(extraCursors, "tap")
+                                        }
                                         value = value.copy(selection = TextRange(pos))
                                         editorEvent = EditorEvent.UserCursorMove(pos)
                                         val cPos = positionMapper.offsetToPosition(pos)
@@ -2557,6 +2595,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val text = value.text
                                         val (wordStart, wordEnd) = WordBoundary.findWordBoundaries(text, charOffset)
                                         // Select the word (VS Code behavior)
+                                        if (extraCursors.isNotEmpty()) {
+                                            extraCursors = com.codespace.ide.editor.McEditTransaction.collapseSelection(extraCursors, "long_press_select")
+                                        }
                                         value = value.copy(selection = TextRange(wordStart, wordEnd))
                                         // Phase X-5/X-10: Tag as user selection + fire onCursorChange
                                         editorEvent = EditorEvent.UserSelection(wordStart, wordEnd)
@@ -2609,7 +2650,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val insertText = comp.insertText
                                 val newText = text.substring(0, start) + insertText + text.substring(end)
                                 val newCursor = start + insertText.length
-                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                 programmaticTextChange(newText, TextRange(newCursor), "completion_commit")
                                 CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
                                 showCompletions = false
@@ -2671,11 +2711,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             } else {
                                                 TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                             }
-                                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
                                             programmaticTextChange(finalText, selRange ?: TextRange(0), "snippet_multicursor_transform")
                                         } else {
                                             // Plain text snippet — place cursor at end of inserted text
-                                            extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                             programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(expandStart, expandStart, snippetText.length)), "snippet_plain_text")
                                         }
                                         true // consume the Tab key
@@ -2693,6 +2731,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     // Apply transform to current stop's text before leaving it
                                     val (transformedTextPrev, transformedSessionPrev) = session.applyActiveStopTransform(value.text)
                                     val sessionToRetreat = if (transformedTextPrev != value.text) {
+                                        // MC-CHOKEPOINT: raw snippet-transform write — map extras.
+                                        if (extraCursors.isNotEmpty()) {
+                                            extraCursors = com.codespace.ide.editor.McEditTransaction.mapExternal(
+                                                value.text, transformedTextPrev, extraCursors, "snippet_stop_transform")
+                                        }
                                         value = value.copy(text = transformedTextPrev)
                                         onContentChange(transformedTextPrev)
                                         transformedSessionPrev
@@ -2787,7 +2830,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val finalText = newText.toString()
                                         val newStart = (selStart - firstLineRemoved).coerceAtLeast(positionMapper.lineStart(startLine))
                                         val newEnd = (selEnd - totalRemoved).coerceAtLeast(newStart)
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
                                         programmaticTextChange(finalText, TextRange(newStart, newEnd), "delete_lines")
                                         true
                                     } else {
@@ -2807,7 +2849,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val finalText = newText.toString()
                                         val newStart = selStart + firstLineAdded
                                         val newEnd = selEnd + totalAdded
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, finalText, extraCursors)
                                         programmaticTextChange(finalText, TextRange(newStart, newEnd), "duplicate_lines")
                                         true
                                     }
@@ -2878,7 +2919,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val insertText = currentLine + if (lineEnd == -1) "\n" else ""
                                         val newText = value.text.substring(0, endIdx) + insertText + value.text.substring(endIdx)
                                         undoRedoInProgress = true
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                         programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(endIdx, endIdx, insertText.length)), "duplicate_line")
                                         snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(newText, TextRange(positionMapper.shiftOnInsert(endIdx, endIdx, insertText.length)), extraCursors))
                                         undoRedoInProgress = false
@@ -2910,7 +2950,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             newCursor = cursor + commentPrefix.length
                                         }
                                         undoRedoInProgress = true
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                         programmaticTextChange(newText, TextRange(newCursor), "comment_toggle")
                                         snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(newText, TextRange(newCursor), extraCursors))
                                         undoRedoInProgress = false
@@ -2923,7 +2962,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val deletedText = value.text.substring(lineStart, lineEnd)
                                         val newText = value.text.removeRange(lineStart, lineEnd)
                                         undoRedoInProgress = true
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                         programmaticTextChange(newText, TextRange(lineStart), "delete_line")
                                         snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(newText, TextRange(lineStart), extraCursors))
                                         undoRedoInProgress = false
@@ -2965,7 +3003,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val newText = value.text.substring(0, prevLineStart) + currentLine + "\n" + prevLine + value.text.substring(lineEnd)
                                         undoRedoInProgress = true
                                         val newCursor = prevLineStart + currentLine.length
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                         programmaticTextChange(newText, TextRange(newCursor), "move_line_up")
                                         snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(newText, TextRange(newCursor), extraCursors))
                                         undoRedoInProgress = false
@@ -2983,7 +3020,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val newText = value.text.substring(0, lineStart) + nextLine + "\n" + currentLine + value.text.substring(nextLineEnd)
                                         undoRedoInProgress = true
                                         val newCursor = lineStart + nextLine.length
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                         programmaticTextChange(newText, TextRange(newCursor), "move_line_down")
                                         snapshotUndo.pushForce(com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(newText, TextRange(newCursor), extraCursors))
                                         undoRedoInProgress = false
@@ -3692,7 +3728,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                                 fix.edit, value.text, null
                                                             )
                                                             if (newText != null && newText != value.text) {
-                                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                                                 programmaticTextChange(newText, TextRange(value.selection.start), "ai_suggestion_apply")
                                                             }
                                                         } catch (_: Exception) {}
@@ -4272,7 +4307,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 } else {
                                     val result = com.codespace.ide.editor.BuiltinSourceActions.organizeImports(value.text, language)
                                     if (result != null) {
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result, extraCursors)
                                         programmaticTextChange(result, value.selection, "organize_imports")
                                     }
                                 }
@@ -4293,7 +4327,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 } else {
                                     val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedImports(value.text, language)
                                     if (result != null) {
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result, extraCursors)
                                         programmaticTextChange(result, value.selection, "remove_unused_imports")
                                     }
                                 }
@@ -4311,7 +4344,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             onClick = {
                                 val result = com.codespace.ide.editor.BuiltinSourceActions.removeUnusedCode(value.text, language)
                                 if (result != null) {
-                                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result, extraCursors)
                                     programmaticTextChange(result, value.selection, "external_format")
                                 }
                                 showLspMenu = false
@@ -4671,7 +4703,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             onMatchIndexChange = { matchIndex = it },
             text = value.text,
             onTextChange = { newText, cursor ->
-                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                 programmaticTextChange(newText, TextRange(cursor), "external_text_change")
             },
             onSelectRange = { start, end ->
@@ -4741,7 +4772,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 onAcceptFull = { fullText ->
                     val cursor = value.selection.end
                     val newText = value.text.substring(0, cursor) + fullText + value.text.substring(cursor)
-                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                     programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(cursor, cursor, fullText.length)), "ghost_text_accept_full")
                     if (!ghostTextIsAi) {
                         val ghostLabel = allCompletions.firstOrNull()?.label
@@ -4752,7 +4782,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 onAcceptWord = { word, remainingLines ->
                     val cursor = value.selection.end
                     val newText = value.text.substring(0, cursor) + word + value.text.substring(cursor)
-                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                     programmaticTextChange(newText, TextRange(positionMapper.shiftOnInsert(cursor, cursor, word.length)), "ghost_text_accept_word")
                     ghostTextLines = remainingLines
                     ghostText = remainingLines.firstOrNull() ?: ""

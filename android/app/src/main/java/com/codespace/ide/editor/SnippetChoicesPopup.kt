@@ -91,7 +91,6 @@ internal fun SnippetChoicesPopup(
                                 val newLen = choice.length
                                 val oldLen = stopEnd - stopStart
                                 snippetSession = session.shiftAfterEdit(activeStop, oldLen, newLen)
-                                extraCursorsState.value = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursorsState.value)
                                 programmaticTextChange(newText, TextRange(stopStart, stopStart + newLen), "snippet_tab_stop_update")
                                 showSnippetChoices = false
                             }

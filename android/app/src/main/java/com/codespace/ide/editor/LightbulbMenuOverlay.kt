@@ -119,7 +119,6 @@ internal fun LightbulbMenuOverlay(
                                         fix.edit, value.text, null
                                     )
                                     if (newText != null && newText != value.text) {
-                                        extraCursorsState.value = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursorsState.value)
                                         programmaticTextChange(newText, TextRange(value.selection.start), "ai_apply")
                                     }
                                 } catch (_: Exception) {}

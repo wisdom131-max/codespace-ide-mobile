@@ -378,7 +378,6 @@ internal fun CompletionPopupOverlay(
                                     } else {
                                         androidx.compose.ui.text.TextRange(result.second)
                                     }
-                                    extraCursors = EditShiftHelper.shiftExtraCursors(value.text, result.first, extraCursors)
                                     programmaticTextChange(result.first, selRange, "format_result")
                                 }
                             } else {
@@ -419,10 +418,8 @@ internal fun CompletionPopupOverlay(
                                                 } else {
                                                     androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                                 }
-                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, patched, extraCursors)
                                                 programmaticTextChange(patched, sel, "auto_import_patched")
                                             } else {
-                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, patched, extraCursors)
                                                 programmaticTextChange(patched, androidx.compose.ui.text.TextRange(newCursor + importDelta), "auto_import_delta")
                                             }
                                             onContentChange(patched)
@@ -438,10 +435,8 @@ internal fun CompletionPopupOverlay(
                                                 } else {
                                                     androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
                                                 }
-                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                                 programmaticTextChange(newText, sel, "ai_fix_applied")
                                             } else {
-                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                                 programmaticTextChange(newText, androidx.compose.ui.text.TextRange(newCursor), "ai_fix_newcursor")
                                             }
                                             onContentChange(newText)
@@ -475,10 +470,8 @@ internal fun CompletionPopupOverlay(
                                         } else {
                                             androidx.compose.ui.text.TextRange(cursorPos)
                                         }
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                         programmaticTextChange(newText, selectionRange, "ai_result")
                                     } else {
-                                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                         programmaticTextChange(newText, androidx.compose.ui.text.TextRange(newCursor), "ai_result_cursor")
                                     }
                                 }

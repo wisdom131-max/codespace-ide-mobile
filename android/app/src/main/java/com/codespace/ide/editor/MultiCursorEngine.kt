@@ -91,7 +91,7 @@ object MultiCursorEngine {
      * (inserted - deleted); positions inside the deleted region collapse to
      * the edit end.
      */
-    private fun shiftPos(p: Int, e: McEdit): Int = when {
+    fun shiftPos(p: Int, e: McEdit): Int = when {
         p <= e.start -> p
         p >= e.start + e.deleted.length -> p - e.deleted.length + e.inserted.length
         else -> e.start + e.inserted.length
@@ -132,14 +132,6 @@ object MultiCursorEngine {
         val delLen = edit.deleted.length
         val primaryDeletedBefore = primaryOld.end >= edit.start + delLen && delLen > 0
 
-        // MC-DELETE-DIAG (2026-09-12): log the edit triple + direction per
-        // transaction, so the on-device repro of 'breaks after 3 deletes' shows
-        // exactly what the engine did. Channel: lsp. Remove once the bug is fixed.
-        com.codespace.ide.diagnostics.AppOutputLog.log(
-            "[MC-DELETE-DIAG] engine: edit.start=" + edit.start + " del=" + edit.deleted.length +
-                " ins=" + edit.inserted.length + " primaryOld=" + primaryOld.min + ".." + primaryOld.max +
-                " primaryDeletedBefore=" + primaryDeletedBefore + " extras=" + extras.size, "lsp")
-
         // Build ONE edit per extra cursor (VS Code: commands[i] = ReplaceCommand(selections[i], ...))
         data class Pending(val start: Int, val deleteLen: Int)
         val pendings = ArrayList<Pending>(extras.size)
@@ -159,10 +151,6 @@ object MultiCursorEngine {
                 }
             }
         }
-
-        com.codespace.ide.diagnostics.AppOutputLog.log(
-            "[MC-DELETE-DIAG] engine pendings: " + pendings.joinToString(",") { it.start.toString() + "+" + it.deleteLen } +
-                " (applied ascending with running shift)", "lsp")
 
         // Apply all fan-out edits in ONE write — ascending with a running shift
         var text = newText
@@ -186,10 +174,6 @@ object MultiCursorEngine {
         val normalized = normalize(newExtras).filter {
             it.min != newPrimary.min || it.max != newPrimary.max
         }
-        com.codespace.ide.diagnostics.AppOutputLog.log(
-            "[MC-DELETE-DIAG] engine result: len=" + text.length + " primary=" + newPrimary.min + ".." + newPrimary.max +
-                " extras=" + normalized.joinToString(",") { it.min.toString() + ".." + it.max } +
-                " (dropped " + (newExtras.size - normalized.size) + " dup/merged)", "lsp")
         return FanOutResult(text, newPrimary, normalized)
     }
 }

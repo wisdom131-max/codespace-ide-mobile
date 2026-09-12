@@ -25,10 +25,16 @@ internal fun handleToolbarUndoRedo(
         val current = SnapshotUndoManager.TextSnapshot(value.text, value.selection, extraCursors)
         val snapshot = snapshotUndo.undo(current)
         if (snapshot != null) {
-            // Snapshot extraCursors are already in snapshot.text coordinates —
-            // restore as stored (no shift; shifting double-shifts).
-            onExtraCursorsChange(snapshot.extraCursors)
+            // MC-CHOKEPOINT ORDER (2026-09-12 restructure): text restore FIRST, then
+            // extras. onTextChange (programmaticTextChange) maps the CURRENT (pre-undo)
+            // extra cursors through the undo diff at the chokepoint; the snapshot's OWN
+            // recorded extraCursors then overwrite them as the authoritative undo record
+            // (extras are part of the undo entry — VS Code stores selections in undo
+            // elements too). The OLD order (extras first) would DOUBLE-shift: snapshot
+            // extras are already in snapshot.text coordinates and the chokepoint inside
+            // programmaticTextChange would map them again through the diff.
             onTextChange(snapshot.text, snapshot.selection, "undo_toolbar")
+            onExtraCursorsChange(snapshot.extraCursors)
         }
         onUndoRedoEnd()
         com.codespace.ide.diagnostics.AppOutputLog.log("UNDO: toolbar undo applied", "lsp")
@@ -40,8 +46,9 @@ internal fun handleToolbarUndoRedo(
         val current = SnapshotUndoManager.TextSnapshot(value.text, value.selection, extraCursors)
         val snapshot = snapshotUndo.redo(current)
         if (snapshot != null) {
-            onExtraCursorsChange(snapshot.extraCursors)
+            // MC-CHOKEPOINT ORDER: see undo branch above — text first, then extras.
             onTextChange(snapshot.text, snapshot.selection, "redo_toolbar")
+            onExtraCursorsChange(snapshot.extraCursors)
         }
         onUndoRedoEnd()
         com.codespace.ide.diagnostics.AppOutputLog.log("REDO: toolbar redo applied", "lsp")

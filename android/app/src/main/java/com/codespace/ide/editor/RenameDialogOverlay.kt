@@ -228,7 +228,6 @@ fun RenameDialogOverlay(
                                         if (wsEdit != null) {
                                             val (newText, appliedAny) = applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
                                             if (appliedAny) {
-                                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                                 programmaticTextChange(newText, value.selection, "snippet_apply")
                                                 lspSucceeded = true
                                                 renameUsedLsp = true
@@ -242,7 +241,6 @@ fun RenameDialogOverlay(
                                 renameUsedLsp = false
                                 val pattern = Regex("""\b${Regex.escape(wordToRename)}\b""")
                                 val newText = pattern.replace(value.text, newName)
-                                extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                                 programmaticTextChange(newText, value.selection, "rename_refactor")
                                 if (renameProjectWide && projectRoot != null) {
                                     renameInProgress = true
@@ -308,7 +306,6 @@ fun RenameDialogOverlay(
                     val wsEdit = renamePreviewEdit!!
                     val (newText, appliedAny) = applyWorkspaceEditToFilesystem(wsEdit, value.text, filePath)
                     if (appliedAny) {
-                        extraCursors = EditShiftHelper.shiftExtraCursors(value.text, newText, extraCursors)
                         programmaticTextChange(newText, TextRange(value.selection.start), "snippet_applied")
                     }
                     renamePreviewEdit = null; renamePreviewFiles = emptyList(); renameDialogWord = null
