@@ -2770,7 +2770,7 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 
 **RULES REMINDER:** 1. TWO-REPO: codespace-ide-mobile only (proot -> ubuntu-proot-test). 2. CHANGE LOG bottom entry every commit. 3. TAGS. 4. Current State table updated. 5. NEVER re-do done work. 6. Roadmap lists ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v minimum. 8. 64KB limit: new UI = new file + single-line call.
 
-**Commit:** (SHA after commit) | CI: pending
+**Commit:** fbbcbc8 | CI: build triggered, result pending
 **What was built (Round 2 — generic auto-instructions, VS Code ComputeAutomaticInstructions port):**
 - AUTOINSTRUCTIONSPROVIDER: agent/AutoInstructionsProvider.kt — detects AGENTS.md, copilot-instructions.md, .github/copilot-instructions.md, CLAUDE.md in ANY user project root (host-side File reads, no proot). All found files attach in priority order; caps: 8k chars/file, 16k total (truncation noted in block). NEVER throws — broken reads skip the file. Per-project opt-out persisted in SharedPreferences (default ON).
 - SYSTEM PROMPT: buildSystemPrompt now takes projectRootPath; the instruction block prepends to the workspace-context suffix in ALL THREE modes (ASK/AGENT/PLAN). chat() passes its existing projectRootPath through.
