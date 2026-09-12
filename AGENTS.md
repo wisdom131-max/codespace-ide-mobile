@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-12 09:40 WAT
+> Last updated: 2026-09-12 10:05 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | f12e366 |
-| CI build | #2722 GREEN (2a17033) -> #2724 pending (f12e366; 6-item #2722 regression batch + split toggle relocation) |
+| Latest commit | beb78e1 |
+| CI build | #2722 GREEN (2a17033) -> #2724/#2726 pending (f12e366 regression batch + beb78e1 split-row placement fix) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2572,7 +2572,7 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 
 **[SCM][UI] RECLONE-FIX (stale directory after remove-root):** removing a workspace root in the Explorer only removed the LIST entry — the cloned directory stayed on disk, so re-cloning the same repo/destination failed with git's raw 'destination path already exists and is not an empty directory'. Fixes: (1) ExplorerPane root close icon now opens a confirm dialog: 'Remove & delete files' (translates guest->host, guard-refuses paths shallower than 3 segments, deleteRecursively, notification reports outcome) or 'Remove only'. (2) ScmState.cloneRepo detects a non-empty leftover destination and returns a CLEAR message; with the new 'Overwrite existing directory' checkbox in the Clone dialog it deletes the leftover and re-clones.
 
-**[UI] SPLIT-RELOCATE (split toggle drifted with tab strip):** per user direction, the strip stays ONE scrolling row (no fixed/scrolling split) and ONLY the split icon moved: out of EditorPane's scrolling strip, back to the SHELL's fixed editor toolbar (ProjectShellScreen — the Find/zoom/wrap/goto-line/nav row at the top of the editor), pinned at its right end, matching its pre-rewrite fixed right-edge position. The button flips the GLOBAL SplitViewStore directly; a new EditorPane LaunchedEffect focuses the newly created split view and falls back to the primary tab when the active split is removed. Active-tint follows SplitViewStore state.
+**[UI] SPLIT-RELOCATE (split toggle drifted with tab strip):** per user direction, the strip stays ONE scrolling row (no fixed/scrolling split) and ONLY the split icon moved. Final placement (see beb78e1): its OWN separate fixed row at the VERY TOP of the editor area (above the breadcrumb AND the Find/zoom/wrap/goto-line/nav toolbar), button pinned at the right edge — the pre-rewrite level and edge position. The button flips the GLOBAL SplitViewStore directly; a new EditorPane LaunchedEffect focuses the newly created split view and falls back to the primary tab when the active split is removed. Active-tint follows SplitViewStore state.
 
 **Files touched:** editor/CodeEditor.kt (gutter window, MC overlay wiring, modifier double-tap simplification); editor/McTapOverlay.kt (NEW); terminal/IdeTerminalBridge.kt (locked-root wrapper + OSC guard); ui/panes/TerminalPane.kt (provider wiring, resolver arg, 2 OSC providers); ui/panes/EditorPane.kt (scrollToLine arg, split toggle removed from strip + focus/fallback LaunchedEffect); ui/panes/ExplorerPane.kt (remove-root confirm dialog); scm/ScmState.kt (dest detection + overwrite); ui/panes/SourceControlPane.kt (Overwrite checkbox); ui/screens/ProjectShellScreen.kt (split toggle in toolbar).
 
