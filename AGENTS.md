@@ -3165,7 +3165,7 @@ Single compile error (ChatPlanStore.kt:62): `plans[sessionId] = (plans[sessionId
 
 ## [2026-09-12 21:45 WAT] — AI Agent: Claude Sonnet 5.6 (R8-VISION-ALL-PROVIDERS + VOICE-VERIFIED)
 
-**Commit:** 6d01708 | **CI:** #2759 FAILED (ChatAttachment mimeType landed inside the class body after the enum — 'Property getter or setter expected'; constructor param misplaced by patch). Fix pushed in faf1f35: mimeType moved into the constructor parameter list. #2760 expected green.
+**Commit:** 6d01708 | **CI:** #2759 FAILED (ChatAttachment mimeType landed inside the class body after the enum — 'Property getter or setter expected'; constructor param misplaced by patch). Fix pushed in faf1f35: mimeType moved into the constructor parameter list. #2760 FAILED: AnthropicProvider used JSONArray bare but never imported it (original file only ever imported JSONObject — R8 buildMessages is its first direct use). Fix: import org.json.JSONArray added; the 'overload ambiguity' errors were cascade. PITFALL: every file using a symbol for the first time needs its import in the same patch (same class as the #2746 icon rule).
 
 **RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
 
