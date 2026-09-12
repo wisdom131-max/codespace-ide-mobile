@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-12 18:05 WAT
+> Last updated: 2026-09-12 18:09 WAT
 
 ---
 
@@ -2858,7 +2858,7 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 
 **RULES REMINDER:** 1. TWO-REPO: codespace-ide-mobile only (proot -> ubuntu-proot-test). 2. CHANGE LOG bottom entry every commit. 3. TAGS. 4. Current State table updated. 5. NEVER re-do done work. 6. Roadmap lists ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v minimum. 8. 64KB limit: new UI = new file + single-line call.
 
-**Commit:** 811f575 | CI: build triggered, result pending
+**Commit:** 811f575 | CI: #2746-2748 RED (missing icon imports in ChatAttachPicker: Highlight then ContentCopy) → fixed 69e3972 | CI: **#2749 GREEN**. R1+R2+R3+R4 all live. APK artifact: codespace-ide-arm64-v8a
 **What was built (Round 4 — typed entries + real error/tool parts + selection attach):**
 - TYPED CHATENTRY: ChatMsg gains a derived `kind` (USER / ASSISTANT / ERROR / TOOL / CONNECT_CARD). Persistence unchanged (role+text only) — old histories with "Error:" replies auto-classify to ERROR on load. Rendering branches on kind, not string sniffing.
 - REAL ERROR PARTS: errors now render as a distinct red-bordered bubble with ErrorOutline icon (ChatErrorBubble) — no longer a fake plain assistant reply. Old saved errors render correctly too (prefix stripped at render).
