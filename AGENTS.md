@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-11 22:20 WAT
+> Last updated: 2026-09-12 09:40 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 2a17033 |
-| CI build | #2722 GREEN (2a17033; split rewrite + 2 build fixes b4de0e9/2a17033) |
+| Latest commit | f12e366 |
+| CI build | #2722 GREEN (2a17033) -> #2724 pending (f12e366; 6-item #2722 regression batch + split toggle relocation) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2557,3 +2557,35 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 9. Item 4 PerfProbe re-verify AFTER items 1-4/7/8 retests.
 10. Debugger P3 (run-to-cursor, inline values) — queued.
 11. Batch J deferred; chat-command testing deferred until model configured.
+
+### [2026-09-12 09:40 WAT] — AI Agent: Claude, Commit f12e366, CI Build pending (#2724)
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**[BUILD-FIX][EDITOR] LINE-JUMP-RESTORE (regression from 8ccca5e):** the split rewrite rebuilt EditorPane's CodeEditor invocation and DROPPED the `scrollToLine = scrollToLine` argument — EditorPane's internal scrollToLine state (fed from scrollToLineParam: OSC 7777 `ide open file:42`, terminal path taps, Problems/debug stack) never reached CodeEditor, so the file opened with NO scroll/gold band/cursor move. The 49b3d4e retry-loop fix inside CodeEditor was correct; the wiring was missing. Restored at the call site.
+
+**[EDITOR] GUTTER-VIRT-FIX (line numbers missing near top after scroll):** gutter virtualization computed topVisibleIdx by dividing vScroll.value by an ASSUMED uniform lineHeightPx — but gutter rows are POSITIONED at the REAL TextLayoutResult line tops (EditorLinePositioning); Compose line geometry (font natural height, first-line padding, leading) drifts from the uniform grid and the mismatch grows with scroll depth, so the first few visible lines fell outside the [top..bottom] window and rendered with no gutter row. Now, when the layout is available and its line count matches the gutter's display lines (no word wrap), topVisibleIdx is a binary search on REAL line bottoms; falls back to the uniform grid on first frame / word wrap.
+
+**[EDITOR] MC-TAP-OVERLAY (double-tap adds no cursor, MC chip works):** root cause — the MC double-tap was attached via detectTapGestures on the BasicTextField's own modifier; Compose text fields consume tap events in their INTERNAL gesture handler (cursor place/word select) so the outer detector never fired on-device (the never-found single-view MC failure; native word-select masked it in MC-off). Fix: NEW editor/McTapOverlay.kt — a transparent matchParentSize Box rendered ABOVE the text surface ONLY while MultiCursorModeStore.enabled; it is the hit target for taps (double-tap add/remove cursor, tap place cursor, long-press word select), so our handling reliably receives them. Drags still scroll (scroll containers are ancestors; tap detection doesn't consume drags). MC off = no overlay = fully native behavior. Extracted per the JVM 64KB rule. The old modifier double-tap now only does MC-off word-select. Log: [MC-DIAG] overlay double-tap.
+
+**[TERM][GIT] LOCKED-ROOT FAIL-CLOSED (cross-root leak):** terminal file-link taps + OSC 7777 `ide open` could open files OUTSIDE the terminal's locked root — the tap resolver's all-roots fallback searched EVERY workspace root, and the OSC handler never checked the lock. Fixes: (1) IdeTerminalBridge.resolveTappedFileLink now takes lockedRoot (the tapping tab's lockedRootPath via TerminalPane client provider) and refuses anything outside it ([TAP] LOCKED refused log); unlocked tabs keep old behavior. (2) attachOscIdeOpen takes a lockedRootProvider; refused opens print a visible '[LOCK] ide open refused: ...' line into the terminal.
+
+**[SCM][UI] RECLONE-FIX (stale directory after remove-root):** removing a workspace root in the Explorer only removed the LIST entry — the cloned directory stayed on disk, so re-cloning the same repo/destination failed with git's raw 'destination path already exists and is not an empty directory'. Fixes: (1) ExplorerPane root close icon now opens a confirm dialog: 'Remove & delete files' (translates guest->host, guard-refuses paths shallower than 3 segments, deleteRecursively, notification reports outcome) or 'Remove only'. (2) ScmState.cloneRepo detects a non-empty leftover destination and returns a CLEAR message; with the new 'Overwrite existing directory' checkbox in the Clone dialog it deletes the leftover and re-clones.
+
+**[UI] SPLIT-RELOCATE (split toggle drifted with tab strip):** per user direction, the strip stays ONE scrolling row (no fixed/scrolling split) and ONLY the split icon moved: out of EditorPane's scrolling strip, back to the SHELL's fixed editor toolbar (ProjectShellScreen — the Find/zoom/wrap/goto-line/nav row at the top of the editor), pinned at its right end, matching its pre-rewrite fixed right-edge position. The button flips the GLOBAL SplitViewStore directly; a new EditorPane LaunchedEffect focuses the newly created split view and falls back to the primary tab when the active split is removed. Active-tint follows SplitViewStore state.
+
+**Files touched:** editor/CodeEditor.kt (gutter window, MC overlay wiring, modifier double-tap simplification); editor/McTapOverlay.kt (NEW); terminal/IdeTerminalBridge.kt (locked-root wrapper + OSC guard); ui/panes/TerminalPane.kt (provider wiring, resolver arg, 2 OSC providers); ui/panes/EditorPane.kt (scrollToLine arg, split toggle removed from strip + focus/fallback LaunchedEffect); ui/panes/ExplorerPane.kt (remove-root confirm dialog); scm/ScmState.kt (dest detection + overwrite); ui/panes/SourceControlPane.kt (Overwrite checkbox); ui/screens/ProjectShellScreen.kt (split toggle in toolbar).
+
+**Next on roadmap (ALL pending items):**
+1. Confirm #2724 CI green; install newest APK (codespace-ide-arm64-v8a artifact).
+2. RETEST batch A (gate for validation change): MC chip + double-tap second cursor; locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+3. RETEST batch B (f12e366, all six items): (a) split icon fixed at right of shell editor toolbar, creates/focuses split entry, edits live-sync between views, cursor preserved in inactive view, strip X closes view only, primary close cascades; (b) `ide open file:42` fresh-tab jump lands on line 42 with gold band; (c) scroll deep in a long file — top visible lines keep gutter numbers; (d) MC-mode double-tap adds/removes second cursor, tap places cursor, long-press selects word; drag scroll still works in MC mode; MC off = fully native taps; (e) terminal locked to root A: tap/`ide open` a root-B file is REFUSED ([LOCK] line), unlocked tab still opens any root; (f) remove a cloned repo's root via Explorer X -> dialog -> Remove & delete files -> directory gone -> re-clone same dest works (and Overwrite checkbox path works).
+4. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint pointed at a real OpenAI-compatible server.
+5. STREAMING retest (1731b4d): ASK-mode streams visibly; AGENT mode per-iteration stream + tool-done lines; context gauge values + amber/red thresholds.
+6. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+7. TAB-STRIP PEEK — PARKED by user decision, do NOT build until design settled.
+8. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
+9. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence; audit process cgroup/watchdog for SIGKILL/9.
+10. Item 4 PerfProbe re-verify AFTER items 2/3/4/8/9 retests.
+11. Debugger P3 (run-to-cursor, inline values) — queued.
+12. Batch J deferred; chat-command testing deferred until model configured.
