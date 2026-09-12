@@ -59,7 +59,7 @@ object ChatPlanStore {
 
     fun setApproved(sessionId: String) {
         ensureLoaded()
-        plans[sessionId] = (plans[sessionId] ?: Plan())?.copy(approved = true)
+        plans[sessionId] = (plans[sessionId] ?: Plan()).copy(approved = true)
         bump()
     }
 

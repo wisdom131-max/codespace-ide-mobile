@@ -1,0 +1,43 @@
+﻿2026-09-12T19:28:46.0805417Z ##[group]Run sudo apt-get update && sudo apt-get install -y patchelf
+2026-09-12T19:28:46.0805980Z [36;1msudo apt-get update && sudo apt-get install -y patchelf[0m
+2026-09-12T19:28:46.0831224Z shell: /usr/bin/bash -e {0}
+2026-09-12T19:28:46.0831636Z env:
+2026-09-12T19:28:46.0832032Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-1/x64
+2026-09-12T19:28:46.0832589Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-1/x64
+2026-09-12T19:28:46.0833131Z   ANDROID_HOME: /usr/local/lib/android/sdk
+2026-09-12T19:28:46.0833501Z   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+2026-09-12T19:28:46.0833830Z ##[endgroup]
+2026-09-12T19:28:46.2428747Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-09-12T19:28:46.2824099Z Hit:2 http://azure.archive.ubuntu.com/ubuntu noble InRelease
+2026-09-12T19:28:46.2832691Z Get:3 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+2026-09-12T19:28:46.2882291Z Get:4 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+2026-09-12T19:28:46.2895415Z Get:5 http://azure.archive.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+2026-09-12T19:28:46.3060559Z Get:6 https://packages.microsoft.com/ubuntu/24.04/prod noble InRelease [3600 B]
+2026-09-12T19:28:46.3434542Z Get:7 https://dl.google.com/linux/chrome-stable/deb stable InRelease [2548 B]
+2026-09-12T19:28:46.4681268Z Get:8 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1263 kB]
+2026-09-12T19:28:46.4801636Z Get:9 http://azure.archive.ubuntu.com/ubuntu noble-updates/main Translation-en [292 kB]
+2026-09-12T19:28:46.4828297Z Get:10 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Components [180 kB]
+2026-09-12T19:28:46.4838730Z Get:11 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1690 kB]
+2026-09-12T19:28:46.4929572Z Get:12 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Components [388 kB]
+2026-09-12T19:28:46.4951289Z Get:13 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [1544 kB]
+2026-09-12T19:28:46.5040138Z Get:14 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted Translation-en [354 kB]
+2026-09-12T19:28:46.5057879Z Get:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Components [940 B]
+2026-09-12T19:28:46.5169907Z Get:16 http://azure.archive.ubuntu.com/ubuntu noble-backports/main amd64 Components [5748 B]
+2026-09-12T19:28:46.5180282Z Get:17 http://azure.archive.ubuntu.com/ubuntu noble-backports/universe amd64 Components [12.6 kB]
+2026-09-12T19:28:46.5911827Z Get:25 https://packages.microsoft.com/ubuntu/24.04/prod noble/main amd64 Packages [463 kB]
+2026-09-12T19:28:46.5998452Z Get:18 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Packages [1006 kB]
+2026-09-12T19:28:46.6028009Z Get:26 https://packages.microsoft.com/ubuntu/24.04/prod noble/main arm64 Packages [414 kB]
+2026-09-12T19:28:46.6048310Z Get:19 http://azure.archive.ubuntu.com/ubuntu noble-security/main Translation-en [213 kB]
+2026-09-12T19:28:46.6066505Z Get:20 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Components [46.4 kB]
+2026-09-12T19:28:46.6088474Z Get:21 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1206 kB]
+2026-09-12T19:28:46.6123183Z Get:22 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Components [76.3 kB]
+2026-09-12T19:28:46.6148444Z Get:23 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1445 kB]
+2026-09-12T19:28:46.6244706Z Get:24 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted Translation-en [336 kB]
+2026-09-12T19:28:46.6769240Z Get:27 https://dl.google.com/linux/chrome-stable/deb stable/main amd64 Packages [1409 B]
+2026-09-12T19:28:52.4372938Z Fetched 11.3 MB in 1s (8351 kB/s)
+2026-09-12T19:28:53.1648988Z Reading package lists...
+2026-09-12T19:28:53.1932388Z Reading package lists...
+2026-09-12T19:28:53.3179612Z Building dependency tree...
+2026-09-12T19:28:53.3184361Z Reading state information...
+2026-09-12T19:28:53.4913493Z patchelf is already the newest version (0.18.0-1.1build1).
+2026-09-12T19:28:53.4914378Z 0 upgraded, 0 newly installed, 0 to remove and 50 not upgraded.
