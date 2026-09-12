@@ -1,7 +1,7 @@
 # Codespace IDE — AI Agent Context
 
 > Repo: wisdom131-max/codespace-ide-mobile
-> Last updated: 2026-09-12 10:33 WAT
+> Last updated: 2026-09-12 11:15 WAT
 
 ---
 
@@ -29,8 +29,8 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | b00101c |
-| CI build | #2729 GREEN (b00101c; f12e366 6-fix batch + beb78e1 split-row placement + 2 build fixes 6abc3ec/b00101c) |
+| Latest commit | 2f97101 |
+| CI build | #2729 GREEN (b00101c) -> #2731 pending (2f97101; #2729 retest batch: split-inline, gold-band dismiss, gutter rework, MC diag, clone-only dialog) |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2609,3 +2609,37 @@ RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2.
 10. Item 4 PerfProbe re-verify AFTER items 2/3/4/8/9 retests.
 11. Debugger P3 (run-to-cursor, inline values) — queued.
 12. Batch J deferred; chat-command testing deferred until model configured.
+
+### [2026-09-12 11:15 WAT] — AI Agent: Claude, Commit 2f97101, CI Build pending (#2731)
+
+RULES REMINDER: 1. TWO-REPO (main IDE only here; proot -> ubuntu-proot-test). 2. Change log at bottom w/ timestamp, SHA, CI #, fixes, files, roadmap. 3. Tags. 4. Current State table updated. 5. No re-do of done work. 6. Roadmap continuity — ALL pending items. 7. UI rounded corners + padding everywhere.
+
+**[UI] SPLIT-INLINE (user precision fix 2):** the split toggle no longer takes its own row — it now sits INLINE at the right end of the BREADCRUMB row ("My codespace app 2 > ... [split icon]"), reclaiming the whole 28dp row for the code area. Toggle behavior unchanged (flips global SplitViewStore; EditorPane LaunchedEffect focuses created view / falls back to primary; accent tint while a split exists). Fixed 28dp row DELETED from ProjectShellScreen.
+
+**[EDITOR] GOLDBAND-AUTO-DISMISS:** the gold line-highlight band now clears itself 5 seconds after appearing (LaunchedEffect keyed on highlightTargetLine + highlightBlinkStart, delay(5000) then highlightTargetLine = 0) — previously it blinked for 6s then lingered at low alpha forever.
+
+**[EDITOR] GUTTER-VIRT-REWORK (user direction: ONE calculation, no parallel fixes):** the earlier fix (f12e366) added a layout-based binary search NEXT TO the original uniform-grid estimate with a guard that rarely matched -> still broken. Now the ORIGINAL virtualized-window calculation is reworked DIRECTLY: topVisibleIdx/bottomVisibleIdx are binary-searched from the SAME EditorLinePositioning geometry (real TextLayoutResult line tops/heights, with the uniform grid falling back INTERNALLY when layout is null) that positions the gutter rows — one source of truth for window AND rows, so they can never disagree again. Dead vars removed (visibleCount, topSpacerLines, bottomSpacerLines); duplicate gutterLayout/gutterLhPx declarations merged into one.
+
+**[MC] MC-DELETE-DIAG (diagnostics only, no behavior change):** user reports multi-cursor breaking after ~3 deletes with no symptom detail yet. Added [MC-DELETE-DIAG] logging (Output, lsp channel) around the ENTIRE delete/edit fan-out path: CodeEditor logs pre/post transaction (text len, primary range, extras), MultiCursorEngine logs the diffed edit triple + direction + each pending + final result (incl. how many cursors normalize dropped as dup/merged). Next repro will show exactly which invariant breaks. REMOVE once fixed.
+
+**[SCM][UI] CLONE-ONLY-DIALOG:** the Remove-&-delete-files confirmation now applies ONLY to git-cloned repo roots (X checks for a .git directory at the root, guest->host translated). Locally created folders remove with a plain X — list entry only, files untouched, notification shown.
+
+**[INVESTIGATION — clone storage location (reported, NOT implemented):** user suspects clones live in app-private storage -> lost on uninstall. CONFIRMED: projects default to filesDir/projects/<id> (app-private; ProjectPathResolver legacy fallback + ProjectShellScreen/SourceControlPane/CloudBackupManager all use filesDir/projects), and cloneRepo clones INTO the project root — so clones are app-private unless the project was created on user storage. Proposal (clone into ACTIVE WORKSPACE ROOT on user-accessible storage, making remove = plain detach) is SOUND; see roadmap item for the implementation plan + LSP impact analysis. Awaiting user approval.
+
+**Files touched:** ui/screens/ProjectShellScreen.kt (split inline in breadcrumb, dedicated row deleted); editor/CodeEditor.kt (gutter rework, gold-band dismiss, MC-DELETE-DIAG pre/post); editor/MultiCursorEngine.kt (MC-DELETE-DIAG engine logs); ui/panes/ExplorerPane.kt (clone-only dialog scoping).
+
+**Next on roadmap (ALL pending items):**
+1. Confirm #2731 CI green; install newest APK (codespace-ide-arm64-v8a artifact).
+2. MC-DELETE repro (with new diagnostics): MC mode on, 2 cursors, type a few chars, delete them one by one — watch what breaks on/after the 3rd delete and report the symptom + copy the [MC-DELETE-DIAG] lines from Output (lsp channel). Then fix the engine bug and REMOVE the diag logs.
+3. RETEST batch C: (a) split icon inline at right of breadcrumb row, toggle/focus/cascade behavior unchanged; (b) gold band appears on `ide open file:42` and auto-clears after 5s; (c) gutter numbers correct at ALL scroll depths incl. deep scroll + top of file; (d) Explorer X on a LOCAL (non-git) folder = instant remove, no dialog; X on a cloned repo = dialog with Remove & delete files.
+4. CLONE-STORAGE decision (user approval pending): move clone destination to the ACTIVE WORKSPACE ROOT on user storage. Plan: (a) default clone dest = active workspace root (resolveProjectRoot when on /storage/emulated/0, else prompt/pick a user-storage folder); (b) existing filesDir-based project stays where it is, but NEW clones never land under filesDir; (c) register the clone folder as workspace root (addRoot — already happens); (d) after the move, root removal = plain detach X only (files live on user storage — dialog can be retired). LSP impact: NONE structural — /storage/emulated/0 maps to /sdcard in the proot guest (IdeEnvironment already translates; user-storage workspace roots already supported end-to-end: terminal cd, LSP workspace roots, git). Tradeoffs to note: sdcard FUSE I/O is slower than filesDir (slower LSP indexing + git status on huge repos); .git internals (objects) on FAT-style storage is fine for git, but file-watching latency may increase.
+5. RETEST batch A (gate for validation change): MC chip + double-tap second cursor; locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+6. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint against a real OpenAI-compatible server.
+7. STREAMING retest (1731b4d): ASK-mode streams visibly; AGENT mode per-iteration stream + tool-done lines; context gauge values + amber/red thresholds.
+8. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+9. TAB-STRIP PEEK — PARKED by user decision, do NOT build until design settled.
+10. MCP Batch D items 2-9 retest with literal walkthrough (linkdemo, npx -y @modelcontextprotocol/server-everything).
+11. Exit-9: await next occurrence + [EXIT9-PHANTOM-DIAG] evidence; audit process cgroup/watchdog for SIGKILL/9.
+12. Item 4 PerfProbe re-verify AFTER items 2/3/5/6/10/11 retests.
+13. Debugger P3 (run-to-cursor, inline values) — queued.
+14. Batch J deferred; chat-command testing deferred until model configured.
