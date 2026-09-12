@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | #2754 GREEN (996a6be, R6 pending-edits staging/review/apply) — R1..R6 live. APK artifact: codespace-ide-arm64-v8a |
+| CI build | R7 (plan/follow-ups/feedback/find) pushed, CI pending. Last GREEN: #2754 (996a6be, R6). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -3017,6 +3017,54 @@ Two errors, both in NEW R6 code:
 **Next on roadmap (ALL pending items):**
 1. R6 CI green -> Wisdom installs codespace-ide-arm64-v8a -> R6-1..R6-11.
 2. ROUND 7 — Plan review UI, todos, follow-ups, feedback, find-in-chat.
+3. ROUND 8 — Voice, images, queue, export/import.
+4. ROUND 9 — Skills/agents/hooks/subagents (scope flag BEFORE build — user gate).
+5. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+6. R1 RE-TEST: markdown rendering, code Copy/Insert, Stop mid-stream, Retry, /commands, session rename.
+7. R2 RE-TEST: AGENTS.md rule, chip toggle + persistence, copilot-instructions.md rename, CLAUDE.md combo, agent_prompt CLI block.
+8. R3 RE-TEST: paperclip picker, chip attach/remove, #file tokens, implicit-context toggle, caps, hashtag safety.
+9. R4 RE-TEST: tool chips, error bubbles, old-history error reclass, selection attach.
+10. R5 RE-TEST: R5-1..R5-8 (permission levels, pinning, per-mode models, AUTO resolution).
+11. MC RE-TEST on #2735 APK: chip + double-tap, BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity, [MC-TRIPWIRE].
+12. RETEST batch A: locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+13. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.
+14. STREAMING retest (1731b4d): ASK streams; AGENT stream + tool-done lines; gauge thresholds.
+15. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+16. TAB-STRIP PEEK — PARKED. Custom-model-ID entry — PARKED.
+17. MCP Batch D items 2-9 retest; Exit-9 + [EXIT9-PHANTOM-DIAG]; Debugger P3; Batch J deferred.
+
+## [2026-09-12 20:27 WAT] — AI Agent: Claude Sonnet 5.6 (R7-PLAN-FOLLOWUPS-FIND)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### What was built (Round 7 — plan review/todos, follow-ups, feedback, find-in-chat)
+1. [UI][RESTRUCTURE] PLAN TOOL + REVIEW CARD (VS Code plan-review part parity): new AGENT tool `plan` (todo_write semantics — full step list per call: {"steps":[{title,detail,status}]}). Staging a plan ENDS the agent turn (chat() loop breaks, planStaged flag) — user reviews the new ChatPlanCard at the transcript end: numbered steps, status glyphs (o pending / - in_progress / done), progress counter, footer Approve (auto-sends "Plan approved — execute all steps now.") or Revise (fills input template). After approval the card doubles as the TODO list — agent re-calls plan with updated statuses as it executes. AGENT prompt rule #8 added: plan-first for 3+ steps / 2+ files. New chat/ChatPlanStore.kt (per-session, persists in prefs plans_v1, init in CodeSpaceApplication via CustomEndpointStore pattern; revision state for recomposition; activeSessionId registered alongside PendingChangesStore).
+2. [UI] FOLLOW-UPS (VS Code suggested-follow-ups parity): deterministic context-derived chips under the last assistant reply (new ChatFollowUps.kt). Suggestions react to panel state: plan awaiting review -> "Approve the plan"/"Revise..."; staged edits -> "Review the staged changes"/"Explain the proposed edits"; AGENT -> "Summarize what you changed"; ASK -> "Explain more simply"/"Show me a code example". Tap INSERTS into input (never auto-sends). Max 3.
+3. [UI] FEEDBACK (VS Code feedback part parity): thumbs up/down under every assistant bubble (ChatFeedbackRow in ChatEntryExtras.kt). Tap toggles; persisted on the message (new ChatMsg.rating field, "up"/"down"/null — backward-compatible JSON: only written when non-null, optString on load). Local-only, nothing leaves the device.
+4. [UI] FIND-IN-CHAT (VS Code find-in-chat parity): new Search icon right of the mode row (distinct from session search) toggling the ChatFindBar — live case-insensitive transcript filter with match count. v1 filter-based; in-message highlight deferred (markdown pipeline rework). Feedback rows hidden while filtering (index safety).
+5. [DOCS] TOOLS_DESCRIPTION gains a "— Planning —" section (P1. plan; no renumber churn); /tools now lists plan.
+
+**Files touched:** chat/ChatPlanStore.kt (NEW), ui/screens/ChatPlanCard.kt (NEW), ui/screens/ChatFollowUps.kt (NEW), ui/screens/ChatFindBar.kt (NEW), ui/screens/ChatEntryExtras.kt (feedback row), agent/AgentTools.kt (plan tool), ui/screens/CopilotChatPanelOverlay.kt (loop break, ChatMsg.rating, persistence, find/filter, plan card + follow-up items), CodeSpaceApplication.kt (store init).
+
+### R7 re-test batch (R7-1..R7-12)
+- R7-1 AGENT: multi-step ask (e.g. "refactor two files, 3 steps") -> agent calls plan, turn STOPS, card shows steps.
+- R7-2 Tap Approve -> agent executes; statuses flip pending -> in_progress -> completed as it goes.
+- R7-3 Tap Revise instead -> input pre-filled "Revise the plan: "; type tweak -> new plan stages.
+- R7-4 Card persists across app restart (reopen chat, card still there).
+- R7-5 Follow-up chips appear under the last assistant reply; tapping inserts text into the input (no auto-send).
+- R7-6 With staged edits pending, chips include "Review the staged changes".
+- R7-7 Thumbs under assistant bubbles: tap up -> accent; tap again -> clears; persists after restart.
+- R7-8 Find icon (mode row, right) -> bar appears; typing filters transcript live; count matches; x closes and restores.
+- R7-9 Old sessions (pre-R7) load fine, no crash on missing rating key.
+- R7-10 /tools lists plan.
+- R7-11 ASK mode still works (no plan tool interference).
+- R7-12 Stop button still cancels mid-agent (plan staging break did not break cancellation).
+
+**Next on roadmap (ALL pending items):**
+1. R7 CI green -> Wisdom installs codespace-ide-arm64-v8a -> R7-1..R7-12.
+2. R6 RE-TEST: R6-1..R6-11 (staging/apply/drift/undo) — still untested on device.
 3. ROUND 8 — Voice, images, queue, export/import.
 4. ROUND 9 — Skills/agents/hooks/subagents (scope flag BEFORE build — user gate).
 5. ROUND 10 — Status-bar entry, settings surface, input history, a11y.

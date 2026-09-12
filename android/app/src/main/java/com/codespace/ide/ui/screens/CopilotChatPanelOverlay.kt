@@ -17,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -102,6 +103,8 @@ private data class ChatMsg(
     val role: String,
     val text: String,
     val kind: ChatEntryKind = ChatEntryKind.of(role, text),
+    // R7-FEEDBACK: local thumbs up/down on assistant replies — "up" | "down" | null.
+    val rating: String? = null,
 )
 
 /**
@@ -121,7 +124,11 @@ private const val KEY_MSGS   = "messages_v2"
 
 private fun saveHistory(ctx: Context, msgs: List<ChatMsg>) {
     val arr = JSONArray()
-    msgs.takeLast(50).forEach { arr.put(JSONObject().put("role", it.role).put("text", it.text)) }
+    msgs.takeLast(50).forEach { m ->
+        val mo = JSONObject().put("role", m.role).put("text", m.text)
+        if (m.rating != null) mo.put("rating", m.rating)
+        arr.put(mo)
+    }
     ctx.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
         .edit().putString(KEY_MSGS, arr.toString()).apply()
 }
@@ -133,7 +140,7 @@ private fun loadHistory(ctx: Context): List<ChatMsg> {
         val arr = JSONArray(str)
         (0 until arr.length()).map {
             val o = arr.getJSONObject(it)
-            ChatMsg(o.getString("role"), o.getString("text"))
+            ChatMsg(o.getString("role"), o.getString("text"), rating = o.optString("rating").ifBlank { null })
         }
     } catch (_: Exception) { emptyList() }
 }
@@ -158,7 +165,11 @@ private fun saveSessions(ctx: Context, sessions: List<ChatSession>) {
     val arr = JSONArray()
     sessions.forEach { s ->
         val msgsArr = JSONArray()
-        s.messages.takeLast(50).forEach { msgsArr.put(JSONObject().put("role", it.role).put("text", it.text)) }
+        s.messages.takeLast(50).forEach { m ->
+            val mo = JSONObject().put("role", m.role).put("text", m.text)
+            if (m.rating != null) mo.put("rating", m.rating)
+            msgsArr.put(mo)
+        }
         arr.put(
             JSONObject()
                 .put("id", s.id)
@@ -183,7 +194,8 @@ private fun loadSessions(ctx: Context): MutableList<ChatSession> {
                 val msgsArr = o.getJSONArray("messages")
                 val msgs = (0 until msgsArr.length()).map { j ->
                     val m = msgsArr.getJSONObject(j)
-                    ChatMsg(m.getString("role"), m.getString("text"))
+                    ChatMsg(m.getString("role"), m.getString("text"),
+                        rating = m.optString("rating").ifBlank { null })
                 }.toMutableList()
                 ChatSession(
                     id = o.getString("id"),
@@ -320,6 +332,13 @@ If a tool returns an error, say exactly what went wrong. Never pretend success.
 All run_command calls execute inside the Ubuntu proot terminal. Standard Linux
 commands work (apt, git, node, python3). Android host commands do NOT work here.
 
+### 8. Plan first for multi-step work
+Before ANY task that needs 3+ steps or edits 2+ files: call the plan tool with
+your proposed steps and STOP — the turn ends so the user can review the plan
+card and Approve or Revise. After approval arrives as the user's next message,
+execute the steps in order, calling plan again after each step to update its
+status (pending -> in_progress -> completed). Single-step work needs no plan.
+
 """ + AgentTools.TOOLS_DESCRIPTION +
             com.codespace.ide.agent.McpClientManager.toolDocs(context) + tail
         ChatMode.PLAN  -> "You are a planning assistant inside VN Code. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution." + tail
@@ -448,6 +467,9 @@ private suspend fun chat(
             // Parse and execute all tool calls
             val toolCalls = AgentTools.parseToolCalls(content)
             val toolResults = StringBuilder()
+            // R7-PLAN: a staged plan ENDS this agent turn (VS Code plan_response
+            // semantics) — the user reviews the card and Approve/Revise resumes.
+            var planStaged = false
             for ((toolName, toolArgs) in toolCalls) {
                 // R6-PENDING-EDITS (decision #1): in AGENT mode, write_file STAGES
                 // into PendingChangesStore instead of writing disk — staging is
@@ -467,6 +489,7 @@ private suspend fun chat(
                 val argsSummary = toolArgs.toString().take(160)
                 val approved = stagedMsg != null ||
                     com.codespace.ide.agent.AgentFlowGate.awaitApproval(context, toolName, argsSummary)
+                if (toolName == "plan" && approved) planStaged = true
                 val result = if (stagedMsg != null) {
                     stagedMsg
                 } else if (approved) {
@@ -500,6 +523,9 @@ private suspend fun chat(
                 }
             }
 
+            if (planStaged) {
+                return@withContext "Plan ready — review it in the chat panel, then tap Approve (executes the steps) or Revise (tell me what to change)."
+            }
             // Feed tool results back as user message
             convMsgs.put(JSONObject().put("role", "user").put("content",
                 "Tool execution results:\n$toolResults\nContinue with the next step or give a final summary if done."))
@@ -972,6 +998,9 @@ internal fun CopilotChatPanelInline(
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) } // Item3: chat-panel overflow menu
+    // R7-FIND: in-transcript find bar (distinct from session search)
+    var findActive by remember { mutableStateOf(false) }
+    var findQuery  by remember { mutableStateOf("") }
     // R1-CHAT-PARITY: cancelable in-flight chat job + session-rename dialog target
     var chatJob by remember { mutableStateOf<Job?>(null) }
     var renameTargetId by remember { mutableStateOf<String?>(null) }
@@ -1052,6 +1081,7 @@ internal fun CopilotChatPanelInline(
     LaunchedEffect(activeSession.id, projectRootPath) {
         com.codespace.ide.chat.PendingChangesStore.activeSessionId = activeSession.id
         com.codespace.ide.chat.PendingChangesStore.activeProjectRoot = projectRootPath
+        com.codespace.ide.chat.ChatPlanStore.activeSessionId = activeSession.id
     }
 
     // Sessions sidebar visibility: auto-reveals once the panel is dragged wide enough,
@@ -1225,6 +1255,14 @@ internal fun CopilotChatPanelInline(
         val userText = messages[lastUserIdx].text
         while (messages.size > lastUserIdx) messages.removeAt(messages.size - 1)
         send(userText)
+    }
+
+    // R7-FEEDBACK: thumbs up/down on an assistant message (toggle on repeat tap).
+    fun rateMessage(idx: Int, r: String) {
+        val cur = messages.getOrNull(idx) ?: return
+        val newRating = if (cur.rating == r) null else r
+        messages[idx] = cur.copy(rating = newRating)
+        persistSessions()
     }
 
     // P39: auto-send AI code actions (Explain/Optimize/etc) delivered from the editor's
@@ -1435,11 +1473,34 @@ internal fun CopilotChatPanelInline(
                         fontSize = 11.sp, color = modeColor, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal)
                 }
             }
+            // R7-FIND: in-chat find toggle (distinct from the session-search icon)
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Default.Search, "Find in chat",
+                tint = if (findActive) colors.accent else colors.textSecondary,
+                modifier = Modifier.size(16.dp).clickable {
+                    findActive = !findActive
+                    if (!findActive) findQuery = ""
+                })
+        }
+
+        // R7-FIND: the find bar itself (filter + live match count)
+        if (findActive) {
+            ChatFindBar(
+                query = findQuery,
+                onQueryChange = { findQuery = it },
+                matchCount = if (findQuery.isBlank()) 0 else messages.count { it.text.contains(findQuery, true) },
+                onClose = { findActive = false; findQuery = "" },
+                colors = colors,
+            )
         }
 
         HorizontalDivider(color = colors.divider)
 
         // ── Messages ──────────────────────────────────────────────────────
+        // R7-FIND: active query filters the transcript to matching messages
+        val findActiveNow = findActive && findQuery.isNotBlank()
+        val visibleMsgs = if (findActiveNow)
+            messages.filter { it.text.contains(findQuery, ignoreCase = true) } else messages
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp),
@@ -1457,7 +1518,7 @@ internal fun CopilotChatPanelInline(
                     }
                 }
             }
-            items(messages) { msg ->
+            itemsIndexed(visibleMsgs) { i, msg ->
                 if (msg.role == "card_connect") {
                     ChatConnectCard(
                         serviceId = msg.text,
@@ -1498,6 +1559,14 @@ internal fun CopilotChatPanelInline(
                         }
                     }
                 }
+                // R7-FEEDBACK: thumbs on assistant replies (hidden while find-filtering)
+                if (!isUser && !findActiveNow) {
+                    ChatFeedbackRow(
+                        rating = msg.rating,
+                        onRate = { r -> rateMessage(i, r) },
+                        colors = colors,
+                    )
+                }
                 }
             }
             // R6-PENDING-EDITS: review card rides at the end of the transcript
@@ -1513,6 +1582,43 @@ internal fun CopilotChatPanelInline(
                         sessionId = activeSession.id,
                         colors = colors,
                     )
+                }
+            }
+            // R7-PLAN: review/progress card while THIS session has a plan
+            val activePlan = com.codespace.ide.chat.ChatPlanStore.revision.value.let {
+                com.codespace.ide.chat.ChatPlanStore.planFor(activeSession.id)
+            }
+            if (activePlan != null && activePlan.steps.isNotEmpty()) {
+                item {
+                    ChatPlanCard(
+                        plan = activePlan,
+                        onApprove = {
+                            com.codespace.ide.chat.ChatPlanStore.setApproved(activeSession.id)
+                            send("Plan approved — execute all steps now.")
+                        },
+                        onRevise = { chatInput = "Revise the plan: " },
+                        onClear = { com.codespace.ide.chat.ChatPlanStore.clear(activeSession.id) },
+                        colors = colors,
+                    )
+                }
+            }
+            // R7-FOLLOW-UPS: suggestion chips under the last assistant reply
+            if (!chatLoading && !findActiveNow && visibleMsgs.isNotEmpty()) {
+                val lastMsg = visibleMsgs.last()
+                if (lastMsg.role == "assistant" && lastMsg.kind != ChatEntryKind.ERROR) {
+                    item {
+                        ChatFollowUpChips(
+                            suggestions = suggestedFollowUps(
+                                isAgentMode = mode == ChatMode.AGENT,
+                                hasPendingStaged = pendingEntries.isNotEmpty(),
+                                planAwaitingReview = activePlan != null && !activePlan.approved,
+                                planInProgress = activePlan != null && activePlan.approved && !activePlan.allDone,
+                                lastReplyWasError = false,
+                            ),
+                            onPick = { s -> chatInput = s },
+                            colors = colors,
+                        )
+                    }
                 }
             }
             if (chatLoading) {

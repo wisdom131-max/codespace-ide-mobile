@@ -1,6 +1,7 @@
 package com.codespace.ide.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,12 +15,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -101,6 +105,43 @@ internal fun ChatErrorBubble(
                     color = colors.text,
                 )
             }
+        }
+    }
+}
+
+/**
+ * R7-FEEDBACK (VS Code feedback part parity): thumbs up/down on assistant
+ * replies, persisted on the message (local-only — nothing leaves the device).
+ * Tapping the active thumb again clears the rating (toggle).
+ */
+@Composable
+internal fun ChatFeedbackRow(
+    rating: String?,
+    onRate: (String) -> Unit,
+    colors: ChatPanelColors,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            Modifier.clickable { onRate("up") },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.ThumbUp,
+                contentDescription = "Helpful",
+                tint = if (rating == "up") colors.accent else colors.textSecondary,
+                modifier = Modifier.size(12.dp),
+            )
+        }
+        Row(
+            Modifier.clickable { onRate("down") },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.ThumbDown,
+                contentDescription = "Not helpful",
+                tint = if (rating == "down") Color(0xFFEF4444) else colors.textSecondary,
+                modifier = Modifier.size(12.dp),
+            )
         }
     }
 }

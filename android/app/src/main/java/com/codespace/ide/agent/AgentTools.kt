@@ -47,6 +47,13 @@ You have access to these tools for acting on the user's environment:
 5. search_files   — Search for a text pattern in files
    <tool>{"name":"search_files","arguments":{"path":"/path","pattern":"TODO"}}</tool>
 
+— Planning (multi-step tasks) —
+P1. plan           — Stage a structured plan / todo list for user review and
+   progress tracking. Call BEFORE starting multi-step work; after approval call
+   again with updated statuses after each step. Staging a plan ENDS your turn.
+   <tool>{"name":"plan","arguments":{"steps":[{"title":"Fix parser","detail":"Lexer.kt off-by-one","status":"pending"},{"title":"Add tests","status":"pending"}]}}</tool>
+   status: pending | in_progress | completed
+
 — Git (full access: push, pull, commit, branch, merge) —
 6.  git_commit_push — Stage all, commit, push
     <tool>{"name":"git_commit_push","arguments":{"message":"fix: update UI","repo_dir":"/path"}}</tool>
@@ -149,6 +156,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "list_connectors", "connect_service", "use_connector", "request_connector",
         "create_entity", "read_entities", "update_entity", "delete_entity",
         "schedule_task", "list_tasks", "cancel_task", "upload_file", "install_package",
+        "plan",
     )
 
     /** Builtin tool names for the /tools chat command (see BUILTIN_TOOL_NAMES). */
@@ -161,6 +169,10 @@ You can use multiple tools in sequence. When done, give a final summary.
         return try {
             when (name) {
                 "run_command" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
+                "plan" -> {
+                    com.codespace.ide.chat.ChatPlanStore.updateFromArgs(args.getJSONArray("steps"))
+                    "Plan staged — awaiting user review. Stop and wait for approval in the chat panel."
+                }
                 "read_file" -> readFile(args.getString("path"))
                 "write_file" -> writeFile(args.getString("path"), args.getString("content"))
                 "list_files" -> listFiles(args.getString("path"))
