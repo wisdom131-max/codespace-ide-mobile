@@ -1963,13 +1963,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // gutter's display lines (no word wrap), find the first visible line by
             // binary search on the REAL line tops/bottoms; fall back to the uniform
             // grid on the first frame and under word wrap (same behavior as before).
-            val topVisibleIdx = if (textLayoutResult != null && textLayoutResult.lineCount == displayLines.size && textLayoutResult.lineCount > 0) {
+            // SMART-CAST-FIX (#2724 failure): textLayoutResult is a delegated
+            // mutableStateOf property - Kotlin cannot smart-cast it after a null
+            // check, so capture it into a plain local first.
+            val gutterLayout = textLayoutResult
+            val topVisibleIdx = if (gutterLayout != null && gutterLayout.lineCount == displayLines.size && gutterLayout.lineCount > 0) {
                 var lo = 0
-                var hi = textLayoutResult.lineCount - 1
+                var hi = gutterLayout.lineCount - 1
                 var firstVisible = 0
                 while (lo <= hi) {
                     val mid = (lo + hi) ushr 1
-                    if (textLayoutResult.getLineBottom(mid) > vScroll.value) {
+                    if (gutterLayout.getLineBottom(mid) > vScroll.value) {
                         firstVisible = mid
                         hi = mid - 1
                     } else {
