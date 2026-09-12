@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | R7 (plan/follow-ups/feedback/find) pushed, CI pending. Last GREEN: #2754 (996a6be, R6). APK artifact: codespace-ide-arm64-v8a |
+| CI build | R7-halt-fix + R8 (queue/voice/export) pushed, CI pending. Last GREEN: #2754 (996a6be, R6). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -3066,6 +3066,58 @@ Two errors, both in NEW R6 code:
 1. R7 CI green -> Wisdom installs codespace-ide-arm64-v8a -> R7-1..R7-12.
 2. R6 RE-TEST: R6-1..R6-11 (staging/apply/drift/undo) — still untested on device.
 3. ROUND 8 — Voice, images, queue, export/import.
+4. ROUND 9 — Skills/agents/hooks/subagents (scope flag BEFORE build — user gate).
+5. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
+6. R1 RE-TEST: markdown rendering, code Copy/Insert, Stop mid-stream, Retry, /commands, session rename.
+7. R2 RE-TEST: AGENTS.md rule, chip toggle + persistence, copilot-instructions.md rename, CLAUDE.md combo, agent_prompt CLI block.
+8. R3 RE-TEST: paperclip picker, chip attach/remove, #file tokens, implicit-context toggle, caps, hashtag safety.
+9. R4 RE-TEST: tool chips, error bubbles, old-history error reclass, selection attach.
+10. R5 RE-TEST: R5-1..R5-8 (permission levels, pinning, per-mode models, AUTO resolution).
+11. MC RE-TEST on #2735 APK: chip + double-tap, BACKSPACE/DELETE x4+, select-drag, collapse, undo/redo, split parity, [MC-TRIPWIRE].
+12. RETEST batch A: locked-root ide open + [LOCK] cwd echo; Gemini AQ. paste; zero-tab Output quiet.
+13. NEW-PROVIDER retest (4298662): xAI key paste + live check; Custom Endpoint vs real server.
+14. STREAMING retest (1731b4d): ASK streams; AGENT stream + tool-done lines; gauge thresholds.
+15. After retests pass: APPROVED validation change (isValid() soft warning, live check sole validator, detect() paste-route only, real vendor error text).
+16. TAB-STRIP PEEK — PARKED. Custom-model-ID entry — PARKED.
+17. MCP Batch D items 2-9 retest; Exit-9 + [EXIT9-PHANTOM-DIAG]; Debugger P3; Batch J deferred.
+
+## [2026-09-12 21:10 WAT] — AI Agent: Claude Sonnet 5.6 (R7-HALT-FIX + R8-QUEUE-VOICE-EXPORT)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### Part 1 — R7 PLAN-HALT HARDENING (Wisdom audit findings)
+1. [UI] REJECT: plan card gains an explicit "Reject" button (red, between Approve and Revise) — cleanly stops the plan WITHOUT implying a revision. On reject: plan cleared from store, a local "Plan rejected." user entry is recorded (no model call — nothing is charged), the agent can never resume those steps.
+2. [BUILD-FIX] DURABLE HALT (the real audit finding): the planStaged turn-break only halted THAT turn — any later user message started a fresh loop and NOTHING told the agent the plan was still unapproved, so it could resume executing on its own. Fixed with an R7-PLAN-GUARD injected into the system prompt of EVERY AGENT request while the session has an unapproved plan: "do NOT execute plan steps or modifying tools; remind the user the plan awaits review." Guard vanishes on Approve/Reject/Clear. The halt is now (a) in-turn (loop breaks), (b) strict (no bundled tools execute after a plan call in the same round), (c) durable across turns (guard), (d) recorded (Reject writes the local entry).
+3. [BUILD-FIX] STRICT BREAK: once plan stages mid-round, remaining tool calls in that same round are skipped (break after the plan's own chip/bookkeeping) — a noncompliant model bundling [run_command, plan] can no longer sneak the command through after the plan.
+4. [UI] UNGATED PLAN STAGING: plan was still hitting the FlowGate approval card at Manual level — inconsistent with R6 decision #1 (staging cannot reach disk). Plan staging now skips the gate like write_file; the plan CARD is the single review surface.
+5. [BUILD-FIX] planStaged only sets when the store actually holds the session's plan (empty-steps plan call no longer ends the turn with a "Plan ready" reply and no card).
+
+### Part 2 — Round 8 (queue, voice, export/import)
+6. [UI] QUEUE (VS Code chat queue parity): while a reply streams, the input stays live and tapping send QUEUES the message — a "Queued: <text>" chip with cancel x appears above the gauge; it auto-sends the moment the current turn ends. Input no longer disables during loading; loading state shows BOTH queue-send and Stop buttons.
+7. [UI] VOICE: mic icon in the input row launches the system speech recognizer (no app permission needed — the recognizer activity owns the mic); spoken text appends to the input. Graceful "No speech recognizer installed" toast on devices without one.
+8. [UI] EXPORT/IMPORT: overflow menu gains "Export chat" (writes the active session as versioned JSON to public Downloads via MediaStore on API 29+, legacy File below; toast shows the path) and "Import chat" (system file picker -> parses -> new session, auto-switches, invalid files rejected with a toast). Format: {app: "codespace-ide-chat", version: 1, title, mode, messages[role,text,rating?]}.
+9. [DOCS] IMAGES NOT in this round — vision needs per-provider request payloads (Gemini inline_data vs OpenAI image_url) across ChatRequest/attachment pipeline; scope decision with Wisdom BEFORE build (which providers get vision).
+
+**Files touched:** ui/screens/CopilotChatPanelOverlay.kt (halt hardening + queue/voice/export wiring), ui/screens/ChatPlanCard.kt (Reject), ui/screens/ChatQueueBar.kt (NEW), ui/screens/ChatSessionIO.kt (NEW).
+
+### R8 re-test batch (R8-1..R8-10) — ADD to R7 batch
+- R8-1 While streaming, type + send -> "Queued:" chip appears; message auto-sends when stream ends.
+- R8-2 Queued chip x cancels; nothing sends later.
+- R8-3 Stop button still stops the current turn; queued message then sends (queue survives stop).
+- R8-4 Mic icon -> system speech sheet opens; speaking appends text to input.
+- R8-5 Export chat -> toast with Download/codespace-chat-*.json path; file exists in Downloads and parses.
+- R8-6 Import chat -> picker opens; selecting the exported file restores it as a new session, auto-switched.
+- R8-7 Importing a random/corrupt JSON -> "Not a valid chat export" toast, no crash.
+- R8-8 Exported ratings/imported ratings round-trip.
+- R8-9 Plan card: Reject -> card gone, "Plan rejected." entry, agent does NOT resume steps on later messages.
+- R8-10 AGENT + unapproved plan: send an unrelated message -> agent answers WITHOUT executing plan steps and reminds the plan awaits review.
+
+**Next on roadmap (ALL pending items):**
+1. This build green -> Wisdom installs codespace-ide-arm64-v8a -> R7-1..R7-12 + R8-1..R8-10 (one device session).
+2. R6 RE-TEST: R6-1..R6-11 (staging/apply/drift/undo) — still untested on device.
+3. IMAGES/VISION scope decision (which providers) — then Round 8 completion.
 4. ROUND 9 — Skills/agents/hooks/subagents (scope flag BEFORE build — user gate).
 5. ROUND 10 — Status-bar entry, settings surface, input history, a11y.
 6. R1 RE-TEST: markdown rendering, code Copy/Insert, Stop mid-stream, Retry, /commands, session rename.

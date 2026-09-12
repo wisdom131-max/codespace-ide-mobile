@@ -20,6 +20,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.content.Intent
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -433,7 +437,21 @@ private suspend fun chat(
     // tools/list results feed the external-tools docs block below.
     com.codespace.ide.agent.McpClientManager.ensureDiscovered(context)
     
-    val systemPrompt = buildSystemPrompt(mode, context, workspaceCtx, projectRootPath)
+    var systemPrompt = buildSystemPrompt(mode, context, workspaceCtx, projectRootPath)
+    // R7-PLAN-GUARD (durable halt): the planStaged turn-break only halts THAT
+    // turn. Any later user message starts a fresh loop — this injected rule is
+    // what actually holds the agent back until Approve is tapped on the card.
+    // It vanishes the moment the plan is approved or rejected/cleared.
+    if (mode == ChatMode.AGENT) {
+        val sid = com.codespace.ide.chat.ChatPlanStore.activeSessionId ?: "default"
+        val pendingPlan = com.codespace.ide.chat.ChatPlanStore.planFor(sid)
+        if (pendingPlan != null && !pendingPlan.approved) {
+            systemPrompt += "\n\nIMPORTANT — PLAN AWAITING REVIEW: A plan you staged is awaiting the " +
+                "user's review. Do NOT execute any plan step and do NOT call tools that modify " +
+                "files or run commands. Respond only to the user's message, and remind them the " +
+                "plan is still awaiting Approve/Reject/Revise in the chat panel."
+        }
+    }
 
     val convMsgs = convMsgsOf(systemPrompt, messages, attachments)
 
@@ -481,6 +499,12 @@ private suspend fun chat(
                         com.codespace.ide.chat.PendingChangesStore.stage(
                             toolArgs.getString("path"), toolArgs.getString("content"))
                     } catch (_: Exception) { null }
+                } else if (mode == ChatMode.AGENT && toolName == "plan") {
+                    // R7-PLAN: staging a plan is ungated (R6 decision #1 class —
+                    // it cannot reach disk). The plan CARD is the review surface.
+                    try {
+                        AgentTools.executeTool("plan", toolArgs, context)
+                    } catch (_: Exception) { null }
                 } else null
                 // P-FLOW: In Manual flow mode, pause and wait for the user to tap
                 // Approve/Reject on the floating card before running this tool call.
@@ -489,7 +513,9 @@ private suspend fun chat(
                 val argsSummary = toolArgs.toString().take(160)
                 val approved = stagedMsg != null ||
                     com.codespace.ide.agent.AgentFlowGate.awaitApproval(context, toolName, argsSummary)
-                if (toolName == "plan" && approved) planStaged = true
+                if (toolName == "plan" && approved) planStaged =
+                    com.codespace.ide.chat.ChatPlanStore.planFor(
+                        com.codespace.ide.chat.ChatPlanStore.activeSessionId ?: "default") != null
                 val result = if (stagedMsg != null) {
                     stagedMsg
                 } else if (approved) {
@@ -504,6 +530,9 @@ private suspend fun chat(
                 }
                 onStreamEvent?.invoke(ChatStreamEvent.ToolDone(toolName))
                 toolResults.append("[Tool: $toolName] Result:\n$resultForTranscript\n\n")
+                // R7-PLAN strict halt: once a plan stages, NOTHING else in this
+                // tool round executes — no bundled tool calls ride along after it.
+                if (planStaged) break
                 // Auto-open file in editor + switch preview when AI writes a visual file
                 // R6: staged writes skip auto-open — the file is NOT on disk yet and
                 // must not be opened in the editor until the user applies it.
@@ -1001,6 +1030,8 @@ internal fun CopilotChatPanelInline(
     // R7-FIND: in-transcript find bar (distinct from session search)
     var findActive by remember { mutableStateOf(false) }
     var findQuery  by remember { mutableStateOf("") }
+    // R8-QUEUE: message queued while a reply is streaming; auto-sends after.
+    var queuedText by remember { mutableStateOf<String?>(null) }
     // R1-CHAT-PARITY: cancelable in-flight chat job + session-rename dialog target
     var chatJob by remember { mutableStateOf<Job?>(null) }
     var renameTargetId by remember { mutableStateOf<String?>(null) }
@@ -1012,6 +1043,8 @@ internal fun CopilotChatPanelInline(
     val insertCodeAtCursor: ((String) -> Unit)? = keyInsertDispatcher?.let { d ->
         { code: String -> d.dispatch(code) }
     }
+
+
     // R2-AUTOINSTR: chip toggle state for THIS project's instruction files
     var autoInstrEnabled by remember(projectRootPath) {
         mutableStateOf(
@@ -1185,7 +1218,9 @@ internal fun CopilotChatPanelInline(
     }
 
     fun send(userText: String) {
-        if (userText.isBlank() || chatLoading) return
+        if (userText.isBlank()) return
+        // R8-QUEUE: while a reply is streaming, sending QUEUES instead of dropping.
+        if (chatLoading) { queuedText = userText; chatInput = ""; return }
         // R1-CHAT-PARITY: slash commands never reach the model
         val cmd = com.codespace.ide.chat.ChatSlashCommands.parse(userText)
         if (cmd != null) {
@@ -1263,6 +1298,68 @@ internal fun CopilotChatPanelInline(
         val newRating = if (cur.rating == r) null else r
         messages[idx] = cur.copy(rating = newRating)
         persistSessions()
+    }
+
+    // R8-VOICE: mic dictation via the system speech activity (no app permission
+    // needed — the recognizer handles the mic itself). Spoken text appends to input.
+    val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        if (res.resultCode == android.app.Activity.RESULT_OK) {
+            val spoken = res.data?.getStringArrayListExtra(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+            if (!spoken.isNullOrBlank()) chatInput = (chatInput + " " + spoken).trim()
+        }
+    }
+    fun startVoiceInput() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak your message")
+        }
+        try { speechLauncher.launch(intent) } catch (_: android.content.ActivityNotFoundException) {
+            android.widget.Toast.makeText(context, "No speech recognizer installed", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // R8-IMPORT: pick a previously exported chat JSON
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val imported = ChatSessionIO.import(context, uri)
+            if (imported == null) {
+                android.widget.Toast.makeText(context, "Not a valid chat export", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                val s = ChatSession(
+                    id = java.util.UUID.randomUUID().toString(),
+                    title = imported.title,
+                    mode = try { ChatMode.valueOf(imported.mode) } catch (_: Exception) { ChatMode.ASK },
+                ).apply {
+                    messages.addAll(imported.entries.map { ChatMsg(it.first, it.second, rating = it.third) })
+                    updatedAt = System.currentTimeMillis()
+                }
+                sessions.add(0, s)
+                switchSession(s.id)
+                android.widget.Toast.makeText(context, "Imported '" + imported.title + "'", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // R8-EXPORT: write the active session to Downloads as JSON
+    fun exportCurrentChat() {
+        try {
+            val path = ChatSessionIO.export(
+                context, activeSession.title, mode.name,
+                messages.map { Triple(it.role, it.text, it.rating) },
+                System.currentTimeMillis())
+            android.widget.Toast.makeText(context, "Exported to $path", android.widget.Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "Export failed: " + (e.message ?: "unknown"), android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // R8-QUEUE: the queued message auto-sends as soon as the current turn ends.
+    LaunchedEffect(queuedText, chatLoading) {
+        if (queuedText != null && !chatLoading) {
+            val t = queuedText
+            queuedText = null
+            if (t != null) send(t)
+        }
     }
 
     // P39: auto-send AI code actions (Explain/Optimize/etc) delivered from the editor's
@@ -1435,6 +1532,17 @@ internal fun CopilotChatPanelInline(
                                 text = { Text("Connectors Hub", fontSize = 12.sp) },
                                 onClick = { showOverflowMenu = false; onOpenConnectors() },
                             )
+                            // R8-EXPORT-IMPORT: chat transcript file round-trip
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.FileDownload, null, tint = colors.textSecondary, modifier = Modifier.size(14.dp)) },
+                                text = { Text("Export chat", fontSize = 12.sp) },
+                                onClick = { showOverflowMenu = false; exportCurrentChat() },
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.FileUpload, null, tint = colors.textSecondary, modifier = Modifier.size(14.dp)) },
+                                text = { Text("Import chat", fontSize = 12.sp) },
+                                onClick = { showOverflowMenu = false; importLauncher.launch("application/json") },
+                            )
                         }
                     }
                     Spacer(Modifier.width(8.dp))
@@ -1596,6 +1704,14 @@ internal fun CopilotChatPanelInline(
                             com.codespace.ide.chat.ChatPlanStore.setApproved(activeSession.id)
                             send("Plan approved — execute all steps now.")
                         },
+                        onReject = {
+                            // R7-REJECT: clean stop — no revision, no execution.
+                            // Drops the plan and records the rejection locally
+                            // (no model call) so later turns know not to resume.
+                            com.codespace.ide.chat.ChatPlanStore.clear(activeSession.id)
+                            messages.add(ChatMsg("user", "Plan rejected."))
+                            persistSessions()
+                        },
                         onRevise = { chatInput = "Revise the plan: " },
                         onClear = { com.codespace.ide.chat.ChatPlanStore.clear(activeSession.id) },
                         colors = colors,
@@ -1636,6 +1752,11 @@ internal fun CopilotChatPanelInline(
 
         if (error.isNotEmpty()) {
             Text(error, fontSize = 10.sp, color = Color(0xFFEF4444), modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
+        }
+
+        // R8-QUEUE: queued-message chip (auto-sends when the current turn ends)
+        queuedText?.let { qt ->
+            ChatQueueBar(queuedText = qt, onCancel = { queuedText = null }, colors = colors)
         }
 
         // ── Context gauge (running per-turn token usage) ─────────────────────
@@ -1707,7 +1828,7 @@ internal fun CopilotChatPanelInline(
                 onValueChange = { chatInput = it },
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Ask Copilot\u2026", color = colors.textSecondary) },
-                enabled = !chatLoading,
+                // R8-QUEUE: input stays live while streaming — sends become queued.
                 maxLines = 4,
                 colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                     focusedTextColor = colors.text,
@@ -1718,7 +1839,22 @@ internal fun CopilotChatPanelInline(
                     unfocusedContainerColor = colors.inputBg,
                 ),
             )
+            // R8-VOICE: mic dictation into the input (system speech activity)
+            Icon(
+                Icons.Default.Mic, "Voice input",
+                tint = colors.textSecondary,
+                modifier = Modifier
+                    .size(20.dp)
+                    .clickable { startVoiceInput() },
+            )
             if (chatLoading) {
+                // R8-QUEUE: send now queues the message for after the stream
+                IconButton(
+                    onClick = { send(chatInput) },
+                    enabled = chatInput.isNotBlank(),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Queue message", tint = colors.accent)
+                }
                 IconButton(onClick = { stopChat() }) {
                     Icon(Icons.Default.Stop, contentDescription = "Stop", tint = Color(0xFFEF4444))
                 }

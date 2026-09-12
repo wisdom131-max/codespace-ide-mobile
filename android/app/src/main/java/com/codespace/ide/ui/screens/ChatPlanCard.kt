@@ -41,6 +41,7 @@ import com.codespace.ide.chat.ChatPlanStore
 internal fun ChatPlanCard(
     plan: ChatPlanStore.Plan,
     onApprove: () -> Unit,
+    onReject: () -> Unit,
     onRevise: () -> Unit,
     onClear: () -> Unit,
     colors: ChatPanelColors,
@@ -98,6 +99,7 @@ internal fun ChatPlanCard(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (!plan.approved) {
                     PlanAction("Approve", colors.accent, Color.White, onApprove)
+                    PlanAction("Reject", colors.surface, Color(0xFFEF4444), onReject)
                     PlanAction("Revise", colors.surface, colors.text, onRevise)
                 } else if (plan.allDone) {
                     PlanAction("Clear plan", colors.surface, colors.textSecondary, onClear)
