@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | #2744 GREEN (ad13a49, R3 attachments) — R1+R2+R3 live. Round-4 commit pending CI. APK artifact: codespace-ide-arm64-v8a |
+| CI build | #2751 GREEN (02f156d, R5 model/pinning/permissions) — R1..R5 live. APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -2900,7 +2900,7 @@ Verified from the live repo (Copilot now ships in core as `extensions/copilot/`)
 
 **RULES REMINDER:** 1. TWO-REPO: codespace-ide-mobile only (proot -> ubuntu-proot-test). 2. CHANGE LOG bottom entry every commit. 3. TAGS. 4. Current State table updated. 5. NEVER re-do done work. 6. Roadmap lists ALL pending items. 7. UI: rounded 8-12dp + padding 12h/10v minimum. 8. 64KB limit: new UI = new file + single-line call.
 
-**Commit:** (SHA after commit) | CI: build triggered, result pending
+**Commit:** 02f156d | CI: **#2751 GREEN** (first push). APK artifact: codespace-ide-arm64-v8a
 
 **What was built (Round 5 — Auto model + pinning + per-mode model + permission levels):**
 - AUTO MODEL: picker gains an "Auto" entry (first, with checkmark when active) and it is now the FRESH-INSTALL DEFAULT (VS Code parity). "auto" is never dispatched literally — resolveAuto() maps it to the Settings-active provider's default (or first available) right before the request; the post-send context gauge resolves it too. Live-model snapping never eats the Auto sentinel.
