@@ -113,6 +113,23 @@ object SkillsCatalog {
     fun all(projectRoot: String?): List<Skill> = builtin() + projectSkills(projectRoot)
 
     /**
+     * R9-C — MCP prompts as read-only skills. Only ALREADY-CONNECTED servers
+     * appear (lazy spawn by design — they connect on first chat message);
+     * id encodes server+prompt so runSkill can fetch via prompts/get.
+     */
+    fun mcpSkills(): List<Skill> =
+        com.codespace.ide.agent.McpClientManager.cachedPrompts().map { p ->
+            Skill(
+                id = "mcp:" + p.server + ":" + p.name,
+                name = p.name,
+                description = p.description.ifBlank { "MCP prompt from " + p.server },
+                context = null,
+                body = "",   // fetched at run time via prompts/get
+                source = "mcp",
+            )
+        }
+
+    /**
      * Resolve a skill's context hint to an auto-attach ChatAttachment (D4).
      * Returns null when the hinted context is unavailable (skill still prefills
      * the input — the user can attach manually). Never throws.

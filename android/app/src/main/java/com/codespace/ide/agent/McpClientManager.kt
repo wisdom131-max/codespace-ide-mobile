@@ -55,6 +55,18 @@ object McpClientManager {
         val inputSchema: JSONObject,
     )
 
+    // R9-C — MCP prompts capability (surfaced as read-only chat skills).
+    // Prompts are OPTIONAL in the MCP spec: absence of the capability is
+    // normal, never an error (caught + cached-empty below).
+    data class ExternalPrompt(
+        val server: String,
+        val name: String,
+        val description: String,
+        val firstArgName: String?,  // single optional text arg (mobile-simple)
+    )
+
+    private val promptsCache = ConcurrentHashMap<String, List<ExternalPrompt>>()
+
     private const val PROTOCOL_VERSION = "2024-11-05"
     const val CALL_TIMEOUT_MS = 60_000L
     private const val INIT_TIMEOUT_MS = 30_000L
@@ -286,6 +298,31 @@ object McpClientManager {
         }
         discoveryStarted = true
         AppOutputLog.log("mcp server '${cfg.name}': ${tools.length()} tools discovered", CHANNEL)
+        // R9-C: best-effort prompts/list — capability is optional in the spec
+        try {
+            val pr = s.request("prompts/list", JSONObject(), INIT_TIMEOUT_MS)
+                .optJSONObject("result")?.optJSONArray("prompts")
+            if (pr != null && pr.length() > 0) {
+                val list = (0 until pr.length()).mapNotNull { i ->
+                    val o = pr.getJSONObject(i)
+                    val argArr = o.optJSONArray("arguments")
+                    val firstArg = try {
+                        if (argArr != null && argArr.length() > 0)
+                            argArr.getJSONObject(0).optString("name").ifBlank { null } else null
+                    } catch (_: Exception) { null }
+                    ExternalPrompt(
+                        cfg.name,
+                        o.optString("name").ifBlank { return@mapNotNull null },
+                        o.optString("description"),
+                        firstArg,
+                    )
+                }
+                if (list.isNotEmpty()) promptsCache[cfg.name] = list
+                AppOutputLog.log("mcp server '${cfg.name}': ${list.size} prompts discovered", CHANNEL)
+            }
+        } catch (_: Exception) {
+            // No prompts capability (or errored) — normal, keep cache empty.
+        }
     }
 
     fun stopServer(name: String) {
@@ -293,6 +330,49 @@ object McpClientManager {
         val prefix = "mcp_${name}_"
         val cacheIter = toolsCache.entries.iterator()
         while (cacheIter.hasNext()) { if (cacheIter.next().key.startsWith(prefix)) cacheIter.remove() }
+        promptsCache.remove(name)
+    }
+
+    // ── R9-C — MCP prompts as skills ───────────────────────────────────────
+
+    /** Cached prompts from ALREADY-CONNECTED servers (empty until first chat spawns them). */
+    fun cachedPrompts(): List<ExternalPrompt> =
+        promptsCache.values.flatten().sortedBy { it.server + "/" + it.name }
+
+    /**
+     * prompts/get — returns the rendered prompt text (user-message content joined).
+     * Throws on failure; caller surfaces the error. argValue maps to the prompt's
+     * FIRST declared argument (single-optional-text-field, R9-C mobile-simple).
+     */
+    suspend fun getPrompt(context: Context, server: String, promptName: String, argValue: String?): String {
+        return withContext(Dispatchers.IO) {
+            val cfg = loadConfig(context).find { it.name == server }
+                ?: throw IllegalStateException("MCP server '$server' is not configured")
+            if (!cfg.enabled) throw IllegalStateException("MCP server '$server' is disabled")
+            val s = session(context, cfg)
+            if (!s.initialized) s.initialize()
+            val params = JSONObject().put("name", promptName)
+            val firstArg = promptsCache[server]?.find { it.name == promptName }?.firstArgName
+            if (firstArg != null && !argValue.isNullOrBlank()) {
+                params.put("arguments", JSONObject().put(firstArg, argValue))
+            }
+            val result = s.request("prompts/get", params, CALL_TIMEOUT_MS)
+                .optJSONObject("result")
+                ?: throw IllegalStateException("MCP error: unexpected response shape")
+            val messages = result.optJSONArray("messages")
+                ?: throw IllegalStateException("MCP error: no messages in prompt")
+            val sb = StringBuilder()
+            for (i in 0 until messages.length()) {
+                val m = messages.getJSONObject(i)
+                when (val content = m.opt("content")) {
+                    is String -> sb.append(content).append("\n\n")
+                    is JSONObject -> if (content.optString("type") == "text") {
+                        sb.append(content.optString("text")).append("\n\n")
+                    }
+                }
+            }
+            sb.toString().trim().ifBlank { "(empty prompt)" }
+        }
     }
 
     // ── Docs exposed to the model (appended to the system prompt) ──────────

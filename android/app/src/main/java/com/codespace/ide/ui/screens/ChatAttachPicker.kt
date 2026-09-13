@@ -479,7 +479,8 @@ internal fun ChatAttachPickerDialog(
                 // Tap = RUN: prefill input + auto-attach hinted context, then stop (D4).
                 if (onRunSkill != null) {
                     val skills = remember(projectRoot) {
-                        com.codespace.ide.chat.SkillsCatalog.all(projectRoot)
+                        com.codespace.ide.chat.SkillsCatalog.all(projectRoot) +
+                            com.codespace.ide.chat.SkillsCatalog.mcpSkills()
                     }
                     if (skills.isNotEmpty()) {
                         Text(

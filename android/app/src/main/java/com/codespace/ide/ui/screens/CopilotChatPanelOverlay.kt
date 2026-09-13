@@ -978,6 +978,26 @@ internal fun CopilotChatPanelInline(
 
     // R9-B — run a skill: PREFILL + auto-attach, never auto-send (D4).
     fun runSkill(skill: com.codespace.ide.chat.SkillsCatalog.Skill) {
+        // R9-C — MCP prompt: content lives on the server; fetch then prefill.
+        // The current input text (if any) becomes the prompt's single optional
+        // argument (mobile-simple, per approved pre-plan).
+        if (skill.source == "mcp") {
+            val parts = skill.id.removePrefix("mcp:").split(":", limit = 2)
+            if (parts.size == 2) {
+                val argVal = chatInput
+                chatInput = ""
+                showAttachPicker = false
+                scope.launch {
+                    try {
+                        val text = com.codespace.ide.agent.McpClientManager.getPrompt(context, parts[0], parts[1], argVal)
+                        chatInput = text
+                    } catch (e: Exception) {
+                        error = e.message ?: "MCP prompt failed"
+                    }
+                }
+            }
+            return
+        }
         chatInput = skill.body
         val att = com.codespace.ide.chat.SkillsCatalog.buildContextAttachment(
             skill.context, projectRootPath, currentFilePath, context)
