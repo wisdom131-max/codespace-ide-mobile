@@ -916,7 +916,34 @@ internal fun CopilotChatPanelOverlay(
                 error = Color(0xFFEF4444),
             )
 
-            // ── Input ─────────────────────────────────────────────────────────
+            // I3 — SCM AI: repo pill — branch + dirty count; tap attaches the working diff
+        val pillNow = repoPill
+        if (pillNow != null && !chatLoading) {
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 2.dp)) {
+                androidx.compose.material3.Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    color = colors.surface,
+                    modifier = Modifier.clickable(enabled = pillNow.third.isNotBlank()) {
+                        if (attachments.none { it.relPath == "git-diff" }) {
+                            attachments = attachments + com.codespace.ide.chat.ChatAttachment(
+                                path = "git", relPath = "git-diff", name = "git-diff",
+                                kind = com.codespace.ide.chat.ChatAttachment.Kind.SELECTION,
+                                selText = "Working diff vs HEAD:\n" + pillNow.third,
+                            )
+                        }
+                    },
+                ) {
+                    Text(
+                        "\u21c4 " + pillNow.first + " \u00b7 " + pillNow.second + " changed \u00b7 tap to attach diff",
+                        color = colors.textSecondary,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+        // ── Input ─────────────────────────────────────────────────────────
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -1121,6 +1148,31 @@ internal fun CopilotChatPanelInline(
         mutableStateOf<List<com.codespace.ide.chat.ChatAttachment>>(emptyList())
     }
     var showAttachPicker by remember { mutableStateOf(false) }
+    // I3 — SCM AI: repo context pill (VS Code sessionPullRequestPill analog).
+    // Triple(branch, dirtyCount, workingDiffVsHead) — computed once per project root.
+    var repoPill by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
+    LaunchedEffect(projectRootPath) {
+        val root = projectRootPath
+        if (root == null || !java.io.File(root, ".git").exists()) {
+            repoPill = null
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            fun runGit(vararg a: String): String =
+                when (val r = com.codespace.ide.scm.GitCommandExecutor.run(context, a.toList(), workdir = root)) {
+                    is com.codespace.ide.scm.GitResult.Ok -> r.output
+                    is com.codespace.ide.scm.GitResult.Err -> ""
+                }
+            val branch = runGit("rev-parse", "--abbrev-ref", "HEAD").trim()
+            if (branch.isBlank()) {
+                repoPill = null
+            } else {
+                val dirty = runGit("status", "--porcelain").lines().count { it.isNotBlank() }
+                val diff = runGit("diff", "HEAD").take(8000)
+                repoPill = Triple(branch, dirty, diff)
+            }
+        }
+    }
     var implicitCtxOn by remember {
         mutableStateOf(
             context.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)

@@ -378,11 +378,32 @@ fun SourceControlPane(
         }
 
         // ── Commit message input ──
+        // I3 — SCM AI: AI-generated commit message button state
+        var aiSuggestBusy by remember { mutableStateOf(false) }
         CommitInputSection(
             commitMessage = commitMessage,
             onMessageChange = { commitMessage = it },
             stagedCount = repoState?.staged?.size ?: 0,
             isBusy = operation !is ScmOperation.Idle,
+            aiBusy = aiSuggestBusy,
+            onAiSuggest = {
+                if (!aiSuggestBusy) scope.launch {
+                    aiSuggestBusy = true
+                    try {
+                        val suggested = com.codespace.ide.chat.ScmCommitMessageService.generate(
+                            context, com.codespace.ide.data.SecureTokenStore(context), hostPath
+                        )
+                        if (suggested.isNotBlank()) {
+                            commitMessage = suggested
+                            snackbarMsg = "AI commit message generated"
+                        }
+                    } catch (e: Exception) {
+                        snackbarMsg = "AI message failed: " + (e.message ?: "unknown error")
+                    } finally {
+                        aiSuggestBusy = false
+                    }
+                }
+            },
             onCommit = {
                 if (commitMessage.isNotBlank()) {
                     scope.launch {
@@ -888,6 +909,9 @@ private fun CommitInputSection(
     onMessageChange: (String) -> Unit,
     stagedCount: Int,
     isBusy: Boolean,
+    /** I3 — SCM AI: fills the message box with an AI-generated commit message. */
+    aiBusy: Boolean = false,
+    onAiSuggest: (() -> Unit)? = null,
     onCommit: () -> Unit,
 ) {
     Column(
@@ -910,6 +934,20 @@ private fun CommitInputSection(
             ),
             shape = RoundedCornerShape(4.dp),
         )
+        if (onAiSuggest != null) {
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(
+                onClick = onAiSuggest,
+                enabled = !aiBusy && !isBusy,
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(vertical = 6.dp, horizontal = 12.dp),
+            ) {
+                Text(
+                    if (aiBusy) "Generating…" else "✨ AI commit message",
+                    fontSize = 11.sp,
+                )
+            }
+        }
         Spacer(Modifier.height(6.dp))
         Button(
             onClick = onCommit,
