@@ -808,6 +808,9 @@ internal fun CopilotChatPanelInline(
     var showOverflowMenu by remember { mutableStateOf(false) } // Item3: chat-panel overflow menu
     // R10-A: Copilot status sheet (VS Code chatStatus dashboard analog)
     var showStatusSheet by remember { mutableStateOf(false) }
+    // R10-B: input history walker (-1 = live draft; 0.. = position in newest-first list)
+    var inputHistIdx by remember { mutableStateOf(-1) }
+    var inputDraftBackup by remember { mutableStateOf("") }
     // R7-FIND: in-transcript find bar (distinct from session search)
     var findActive by remember { mutableStateOf(false) }
     var findQuery  by remember { mutableStateOf("") }
@@ -1070,6 +1073,9 @@ internal fun CopilotChatPanelInline(
 
     fun send(userText: String) {
         if (userText.isBlank()) return
+        // R10-B: every sent input (message or slash) lands in the history walker
+        com.codespace.ide.chat.ChatInputHistory.push(context, projectRootPath, userText)
+        inputHistIdx = -1
         // R8-QUEUE: while a reply is streaming, sending QUEUES instead of dropping.
         if (chatLoading) { queuedText = userText; chatInput = ""; return }
         // R1-CHAT-PARITY: slash commands never reach the model
@@ -1432,18 +1438,34 @@ internal fun CopilotChatPanelInline(
                         modifier = Modifier.size(16.dp).clickable { onOpenConnectors() },
                     )
                     Spacer(Modifier.width(8.dp))
-                    Box {
-                        Icon(
-                            Icons.Default.MoreVert, "More",
-                            tint = colors.textSecondary,
-                            modifier = Modifier.size(16.dp).clickable { showOverflowMenu = true },
+                }
+                // R10-B: overflow always available — status + settings surface
+                Box {
+                    Icon(
+                        Icons.Default.MoreVert, "More",
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(16.dp).clickable { showOverflowMenu = true },
+                    )
+                    DropdownMenu(expanded = showOverflowMenu, onDismissRequest = { showOverflowMenu = false }) {
+                        DropdownMenuItem(
+                            leadingIcon = { Icon(Icons.Default.Insights, null, tint = colors.textSecondary, modifier = Modifier.size(14.dp)) },
+                            text = { Text("Copilot status", fontSize = 12.sp) },
+                            onClick = { showOverflowMenu = false; showStatusSheet = true },
                         )
-                        DropdownMenu(expanded = showOverflowMenu, onDismissRequest = { showOverflowMenu = false }) {
+                        if (onOpenSettings != null) {
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Settings, null, tint = colors.textSecondary, modifier = Modifier.size(14.dp)) },
+                                text = { Text("Settings", fontSize = 12.sp) },
+                                onClick = { showOverflowMenu = false; onOpenSettings() },
+                            )
+                        }
+                        if (onOpenConnectors != null) {
                             DropdownMenuItem(
                                 leadingIcon = { Icon(Icons.Default.Extension, null, tint = colors.textSecondary, modifier = Modifier.size(14.dp)) },
                                 text = { Text("Connectors Hub", fontSize = 12.sp) },
                                 onClick = { showOverflowMenu = false; onOpenConnectors() },
                             )
+                        }
                             // R8-EXPORT-IMPORT: chat transcript file round-trip
                             DropdownMenuItem(
                                 leadingIcon = { Icon(Icons.Default.FileDownload, null, tint = colors.textSecondary, modifier = Modifier.size(14.dp)) },
@@ -1457,8 +1479,6 @@ internal fun CopilotChatPanelInline(
                             )
                         }
                     }
-                    Spacer(Modifier.width(8.dp))
-                }
                 Icon(
                     Icons.Default.Close, null,
                     tint = colors.textSecondary,
@@ -1804,9 +1824,30 @@ internal fun CopilotChatPanelInline(
                     tint = if (implicitCtxOn) colors.accent else colors.textSecondary,
                     modifier = Modifier.size(18.dp))
             }
+            // R10-B: walk back through sent inputs (tap = older, wraps to draft)
+            IconButton(onClick = {
+                val hist = com.codespace.ide.chat.ChatInputHistory.list(context, projectRootPath)
+                if (hist.isNotEmpty()) {
+                    if (inputHistIdx == -1) {
+                        inputDraftBackup = chatInput
+                        inputHistIdx = 0
+                        chatInput = hist[0]
+                    } else if (inputHistIdx >= hist.size - 1) {
+                        chatInput = inputDraftBackup
+                        inputHistIdx = -1
+                    } else {
+                        inputHistIdx++
+                        chatInput = hist[inputHistIdx]
+                    }
+                }
+            }, enabled = !chatLoading && com.codespace.ide.chat.ChatInputHistory.list(context, projectRootPath).isNotEmpty()) {
+                Icon(Icons.Default.History, "Input history",
+                    tint = if (inputHistIdx >= 0) colors.accent else colors.textSecondary,
+                    modifier = Modifier.size(18.dp))
+            }
             OutlinedTextField(
                 value = chatInput,
-                onValueChange = { chatInput = it },
+                onValueChange = { chatInput = it; inputHistIdx = -1 },
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Ask Copilot\u2026", color = colors.textSecondary) },
                 // R8-QUEUE: input stays live while streaming — sends become queued.
