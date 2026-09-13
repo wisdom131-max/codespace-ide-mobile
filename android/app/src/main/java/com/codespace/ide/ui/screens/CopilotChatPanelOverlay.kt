@@ -1424,7 +1424,7 @@ internal fun CopilotChatPanelInline(
                 )
                 Spacer(Modifier.width(8.dp))
                 Icon(
-                    Icons.Default.DeleteOutline, null,
+                    Icons.Default.DeleteOutline, "Clear chat for this session",
                     tint = colors.textSecondary, modifier = Modifier.size(16.dp).clickable {
                         messages.clear()
                         persistSessions()
@@ -1480,7 +1480,7 @@ internal fun CopilotChatPanelInline(
                         }
                     }
                 Icon(
-                    Icons.Default.Close, null,
+                    Icons.Default.Close, "Close chat panel",
                     tint = colors.textSecondary,
                     modifier = Modifier.size(16.dp).clickable { onClose() },
                 )
@@ -1802,6 +1802,18 @@ internal fun CopilotChatPanelInline(
                 },
                 onRunSkill = { sk -> runSkill(sk) },
                 onPickImage = { imageLauncher.launch("*/*") },
+                // R10-E: capture THIS app's window via PixelCopy → IMAGE attachment
+                onPickScreenshot = {
+                    val activity = com.codespace.ide.ui.screens.ChatScreenshotCapture.findActivity(context)
+                    if (activity == null) {
+                        error = "Screenshot capture unavailable"
+                    } else scope.launch {
+                        val att = com.codespace.ide.ui.screens.ChatScreenshotCapture.captureNow(activity)
+                        if (att == null) error = "Screenshot capture failed"
+                        else if (attachments.none { it.path == att.path }) attachments = attachments + att
+                        showAttachPicker = false
+                    }
+                },
                 onDismiss = { showAttachPicker = false },
                 colors = colors,
             )

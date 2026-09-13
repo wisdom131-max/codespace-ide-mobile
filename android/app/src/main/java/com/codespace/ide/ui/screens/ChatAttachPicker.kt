@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
@@ -154,6 +156,8 @@ internal fun ChatAttachPickerDialog(
     onRunSkill: ((com.codespace.ide.chat.SkillsCatalog.Skill) -> Unit)? = null,
     // R8-VISION: non-null enables the "attach image from device" row
     onPickImage: (() -> Unit)? = null,
+    // R10-E: non-null enables the "attach screenshot of the app" row
+    onPickScreenshot: (() -> Unit)? = null,
 ) {
     if (projectRoot.isNullOrBlank()) { onDismiss(); return }
     var query by remember { mutableStateOf("") }
@@ -541,6 +545,29 @@ internal fun ChatAttachPickerDialog(
                         }
                     }
                 }
+                // R10-E: attach a screenshot of the app itself (vision context)
+                if (onPickScreenshot != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable { onPickScreenshot() }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.PhotoCamera, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text("Attach screenshot of app", fontSize = 11.sp, color = colors.text)
+                            Text("Captures the current window (PNG) — sent with your next message",
+                                fontSize = 9.sp, color = colors.textSecondary, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
@@ -554,6 +581,35 @@ internal fun ChatAttachPickerDialog(
                         unfocusedBorderColor = colors.divider,
                     ),
                 )
+                // R10-D: attach project-wide search RESULTS for the typed query
+                if (query.isNotBlank()) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface, RoundedCornerShape(8.dp))
+                            .clickable {
+                                val att = com.codespace.ide.chat.SearchResultsAttach.buildAttachment(projectRoot, query)
+                                if (att != null) onPick(att)
+                                else android.widget.Toast.makeText(
+                                    termCtx, "No content matches found", android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Search, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text("Attach search results for “" + query + "”", fontSize = 11.sp, color = colors.text)
+                            Text("Project-wide content matches — sent with your next message",
+                                fontSize = 9.sp, color = colors.textSecondary, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
                 if (allFiles.isEmpty()) {
                     Text(
                         "No project files found",
