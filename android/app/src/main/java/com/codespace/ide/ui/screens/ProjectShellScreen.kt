@@ -4520,7 +4520,18 @@ private fun PssEditorColumn(
                 // view and falls back to the primary tab on removal.
                 Box(
                     Modifier.size(22.dp).clickable {
-                        com.codespace.ide.editor.SplitViewStore.toggleFor(activeEditorTab!!)
+                        // PAD-2 (D3): tapping creates the FIRST split view or ADDS
+                        // ANOTHER (up to 4 per file); at cap it stays a visible no-op.
+                        // Closing is per-view from each strip entry's X (closing the
+                        // primary tab still cascades all of them).
+                        val newId = com.codespace.ide.editor.SplitViewStore.add(activeEditorTab!!)
+                        if (newId == null) {
+                            Toast.makeText(
+                                context,
+                                "Max " + com.codespace.ide.editor.SplitViewStore.MAX_VIEWS_PER_FILE + " split views per file",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
                     },
                     contentAlignment = Alignment.Center,
                 ) {

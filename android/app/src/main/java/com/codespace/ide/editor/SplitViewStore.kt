@@ -4,7 +4,7 @@ import androidx.compose.runtime.mutableStateListOf
 import com.codespace.ide.domain.EditorTab
 
 /**
- * SPLIT-VIEW STORE (2026-09-11, user-approved design):
+ * SPLIT-VIEW STORE (2026-09-11; PAD-2 multi-view 2026-09-13, user-approved):
  *
  * "Split" in this app = a LIVE-SYNCED SECOND VIEW of a file, presented as its own
  * entry in the editor tab strip (tab-based split - full-width editor regardless of
@@ -23,18 +23,27 @@ import com.codespace.ide.domain.EditorTab
  *    external-content sync (ProgrammaticTextChange with cursor mapping) makes
  *    edits appear instantly in the peer view - VS Code's "one model, two views".
  *
- * SPLIT VIEW IDS: "split::<path>". Distinct from tab ids (= path) so the
- * editor area's key(activeId) remount gives each view its own independent
- * cursor/scroll/selection state, while resolveActiveTab() maps a split id back
- * to its primary EditorTab (the single content buffer).
+ * PAD-2 MULTI-VIEW: up to [MAX_VIEWS_PER_FILE] split views per file (cap per
+ * user decision D3, 2026-09-13). View ids:
+ *   1st view: "split::<path>"            (legacy single-view id, unchanged)
+ *   2nd..4th:  "split::<path>::2" .. "::4"
+ * [pathOf] strips a trailing "::<n>" suffix when resolving a view id back to its
+ * file path. The legacy first-view id keeps every existing idFor()/hasFor()
+ * call site working unchanged.
  *
- * DEPENDENT LIFECYCLE (v1): a split view cannot outlive its primary tab -
- * closeEditorTabInternal cascades removal. Session persistence intentionally
- * NOT implemented for split views (v1; see changelog roadmap).
+ * DEPENDENT LIFECYCLE: a split view cannot outlive its primary tab -
+ * closeEditorTabInternal cascades removal (removeForPath drops ALL views of a
+ * path). Each individual view closes via removeById from its strip entry.
+ * Session persistence ships in PERSIST-A.
  */
 object SplitViewStore {
 
     const val SPLIT_ID_PREFIX = "split::"
+
+    /** PAD-2 (D3): max simultaneous split views per file. */
+    const val MAX_VIEWS_PER_FILE = 4
+
+    private val SUFFIX = Regex("::\\d+$")
 
     data class SplitView(
         val id: String,
@@ -44,15 +53,43 @@ object SplitViewStore {
     /** All live split views. Reads are snapshot-reactive in composition. */
     val views = mutableStateListOf<SplitView>()
 
+    /** Legacy first-view id for a path (also what idFor() always meant). */
     fun idFor(path: String): String = SPLIT_ID_PREFIX + path
 
     fun hasFor(path: String): Boolean = views.any { it.path == path }
 
-    /** Register (if absent) a split view for the path and return its id. */
-    fun add(path: String): String {
-        val id = idFor(path)
-        if (!hasFor(path)) views.add(SplitView(id, path))
-        return id
+    /** Id of the MOST RECENTLY created view for a path (what auto-focus targets). */
+    fun latestIdFor(path: String): String? = views.lastOrNull { it.path == path }?.id
+
+    /** 1-based position of a view among its siblings (plain id = 1, "::N" = N). */
+    fun viewNumber(id: String): Int {
+        val rest = id.removePrefix(SPLIT_ID_PREFIX)
+        val m = SUFFIX.find(rest) ?: return 1
+        return m.value.removePrefix("::").toIntOrNull() ?: 1
+    }
+
+    /**
+     * PAD-2: create a split view for the path — the first one if none exists,
+     * otherwise one more, up to [MAX_VIEWS_PER_FILE]. Returns the NEW view id,
+     * or null when the cap is already reached (callers surface feedback).
+     * (Replaces v1 toggleFor: closing is done per-view from the strip X or by
+     * closing the primary tab, which cascades.)
+     */
+    fun add(path: String): String? {
+        val existing = views.filter { it.path == path }
+        return when {
+            existing.isEmpty() -> {
+                val id = idFor(path)
+                views.add(SplitView(id, path))
+                id
+            }
+            existing.size >= MAX_VIEWS_PER_FILE -> null
+            else -> {
+                val id = idFor(path) + "::" + (existing.size + 1)
+                views.add(SplitView(id, path))
+                id
+            }
+        }
     }
 
     fun removeById(id: String) {
@@ -63,29 +100,24 @@ object SplitViewStore {
         views.removeAll { it.path == path }
     }
 
-    /** Toggle: create the split view (returns its id) or remove it (returns null). */
-    fun toggleFor(path: String): String? {
-        return if (hasFor(path)) {
-            removeForPath(path)
-            null
-        } else {
-            add(path)
-        }
-    }
-
     fun isSplitId(id: String?): Boolean = id != null && id.startsWith(SPLIT_ID_PREFIX)
 
-    /** Path a split id refers to (null if not a split id). */
-    fun pathOf(id: String?): String? =
-        if (isSplitId(id)) id!!.removePrefix(SPLIT_ID_PREFIX) else null
+    /** Path a split id refers to (null if not a split id). Strips "::N" suffixes. */
+    fun pathOf(id: String?): String? {
+        if (!isSplitId(id)) return null
+        val rest = id!!.removePrefix(SPLIT_ID_PREFIX)
+        val m = SUFFIX.find(rest) ?: return rest
+        return rest.removeSuffix(m.value)
+    }
 }
 
 /**
- * Resolve the ACTIVE content buffer. A split id ("split::path") maps to its
- * primary EditorTab - the single shared buffer both views edit. A normal tab id
- * resolves directly. Used by every `active` lookup so features (save, format,
- * breakpoints, LSP effects, AI hooks) keep working identically whether the
- * active view is the primary tab or its split view.
+ * Resolve the ACTIVE content buffer. Any split id ("split::path" or
+ * "split::path::N") maps to its primary EditorTab - the single shared buffer all
+ * views of that file edit. A normal tab id resolves directly. Used by every
+ * `active` lookup so features (save, format, breakpoints, LSP effects, AI hooks)
+ * keep working identically whether the active view is the primary tab or one of
+ * its split views.
  */
 internal fun resolveActiveTab(activeId: String?, tabs: List<EditorTab>): EditorTab? {
     if (activeId == null) return null

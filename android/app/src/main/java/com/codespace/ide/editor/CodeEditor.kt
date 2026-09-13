@@ -513,6 +513,20 @@ fun CodeEditor(
     /** PAD-1: view id (tab path or split id) for per-view scroll lock.
      *  Gates ONLY the IME-AWARE-SCROLL effect; live sync is never gated. */
     viewKey: String? = null,
+    /** PAD-2/PERSIST-A: mount-restore — 0-based first visible line for this view
+     *  (0 = top / none). Keyed by VIEW id, so split views remember their own spot. */
+    initialScrollLine: Int = 0,
+    /** PAD-2/PERSIST-A: mount-restore — cursor char offset for this view
+     *  (-1 = leave selection at 0). Keyed by VIEW id. */
+    initialCursorOffset: Int = -1,
+    /** PAD-2/PERSIST-A: fired when THIS instance leaves composition (view switch /
+     *  close) with (viewKey, 0-based first visible line, cursor char offset). The
+     *  viewKey comes from THIS instance's rememberUpdatedState — never from the
+     *  parent's live state — so a disposing instance always reports its OWN view.
+     *  EditorPane writes these into its per-view maps: the LIVE-CAPTURE half of
+     *  the restore pipeline (previously maps were written once at restore and
+     *  never updated, so saved positions were always stale). */
+    onViewStateCapture: ((viewKey: String, scrollLine: Int, cursorOffset: Int) -> Unit)? = null,
     findReplaceOpen: Boolean = false,
     onFindReplaceClose: () -> Unit = {},
     /** External find query from the top find bar (white bar in ProjectShellScreen).
@@ -705,6 +719,54 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             if (cursorY > visibleH) {
                 val scrollBy = (cursorY - visibleH + lhPx).toInt()
                 vScroll.animateScrollTo((vScroll.value + scrollBy).coerceIn(0, vScroll.maxValue))
+            }
+        }
+    }
+    // ── PAD-2/PERSIST-A: per-view state capture + mount-restore ─────────────
+    // CAPTURE: on THIS instance's dispose (key(activeId) remounts CodeEditor on
+    // every view switch, so leaving a view = leaving composition), report the
+    // LIVE first-visible line + cursor offset to EditorPane's per-view maps.
+    // rememberUpdatedState guards against stale captures across recompositions.
+    val liveValue by rememberUpdatedState(value)
+    val liveCapture by rememberUpdatedState(onViewStateCapture)
+    val liveViewKey by rememberUpdatedState(viewKey)
+    DisposableEffect(liveViewKey) {
+        onDispose {
+            // Plain local first: delegated vals can't be smart-cast after a
+            // null check (#2724 rule class).
+            val key = liveViewKey
+            if (key != null) {
+                // lineHeightPx is Float (#2719 rule class) — Int pixel math only.
+                val lhPx = editorMetrics.lineHeightPx
+                val line = if (lhPx > 0f) (vScroll.value / lhPx).toInt() else 0
+                liveCapture?.invoke(key, line, liveValue.selection.end)
+            }
+        }
+    }
+    // APPLY cursor on mount: single-shot — a remember flag stops content-sync
+    // effects from re-firing it if the buffer text shifts after layout.
+    var appliedInitialCursor by remember { mutableStateOf(false) }
+    LaunchedEffect(initialCursorOffset) {
+        if (!appliedInitialCursor && initialCursorOffset >= 0) {
+            appliedInitialCursor = true
+            val v = liveValue
+            value = v.copy(selection = TextRange(initialCursorOffset.coerceAtMost(v.text.length)))
+        }
+    }
+    // APPLY scroll on mount: LINE-JUMP-READY-FIX retry pattern — on a fresh
+    // layout vScroll.maxValue is still 0, so retry every 50ms up to 1s.
+    // Viewport-fitting files keep maxValue 0 and time out harmlessly at top.
+    LaunchedEffect(initialScrollLine) {
+        if (initialScrollLine > 0) {
+            // Float lineHeightPx → toInt() before any scroll math (#2719 rule class).
+            val targetPx = (initialScrollLine * editorMetrics.lineHeightPx).toInt()
+            var tries = 0
+            while (tries < 20 && vScroll.maxValue == 0) {
+                kotlinx.coroutines.delay(50)
+                tries++
+            }
+            if (vScroll.maxValue > 0) {
+                vScroll.scrollTo(targetPx.coerceAtMost(vScroll.maxValue))
             }
         }
     }

@@ -664,8 +664,9 @@ fun EditorPane(
                 // active view, that round-trip must NOT yank the user back to the
                 // primary tab — the report already resolved the path, so this is a
                 // no-op unless the user actually switched files.
-                val splitIdForPath = com.codespace.ide.editor.SplitViewStore.idFor(openFilePath)
-                if (activeId != splitIdForPath) {
+                val activeIsSplitOfPath = com.codespace.ide.editor.SplitViewStore.isSplitId(activeId) &&
+                    com.codespace.ide.editor.SplitViewStore.pathOf(activeId) == openFilePath
+                if (!activeIsSplitOfPath) {
                     activeId = existing.id
                 }
             } else {
@@ -729,10 +730,13 @@ fun EditorPane(
                 // activePanel / bottomTab / showBottomPanel managed by ProjectShellScreen
             )
             store.saveShellState(pid, state)
-            // Persist cursor offsets
-            val cursors = tabs.associate { it.path to it.cursorOffset }
-            store.saveCursors(pid, cursors)
-            // Persist scroll lines
+            // PAD-2/PERSIST-A: persist cursor offsets from the LIVE per-view map
+            // (was: tabs.associate { it.cursorOffset } — a field written ONCE at
+            // restore and never updated, so saved positions were always stale).
+            // Keys are VIEW ids: primary tabs use their path; split views use their
+            // split id, so each view remembers its own spot.
+            store.saveCursors(pid, tabCursorOffsets.toMap())
+            // Persist scroll lines (same live per-view map)
             store.saveScrollPositions(pid, tabScrollLines.toMap())
         }
     }
@@ -866,8 +870,9 @@ fun EditorPane(
         LaunchedEffect(com.codespace.ide.editor.SplitViewStore.views.size) {
             val currentTab = resolveActiveTab(activeId, tabs)
             if (currentTab != null) {
-                if (activeId == currentTab.id && com.codespace.ide.editor.SplitViewStore.hasFor(currentTab.path)) {
-                    activeId = com.codespace.ide.editor.SplitViewStore.idFor(currentTab.path)
+                if (activeId == currentTab.id) {
+                    // PAD-2: focus the MOST RECENTLY created split view for this path
+                    com.codespace.ide.editor.SplitViewStore.latestIdFor(currentTab.path)?.let { activeId = it }
                 }
             } else {
                 val removedPath = com.codespace.ide.editor.SplitViewStore.pathOf(activeId)
@@ -1015,7 +1020,9 @@ fun EditorPane(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    (if (primary?.isDirty == true) "● " else "") + "⫽ " + (primary?.name ?: "…"),
+                                    // PAD-2: number siblings beyond the first ("⫽ f 2", "⫽ f 3", "⫽ f 4")
+                                    (if (primary?.isDirty == true) "● " else "") + "⫽ " + (primary?.name ?: "…") +
+                                        com.codespace.ide.editor.SplitViewStore.viewNumber(sv.id).let { n -> if (n > 1) " $n" else "" },
                                     fontSize = 11.sp,
                                     color = if (isActive) tabColors.text else tabColors.textInactive,
                                     maxLines = 1,
@@ -1969,8 +1976,25 @@ fun EditorPane(
                         onInsertHandler = onInsertRequest,
                         modifier = Modifier.fillMaxSize(),
                         wordWrap = wordWrap,
-                        // PAD-1: view id for per-view scroll lock (tab path or split id)
-                        viewKey = active.id,
+                        // PAD-1/2: view id for per-view scroll lock AND state
+                        // memory — must be activeId (the VIEW: path for primary,
+                        // split id for splits), NOT active.id (always the tab path).
+                        viewKey = activeId,
+                        // PAD-2/PERSIST-A: mount-restore for this view; split views
+                        // with no own entry fall back to the primary tab's entry.
+                        initialScrollLine = tabScrollLines[activeId]
+                            ?: com.codespace.ide.editor.SplitViewStore.pathOf(activeId)?.let { tabScrollLines[it] } ?: 0,
+                        initialCursorOffset = tabCursorOffsets[activeId]
+                            ?: com.codespace.ide.editor.SplitViewStore.pathOf(activeId)?.let { tabCursorOffsets[it] } ?: -1,
+                        // PAD-2/PERSIST-A: LIVE capture — each CodeEditor instance
+                        // reports (viewKey, first visible line, cursor offset) on
+                        // dispose, with ITS OWN key from its own rememberUpdatedState
+                        // (never this scope's live activeId, which has already
+                        // flipped to the new view by dispose time).
+                        onViewStateCapture = { key, line, off ->
+                            tabScrollLines[key] = line
+                            tabCursorOffsets[key] = off
+                        },
                         showInlayHints = showInlayHints,
                         toggles = toggles,
                         formatSelectionTrigger = formatSelectionTrigger,
