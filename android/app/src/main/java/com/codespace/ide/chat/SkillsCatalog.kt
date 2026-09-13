@@ -139,7 +139,8 @@ object SkillsCatalog {
         projectRoot: String?,
         currentFilePath: String?,
         androidContext: android.content.Context,
-    ): ChatAttachment? = try {
+    ): ChatAttachment? {
+        return try {
         when (hint) {
             "selection" -> {
                 val sel = com.codespace.ide.editor.EditorSelectionStore.take()
@@ -212,4 +213,5 @@ object SkillsCatalog {
             else -> null
         }
     } catch (_: Exception) { null }
+    }
 }

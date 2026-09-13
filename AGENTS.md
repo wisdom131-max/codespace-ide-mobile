@@ -3512,3 +3512,13 @@ agent/McpClientManager: NEW ExternalPrompt(server, name, description, firstArgNa
 ### [BUILD-FIX] Unclosed comment in CustomModeStore.kt + SkillsCatalog.kt
 Root cause: Kotlin block comments NEST \u2014 KDoc lines containing path globs like ".codespace/modes/*.agent.md" each opened a nested /* that never closed ("Unclosed comment" at EOF, kills the whole file). Reworded the three doc lines to prose ("the .codespace/modes dir (files .agent.md / .chatmode.md)"). Comment-balance sweep of ALL changed files: 7/7 balanced. NEW RULE (to memory): never write */ or /* sequences inside comments \u2014 path globs in KDoc are a build-breaker.
 **Next on roadmap (ALL pending items):** CI green for R9 A+B+C \u2192 Wisdom batched re-tests (R9-1..R9-10 + all prior batches). Round 10 (NEEDS WISDOM GO-AHEAD). TLS/Cloudflare ON HOLD. MC-3 tap-collapse. PEEK PARKED.
+
+## [2026-09-13 09:35 WAT] — AI Agent: Claude Sonnet 5.6 (BUILD-FIX #2 for R9)
+
+**Commit:** (this push) | **CI:** pending (fixes #2783)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] SkillsCatalog.buildContextAttachment: expression-body + bare return
+"Returns are not allowed for functions with expression body" — the "= try { ... }" body contained a bare `return null` in the diff branch. Converted to block body ("{ return try { ... }"). New pitfall to memory: expression-body (=) functions can NEVER contain a bare return, even inside try/when.
+**Next on roadmap (ALL pending items):** CI green for R9 A+B+C \u2192 Wisdom batched re-tests (R9-1..R9-10 + all prior batches). Round 10 (NEEDS WISDOM GO-AHEAD). TLS/Cloudflare ON HOLD. MC-3 tap-collapse. PEEK PARKED.
