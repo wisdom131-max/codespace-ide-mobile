@@ -1964,6 +1964,10 @@ internal fun CopilotChatPanelInline(
                     if (attachments.none { it.path == a.path }) attachments = attachments + a
                     showAttachPicker = false
                 },
+                onInsertPrompt = { text ->
+                    chatInput = text
+                    showAttachPicker = false
+                },
                 onPickImage = { imageLauncher.launch("*/*") },
                 onDismiss = { showAttachPicker = false },
                 colors = colors,

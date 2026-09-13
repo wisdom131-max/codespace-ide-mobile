@@ -147,6 +147,8 @@ internal fun ChatAttachPickerDialog(
     colors: ChatPanelColors,
     // R4-ATTACH-SELECTION: non-null enables the "current editor selection" row
     onPickSelection: ((ChatAttachment) -> Unit)? = null,
+    /** I6 — prompt files: tap inserts the file's content into the chat input. */
+    onInsertPrompt: ((String) -> Unit)? = null,
     // R8-VISION: non-null enables the "attach image from device" row
     onPickImage: (() -> Unit)? = null,
 ) {
@@ -186,6 +188,14 @@ internal fun ChatAttachPickerDialog(
                         .take(50)
                 }
                 val debugConsoleOut = remember { com.codespace.ide.chat.DebugConsoleCapture.tail() }
+                // I6 — VS Code prompt-file analog: workspace .github/prompts/*.md + .codespace/prompts/*.md
+                val promptFiles = remember(projectRoot) {
+                    val root = projectRoot ?: return@remember emptyList<Pair<String, String>>()
+                    val dirs = listOf(java.io.File(root, ".github/prompts"), java.io.File(root, ".codespace/prompts"))
+                    dirs.flatMap { d ->
+                        d.listFiles { f -> f.isFile && f.extension.equals("md", ignoreCase = true) }?.toList() ?: emptyList()
+                    }.sortedBy { it.name }.map { it.name.removeSuffix(".md") to it.readText() }
+                }
                 // R4-ATTACH-SELECTION: attach the editor's live selection (VS Code parity)
                 val liveSel = remember { com.codespace.ide.editor.EditorSelectionStore.take() }
                 if (liveSel != null && onPickSelection != null) {
@@ -429,6 +439,36 @@ internal fun ChatAttachPickerDialog(
                         Column {
                             Text("Paste from clipboard", fontSize = 11.sp, color = colors.text)
                             Text("Text → context · image → image attachment", fontSize = 9.sp, color = colors.textSecondary, maxLines = 1)
+                        }
+                    }
+                }
+                // I6 — "Prompts" section (VS Code promptSyntax/prompt-files analog)
+                if (promptFiles.isNotEmpty() && onInsertPrompt != null) {
+                    Text(
+                        "Prompts",
+                        color = colors.text,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    )
+                    promptFiles.forEach { (pname, ptext) ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(colors.surface)
+                                .clickable { onInsertPrompt(ptext) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.Description, null,
+                                tint = colors.accent,
+                                modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                            )
+                            Column {
+                                Text("/" + pname, fontSize = 11.sp, color = colors.text)
+                                Text(ptext.lineSequence().firstOrNull()?.take(60) ?: "Empty prompt", fontSize = 9.sp, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                 }
