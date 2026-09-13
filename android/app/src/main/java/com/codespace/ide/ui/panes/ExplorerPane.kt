@@ -3121,6 +3121,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     val outputListener: (String) -> Unit = { msg ->
         if (msg.isNotBlank()) {
             consoleLines = (consoleLines + msg.lineSequence().filter { it.isNotBlank() }.toList()).takeLast(100)
+            msg.lineSequence().filter { it.isNotBlank() }.forEach { com.codespace.ide.chat.DebugConsoleCapture.record(it) }
         }
     }
     LaunchedEffect(Unit) {
@@ -3443,6 +3444,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                                         val rfSid = activeSessionId
                                         if (rfSid != null && udm.restartFrame(rfSid, frame.frameId)) {
                                             consoleLines = (consoleLines + listOf("= restarted frame " + frame.function)).takeLast(100)
+                                            com.codespace.ide.chat.DebugConsoleCapture.record("= restarted frame " + frame.function)
                                         }
                                     })
                             }
@@ -3613,6 +3615,8 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                                 "= no active session"
                             }
                             consoleLines = (consoleLines + listOf("> " + expr, resultLine)).takeLast(100)
+                            com.codespace.ide.chat.DebugConsoleCapture.record("> " + expr)
+                            com.codespace.ide.chat.DebugConsoleCapture.record(resultLine)
                         })
                     } else {
                         Text("No active session", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp))
@@ -3655,8 +3659,10 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                         if (existing.name == v.name && existing.scopeName == v.scopeName) existing.copy(value = newResult) else existing
                     }
                     consoleLines = (consoleLines + listOf("= set " + v.name + " = " + newResult)).takeLast(100)
+                    com.codespace.ide.chat.DebugConsoleCapture.record("= set " + v.name + " = " + newResult)
                 } else {
                     consoleLines = (consoleLines + listOf("= set failed (adapter rejected or unsupported)")).takeLast(100)
+                    com.codespace.ide.chat.DebugConsoleCapture.record("= set failed (adapter rejected or unsupported)")
                 }
                 editVarTarget = null
             },

@@ -19,8 +19,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -177,6 +179,13 @@ internal fun ChatAttachPickerDialog(
                     com.codespace.ide.ui.panes.TerminalHistoryStore.load(termCtx).takeLast(5)
                 }
                 val termOut = remember { com.codespace.ide.terminal.TerminalAiBridge.transcriptTail() }
+                // I4 — context attach completion: problems + debug console
+                val problemsSnapshot = remember {
+                    com.codespace.ide.diagnostics.DiagnosticManager.diagnostics
+                        .filter { !it.isStale }
+                        .take(50)
+                }
+                val debugConsoleOut = remember { com.codespace.ide.chat.DebugConsoleCapture.tail() }
                 // R4-ATTACH-SELECTION: attach the editor's live selection (VS Code parity)
                 val liveSel = remember { com.codespace.ide.editor.EditorSelectionStore.take() }
                 if (liveSel != null && onPickSelection != null) {
@@ -306,6 +315,120 @@ internal fun ChatAttachPickerDialog(
                         Column {
                             Text("Attach terminal output (tail)", fontSize = 11.sp, color = colors.text)
                             Text("Latest scrollback, ANSI-stripped", fontSize = 9.sp, color = colors.textSecondary, maxLines = 1)
+                        }
+                    }
+                }
+                // I4 — "Attach problems" row (VS Code chatDynamicVariables #problems analog)
+                if (problemsSnapshot.isNotEmpty() && onPickSelection != null) {
+                    val errCount = problemsSnapshot.count { it.severity == com.codespace.ide.diagnostics.DiagnosticManager.Severity.ERROR }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable {
+                                onPickSelection(
+                                    ChatAttachment(
+                                        path = "problems", relPath = "problems", name = "problems",
+                                        kind = ChatAttachment.Kind.SELECTION,
+                                        selText = problemsSnapshot.joinToString("\n") { d ->
+                                            (if (d.severity == com.codespace.ide.diagnostics.DiagnosticManager.Severity.ERROR) "[ERROR] " else "[WARN] ") +
+                                                d.filePath.substringAfterLast('/') + ":" + d.range.startLine + " " + d.message
+                                        },
+                                    )
+                                )
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Warning, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text("Attach problems ($errCount errors)", fontSize = 11.sp, color = colors.text)
+                            Text("Live diagnostics, newest 50", fontSize = 9.sp, color = colors.textSecondary, maxLines = 1)
+                        }
+                    }
+                }
+                // I4 — "Attach debug console output" row
+                if (debugConsoleOut != null && onPickSelection != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable {
+                                onPickSelection(
+                                    ChatAttachment(
+                                        path = "debug-console", relPath = "debug-console", name = "debug-console",
+                                        kind = ChatAttachment.Kind.SELECTION,
+                                        selText = "Debug console (newest last):\n" + debugConsoleOut,
+                                    )
+                                )
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Description, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text("Attach debug console output", fontSize = 11.sp, color = colors.text)
+                            Text("Newest REPL + output lines", fontSize = 9.sp, color = colors.textSecondary, maxLines = 1)
+                        }
+                    }
+                }
+                // I4 — "Paste from clipboard" row (VS Code chatPasteTargetService analog)
+                if (onPickSelection != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable {
+                                val cm = termCtx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                                    as android.content.ClipboardManager
+                                val clip = cm.primaryClip
+                                val item = clip?.getItemAt(0)
+                                val text = item?.coerceToText(termCtx)?.toString()?.trim()
+                                if (!text.isNullOrEmpty() && text.length <= 12000) {
+                                    onPickSelection(
+                                        ChatAttachment(
+                                            path = "clipboard", relPath = "clipboard", name = "clipboard",
+                                            kind = ChatAttachment.Kind.SELECTION,
+                                            selText = text,
+                                        )
+                                    )
+                                } else {
+                                    // Image on the clipboard? Attach via the same URI import path.
+                                    val uri = item?.uri
+                                    val imgAtt = if (uri != null) {
+                                        try {
+                                            com.codespace.ide.chat.ChatImageAttachments.importFromUri(termCtx, uri)
+                                        } catch (_: Exception) { null }
+                                    } else null
+                                    if (imgAtt != null) {
+                                        onPickSelection(imgAtt)
+                                    } else {
+                                        android.widget.Toast.makeText(
+                                            termCtx, "Clipboard has no attachable content",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.ContentPaste, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text("Paste from clipboard", fontSize = 11.sp, color = colors.text)
+                            Text("Text → context · image → image attachment", fontSize = 9.sp, color = colors.textSecondary, maxLines = 1)
                         }
                     }
                 }
