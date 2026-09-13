@@ -3548,3 +3548,13 @@ NEW chat/SearchResultsAttach.kt \u2014 project-wide case-insensitive content gre
 NEW ui/screens/ChatScreenshotAttach.kt \u2014 PixelCopy-captures the CURRENT activity window (minSdk 26 \u2713), suspend via suspendCancellableCoroutine (no main-thread deadlock), PNG written to cacheDir/chat_shots, wrapped as an IMAGE attachment on the R8 vision path (image-capable providers only). Picker row "Attach screenshot of app" under the image-from-device row. Always THIS app's window \u2014 Android never allows cross-app capture.
 **R10-C/D/E re-tests:** R10-8 TalkBack-ish: clear-chat + close + status dot all announce. R10-9 picker: type a real project string into the search box \u2192 "Attach search results" row appears \u2192 tap \u2192 chip "search: <q>" \u2192 send \u2192 reply references the matches. R10-10 no-match query \u2192 toast "No content matches found". R10-11 "Attach screenshot of app" \u2192 screenshot chip appears \u2192 send with Gemini/OpenAI (vision) \u2192 model describes the UI. R10-12 screenshot w/ vision-incapable provider \u2192 expected reject notice.
 **Next on roadmap (ALL pending items):** CI green for R10 A-E \u2192 Wisdom batched re-tests (R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). Round 10 COMPLETE pending retests. TLS/Cloudflare ON HOLD. MC-3 tap-collapse. PEEK PARKED.
+
+## [2026-09-13 11:05 WAT] — AI Agent: Claude Sonnet 5.6 (BUILD-FIX for R10-B)
+
+**Commit:** (this push) | **CI:** #2786 FAILED \u2192 fix pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] ChatInputHistory.list \u2014 expression-body + bare return (SAME pitfall as 5f45969, one day later, my own new file)
+": List<String> = try { ... ?: return emptyList()" \u2014 bare return illegal in expression body. Converted to block body. Rule already in memory; add pre-push grep for expression-body+return in NEW files.
+**Next on roadmap (ALL pending items):** CI green for R10 A-E \u2192 Wisdom batched re-tests (R10-1..R10-12 + ALL prior batches). TLS/Cloudflare ON HOLD. MC-3 tap-collapse. PEEK PARKED.

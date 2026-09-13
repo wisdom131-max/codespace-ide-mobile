@@ -34,10 +34,12 @@ object ChatInputHistory {
     }
 
     /** Newest-first. Empty when nothing sent yet in this project. */
-    fun list(context: Context, projectRoot: String?): List<String> = try {
+    fun list(context: Context, projectRoot: String?): List<String> {
+        return try {
         val p = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = p.getString(keyFor(projectRoot), null) ?: return emptyList()
         val arr = JSONArray(raw)
         (0 until arr.length()).map { arr.getString(it) }
-    } catch (_: Exception) { emptyList() }
+        } catch (_: Exception) { emptyList() }
+    }
 }
