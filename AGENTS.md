@@ -3445,3 +3445,14 @@ Confirmed via #2775 logs: these 7 were the ONLY errors — I4/I5/I6 code is clea
 
 ### [BUILD-FIX] #2776 errors were self-inflicted: the previous fix accidentally DELETED `fullScreen: Boolean = false,` from PssBottomPanelContent's param list while inserting onAskAi. Restored it (errors 3368 'Unresolved reference: fullScreen' + 4762 'Cannot find a parameter with this name: fullScreen' — both gone). Confirmed from #2776 logs: ALL 7 original #2770-#2775 errors are now healed — pill-moved + onAskAi-threading fixes were correct.
 **Next on roadmap (ALL pending items):** watch #2777 green \u2192 then Wisdom re-test batches I1-1..I6-6 + MK-1..MK-9 + CE + AU + V2/V3/V4 + R6/R7/R8. TLS/Cloudflare logging ON HOLD. R9 Skills + .agent.md custom modes + hooks + plugins view \u2014 NEEDS WISDOM DESIGN APPROVAL. MC-3 tap-collapse. Round 10 status/settings/history/a11y + search-results attach store + screenshot capture. PEEK PARKED. Dead CopilotChatPanelOverlay cleanup recommended.
+
+## [2026-09-13 07:40 WAT] — AI Agent: Claude Sonnet 5.6 (DEAD-CODE CLEANUP — removes patch booby trap)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [RESTRUCTURE] Deleted the DEAD CopilotChatPanelOverlay composable (~320 lines, was lines 645-966)
+Zero call sites verified (only CopilotChatPanelInline is mounted, ProjectShellScreen:4849). Its send() dropped attachments and its scope caused the I3 'Unresolved reference: repoPill/attachments' failure chain — with it gone, path/line-anchored panel patches can no longer land in dead code. No functional change. AnimatedBotIcon and all other top-level helpers untouched.
+**Re-test:** none needed (pure deletion, CI-verified). I1-I6 batches unchanged.
+**Next on roadmap (ALL pending items):** Wisdom re-test batches I1-1..I6-6 + MK-1..MK-9 + CE + AU + V2/V3/V4 + R6/R7/R8. TLS/Cloudflare logging ON HOLD. R9 Skills + .agent.md custom modes + hooks + plugins view \u2014 NEEDS WISDOM DESIGN APPROVAL. MC-3 tap-collapse. Round 10 status/settings/history/a11y + search-results attach store + screenshot capture. PEEK PARKED.
