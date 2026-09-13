@@ -3436,3 +3436,12 @@ ChatKeyPool.readLabels called p.getString("labels") — Android's getString(key,
 3. **I2 terminal wiring out of scope**: `onAskAi = { prompt -> showChatPanel = true; pendingChatPromptMs.value = prompt }` was written inside PssBottomPanelContent, which doesn't own those vars. Fixes B/C/D: PssBottomPanelContent gains `onAskAi: (String) -> Unit = {}` param, TerminalPane call passes it through, and the PssBottomPanelContent call in PssEditorColumn (which DOES own showChatPanelMs/pendingChatPromptMs) supplies the lambda.
 Confirmed via #2775 logs: these 7 were the ONLY errors — I4/I5/I6 code is clean.
 **Next on roadmap (ALL pending items):** watch next CI runs green \u2192 then Wisdom re-test batches I1-1..I6-6 + MK-1..MK-9 + CE + AU + V2/V3/V4 + R6/R7/R8. TLS/Cloudflare logging ON HOLD. R9 Skills + .agent.md custom modes + hooks + plugins view \u2014 NEEDS WISDOM DESIGN APPROVAL. MC-3 tap-collapse. Round 10 status/settings/history/a11y + search-results attach store + screenshot capture. PEEK PARKED. Dead CopilotChatPanelOverlay cleanup recommended.
+
+## [2026-09-13 07:15 WAT] — AI Agent: Claude Sonnet 5.6 (BUILD-FIX 2 — restores fullScreen param)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] #2776 errors were self-inflicted: the previous fix accidentally DELETED `fullScreen: Boolean = false,` from PssBottomPanelContent's param list while inserting onAskAi. Restored it (errors 3368 'Unresolved reference: fullScreen' + 4762 'Cannot find a parameter with this name: fullScreen' — both gone). Confirmed from #2776 logs: ALL 7 original #2770-#2775 errors are now healed — pill-moved + onAskAi-threading fixes were correct.
+**Next on roadmap (ALL pending items):** watch #2777 green \u2192 then Wisdom re-test batches I1-1..I6-6 + MK-1..MK-9 + CE + AU + V2/V3/V4 + R6/R7/R8. TLS/Cloudflare logging ON HOLD. R9 Skills + .agent.md custom modes + hooks + plugins view \u2014 NEEDS WISDOM DESIGN APPROVAL. MC-3 tap-collapse. Round 10 status/settings/history/a11y + search-results attach store + screenshot capture. PEEK PARKED. Dead CopilotChatPanelOverlay cleanup recommended.

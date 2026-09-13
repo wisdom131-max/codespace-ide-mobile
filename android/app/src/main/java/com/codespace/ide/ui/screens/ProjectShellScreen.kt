@@ -3362,6 +3362,7 @@ private fun PssBottomPanelContent(
     onJumpToSourceWithPath: (String, Int) -> Unit = { _, _ -> },
     /** I2 — terminal explain-chip → open chat with a prefilled prompt. */
     onAskAi: (String) -> Unit = {},
+    fullScreen: Boolean = false,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
