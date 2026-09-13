@@ -142,9 +142,20 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                     TextButton(onClick = {
                         uiStates[provider.id] = state.copy(editing = true, draft = "", showDraft = false, error = null, routeCandidate = null)
                     }) { Text(if (hasKey) "Replace key" else "Add key") }
+                    if (hasKey && com.codespace.ide.chat.ChatKeyPool.activeSuffix(provider.id) != null &&
+                        com.codespace.ide.chat.ChatKeyPool.activeSuffix(provider.id) != provider.id.uppercase()) {
+                        TextButton(onClick = {
+                            com.codespace.ide.chat.ChatKeyPool.setActive(provider.id, provider.id.uppercase())
+                            val st = uiStates[provider.id] ?: state
+                            uiStates[provider.id] = st.copy(slotChecks = st.slotChecks)
+                        }) { Text("Set primary active") }
+                    }
                     if (hasKey) {
                         TextButton(onClick = {
                             tokenStore.setAiKey(provider.id.uppercase(), null)
+                            if (com.codespace.ide.chat.ChatKeyPool.activeSuffix(provider.id) == provider.id.uppercase()) {
+                                com.codespace.ide.chat.ChatKeyPool.clearActive(provider.id)
+                            }
                             // MULTI-KEY: extras may keep the provider alive — recheck pool.
                             if (!com.codespace.ide.chat.ChatKeyPool.hasAnyKey(tokenStore, provider.id)) {
                                 savedKeyIds.remove(provider.id)
@@ -176,6 +187,21 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        val isActiveKey = com.codespace.ide.chat.ChatKeyPool.activeSuffix(provider.id) == suf
+                        if (isActiveKey) {
+                            Text(
+                                "\u25cf Active",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else {
+                            TextButton(onClick = {
+                                com.codespace.ide.chat.ChatKeyPool.setActive(provider.id, suf)
+                                // touch state so the rows recompose with the new active
+                                val st = uiStates[provider.id] ?: state
+                                uiStates[provider.id] = st.copy(slotChecks = st.slotChecks)
+                            }) { Text("Set active") }
+                        }
                         TextButton(onClick = {
                             scope.launch {
                                 val st0 = uiStates[provider.id] ?: state
@@ -203,6 +229,17 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                             )
                         }
                     }
+                }
+                val activeSuf = com.codespace.ide.chat.ChatKeyPool.activeSuffix(provider.id)
+                val slot1Suf = provider.id.uppercase()
+                if (activeSuf != null && activeSuf != slot1Suf &&
+                    !tokenStore.aiKey(activeSuf).isNullOrBlank()) {
+                    Text(
+                        "Active key: " + com.codespace.ide.chat.ChatKeyPool.label(activeSuf).ifEmpty { activeSuf } +
+                            " \u2014 tried first; failover picks the next key only when it fails",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    )
                 }
                 if (!hasKey && extraSlots.isNotEmpty()) {
                     Text(
@@ -422,6 +459,9 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                                 // Phase 1 — empty submit = DELETE the key (slot 1).
                                 if (savedKeyIds.contains(provider.id)) {
                                     tokenStore.setAiKey(provider.id.uppercase(), null)
+                                    if (com.codespace.ide.chat.ChatKeyPool.activeSuffix(provider.id) == provider.id.uppercase()) {
+                                        com.codespace.ide.chat.ChatKeyPool.clearActive(provider.id)
+                                    }
                                     if (!com.codespace.ide.chat.ChatKeyPool.hasAnyKey(tokenStore, provider.id)) {
                                         savedKeyIds.remove(provider.id)
                                     }

@@ -3324,3 +3324,14 @@ CopilotChatPanelOverlay.kt:271 — `catch (e: Exception) { null }` assigns null 
 
 ### [BUILD-FIX] #2766: JSONObject copy-ctor + Alignment import
 (1) org.json has NO constructor taking another JSONObject — setLabel wrapped labels in JSONObject(labels); labels.toString() is the correct serialization. (2) readLabels: val from try/catch was String? and not reliably smart-cast into JSONObject(raw) — captured a plain non-null local first (same pitfall class as the delegated-property smart-cast rule). (3) Alignment lives in androidx.compose.ui, NOT foundation.layout. Roadmap unchanged from the previous entry (all items as listed there).
+
+## [2026-09-13 02:05 WAT] — AI Agent: Claude Sonnet 5.6 (MULTI-KEY manual active + automatic failover)
+
+**Commit:** (this push) | **CI:** pending (#2767 for 964a594 still in progress)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [MULTI-KEY] Revised per Wisdom: manual selection AND automatic failover, not one instead of the other
+ChatKeyPool now persists a manual ACTIVE slot per provider ("active_<id>" plain pref). keys() returns the ACTIVE key first, then the rest in slot order — one ordering drives both halves of the policy: the user's pick is tried first on every request (manual selection wins while it works), and the ChatKeyFailover engine walks the remaining pairs only on an actual 401/403 failure. 429 unchanged (same-key backoff first). Removing the active key (or primary slot-1 deletion) clears the manual choice and falls back to slot order. Settings UI: "● Active" badge + "Set active" button per extra key, "Set primary active" + "Active key: <label>" line, so a manual pick is visible and switchable at any time.
+**Re-test additions (MK-7..MK-9):** MK-7 tap "Set active" on a 2nd key -> chat uses it (● Active badge shows, Active key line appears). MK-8 manually-picked key that then 401s -> system auto-fails to next key WITHOUT changing the manual pick; manual pick is retried first again after app restart (cooldown is session-scoped). MK-9 delete the active key -> active falls back to primary silently.
+**Next on roadmap (ALL pending items):** unchanged from the previous entry.

@@ -62,14 +62,34 @@ object ChatKeyPool {
         try { p.edit().putString(idxName(providerId), arr.toString()).apply() } catch (_: Exception) { }
     }
 
-    /** All non-empty keys of a provider in slot order: (slotSuffix, key) pairs. */
+    /** All non-empty keys of a provider: (slotSuffix, key) pairs.
+     *  Order = MANUAL ACTIVE slot first (user's pick), then the rest in slot order —
+     *  this single ordering drives both halves of the policy: the active key is the
+     *  one tried first (manual selection wins while it works), and on a 401/403 the
+     *  failover engine walks the remaining pairs automatically. */
     fun keys(tokenStore: com.codespace.ide.data.SecureTokenStore?, providerId: String): List<Pair<String, String>> {
         val out = mutableListOf<Pair<String, String>>()
         for (suf in slots(providerId)) {
             val k = try { tokenStore?.aiKey(suf) } catch (_: Exception) { null }
             if (!k.isNullOrBlank()) out.add(suf to k)
         }
-        return out
+        val act = activeSuffix(providerId) ?: return out
+        return out.sortedBy { it.first != act } // stable — active first, rest keep order
+    }
+
+    /** The manually-selected active slot suffix, or null (default = slot 1 first). */
+    fun activeSuffix(providerId: String): String? =
+        try { prefs?.getString("active_" + providerId, null) } catch (_: Exception) { null }
+
+    /** Manual selection — the user's pick is tried first until it actually fails. */
+    fun setActive(providerId: String, suffix: String) {
+        val p = prefs ?: return
+        try { p.edit().putString("active_" + providerId, suffix).apply() } catch (_: Exception) { }
+    }
+
+    fun clearActive(providerId: String) {
+        val p = prefs ?: return
+        try { p.edit().remove("active_" + providerId).apply() } catch (_: Exception) { }
     }
 
     fun hasAnyKey(tokenStore: com.codespace.ide.data.SecureTokenStore?, providerId: String): Boolean =
@@ -94,6 +114,7 @@ object ChatKeyPool {
     /** Delete one slot's key value and drop it from the order (slot 1 keeps its place — legacy). */
     fun removeKey(tokenStore: com.codespace.ide.data.SecureTokenStore?, providerId: String, suffix: String) {
         tokenStore?.setAiKey(suffix, null)
+        if (activeSuffix(providerId) == suffix) clearActive(providerId)
         saveIndex(providerId, slots(providerId).filter { it != suffix })
     }
 
