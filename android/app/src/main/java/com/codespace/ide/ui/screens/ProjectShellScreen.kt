@@ -1857,6 +1857,7 @@ fun ProjectShellScreen(
                 cursorCol = cursorCol,
                 projectRootPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: "",
                 onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) NotificationStore.markAllRead() },
+                onOpenChat = { showChatPanel = true },
             ) }
     } // end Editor Column
 
@@ -4182,6 +4183,8 @@ private fun StatusBarContent(
     cursorCol: Int,
     projectRootPath: String,
     onToggleNotif: () -> Unit = {},  // P34-NOTIF: bell in status bar
+    /** I5 — chat status item (VS Code chatStatus analog): tap opens the chat panel. */
+    onOpenChat: (() -> Unit)? = null,
 ) {
     // BUG-1 FIX (VS Code statusbarPart pattern): reserve the bell's slot so the
     // branch name (left) / RAM readout + MCP (right) shift inward — never overlaid.
@@ -4212,6 +4215,33 @@ private fun StatusBarContent(
         Icon(Icons.Default.AccountTree, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
         Spacer(Modifier.width(4.dp))
         Text(branchName, fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
+        // I5 — chat status item: active AI model (provider · model), tap opens chat
+        if (onOpenChat != null) {
+            val sbCtx = androidx.compose.ui.platform.LocalContext.current
+            val aiLabel = remember {
+                try {
+                    val m = com.codespace.ide.chat.ChatModelSelection.resolveAuto(
+                        sbCtx,
+                        com.codespace.ide.chat.ChatModelSelection.get(sbCtx) ?: "auto",
+                        com.codespace.ide.data.SecureTokenStore(sbCtx)
+                    )
+                    val pid = m.substringBefore(':', "")
+                    (com.codespace.ide.chat.ChatProviderRegistry.byId(pid)?.displayName ?: pid) + " \u00b7 " + m.substringAfter(':')
+                } catch (_: Exception) { null }
+            }
+            if (aiLabel != null) {
+                Spacer(Modifier.width(8.dp))
+                Icon(Icons.Default.AutoAwesome, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "AI: " + aiLabel,
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.9f),
+                    maxLines = 1,
+                    modifier = Modifier.clickable { onOpenChat() },
+                )
+            }
+        }
         Spacer(Modifier.width(8.dp))
         // P-STATUS-LANG: VS Code-style language indicator — shows a bracket
         // symbol representing the language type + the language name, all white.

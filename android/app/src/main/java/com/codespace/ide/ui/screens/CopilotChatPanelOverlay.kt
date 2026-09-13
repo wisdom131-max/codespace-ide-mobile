@@ -1383,6 +1383,23 @@ internal fun CopilotChatPanelInline(
             } catch (ce: kotlinx.coroutines.CancellationException) {
                 // Stop button / disposal — stopChat() already finalized state.
             } catch (e: Exception) {
+                // I5 — quota notification (VS Code chatQuotaNotification analog):
+                // rate-limit / quota errors also surface in the notification bell,
+                // not just the red error bubble.
+                val he = e as? com.codespace.ide.chat.ChatHttpException
+                if (he != null && (he.statusCode == 429 || he.statusCode == 402)) {
+                    com.codespace.ide.data.NotificationStore.add(
+                        title = "AI rate limit reached",
+                        body = if (he.retryAfterMs != null) {
+                            "The provider is rate-limiting this key. Retry in " + (he.retryAfterMs!! / 1000) + "s, switch model, or add another key in Settings."
+                        } else {
+                            "Provider quota reached. Switch model or add another key in Settings."
+                        },
+                        severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
+                        source = com.codespace.ide.data.NotificationStore.Source.AI,
+                        deduplicationKey = "ai-quota-" + he.statusCode,
+                    )
+                }
                 error = e.message ?: "Unknown error"
                 messages.add(ChatMsg("assistant", "Error: ${e.message}"))
                 persistSessions()

@@ -3399,3 +3399,15 @@ ChatKeyPool.readLabels called p.getString("labels") — Android's getString(key,
 3. Deferring from I4 with reason: search-results attach (search UI state is local, needs a store first \u2014 Round 10 candidate) and screenshot CAPTURE (needs MediaProjection permission flow \u2014 Round 10 candidate; attaching device images already works).
 **Re-test (I4-1..I4-6):** I4-1 with problems in the Problems panel \u2192 paperclip shows "Attach problems (N errors)" with the right count; attach \u2192 request contains file:line messages. I4-2 no problems \u2192 row absent. I4-3 during a debug session, evaluate something in the console \u2192 paperclip shows "Attach debug console output" with the eval lines. I4-4 copy text \u2192 "Paste from clipboard" \u2192 attaches it. I4-5 copy an image \u2192 same row attaches an image chip. I4-6 empty clipboard \u2192 Toast, no crash.
 **Next on roadmap (ALL pending items):** I5 status & quota (status-bar chat item, 429 quota notifications, usage dashboards) — NEXT, then I6 prompts/skills/plugins + voice 2. Then: retest MK-1..MK-9 + CE + AU + V2/V3/V4 + R6/R7/R8 + I1..I6 batches. TLS/Cloudflare logging ON HOLD. MC-3 tap-collapse. R9 Skills (overlaps I6). Round 10 status/settings/history/a11y + search-results attach store + screenshot capture. PEEK PARKED. Dead CopilotChatPanelOverlay cleanup recommended.
+
+## [2026-09-13 07:30 WAT] — AI Agent: Claude Sonnet 5.6 (INTEGRATION I5 — status & quota)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [I5][UI][NOTIF] VS Code chatStatus + chatQuotaNotification analogs
+1. **Status-bar chat item:** StatusBarContent now shows "AI: provider \u00b7 model" (AutoAwesome spark icon + label, active selection resolved via ChatModelSelection.resolveAuto) next to the git branch; tap opens the chat panel. Hidden when no provider is configured (aiLabel null).
+2. **Quota notification:** the chat send-path catch now detects ChatHttpException 429/402 and pushes a WARNING notification through the notification bell (Source.AI, deduped by status code) with actionable body \u2014 "Retry in Xs, switch model, or add another key in Settings" (uses the real Retry-After when present). The red error bubble still shows as before.
+**Re-test (I5-1..I5-4):** I5-1 status bar shows "AI: <Provider> \u00b7 <model>" reflecting the active selection; tap opens chat. I5-2 with no keys configured \u2192 item absent. I5-3 force a 429 (rapid sends) \u2192 bell notification "AI rate limit reached" appears once (not spam) with retry guidance; error bubble unchanged. I5-4 bell position settings still reserve space correctly.
+**Next on roadmap (ALL pending items):** I6 prompts/skills/plugins view + voice 2 (NEXT), then: retest MK-1..MK-9 + CE + AU + V2/V3/V4 + R6/R7/R8 + I1..I6 batches. TLS/Cloudflare logging ON HOLD. MC-3 tap-collapse. R9 Skills (overlaps I6). Round 10 status/settings/history/a11y + search-results attach store + screenshot capture. PEEK PARKED. Dead CopilotChatPanelOverlay cleanup recommended.
