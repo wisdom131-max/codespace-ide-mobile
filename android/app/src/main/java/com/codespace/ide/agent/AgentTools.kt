@@ -220,7 +220,10 @@ You can use multiple tools in sequence. When done, give a final summary.
     // host ProcessBuilder this used to call never had those binaries on PATH). workdir, if
     // given, must be a guest-side path (e.g. "/root/myproject"), not a host Android path.
     private fun runCommand(command: String, workdir: String?, context: Context): String {
-        return com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, workdir).take(4000)
+        val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, workdir).take(4000)
+        // I2 — TERMINAL BRIDGE: last agent-run command + output are attachable in chat
+        com.codespace.ide.terminal.TerminalAiBridge.recordRun(command, out)
+        return out
     }
 
     private fun readFile(path: String): String {

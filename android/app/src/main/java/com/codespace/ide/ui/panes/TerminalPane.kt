@@ -150,7 +150,11 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
         val clip = cm.primaryClip
         if (clip != null && clip.itemCount > 0) {
             val pasteText = clip.getItemAt(0).coerceToText(ctx)?.toString()
-            if (pasteText != null) session?.write(pasteText)
+            if (pasteText != null) {
+                session?.write(pasteText)
+                // I2 — TERMINAL BRIDGE: command-like pastes surface the explain chip
+                com.codespace.ide.terminal.TerminalAiBridge.recordPaste(pasteText)
+            }
         }
     }
     override fun onBell(session: TerminalSession) {
@@ -601,6 +605,8 @@ internal fun TerminalPane(
     // Part A: open-file-at-line entry point (0-based line; same lambda convention
     // as EditorPane/ProjectShellScreen onOpenFileAtLine). Used by OSC 7777 and tap detection.
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
+    /** I2 — TERMINAL BRIDGE: explain-chip callback (opens chat with a prompt). */
+    onAskAi: ((String) -> Unit)? = null,
 ) {
     val context      = LocalContext.current
     val scope        = androidx.compose.runtime.rememberCoroutineScope()
@@ -728,6 +734,16 @@ internal fun TerminalPane(
     LaunchedEffect(sharedState.activeId) { if (sharedState.activeId != activeId) activeId = sharedState.activeId }
 
     val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
+
+    // I2 — TERMINAL BRIDGE: expose the live active-tab transcript to the chat
+    // attach picker (screen.getTranscriptText is the full scrollback buffer).
+    DisposableEffect(Unit) {
+        com.codespace.ide.terminal.TerminalAiBridge.transcriptProvider = {
+            val tab = sharedState.tabs.firstOrNull { it.id == activeId } ?: sharedState.tabs.firstOrNull()
+            tab?.session?.getEmulator()?.screen?.getTranscriptText()
+        }
+        onDispose { com.codespace.ide.terminal.TerminalAiBridge.transcriptProvider = null }
+    }
 
     DisposableEffect(activeId) {
         val tab = tabs.firstOrNull { it.id == activeId }
@@ -1737,6 +1753,9 @@ internal fun TerminalPane(
             HorizontalDivider(color = Color(0xFF2A2A2A))
         }
 
+        // I2 — TERMINAL BRIDGE: paste→explain chip (VS Code chatTerminalCommandPaste analog)
+        TerminalPasteAiChip(onAskAi = onAskAi)
+
         // ── Full laptop-style extra keys bar ───────────────────────────────────
         // Row 1: F1–F12  |  Row 2: Sticky modifiers + nav cluster + symbols + Ctrl combos
         if (showExtraKeys) {
@@ -2182,3 +2201,45 @@ internal fun SplitTerminalPanel(sharedState: TerminalState, onFileSystemChanged:
 
 
 
+
+
+/**
+ * I2 — TERMINAL BRIDGE: compact chip shown after a command-like paste into the
+ * terminal. Tap = send an explain prompt to the AI chat panel via the host's
+ * onAskAi callback; ✕ dismisses. Visible only while a pasted command is pending.
+ */
+@Composable
+internal fun TerminalPasteAiChip(onAskAi: ((String) -> Unit)?) {
+    val chipCmd = com.codespace.ide.terminal.TerminalAiBridge.pastedChip.value ?: return
+    if (onAskAi == null) return
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        androidx.compose.material3.Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+            color = Color(0xFF1E1E1E),
+            modifier = Modifier
+                .weight(1f)
+                .clickable {
+                    com.codespace.ide.terminal.TerminalAiBridge.pastedChip.value = null
+                    onAskAi.invoke(
+                        "Explain this terminal command briefly — what it does, its options, and anything risky about running it:\n" + chipCmd
+                    )
+                },
+        ) {
+            Text(
+                "\u26a1 Explain \u201c" + (if (chipCmd.length > 28) chipCmd.take(28) + "\u2026" else chipCmd) + "\u201d in AI chat",
+                color = Color(0xFFCCCCCC),
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+        androidx.compose.material3.TextButton(
+            onClick = { com.codespace.ide.terminal.TerminalAiBridge.pastedChip.value = null },
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        ) { Text("\u2715", color = Color(0xFF888888), fontSize = 12.sp) }
+    }
+}

@@ -3506,6 +3506,8 @@ private fun PssBottomPanelContent(
                 // callback (opens the file in the editor + scrolls), matching the
                 // Problems panel behavior: bottom panel hides, editor takes focus.
                 onOpenFileAtLine = { path, line -> onJumpToSourceWithPath(path, line + 1) },
+                // I2 — TERMINAL BRIDGE: terminal explain-chip → open chat with the prompt
+                onAskAi = { prompt -> showChatPanel = true; pendingChatPromptMs.value = prompt },
             )
             BottomTab.PROBLEMS -> AdvancedProblemsPanel(
                 onJumpToSource = { filePath, line, col ->

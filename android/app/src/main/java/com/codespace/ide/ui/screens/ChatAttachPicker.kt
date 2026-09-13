@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
@@ -169,6 +170,13 @@ internal fun ChatAttachPickerDialog(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                 )
+                // I2 — TERMINAL BRIDGE attach sources (computed unconditionally)
+                val termCtx = LocalContext.current
+                val termPasted = remember { com.codespace.ide.terminal.TerminalAiBridge.lastPastedCommand }
+                val termHist = remember(termCtx) {
+                    com.codespace.ide.ui.panes.TerminalHistoryStore.load(termCtx).takeLast(5)
+                }
+                val termOut = remember { com.codespace.ide.terminal.TerminalAiBridge.transcriptTail() }
                 // R4-ATTACH-SELECTION: attach the editor's live selection (VS Code parity)
                 val liveSel = remember { com.codespace.ide.editor.EditorSelectionStore.take() }
                 if (liveSel != null && onPickSelection != null) {
@@ -213,6 +221,91 @@ internal fun ChatAttachPickerDialog(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                        }
+                    }
+                }
+                // I2 — TERMINAL BRIDGE rows: last pasted command, recent shell history, output tail
+                if (termPasted != null && onPickSelection != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable {
+                                onPickSelection(
+                                    ChatAttachment(
+                                        path = "terminal", relPath = "terminal", name = "terminal",
+                                        kind = ChatAttachment.Kind.SELECTION,
+                                        selText = "$ " + termPasted,
+                                    )
+                                )
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.ContentCopy, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text("Attach last pasted terminal command", fontSize = 11.sp, color = colors.text)
+                            Text(termPasted, fontSize = 9.sp, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+                if (termHist.isNotEmpty() && onPickSelection != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable {
+                                onPickSelection(
+                                    ChatAttachment(
+                                        path = "terminal", relPath = "terminal", name = "terminal",
+                                        kind = ChatAttachment.Kind.SELECTION,
+                                        selText = "Recent shell history:\n" + termHist.joinToString("\n") { "$ " + it },
+                                    )
+                                )
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.History, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text("Attach recent shell history (5)", fontSize = 11.sp, color = colors.text)
+                            Text(termHist.lastOrNull() ?: "", fontSize = 9.sp, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+                if (termOut != null && onPickSelection != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable {
+                                onPickSelection(
+                                    ChatAttachment(
+                                        path = "terminal", relPath = "terminal", name = "terminal",
+                                        kind = ChatAttachment.Kind.SELECTION,
+                                        selText = "Terminal output (newest last):\n" + termOut,
+                                    )
+                                )
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Description, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text("Attach terminal output (tail)", fontSize = 11.sp, color = colors.text)
+                            Text("Latest scrollback, ANSI-stripped", fontSize = 9.sp, color = colors.textSecondary, maxLines = 1)
                         }
                     }
                 }
