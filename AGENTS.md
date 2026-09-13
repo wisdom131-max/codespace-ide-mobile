@@ -3456,3 +3456,14 @@ Confirmed via #2775 logs: these 7 were the ONLY errors — I4/I5/I6 code is clea
 Zero call sites verified (only CopilotChatPanelInline is mounted, ProjectShellScreen:4849). Its send() dropped attachments and its scope caused the I3 'Unresolved reference: repoPill/attachments' failure chain — with it gone, path/line-anchored panel patches can no longer land in dead code. No functional change. AnimatedBotIcon and all other top-level helpers untouched.
 **Re-test:** none needed (pure deletion, CI-verified). I1-I6 batches unchanged.
 **Next on roadmap (ALL pending items):** Wisdom re-test batches I1-1..I6-6 + MK-1..MK-9 + CE + AU + V2/V3/V4 + R6/R7/R8. TLS/Cloudflare logging ON HOLD. R9 Skills + .agent.md custom modes + hooks + plugins view \u2014 NEEDS WISDOM DESIGN APPROVAL. MC-3 tap-collapse. Round 10 status/settings/history/a11y + search-results attach store + screenshot capture. PEEK PARKED.
+
+## [2026-09-13 07:50 WAT] — AI Agent: Claude Sonnet 5.6 (R9 PRE-PLAN v1 — docs only, no code)
+
+**Commit:** (this push) | **CI:** pending (docs)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] R9_PREPLAN.md added — Skills + custom .agent.md modes design
+v1 awaiting Wisdom approval — NO code until approved (same gate as R6). Covers: R9-A custom agent modes (.codespace/modes + .github/chatmodes, frontmatter-lite name/description/tools/model, additive customModeId session field — zero migration, AGENT-inherited runtime, restrict-only tool allowlist), R9-B skills (builtin curated set + project .codespace/skills + prefill-CONFIRM never auto-send), R9-C MCP prompts as skills (optional, D6), R9-D hooks PARKED (no extension runtime). 6 locked decisions D1-D6 + build order + re-test preview R9-1..R9-10.
+**Testing note:** Wisdom is batching ALL re-tests (MK, CE, AU, V, R6/R7/R8, I1-I6, and future R9) for a single later session — do not treat pending batches as blockers.
+**Next on roadmap (ALL pending items):** Wisdom reviews/approves R9_PREPLAN -> then build R9. Batched re-tests: I1-1..I6-6 + MK-1..MK-9 + CE + AU + V2/V3/V4 + R6/R7/R8 (+R9 when shipped). TLS/Cloudflare logging ON HOLD. MC-3 tap-collapse. Round 10 status/settings/history/a11y + search-results attach store + screenshot capture. PEEK PARKED.
