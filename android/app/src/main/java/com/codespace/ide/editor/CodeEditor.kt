@@ -527,6 +527,13 @@ fun CodeEditor(
      *  the restore pipeline (previously maps were written once at restore and
      *  never updated, so saved positions were always stale). */
     onViewStateCapture: ((viewKey: String, scrollLine: Int, cursorOffset: Int) -> Unit)? = null,
+    /** PERSIST-A: folding state for this FILE (path-keyed, shared by all views of
+     *  the file — folding is model state like VS Code). 0-based fold start lines. */
+    initialFoldedRanges: Set<Int> = emptySet(),
+    /** PERSIST-A: fired whenever folded ranges change (also on mount with the
+     *  restored set). viewKey comes from THIS instance; EditorPane resolves the
+     *  path (split views share the primary tab's path). */
+    onFoldsChange: ((viewKey: String, foldedStarts: Set<Int>) -> Unit)? = null,
     findReplaceOpen: Boolean = false,
     onFindReplaceClose: () -> Unit = {},
     /** External find query from the top find bar (white bar in ProjectShellScreen).
@@ -722,54 +729,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
         }
     }
-    // ── PAD-2/PERSIST-A: per-view state capture + mount-restore ─────────────
-    // CAPTURE: on THIS instance's dispose (key(activeId) remounts CodeEditor on
-    // every view switch, so leaving a view = leaving composition), report the
-    // LIVE first-visible line + cursor offset to EditorPane's per-view maps.
-    // rememberUpdatedState guards against stale captures across recompositions.
-    val liveValue by rememberUpdatedState(value)
-    val liveCapture by rememberUpdatedState(onViewStateCapture)
-    val liveViewKey by rememberUpdatedState(viewKey)
-    DisposableEffect(liveViewKey) {
-        onDispose {
-            // Plain local first: delegated vals can't be smart-cast after a
-            // null check (#2724 rule class).
-            val key = liveViewKey
-            if (key != null) {
-                // lineHeightPx is Float (#2719 rule class) — Int pixel math only.
-                val lhPx = editorMetrics.lineHeightPx
-                val line = if (lhPx > 0f) (vScroll.value / lhPx).toInt() else 0
-                liveCapture?.invoke(key, line, liveValue.selection.end)
-            }
-        }
-    }
-    // APPLY cursor on mount: single-shot — a remember flag stops content-sync
-    // effects from re-firing it if the buffer text shifts after layout.
-    var appliedInitialCursor by remember { mutableStateOf(false) }
-    LaunchedEffect(initialCursorOffset) {
-        if (!appliedInitialCursor && initialCursorOffset >= 0) {
-            appliedInitialCursor = true
-            val v = liveValue
-            value = v.copy(selection = TextRange(initialCursorOffset.coerceAtMost(v.text.length)))
-        }
-    }
-    // APPLY scroll on mount: LINE-JUMP-READY-FIX retry pattern — on a fresh
-    // layout vScroll.maxValue is still 0, so retry every 50ms up to 1s.
-    // Viewport-fitting files keep maxValue 0 and time out harmlessly at top.
-    LaunchedEffect(initialScrollLine) {
-        if (initialScrollLine > 0) {
-            // Float lineHeightPx → toInt() before any scroll math (#2719 rule class).
-            val targetPx = (initialScrollLine * editorMetrics.lineHeightPx).toInt()
-            var tries = 0
-            while (tries < 20 && vScroll.maxValue == 0) {
-                kotlinx.coroutines.delay(50)
-                tries++
-            }
-            if (vScroll.maxValue > 0) {
-                vScroll.scrollTo(targetPx.coerceAtMost(vScroll.maxValue))
-            }
-        }
-    }
     // PROBLEMS-TAB FIX: temporary gold highlight on the target line so the user can SEE
     // where the problem is after the bottom panel closes. Auto-clears after 2.5s.
     var highlightTargetLine by remember { mutableStateOf(0) }
@@ -839,8 +798,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // This also prevents the built-in popup from blocking Tab-triggered snippet expansion.
     var disableBuiltinCompletion by FeatureToggleStore.state("disable_builtin_completion")
 
-    // 2. Code folding state
-    var foldedRanges by remember { mutableStateOf(setOf<Int>()) } // start line index (0-based)
+    // 2. Code folding state — PERSIST-A: seeded with the FILE's saved folds
+    var foldedRanges by remember { mutableStateOf(initialFoldedRanges) } // start line index (0-based)
     // P2-9 Bookmarks
     var bookmarkedLines by remember { mutableStateOf(initialBookmarks) }
 
@@ -1888,11 +1847,35 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var expandSelectionUsedLsp by remember { mutableStateOf(false) }
 
     // ── Find & Replace state ────────────────────────────────────────────
-    var findQuery by remember { mutableStateOf("") }
+    // PERSIST-A: query + toggles seed from the persistent EditorFindState store
+    // and write back on change, so the find bar reopens where you left it
+    // (VS Code keeps find state across restarts).
+    var findQuery by remember { mutableStateOf(EditorFindState.query) }
     var replaceQuery by remember { mutableStateOf("") }
-    var useRegex by remember { mutableStateOf(false) }
-    var caseSensitive by remember { mutableStateOf(false) }
-    var wholeWord by remember { mutableStateOf(false) }
+    var useRegex by remember { mutableStateOf(EditorFindState.useRegex) }
+    var caseSensitive by remember { mutableStateOf(EditorFindState.caseSensitive) }
+    var wholeWord by remember { mutableStateOf(EditorFindState.wholeWord) }
+    // 64KB EXTRACTION (#2790): ALL PAD-2/PERSIST-A effects live in
+    // EditorViewStateEffects.kt — one call, zero inline effect bodies here.
+    EditorViewStateEffects(
+        viewKey = viewKey,
+        initialScrollLine = initialScrollLine,
+        initialCursorOffset = initialCursorOffset,
+        onViewStateCapture = onViewStateCapture,
+        onFoldsChange = onFoldsChange,
+        onApplyCursor = { off ->
+            val v = value
+            value = v.copy(selection = TextRange(off.coerceAtMost(v.text.length)))
+        },
+        vScroll = vScroll,
+        lineHeightPx = editorMetrics.lineHeightPx,
+        value = value,
+        foldedRanges = foldedRanges,
+        findQuery = findQuery,
+        useRegex = useRegex,
+        caseSensitive = caseSensitive,
+        wholeWord = wholeWord,
+    )
     var preserveCase by remember { mutableStateOf(false) }
     var matchIndex by remember { mutableStateOf(0) }
 

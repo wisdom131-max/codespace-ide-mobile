@@ -35,4 +35,7 @@ object ViewScrollLockStore {
     }
 
     fun clear() = locks.clear()
+
+    /** PERSIST-A: full lock map for per-project persistence (viewKey -> locked). */
+    fun snapshot(): Map<String, Boolean> = locks.filterValues { it }
 }

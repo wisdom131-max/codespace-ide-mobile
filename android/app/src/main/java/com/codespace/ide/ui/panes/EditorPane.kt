@@ -555,8 +555,14 @@ fun EditorPane(
     val pinnedPaths = remember { mutableStateListOf<String>() }
     // Per-file scroll line memory (path → first visible line)
     val tabScrollLines = remember { mutableStateMapOf<String, Int>() }
-    // Per-file cursor offset memory (path → char offset) — persisted via EditorTab.cursorOffset
+    // Per-file cursor offset memory (view id → char offset) — PERSIST-A: live-captured
     val tabCursorOffsets = remember { mutableStateMapOf<String, Int>() }
+    // PERSIST-A: folding state per FILE path (0-based fold start lines). Folds are
+    // model state (all views of a file share them), like VS Code.
+    val tabFoldedRanges = remember { mutableStateMapOf<String, Set<Int>>() }
+    // PERSIST-A: suppress split auto-focus once, right after disk-restore (the
+    // views.size effect must not yank the restored active view to the newest split).
+    var suppressSplitFocus by remember { mutableStateOf(false) }
 
     // ── Workspace memory restore ──────────────────────────────────────────
     LaunchedEffect(Unit) {
@@ -576,6 +582,7 @@ fun EditorPane(
             val restoredPaths: List<String>
             val restoredActive: String?
             val restoredPinned: List<String>
+            var restoredSplits: com.codespace.ide.data.SessionStateStore.SplitViewsMemory? = null
             if (store != null) {
                 val state = store.loadShellState(pid)
                 restoredPaths  = state?.openFilePaths ?: emptyList()
@@ -584,9 +591,18 @@ fun EditorPane(
                 // Restore per-file scroll and cursor positions
                 store.loadScrollPositions(pid).forEach { (p, line) -> tabScrollLines[p] = line }
                 store.loadCursors(pid).forEach { (p, off) -> tabCursorOffsets[p] = off }
-                // PAD-1: scroll locks are per-project runtime state — drop stale keys
-                // when switching projects (persistence lands in PERSIST-A).
+                // PERSIST-A: per-view scroll locks — clear stale keys, then restore
+                // this project's saved lock flags.
                 com.codespace.ide.editor.ViewScrollLockStore.clear()
+                store.loadLocks(pid).forEach { (k, locked) ->
+                    com.codespace.ide.editor.ViewScrollLockStore.setLocked(k, locked)
+                }
+                // PERSIST-A: folding state per file
+                store.loadFolds(pid).forEach { (path, lines) -> tabFoldedRanges[path] = lines.toSet() }
+                // PERSIST-A: blame toggle
+                showBlame = store.loadBlameEnabled(pid)
+                // PERSIST-A: split views saved for this project
+                restoredSplits = store.loadSplitViews(pid)
             } else {
                 // One-time legacy migration
                 val (legacy, legacyActive) = migrateLegacySession(context)
@@ -611,6 +627,17 @@ fun EditorPane(
             }
             pinnedPaths.addAll(restoredPinned.filter { p -> tabs.any { it.path == p } })
             activeId = tabs.firstOrNull { it.path == restoredActive }?.id ?: tabs.firstOrNull()?.id
+            // PERSIST-A: restore split views — only ids whose file is actually open.
+            val splitsMem = restoredSplits
+            if (splitsMem != null && splitsMem.viewIds.isNotEmpty()) {
+                com.codespace.ide.editor.SplitViewStore.restore(
+                    splitsMem.viewIds, tabs.map { it.path }.toSet())
+                suppressSplitFocus = true
+                val av = splitsMem.activeViewId
+                if (av != null && com.codespace.ide.editor.SplitViewStore.views.any { it.id == av }) {
+                    activeId = av
+                }
+            }
         }
     }
 
@@ -714,7 +741,12 @@ fun EditorPane(
 
     // ── Workspace memory: persist on every state change ─────────────────
     val currentTabList = tabs.toList()
-    LaunchedEffect(currentTabList, activeId, pinnedPaths.toList()) {
+    LaunchedEffect(
+        currentTabList, activeId, pinnedPaths.toList(),
+        com.codespace.ide.editor.SplitViewStore.views.toList(),
+        showBlame, tabFoldedRanges.toMap(),
+        com.codespace.ide.editor.ViewScrollLockStore.snapshot(),
+    ) {
         // R6-PENDING-EDITS: publish open-tab buffers so chat staging stages
         // against the live buffer (decision #3) — String references, no copies.
         com.codespace.ide.editor.EditorBufferStore.sync(
@@ -738,6 +770,15 @@ fun EditorPane(
             store.saveCursors(pid, tabCursorOffsets.toMap())
             // Persist scroll lines (same live per-view map)
             store.saveScrollPositions(pid, tabScrollLines.toMap())
+            // PERSIST-A: split views (+ which view was active), locks, folds, blame
+            store.saveSplitViews(
+                pid,
+                com.codespace.ide.editor.SplitViewStore.views.map { it.id },
+                if (com.codespace.ide.editor.SplitViewStore.isSplitId(activeId)) activeId else null,
+            )
+            store.saveLocks(pid, com.codespace.ide.editor.ViewScrollLockStore.snapshot())
+            store.saveFolds(pid, tabFoldedRanges.mapValues { it.value.toList() })
+            store.saveBlameEnabled(pid, showBlame)
         }
     }
 
@@ -868,6 +909,11 @@ fun EditorPane(
         // view; (b) if the ACTIVE view is a split that was removed, fall back to its
         // primary tab (the old inline strip handler did both).
         LaunchedEffect(com.codespace.ide.editor.SplitViewStore.views.size) {
+            // PERSIST-A: skip exactly once when the size change came from disk-restore.
+            if (suppressSplitFocus) {
+                suppressSplitFocus = false
+                return@LaunchedEffect
+            }
             val currentTab = resolveActiveTab(activeId, tabs)
             if (currentTab != null) {
                 if (activeId == currentTab.id) {
@@ -1994,6 +2040,13 @@ fun EditorPane(
                         onViewStateCapture = { key, line, off ->
                             tabScrollLines[key] = line
                             tabCursorOffsets[key] = off
+                        },
+                        // PERSIST-A: folds are per FILE — resolve the view id back to
+                        // its primary tab's path before storing.
+                        initialFoldedRanges = tabFoldedRanges[active.path] ?: emptySet(),
+                        onFoldsChange = { key, folds ->
+                            val p = com.codespace.ide.editor.SplitViewStore.pathOf(key) ?: key
+                            tabFoldedRanges[p] = folds
                         },
                         showInlayHints = showInlayHints,
                         toggles = toggles,

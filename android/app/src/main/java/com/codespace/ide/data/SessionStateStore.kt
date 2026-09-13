@@ -66,13 +66,19 @@ class SessionStateStore(private val context: Context) {
             remove(cursorKey(projectId))
             remove(scrollKey(projectId))
             remove(terminalKey(projectId))
+            remove(splitKey(projectId))
+            remove(lockKey(projectId))
+            remove(foldKey(projectId))
+            remove(blameKey(projectId))
         }
     }
 
     /** Clear workspace memory for ALL projects. */
     fun clearAllWorkspaceMemory() {
         val allKeys = prefs.all.keys.filter { it.startsWith("shell_state_") ||
-                it.startsWith("cursors_") || it.startsWith("scrolls_") || it.startsWith("terminal_") }
+                it.startsWith("cursors_") || it.startsWith("scrolls_") || it.startsWith("terminal_") ||
+                it.startsWith("splits_") || it.startsWith("locks_") || it.startsWith("folds_") ||
+                it.startsWith("blame_") }
         prefs.edit { allKeys.forEach { remove(it) } }
     }
 
@@ -122,6 +128,87 @@ class SessionStateStore(private val context: Context) {
         return try { decodeTerminalState(raw) } catch (_: Exception) { null }
     }
 
+    // ── PERSIST-A (2026-09-13): editor extras per project ─────────────────
+
+    /** Split views of a project: their view ids + which view id was last ACTIVE
+     *  (a tab path if the primary was active, null = primary/first tab). */
+    fun saveSplitViews(projectId: String, viewIds: List<String>, activeViewId: String?) {
+        if (!workspaceRestoreEnabled) return
+        val arr = JSONArray(viewIds)
+        val obj = JSONObject().put("ids", arr).put("active", activeViewId)
+        prefs.edit { putString(splitKey(projectId), obj.toString()) }
+    }
+
+    data class SplitViewsMemory(
+        val viewIds: List<String> = emptyList(),
+        val activeViewId: String? = null,
+    )
+
+    fun loadSplitViews(projectId: String): SplitViewsMemory {
+        val raw = prefs.getString(splitKey(projectId), null) ?: return SplitViewsMemory()
+        return try {
+            val obj = JSONObject(raw)
+            val arr = obj.optJSONArray("ids") ?: JSONArray()
+            val ids = buildList {
+                for (i in 0 until arr.length()) {
+                    val s = arr.optString(i, "")
+                    if (s.isNotBlank()) add(s)
+                }
+            }
+            SplitViewsMemory(ids, if (obj.isNull("active")) null else obj.optString("active", null))
+        } catch (_: Exception) { SplitViewsMemory() }
+    }
+
+    /** PAD-1 per-view scroll-lock flags: viewKey -> locked. */
+    fun saveLocks(projectId: String, locks: Map<String, Boolean>) {
+        if (!workspaceRestoreEnabled) return
+        val obj = JSONObject()
+        locks.forEach { (k, v) -> obj.put(k, v) }
+        prefs.edit { putString(lockKey(projectId), obj.toString()) }
+    }
+
+    fun loadLocks(projectId: String): Map<String, Boolean> {
+        val raw = prefs.getString(lockKey(projectId), null) ?: return emptyMap()
+        return try {
+            val obj = JSONObject(raw)
+            buildMap { obj.keys().forEach { k -> put(k, obj.optBoolean(k, false)) } }
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    /** Code-folding state per FILE path: folded range start lines (0-based). */
+    fun saveFolds(projectId: String, folds: Map<String, List<Int>>) {
+        if (!workspaceRestoreEnabled) return
+        val obj = JSONObject()
+        folds.forEach { (path, lines) ->
+            obj.put(path, JSONArray(lines))
+        }
+        prefs.edit { putString(foldKey(projectId), obj.toString()) }
+    }
+
+    fun loadFolds(projectId: String): Map<String, List<Int>> {
+        val raw = prefs.getString(foldKey(projectId), null) ?: return emptyMap()
+        return try {
+            val obj = JSONObject(raw)
+            buildMap {
+                obj.keys().forEach { path ->
+                    val arr = obj.optJSONArray(path)
+                    val lines = buildList {
+                        if (arr != null) for (i in 0 until arr.length()) add(arr.optInt(i, -1))
+                    }.filter { it >= 0 }
+                    put(path, lines)
+                }
+            }
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    /** Git-Blame strip toggle (session UI state restored per project). */
+    fun saveBlameEnabled(projectId: String, enabled: Boolean) {
+        prefs.edit { putBoolean(blameKey(projectId), enabled) }
+    }
+
+    fun loadBlameEnabled(projectId: String): Boolean =
+        prefs.getBoolean(blameKey(projectId), false)
+
     // ── Data classes ──────────────────────────────────────────────────────
 
     data class ShellState(
@@ -151,6 +238,10 @@ class SessionStateStore(private val context: Context) {
         private fun cursorKey(id: String)   = "cursors_$id"
         private fun scrollKey(id: String)   = "scrolls_$id"
         private fun terminalKey(id: String) = "terminal_$id"
+        private fun splitKey(id: String)   = "splits_$id"
+        private fun lockKey(id: String)    = "locks_$id"
+        private fun foldKey(id: String)    = "folds_$id"
+        private fun blameKey(id: String)   = "blame_$id"
 
         // ── Encoders ──────────────────────────────────────────────────────
 

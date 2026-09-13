@@ -92,6 +92,21 @@ object SplitViewStore {
         }
     }
 
+    /**
+     * PERSIST-A: disk-restore — recreate the saved views. Only ids whose file is
+     * currently open survive; ids keep their original form (legacy first-view id
+     * or ::N sibling) so viewNumber() labels stay stable across restarts.
+     */
+    fun restore(viewIds: List<String>, openPaths: Set<String>) {
+        views.removeAll { it.path !in openPaths }
+        viewIds.forEach { id ->
+            val p = pathOf(id) ?: return@forEach
+            if (p in openPaths && views.none { it.id == id }) {
+                views.add(SplitView(id, p))
+            }
+        }
+    }
+
     fun removeById(id: String) {
         views.removeAll { it.id == id }
     }

@@ -44,6 +44,8 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         ProjectSettingsStore.init(this)
         // Custom OpenAI-compatible endpoint base URL (config, not a credential)
         com.codespace.ide.chat.CustomEndpointStore.init(this)
+        // PERSIST-A: find-widget state (query + toggles) — plain prefs, cross-project.
+        com.codespace.ide.editor.EditorFindState.init(this)
         com.codespace.ide.chat.ChatKeyPool.init(this)
         // R7-PLAN: per-session structured plans (plan tool + ChatPlanCard)
         com.codespace.ide.chat.ChatPlanStore.init(this)
