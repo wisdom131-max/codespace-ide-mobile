@@ -7,8 +7,8 @@ import java.io.File
  * R9-A — Custom agent modes from .agent.md / .chatmode.md files.
  *
  * Approved design (R9_PREPLAN.md, Wisdom-approved 2026-09-13):
- *  - Discovery: <project>/.codespace/modes/*.agent.md|*.chatmode.md and
- *    <project>/.github/chatmodes/*.chatmode.md (VS Code location — real VS Code
+ *  - Discovery: the .codespace/modes dir (files .agent.md / .chatmode.md) and
+ *    the .github/chatmodes dir (VS Code location — real VS Code
  *    chat-mode repos work unmodified).
  *  - Frontmatter-lite parser (D5): key: value lines + "  - item" dash lists.
  *    NO YAML library, NO code execution — the body is prompt text only.

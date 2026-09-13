@@ -3502,3 +3502,13 @@ agent/McpClientManager: NEW ExternalPrompt(server, name, description, firstArgNa
 **R9 NOW COMPLETE (A+B+C). Hooks (R9-D) PARKED \u2014 documented non-goal, no extension runtime on-device.**
 **Full R9 re-test batch for Wisdom's batched session: R9-1..R9-10 + R9-8 D2-verification (pre-R9 session load \u2014 see R9-A entry). All prior batches (I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8) still pending too.**
 **Next on roadmap (ALL pending items):** Round 10 \u2014 status/settings/history/a11y + search-results attach store + screenshot capture (NEEDS WISDOM GO-AHEAD). TLS/Cloudflare logging ON HOLD. MC-3 tap-collapse. PEEK PARKED. Dead-code cleanup DONE (#2778).
+
+## [2026-09-13 09:20 WAT] — AI Agent: Claude Sonnet 5.6 (BUILD-FIX for #2780-#2782: nested-comment trap)
+
+**Commit:** (this push) | **CI:** pending (fixes #2780/#2781/#2782 failures)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] Unclosed comment in CustomModeStore.kt + SkillsCatalog.kt
+Root cause: Kotlin block comments NEST \u2014 KDoc lines containing path globs like ".codespace/modes/*.agent.md" each opened a nested /* that never closed ("Unclosed comment" at EOF, kills the whole file). Reworded the three doc lines to prose ("the .codespace/modes dir (files .agent.md / .chatmode.md)"). Comment-balance sweep of ALL changed files: 7/7 balanced. NEW RULE (to memory): never write */ or /* sequences inside comments \u2014 path globs in KDoc are a build-breaker.
+**Next on roadmap (ALL pending items):** CI green for R9 A+B+C \u2192 Wisdom batched re-tests (R9-1..R9-10 + all prior batches). Round 10 (NEEDS WISDOM GO-AHEAD). TLS/Cloudflare ON HOLD. MC-3 tap-collapse. PEEK PARKED.

@@ -14,7 +14,7 @@ import java.io.File
  *   Write thorough unit tests...
  *
  * Sources: (1) a small curated BUILT-IN set, (2) project files in
- * <project>/.codespace/skills/*.md (same frontmatter-lite parser as custom
+ * project files in the .codespace/skills dir (same frontmatter-lite parser as custom
  * modes — no YAML lib, no code execution, D5), (3) MCP prompts (R9-C, added
  * to the same surface).
  *
@@ -86,7 +86,7 @@ object SkillsCatalog {
         ),
     )
 
-    /** Project skills from <project>/.codespace/skills/*.md (malformed files skipped). */
+    /** Project skills from the .codespace/skills dir (malformed files skipped). */
     fun projectSkills(projectRoot: String?): List<Skill> {
         if (projectRoot.isNullOrBlank()) return emptyList()
         return try {
