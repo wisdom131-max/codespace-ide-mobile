@@ -160,10 +160,12 @@ private data class ChatSession(
     val mode: ChatMode,
     val messages: MutableList<ChatMsg> = mutableListOf(),
     var updatedAt: Long = System.currentTimeMillis(),
+    // R9-A (D2): additive — old JSON loads unchanged (missing key -> null)
+    var customModeId: String? = null,
 )
 
-private fun newSession(mode: ChatMode = ChatMode.ASK): ChatSession =
-    ChatSession(id = java.util.UUID.randomUUID().toString(), title = "New chat", mode = mode)
+private fun newSession(mode: ChatMode = ChatMode.ASK, customModeId: String? = null): ChatSession =
+    ChatSession(id = java.util.UUID.randomUUID().toString(), title = "New chat", mode = mode, customModeId = customModeId)
 
 private fun saveSessions(ctx: Context, sessions: List<ChatSession>) {
     val arr = JSONArray()
@@ -180,6 +182,7 @@ private fun saveSessions(ctx: Context, sessions: List<ChatSession>) {
                 .put("title", s.title)
                 .put("mode", s.mode.name)
                 .put("updatedAt", s.updatedAt)
+                .put("customModeId", s.customModeId ?: "")
                 .put("messages", msgsArr)
         )
     }
@@ -205,6 +208,7 @@ private fun loadSessions(ctx: Context): MutableList<ChatSession> {
                     id = o.getString("id"),
                     title = o.getString("title"),
                     mode = try { ChatMode.valueOf(o.getString("mode")) } catch (_: Exception) { ChatMode.ASK },
+                    customModeId = o.optString("customModeId", "").ifBlank { null },
                     messages = msgs,
                     updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
                 )
@@ -290,7 +294,21 @@ private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): Pair<L
     return entries.distinct() to errors.toList()
 }
 
-private fun buildSystemPrompt(mode: ChatMode, context: Context, workspaceCtx: String, projectRootPath: String? = null): String {
+private fun customModeBlock(customModeId: String?, projectRootPath: String?): String {
+    // R9-A: rider + restrict-only tool notice. Missing file -> "" (fallback is AGENT).
+    val cm = com.codespace.ide.chat.CustomModeStore.findById(projectRootPath, customModeId) ?: return ""
+    val sb = StringBuilder("\n\n## CUSTOM MODE \u2014 " + cm.name)
+    if (cm.description.isNotBlank()) sb.append("\n").append(cm.description)
+    sb.append("\n\n").append(cm.body)
+    if (cm.tools != null) {
+        sb.append("\n\n## TOOL RESTRICTION\nIn this custom mode you may ONLY use these tools: ")
+            .append(cm.tools.joinToString(", "))
+            .append(". Any other tool call will be rejected \u2014 do not attempt them.")
+    }
+    return sb.toString()
+}
+
+private fun buildSystemPrompt(mode: ChatMode, context: Context, workspaceCtx: String, projectRootPath: String? = null, customModeId: String? = null): String {
     // R2-AUTOINSTR: per-project instruction files (AGENTS.md / copilot-instructions.md /
     // .github/copilot-instructions.md / CLAUDE.md) auto-attach to EVERY request,
     // opt-out per project via the chip or prefs.
@@ -373,7 +391,8 @@ execute the steps in order, calling plan again after each step to update its
 status (pending -> in_progress -> completed). Single-step work needs no plan.
 
 """ + AgentTools.TOOLS_DESCRIPTION +
-            com.codespace.ide.agent.McpClientManager.toolDocs(context) + tail
+            com.codespace.ide.agent.McpClientManager.toolDocs(context) + tail +
+            customModeBlock(customModeId, projectRootPath)
         ChatMode.PLAN  -> "You are a planning assistant inside VN Code. Break the user's request into numbered steps. List steps and wait for approval before suggesting execution." + tail
     }
 }
@@ -426,6 +445,7 @@ private suspend fun computeContextUsage(
 private suspend fun updateContextGauge(
     selectedModel: String,
     mode: ChatMode,
+    customModeId: String?,
     context: Context,
     tokenStore: SecureTokenStore?,
     messages: List<ChatMsg>,
@@ -436,7 +456,7 @@ private suspend fun updateContextGauge(
 ) {
     try {
         val wsCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
-        val systemPrompt = buildSystemPrompt(mode, context, wsCtx)
+        val systemPrompt = buildSystemPrompt(mode, context, wsCtx, projectRootPath, customModeId)
         val usage = computeContextUsage(selectedModel, systemPrompt, convMsgsOf(systemPrompt, messages), tokenStore)
         onComputed(usage.first, usage.second)
     } catch (_: Exception) { }
@@ -446,6 +466,7 @@ private suspend fun chat(
     model: String,
     messages: List<ChatMsg>,
     mode: ChatMode,
+    customModeId: String? = null,
     context: Context,
     tokenStore: SecureTokenStore? = null,
     onOpenFile: ((String) -> Unit)? = null,
@@ -466,7 +487,10 @@ private suspend fun chat(
     // tools/list results feed the external-tools docs block below.
     com.codespace.ide.agent.McpClientManager.ensureDiscovered(context)
     
-    var systemPrompt = buildSystemPrompt(mode, context, workspaceCtx, projectRootPath)
+    var systemPrompt = buildSystemPrompt(mode, context, workspaceCtx, projectRootPath, customModeId)
+    // R9-A (D3): custom-mode tool allowlist \u2014 RESTRICT-ONLY. FlowGate and
+    // ChatPermissionStore levels stay supreme in every case.
+    val cmAllow = com.codespace.ide.chat.CustomModeStore.findById(projectRootPath, customModeId)?.tools
     // R7-PLAN-GUARD (durable halt): the planStaged turn-break only halts THAT
     // turn. Any later user message starts a fresh loop — this injected rule is
     // what actually holds the agent back until Approve is tapped on the card.
@@ -552,6 +576,12 @@ private suspend fun chat(
             // semantics) — the user reviews the card and Approve/Revise resumes.
             var planStaged = false
             for ((toolName, toolArgs) in toolCalls) {
+                // R9-A: allowlist only ever RESTRICTS \u2014 a blocked tool never
+                // reaches FlowGate or execution.
+                if (cmAllow != null && toolName !in cmAllow) {
+                    toolResults.append("[Tool: $toolName] Not available in this custom mode (allowlist). Skipped.\n\n")
+                    continue
+                }
                 // R6-PENDING-EDITS (decision #1): in AGENT mode, write_file STAGES
                 // into PendingChangesStore instead of writing disk — staging is
                 // UNGATED at every permission level (content that cannot reach disk
@@ -762,6 +792,8 @@ internal fun CopilotChatPanelInline(
     val listState = rememberLazyListState()
 
     var mode          by remember { mutableStateOf(ChatMode.ASK) }
+    // R9-A: active custom mode id (null = builtin mode)
+    var activeCustomModeId by remember { mutableStateOf<String?>(null) }
     var chatInput     by remember { mutableStateOf("") }
     var chatLoading   by remember { mutableStateOf(false) }
     var liveStreamText by remember { mutableStateOf("") }
@@ -916,11 +948,21 @@ internal fun CopilotChatPanelInline(
         messages.clear()
         messages.addAll(sessions.find { it.id == id }?.messages ?: emptyList())
         mode = sessions.find { it.id == id }?.mode ?: ChatMode.ASK
+        // R9-A: restore the custom mode; a deleted mode file falls back to
+        // plain AGENT with a one-line transcript notice.
+        val openCm = sessions.find { it.id == id }?.customModeId
+        if (openCm != null && com.codespace.ide.chat.CustomModeStore.findById(projectRootPath, openCm) == null) {
+            sessions.find { it.id == id }?.customModeId = null
+            activeCustomModeId = null
+            messages.add(ChatMsg("assistant", "_Custom mode '" + openCm + "' no longer exists \u2014 using Agent._"))
+        } else {
+            activeCustomModeId = openCm
+        }
     }
 
     fun startNewSession() {
         persistSessions()
-        val s = newSession(mode)
+        val s = newSession(mode, activeCustomModeId)
         sessions.add(0, s)
         activeSessionId = s.id
         messages.clear()
@@ -1022,7 +1064,7 @@ internal fun CopilotChatPanelInline(
                         is ChatStreamEvent.ToolDone -> { liveStreamText += "\n⚙ " + ev.tool + " — done"; toolsUsed.add(ev.tool) }
                     }
                 }
-                val reply = chat(effModel, messages.toList(), mode, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
+                val reply = chat(effModel, messages.toList(), mode, activeCustomModeId, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
                 // R4-TYPED-ENTRY: tools-used transcript chip rides before the reply
                 if (toolsUsed.isNotEmpty()) messages.add(ChatMsg("tool", toolsUsed.distinct().joinToString(", ")))
                 messages.add(ChatMsg("assistant", reply))
@@ -1059,7 +1101,7 @@ internal fun CopilotChatPanelInline(
                 liveStreamText = ""
                 // CONTEXT GAUGE: estimate for the NEXT send — unawaited, never delays the reply
                 scope.launch {
-                    updateContextGauge(com.codespace.ide.chat.ChatModelSelection.resolveAuto(context, selectedModel, tokenStore), mode, context, tokenStore, messages.toList(), projectRootPath, currentFilePath, openFilePaths) { u, m ->
+                    updateContextGauge(com.codespace.ide.chat.ChatModelSelection.resolveAuto(context, selectedModel, tokenStore), mode, activeCustomModeId, context, tokenStore, messages.toList(), projectRootPath, currentFilePath, openFilePaths) { u, m ->
                         ctxUsed = u; ctxMax = m
                     }
                 }
@@ -1376,7 +1418,7 @@ internal fun CopilotChatPanelInline(
                 Row(
                     Modifier
                         .background(if (isSelected) colors.surface else Color.Transparent, RoundedCornerShape(4.dp))
-                        .clickable { mode = m }
+                        .clickable { mode = m; activeCustomModeId = null; activeSession.customModeId = null }
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -1400,6 +1442,21 @@ internal fun CopilotChatPanelInline(
                     if (!findActive) findQuery = ""
                 })
         }
+
+        // R9-A: project-defined custom agent modes (.agent.md / .chatmode.md)
+        ChatModeCustomSection(
+            projectRoot = projectRootPath,
+            activeCustomModeId = activeCustomModeId,
+            colors = colors,
+            onSelect = { cm ->
+                mode = ChatMode.AGENT
+                activeCustomModeId = cm.id
+                activeSession.customModeId = cm.id
+                // model pin = prefill ONCE; the user can always switch after
+                cm.model?.let { selectedModel = it }
+                persistSessions()
+            },
+        )
 
         // R7-FIND: the find bar itself (filter + live match count)
         if (findActive) {
