@@ -3315,3 +3315,12 @@ CopilotChatPanelOverlay.kt:271 — `catch (e: Exception) { null }` assigns null 
 5. RETEST batch A (locked-root, AQ. paste, zero-tab quiet); streaming retest; MCP Batch D; Exit-9; Debugger P3; Batch J.
 6. Round 9 Skills/agents/hooks (scope flag first); Round 10 status-bar/settings/history/a11y.
 7. PEEK — PARKED. Dead CopilotChatPanelOverlay composable cleanup — recommended, not scheduled.
+
+## [2026-09-13 01:50 WAT] — AI Agent: Claude Sonnet 5.6 (BUILD-FIX #2766)
+
+**Commit:** (this push) | **CI:** #2766 FAILED — 3 Kotlin errors, all in MULTI-KEY code
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] #2766: JSONObject copy-ctor + Alignment import
+(1) org.json has NO constructor taking another JSONObject — setLabel wrapped labels in JSONObject(labels); labels.toString() is the correct serialization. (2) readLabels: val from try/catch was String? and not reliably smart-cast into JSONObject(raw) — captured a plain non-null local first (same pitfall class as the delegated-property smart-cast rule). (3) Alignment lives in androidx.compose.ui, NOT foundation.layout. Roadmap unchanged from the previous entry (all items as listed there).

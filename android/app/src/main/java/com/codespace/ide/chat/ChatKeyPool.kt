@@ -101,7 +101,7 @@ object ChatKeyPool {
         val p = prefs ?: return
         val labels = readLabels()
         if (label.isBlank()) labels.remove(suffix) else labels.put(suffix, label.trim().take(40))
-        try { p.edit().putString("labels", org.json.JSONObject(labels).toString()).apply() } catch (_: Exception) { }
+        try { p.edit().putString("labels", labels.toString()).apply() } catch (_: Exception) { }
     }
 
     fun label(suffix: String): String {
@@ -111,9 +111,8 @@ object ChatKeyPool {
 
     private fun readLabels(): org.json.JSONObject {
         val p = prefs ?: return org.json.JSONObject()
-        val raw = try { p.getString("labels") } catch (_: Exception) { null }
-        return if (raw != null) {
-            try { org.json.JSONObject(raw) } catch (_: Exception) { org.json.JSONObject() }
-        } else org.json.JSONObject()
+        val raw: String? = try { p.getString("labels") } catch (_: Exception) { null }
+        val txt = raw ?: return org.json.JSONObject()
+        return try { org.json.JSONObject(txt) } catch (_: Exception) { org.json.JSONObject() }
     }
 }
