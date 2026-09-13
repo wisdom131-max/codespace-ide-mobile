@@ -3522,3 +3522,14 @@ Root cause: Kotlin block comments NEST \u2014 KDoc lines containing path globs l
 ### [BUILD-FIX] SkillsCatalog.buildContextAttachment: expression-body + bare return
 "Returns are not allowed for functions with expression body" — the "= try { ... }" body contained a bare `return null` in the diff branch. Converted to block body ("{ return try { ... }"). New pitfall to memory: expression-body (=) functions can NEVER contain a bare return, even inside try/when.
 **Next on roadmap (ALL pending items):** CI green for R9 A+B+C \u2192 Wisdom batched re-tests (R9-1..R9-10 + all prior batches). Round 10 (NEEDS WISDOM GO-AHEAD). TLS/Cloudflare ON HOLD. MC-3 tap-collapse. PEEK PARKED.
+
+## [2026-09-13 10:10 WAT] — AI Agent: Claude Sonnet 5.6 (Round 10 START — R10-A Copilot status dashboard)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [FEATURE] R10-A — status entry + dashboard (VS Code chatStatusEntry analog; Wisdom greenlit Round 10 full-throttle)
+NEW ui/screens/ChatStatusSheet.kt \u2014 one-glance dashboard: provider + resolved model (Auto-arrow shown), custom mode name, chat mode, per-provider key-pool health (count + active slot label), keys cooling down (401/403 failover cooldowns via NEW ChatKeyFailover.coolingLabels()), agent permission level + always-allow count, MCP servers enabled/tools/prompts cached (NEW McpClientManager.enabledServerNames()), context gauge tokens, implicit-context toggle state, "Open Settings" shortcut row. Chat panel header gets a STATUS DOT (green = resolved provider+key available, red = not; contentDescription = R10-C a11y start; tap = sheet). onOpenSettings threaded ProjectShellScreen \u2192 PssEditorColumn \u2192 panel (scope-safe param threading per memory rule). Snapshot-at-open (reopen to refresh; no live tracking).
+**R10-A re-tests:** R10-1 header dot green w/ working key; red when key removed/invalid. R10-2 tap dot \u2192 sheet shows real provider/model/keys (count + label + active slot), permission level, MCP counts. R10-3 "Open Settings" row jumps to Settings. R10-4 red "Cooling down" row appears after a deliberate 401 (bad key) \u2014 and disappears ~10 min later.
+**Next on roadmap (ALL pending items):** R10-B settings surface + input history \u2192 R10-C a11y pass \u2192 R10-D search-results attach \u2192 R10-E screenshot capture \u2192 full R10 re-test batch. Batched re-tests (Wisdom batching all): I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9. TLS/Cloudflare ON HOLD. MC-3 tap-collapse. PEEK PARKED.

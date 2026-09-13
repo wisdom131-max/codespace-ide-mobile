@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -783,6 +785,8 @@ internal fun CopilotChatPanelInline(
     openFilePaths: List<String> = emptyList(),
     // Item3: open Connectors Hub from the chat panel overflow menu
     onOpenConnectors: (() -> Unit)? = null,
+    // R10-A/B: open the app Settings page (status sheet row + a11y)
+    onOpenSettings: (() -> Unit)? = null,
     // R1-CHAT-PARITY: insert-at-cursor bridge for chat code blocks — routes
     // through the shared dispatcher so code lands in the focused editor.
     keyInsertDispatcher: com.codespace.ide.editor.KeyInsertDispatcher? = null,
@@ -802,6 +806,8 @@ internal fun CopilotChatPanelInline(
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) } // Item3: chat-panel overflow menu
+    // R10-A: Copilot status sheet (VS Code chatStatus dashboard analog)
+    var showStatusSheet by remember { mutableStateOf(false) }
     // R7-FIND: in-transcript find bar (distinct from session search)
     var findActive by remember { mutableStateOf(false) }
     var findQuery  by remember { mutableStateOf("") }
@@ -1365,6 +1371,27 @@ internal fun CopilotChatPanelInline(
                 Text("Copilot Chat", color = colors.text, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // R10-A: status dot — green when the resolved provider+key are
+                // available, red otherwise. Tap opens the status dashboard.
+                val statusOk = remember(selectedModel) {
+                    try {
+                        val rm = com.codespace.ide.chat.ChatModelSelection.resolveAuto(context, selectedModel, tokenStore)
+                        val p = com.codespace.ide.chat.ChatProviderRegistry.byId(rm.substringBefore(':'))
+                        p != null && p.isAvailable(tokenStore)
+                    } catch (_: Exception) { false }
+                }
+                Box(
+                    Modifier
+                        .size(10.dp)
+                        .background(
+                            if (statusOk) androidx.compose.ui.graphics.Color(0xFF4CAF50)
+                            else androidx.compose.ui.graphics.Color(0xFFF44336),
+                            androidx.compose.foundation.shape.CircleShape,
+                        )
+                        .clickable { showStatusSheet = true }
+                        .semantics { contentDescription = "Copilot status: " + if (statusOk) "ready" else "unavailable" },
+                )
+                Spacer(Modifier.width(10.dp))
                 if (messages.any { it.role == "user" } && !chatLoading) {
                     Icon(
                         Icons.Default.Refresh, "Retry last turn",
@@ -1720,6 +1747,22 @@ internal fun CopilotChatPanelInline(
                 attachments = attachments,
                 onRemove = { a -> attachments = attachments.filterNot { it == a } },
                 colors = colors,
+            )
+        }
+        if (showStatusSheet) {
+            ChatStatusSheet(
+                onDismiss = { showStatusSheet = false },
+                colors = colors,
+                context = context,
+                tokenStore = tokenStore,
+                projectRootPath = projectRootPath,
+                selectedModel = selectedModel,
+                modeName = mode.name,
+                customModeId = activeCustomModeId,
+                implicitCtxOn = implicitCtxOn,
+                ctxUsed = ctxUsed,
+                ctxMax = ctxMax,
+                onOpenSettings = onOpenSettings,
             )
         }
         if (showAttachPicker) {

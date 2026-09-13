@@ -25,6 +25,15 @@ object ChatKeyFailover {
 
     fun clearCooldowns() = authCooldowns.clear()
 
+    /**
+     * R10-A: labels of slots currently in a 401/403 auth cooldown — read by the
+     * Copilot status sheet. Empty when all keys are healthy.
+     */
+    fun coolingLabels(): List<String> =
+        authCooldowns.entries
+            .filter { it.value > System.currentTimeMillis() }
+            .map { com.codespace.ide.chat.ChatKeyPool.label(it.key).ifEmpty { it.key } }
+
     suspend fun <T> execute(
         providerId: String,
         tokenStore: com.codespace.ide.data.SecureTokenStore?,

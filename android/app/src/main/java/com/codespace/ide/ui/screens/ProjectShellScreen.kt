@@ -1668,6 +1668,7 @@ fun ProjectShellScreen(
                     modifier = Modifier.weight(1f),
                     projectId = projectId,
                     onOpenConnectorsHub = { showConnectorsSheet = true },
+                    onOpenSettings = onOpenSettings,
                     context = context,
                     tokenStore = tokenStore,
                     editorTabs = editorTabs,
@@ -4355,6 +4356,7 @@ private fun PssEditorColumn(
     context: android.content.Context,
     modifier: Modifier = Modifier,
     onOpenConnectorsHub: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     tokenStore: com.codespace.ide.data.SecureTokenStore,
     editorTabs: SnapshotStateList<String>,
     closeRootRequest: String? = null,
@@ -4849,6 +4851,7 @@ private fun PssEditorColumn(
             CopilotChatPanelInline(
                 onClose = { showChatPanel = false },
                 onOpenConnectors = onOpenConnectorsHub,
+                onOpenSettings = onOpenSettings,
                 keyInsertDispatcher = keyInsertDispatcher,
                 pendingPrompt = pendingChatPrompt,
                 onPendingPromptConsumed = { pendingChatPrompt = null },

@@ -335,6 +335,12 @@ object McpClientManager {
 
     // ── R9-C — MCP prompts as skills ───────────────────────────────────────
 
+    /** R10-A: names of ENABLED servers from the config (for the status sheet). */
+    fun enabledServerNames(context: Context): List<String> =
+        try {
+            loadConfig(context).filter { it.enabled }.map { it.name }
+        } catch (_: Exception) { emptyList() }
+
     /** Cached prompts from ALREADY-CONNECTED servers (empty until first chat spawns them). */
     fun cachedPrompts(): List<ExternalPrompt> =
         promptsCache.values.flatten().sortedBy { it.server + "/" + it.name }
