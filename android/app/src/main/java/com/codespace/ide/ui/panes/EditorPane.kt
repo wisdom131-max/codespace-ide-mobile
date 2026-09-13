@@ -1908,11 +1908,20 @@ fun EditorPane(
                     if (conflictHunks != detectedConflicts) {
                         conflictHunks = detectedConflicts
                     }
+                    // I1 — IN-EDITOR REVIEW: strip + gutter marks for AI staged edits
+                    com.codespace.ide.ui.screens.AiReviewStrip(path = active.path)
+                    val aiReviewTick = com.codespace.ide.chat.PendingChangesStore.revision.value
+                    val aiReviewMarks = remember(active.path, active.content, aiReviewTick) {
+                        val staged = com.codespace.ide.chat.PendingChangesStore.overlayFor(active.path)
+                        if (staged == null || staged == active.content) emptySet()
+                        else com.codespace.ide.ui.screens.aiReviewAffectedLines(active.content, staged)
+                    }
                     CodeEditor(
                         content = active.content,
                         language = active.language,
                         fontSize = fontSize,
                         savedContent = active.savedContent,
+                        reviewMarkLines = aiReviewMarks,
                         onContentChange = { newText ->
                             val idx = tabs.indexOfFirst { it.id == active.id }
                             if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)

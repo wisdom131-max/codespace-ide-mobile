@@ -289,6 +289,15 @@ object PendingChangesStore {
 
     // ── Editor integration ──────────────────────────────────────────────────
 
+    /**
+     * I1: bumped when a .versionhistory snapshot is restored from OUTSIDE the
+     * store (TimelinePanel) — open editors refresh via the same appliedTick path.
+     */
+    fun bumpExternalRestore() {
+        appliedTick.value++
+        bumpRevision()
+    }
+
     /** EditorPane reads this on every appliedTick bump to refresh open tabs. */
     fun lastAppliedPaths(): List<String> = lastApplied.value.map { it.first }
 

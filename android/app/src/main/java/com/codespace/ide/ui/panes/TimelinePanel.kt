@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
@@ -21,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.terminal.ProotInstaller
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
@@ -52,9 +54,23 @@ fun TimelinePanel(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val snapScope = rememberCoroutineScope()
     var entries by remember { mutableStateOf<List<TimelineEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var isGitRepo by remember { mutableStateOf(false) }
+    // I1: local .versionhistory snapshots (checkpoints incl. AI pre-apply backups)
+    var snapshots by remember { mutableStateOf<List<File>>(emptyList()) }
+
+    LaunchedEffect(filePath, projectDir) {
+        if (filePath.isBlank() || projectDir == null) {
+            snapshots = emptyList()
+        } else withContext(Dispatchers.IO) {
+            val dir = File(projectDir, ".versionhistory" + File.separator + File(filePath).name)
+            snapshots = if (dir.isDirectory) {
+                dir.listFiles()?.sortedByDescending { it.lastModified() }?.take(20) ?: emptyList()
+            } else emptyList()
+        }
+    }
 
     LaunchedEffect(filePath, projectDir) {
         if (filePath.isBlank() || projectDir == null) {
@@ -105,11 +121,15 @@ fun TimelinePanel(
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = TlIcon)
             }
         } else if (!isGitRepo) {
-            Text(
-                "No timeline available.",
-                fontSize = 11.sp, color = TlMuted,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            )
+            if (snapshots.isEmpty()) {
+                Text(
+                    "No timeline available.",
+                    fontSize = 11.sp, color = TlMuted,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            } else {
+                LocalSnapshotsSection(snapshots, filePath, snapScope)
+            }
         } else if (filePath.isBlank()) {
             Text(
                 "Open a file to see its timeline.",
@@ -156,7 +176,77 @@ fun TimelinePanel(
                     }
                     HorizontalDivider(color = TlDivider, thickness = 0.5.dp)
                 }
+                if (snapshots.isNotEmpty()) {
+                    item { LocalSnapshotsSection(snapshots, filePath, snapScope) }
+                }
             }
+        }
+    }
+}
+
+
+/**
+ * I1 — CHECKPOINT TIMELINE (VS Code chatEditingCheckpointTimeline analog): lists
+ * the file's .versionhistory snapshots — both the Explorer 20s loop captures and
+ * the AI pre-apply checkpoints ("_prechat.bak") written by PendingChangesStore.
+ * Restore = copy back over the file + drop any staged overlay for it + bump the
+ * store so open editors refresh through externalContentSync.
+ */
+@Composable
+private fun LocalSnapshotsSection(
+    snapshots: List<File>,
+    filePath: String,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Text(
+            "Local snapshots",
+            fontSize = 11.sp, color = TlIcon,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+        snapshots.forEach { snap ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        (if (snap.name.endsWith("_prechat.bak")) "\u25cf " else "") + snap.name,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (snap.name.endsWith("_prechat.bak")) TlIcon else TlText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "\u2022 " + (snap.length() / 1024) + " KB \u00b7 " +
+                            java.text.SimpleDateFormat("MMM d, HH:mm:ss", java.util.Locale.US)
+                                .format(java.util.Date(snap.lastModified())),
+                        fontSize = 9.sp,
+                        color = TlMuted,
+                        maxLines = 1,
+                    )
+                }
+                Text(
+                    "Restore",
+                    fontSize = 10.sp,
+                    color = TlIcon,
+                    modifier = Modifier
+                        .background(TlHeaderBg, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .clickable {
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    com.codespace.ide.chat.PendingChangesStore.discard(filePath)
+                                    snap.copyTo(File(filePath), overwrite = true)
+                                    com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore()
+                                } catch (_: Exception) { }
+                            }
+                        }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
+            HorizontalDivider(color = TlDivider, thickness = 0.5.dp)
         }
     }
 }

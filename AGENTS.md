@@ -3344,3 +3344,16 @@ ChatKeyPool now persists a manual ACTIVE slot per provider ("active_<id>" plain 
 
 ### [BUILD-FIX] #2767: SharedPreferences.getString requires BOTH params in Kotlin
 ChatKeyPool.readLabels called p.getString("labels") — Android's getString(key, defValue) has no single-arg overload in Kotlin (the #2766 "No value passed for parameter p1" at 114:46 was THIS, not the JSONObject line I also fixed — both were real, only one was patched). Now getString("labels", null). Roadmap unchanged from the previous entry (all items as listed there).
+
+## [2026-09-13 07:10 WAT] — AI Agent: Claude Sonnet 5.6 (INTEGRATION I1 — in-editor review experience)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [I1][UI] VS Code chatEditingEditorOverlay + checkpointTimeline analogs, built on R6 plumbing
+1. **NEW ui/screens/AiReviewStrip.kt:** while the ACTIVE file has AI-staged edits, a compact strip renders above the editor content — status badge (PENDING/DRIFT/BLOCKED colored), "+A −D lines · staged Xm ago" stats, and Review / Apply to disk / Discard. Review opens a rounded (12dp) line-diff dialog (GitDiffAnalyzer staged-vs-base, +/-/~ colored monospace) with Apply/Discard inside. Observes PendingChangesStore.revision — staging/applying from ANY surface recomposes it live.
+2. **Gutter marks:** CodeEditor gains reviewMarkLines param; EditorPane computes the affected buffer-line region (prefix/suffix trim between buffer and staged text — never maps a staged line onto the wrong buffer line) and renders a 2dp purple (0xFFC586C0) bar in the existing gutter loop — visually distinct from the green/yellow git-diff bars.
+3. **Checkpoint timeline (chatEditingCheckpointTimeline analog):** TimelinePanel now has a "Local snapshots" section listing the file's .versionhistory entries — AI pre-apply checkpoints ("_prechat.bak", dot badge) + the 20s loop captures — newest 20, with KB + timestamp. Restore = discard any staged overlay, copy back, bumpExternalRestore() (NEW in PendingChangesStore) so open editors refresh via the appliedTick/externalContentSync path. Works with or WITHOUT git (non-git repos no longer show a dead "No timeline available" when snapshots exist).
+**Re-test (I1-1..I1-5):** I1-1 stage an AI edit (agent mode write_file), open the file → strip shows with stats; purple gutter bars on affected lines only. I1-2 Review dialog shows the colored line diff; Apply writes to disk, strip disappears, editor refreshes. I1-3 Discard from strip → staged edit gone, gutter bars gone. I1-4 After an Apply, Explorer → Timeline shows the _prechat.bak checkpoint; Restore brings the old content back in the open editor. I1-5 Non-git project: Timeline shows snapshots section instead of dead-end text.
+**Next on roadmap (ALL pending items):** I2 terminal bridge (paste→explain, last-command/selection/output attach) — NEXT, then I3 SCM AI, I4 context attach completion, I5 status/quota, I6 prompts/skills/voice. Then: retest MK-1..MK-9 + CE-1..CE-4 + AU-1..AU-3 + V2/V3/V4 + R6/R7/R8 batches + I1-I6 batches. TLS/Cloudflare logging ON HOLD. MC-3 tap-collapse. R9 Skills (overlaps I6). Round 10 status/settings/history/a11y. PEEK PARKED. Dead CopilotChatPanelOverlay cleanup recommended.

@@ -506,6 +506,8 @@ fun CodeEditor(
     onContentChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     savedContent: String = "",
+    /** I1: AI staged-edit review marks — buffer line numbers inside the pending region. */
+    reviewMarkLines: Set<Int> = emptySet(),
     wordWrap: Boolean = false,
     scrollToLine: Int = 0,
     findReplaceOpen: Boolean = false,
@@ -2126,6 +2128,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 DiffStatus.UNCHANGED -> Color.Transparent
                                             }
                                         )
+                                )
+                            }
+                            // I1: AI staged-edit review bar (purple, distinct from git diff colors)
+                            if (reviewMarkLines.contains(lineNum)) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(2.dp)
+                                        .height(with(scrollDensity) { gutterRowHeightPx.toDp() })
+                                        .background(Color(0xFFC586C0))
                                 )
                             }
                             Spacer(Modifier.width(1.dp))
