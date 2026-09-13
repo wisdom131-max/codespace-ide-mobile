@@ -265,9 +265,14 @@ private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): Pair<L
     val entries = mutableListOf<String>()
     val errors = mutableListOf<Triple<String, String, String>>()
     for (provider in ChatProviderRegistry.available(tokenStore)) {
-        val key = try { tokenStore?.aiKey(provider.id.uppercase()) } catch (_: Exception) { null }
         var fetchError: String? = null
-        val live = try { provider.fetchModels(key) } catch (e: Exception) { fetchError = e.message; null }
+        // MULTI-KEY: try EVERY key of the provider (failover order) — a dead slot-1
+        // key no longer hides the models reachable via the other keys.
+        val live = try {
+            com.codespace.ide.chat.ChatKeyFailover.execute(provider.id, tokenStore) { k ->
+                provider.fetchModels(k)
+            }
+        } catch (e: Exception) { fetchError = e.message; null }
         if (live == null) {
             errors.add(Triple(provider.id, provider.displayName, (fetchError ?: "unreachable").take(90)))
             // non-placeholder providers keep their (real) default model listed
@@ -513,13 +518,25 @@ private suspend fun chat(
         val content = if (provider != null) {
             val apiModel = model.substring(colonIdx + 1)
             if (!provider.isAvailable(tokenStore)) throw Exception(provider.unavailableMessage())
-            val req = ChatRequest(
-                apiModel, systemPrompt, convMsgs, tokenStore?.aiKey(providerPrefix.uppercase()),
-                if (iteration == 0) requestImages else emptyList(),
-                if (iteration == 0) requestAudios else emptyList(),
-            )
-            if (deltaSink != null) provider.completeStreaming(req, deltaSink)
-            else provider.complete(req)
+            // MULTI-KEY: every key of this provider is a candidate — 401/403 fails
+            // over to the next key automatically; 429 backs off and retries the SAME
+            // key first (rate-limit is not a bad key). A stream that already produced
+            // output is never re-attempted (streamedAnything guard — no duplicates).
+            var streamedAnything = false
+            com.codespace.ide.chat.ChatKeyFailover.execute(
+                providerPrefix, tokenStore,
+                hasStarted = { streamedAnything },
+                onInfo = { line -> com.codespace.ide.diagnostics.AppOutputLog.log(line, "chat") },
+            ) { key ->
+                val req = ChatRequest(
+                    apiModel, systemPrompt, convMsgs, key,
+                    if (iteration == 0) requestImages else emptyList(),
+                    if (iteration == 0) requestAudios else emptyList(),
+                )
+                if (deltaSink != null) {
+                    provider.completeStreaming(req) { d -> streamedAnything = true; deltaSink(d) }
+                } else provider.complete(req)
+            }
         } else {
             throw Exception("'$model' is not a registered chat provider. Add an API key in Settings first.")
         }

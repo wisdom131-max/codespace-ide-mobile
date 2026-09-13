@@ -21,6 +21,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.Alignment
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.Composable
@@ -143,10 +145,149 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                     if (hasKey) {
                         TextButton(onClick = {
                             tokenStore.setAiKey(provider.id.uppercase(), null)
-                            savedKeyIds.remove(provider.id)
+                            // MULTI-KEY: extras may keep the provider alive — recheck pool.
+                            if (!com.codespace.ide.chat.ChatKeyPool.hasAnyKey(tokenStore, provider.id)) {
+                                savedKeyIds.remove(provider.id)
+                            }
                             uiStates[provider.id] = AiKeyUiState(liveStatus = LiveStatus.UNCHECKED)
                         }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
                     }
+                }
+
+                // ── MULTI-KEY: additional keys — a growing list, unlimited slots.
+                // Order = failover order; selection is automatic (ChatKeyFailover). ──
+                val extraSlots = com.codespace.ide.chat.ChatKeyPool.slots(provider.id)
+                    .filterIndexed { i, suf -> i > 0 && !tokenStore.aiKey(suf).isNullOrBlank() }
+                extraSlots.forEach { suf ->
+                    val kkey = tokenStore.aiKey(suf) ?: ""
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                com.codespace.ide.chat.ChatKeyPool.label(suf).ifEmpty { suf },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "\u2022\u2022\u2022" + kkey.takeLast(4) +
+                                    (state.slotChecks[suf]?.let { " \u00b7 " + it } ?: " \u00b7 saved"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(onClick = {
+                            scope.launch {
+                                val st0 = uiStates[provider.id] ?: state
+                                uiStates[provider.id] = st0.copy(slotChecks = st0.slotChecks + (suf to "checking\u2026"))
+                                val result = try {
+                                    val m = provider.fetchModels(kkey)
+                                    if (m.isNotEmpty()) "live: " + m.size + " models" else "reachable, 0 models"
+                                } catch (e: Exception) { "\u2717 " + (e.message ?: "failed").take(80) }
+                                val st1 = uiStates[provider.id] ?: st0
+                                uiStates[provider.id] = st1.copy(slotChecks = st1.slotChecks + (suf to result))
+                            }
+                        }) { Text("Test") }
+                        IconButton(onClick = {
+                            com.codespace.ide.chat.ChatKeyPool.removeKey(tokenStore, provider.id, suf)
+                            com.codespace.ide.chat.ChatKeyFailover.clearCooldowns()
+                            val st2 = uiStates[provider.id] ?: state
+                            uiStates[provider.id] = st2.copy(slotChecks = st2.slotChecks - suf)
+                            if (!com.codespace.ide.chat.ChatKeyPool.hasAnyKey(tokenStore, provider.id)) {
+                                savedKeyIds.remove(provider.id)
+                            }
+                        }) {
+                            Icon(
+                                Icons.Default.Delete, contentDescription = "Remove key",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+                if (!hasKey && extraSlots.isNotEmpty()) {
+                    Text(
+                        "Failover only: primary key is empty \u2014 " + extraSlots.size +
+                            " additional key(s) answering for this provider",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    )
+                }
+                if (state.addingKey) {
+                    OutlinedTextField(
+                        value = state.addLabel,
+                        onValueChange = { raw ->
+                            val cur = uiStates[provider.id] ?: state
+                            uiStates[provider.id] = cur.copy(addLabel = raw, addError = null)
+                        },
+                        label = { Text("Label (e.g. Work key)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = state.addDraft,
+                        onValueChange = { raw ->
+                            val cur = uiStates[provider.id] ?: state
+                            uiStates[provider.id] = cur.copy(addDraft = raw, addError = null)
+                        },
+                        label = { Text(provider.displayName + " API key") },
+                        singleLine = true,
+                        visualTransformation = if (state.showDraft) VisualTransformation.None else PasswordVisualTransformation(),
+                        isError = state.addError != null,
+                        supportingText = if (state.addError != null) {
+                            { Text(state.addError ?: "", color = MaterialTheme.colorScheme.error) }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = {
+                            val cur = uiStates[provider.id] ?: state
+                            uiStates[provider.id] = cur.copy(addingKey = false, addDraft = "", addLabel = "", addError = null)
+                        }) { Text("Cancel") }
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            shape = RoundedCornerShape(10.dp),
+                            onClick = {
+                                val trimmed = state.addDraft.trim()
+                                val cur = uiStates[provider.id] ?: state
+                                if (trimmed.isEmpty()) {
+                                    uiStates[provider.id] = cur.copy(addError = "Paste a key first.")
+                                } else if (!AiKeyFormats.isValid(provider.id, trimmed)) {
+                                    uiStates[provider.id] = cur.copy(
+                                        addError = "That does not look like a valid " + provider.displayName + " key.",
+                                    )
+                                } else {
+                                    // MULTI-KEY: append at the first free slot + label + live check.
+                                    val suf = com.codespace.ide.chat.ChatKeyPool.addKey(tokenStore, provider.id, trimmed)
+                                    com.codespace.ide.chat.ChatKeyPool.setLabel(
+                                        suf, state.addLabel.trim().ifEmpty { "Key " + suf.substringAfterLast('_') })
+                                    com.codespace.ide.chat.ChatKeyFailover.clearCooldowns()
+                                    if (!savedKeyIds.contains(provider.id)) savedKeyIds.add(provider.id)
+                                    uiStates[provider.id] = cur.copy(
+                                        addingKey = false, addDraft = "", addLabel = "", addError = null,
+                                        slotChecks = cur.slotChecks + (suf to "checking\u2026"),
+                                    )
+                                    scope.launch {
+                                        val k = com.codespace.ide.chat.ChatKeyPool.keys(tokenStore, provider.id)
+                                            .firstOrNull { it.first == suf }?.second
+                                        val result = if (k == null) "saved" else try {
+                                            val m = provider.fetchModels(k)
+                                            if (m.isNotEmpty()) "live: " + m.size + " models" else "reachable, 0 models"
+                                        } catch (e: Exception) { "\u2717 " + (e.message ?: "failed").take(80) }
+                                        val st = uiStates[provider.id] ?: cur
+                                        uiStates[provider.id] = st.copy(slotChecks = st.slotChecks + (suf to result))
+                                    }
+                                }
+                            },
+                        ) { Text("Save key") }
+                    }
+                } else if (hasKey || extraSlots.isNotEmpty()) {
+                    TextButton(onClick = {
+                        val cur = uiStates[provider.id] ?: state
+                        uiStates[provider.id] = cur.copy(addingKey = true, addDraft = "", addLabel = "", addError = null)
+                    }) { Text("+ Add another key") }
                 }
             }
 
@@ -278,10 +419,12 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                         onClick = {
                             val trimmed = state.draft.trim()
                             if (trimmed.isEmpty()) {
-                                // Phase 1 — empty submit = DELETE the key.
+                                // Phase 1 — empty submit = DELETE the key (slot 1).
                                 if (savedKeyIds.contains(provider.id)) {
                                     tokenStore.setAiKey(provider.id.uppercase(), null)
-                                    savedKeyIds.remove(provider.id)
+                                    if (!com.codespace.ide.chat.ChatKeyPool.hasAnyKey(tokenStore, provider.id)) {
+                                        savedKeyIds.remove(provider.id)
+                                    }
                                 }
                                 uiStates[provider.id] = AiKeyUiState(liveStatus = LiveStatus.UNCHECKED)
                             } else if (!AiKeyFormats.isValid(provider.id, trimmed)) {
@@ -321,6 +464,13 @@ private data class AiKeyUiState(
     // Custom-endpoint URL editor (provider id "custom" only)
     val urlDraft: String = "",
     val urlError: String? = null,
+    // MULTI-KEY: per-slot live-check results (slot suffix -> status line)
+    val slotChecks: Map<String, String> = emptyMap(),
+    // MULTI-KEY: "+ Add another key" inline editor
+    val addingKey: Boolean = false,
+    val addDraft: String = "",
+    val addLabel: String = "",
+    val addError: String? = null,
     val urlSaved: Boolean = false,
 )
 
@@ -350,8 +500,12 @@ private fun runLiveCheck(
         // CUSTOM-ENDPOINT-FIX (b): fetchModelList now throws the REAL failure
         // (HTTP status + vendor message) — surface it instead of "unreachable".
         var fetchError: String? = null
+        // MULTI-KEY: try every key of the provider — the status line reflects the
+        // failover reality (any working key = live), not just slot 1.
         val models = try {
-            provider.fetchModels(key)
+            com.codespace.ide.chat.ChatKeyFailover.execute(provider.id, tokenStore) { k ->
+                provider.fetchModels(k)
+            }
         } catch (e: Exception) {
             fetchError = e.message?.take(120)
             emptyList()

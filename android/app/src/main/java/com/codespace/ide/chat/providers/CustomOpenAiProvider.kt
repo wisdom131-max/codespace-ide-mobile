@@ -38,7 +38,7 @@ class CustomOpenAiProvider : ChatProvider {
     override val requiresApiKey = true
 
     override fun isAvailable(tokenStore: SecureTokenStore?): Boolean =
-        !tokenStore?.aiKey(id.uppercase()).isNullOrBlank() &&
+        com.codespace.ide.chat.ChatKeyPool.hasAnyKey(tokenStore, id) &&
         CustomEndpointStore.baseUrl != null
 
     override fun unavailableMessage(): String =

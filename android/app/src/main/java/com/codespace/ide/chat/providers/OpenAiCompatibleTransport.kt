@@ -46,7 +46,9 @@ internal object OpenAiCompatibleTransport {
                     .post(body.toRequestBody(jsonMedia))
                     .build()
             ).execute()
-            if (!resp.isSuccessful) throw Exception(transportError("API error", resp))
+            if (!resp.isSuccessful) {
+                throw com.codespace.ide.chat.ChatHttpException(resp.code, transportErrorParts("API error", resp).first, retryAfterMs(resp))
+            }
             val json = JSONObject(resp.body?.string() ?: "")
             json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
         }
@@ -159,7 +161,9 @@ internal object OpenAiCompatibleTransport {
                 .build()
         )
         val resp = call.execute()
-        if (!resp.isSuccessful) throw Exception(transportError("API error", resp))
+        if (!resp.isSuccessful) {
+            throw com.codespace.ide.chat.ChatHttpException(resp.code, transportErrorParts("API error", resp).first, retryAfterMs(resp))
+        }
         val sb = StringBuilder()
         val reader = resp.body?.byteStream()?.bufferedReader()
         try {
@@ -221,6 +225,16 @@ internal object OpenAiCompatibleTransport {
         return clean + "\n\nRAW_RESPONSE_BEGIN\n" + raw + "\nRAW_RESPONSE_END"
     }
 
+    /**
+     * MULTI-KEY: Retry-After header in ms (429 responses), capped at 30s so a
+     * hostile/buggy server header cannot hang the failover engine. null = none.
+     */
+    internal fun retryAfterMs(resp: okhttp3.Response): Long? {
+        val raw = try { resp.header("Retry-After") } catch (_: Exception) { null } ?: return null
+        val seconds = raw.trim().toLongOrNull() ?: return null
+        return (seconds * 1000L).coerceIn(0L, 30_000L)
+    }
+
     /** Strips the RAW_RESPONSE block for single-line error surfaces (input error Text). */
     internal fun stripRawError(message: String): String =
         message.substringBefore("\nRAW_RESPONSE_BEGIN").trim()
@@ -238,8 +252,7 @@ internal object OpenAiCompatibleTransport {
             if (bearer) builder.header("Authorization", "Bearer $apiKey")
             val resp = http.newCall(builder.get().build()).execute()
             if (!resp.isSuccessful) {
-                val (clean, _) = transportErrorParts("Model list fetch failed", resp)
-                throw Exception(clean)
+                throw com.codespace.ide.chat.ChatHttpException(resp.code, transportErrorParts("Model list fetch failed", resp).first, retryAfterMs(resp))
             }
             val bodyText = resp.body?.string() ?: throw Exception("Model list fetch failed: empty response body.")
             val arr = try { JSONObject(bodyText).getJSONArray("data") } catch (_: Exception) {

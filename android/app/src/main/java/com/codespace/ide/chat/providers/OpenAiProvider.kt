@@ -17,7 +17,7 @@ class OpenAiProvider : ChatProvider {
     override val supportsAudio = true
 
     override fun isAvailable(tokenStore: SecureTokenStore?): Boolean =
-        !tokenStore?.aiKey(id.uppercase()).isNullOrBlank()
+        com.codespace.ide.chat.ChatKeyPool.hasAnyKey(tokenStore, id)
 
     override fun unavailableMessage(): String =
         "No $displayName API key found. Add it in Settings."

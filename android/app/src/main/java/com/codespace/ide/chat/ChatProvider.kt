@@ -140,6 +140,19 @@ data class ChatRequest(
     val audios: List<ChatRequestAudio> = emptyList(),
 )
 
+/**
+ * MULTI-KEY: HTTP-level failure from a provider, carrying the status code so the
+ * failover engine can distinguish a REJECTED key (401/403 — switch to the next
+ * key) from a RATE-LIMITED key (429 — back off and retry the SAME key) from
+ * everything else (400/404/5xx — server-side, never fail over).
+ */
+class ChatHttpException(
+    val statusCode: Int,
+    message: String,
+    /** 429 Retry-After in ms from the response header, capped at 30s; null = none. */
+    val retryAfterMs: Long? = null,
+) : Exception(message)
+
 /** One base64 image sent with a request (vendor docs: JPEG/PNG/GIF/WebP accepted). */
 data class ChatRequestImage(
     val mimeType: String,

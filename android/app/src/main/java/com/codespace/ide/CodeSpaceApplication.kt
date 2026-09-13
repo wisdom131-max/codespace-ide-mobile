@@ -44,6 +44,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         ProjectSettingsStore.init(this)
         // Custom OpenAI-compatible endpoint base URL (config, not a credential)
         com.codespace.ide.chat.CustomEndpointStore.init(this)
+        com.codespace.ide.chat.ChatKeyPool.init(this)
         // R7-PLAN: per-session structured plans (plan tool + ChatPlanCard)
         com.codespace.ide.chat.ChatPlanStore.init(this)
         com.codespace.ide.chat.ChatImageAttachments.pruneOldImages(this) // R8-VISION: 7-day image hygiene

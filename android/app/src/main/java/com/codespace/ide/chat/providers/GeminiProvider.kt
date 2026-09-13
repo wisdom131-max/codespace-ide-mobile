@@ -36,7 +36,7 @@ class GeminiProvider : ChatProvider {
     private val http = OkHttpClient()
 
     override fun isAvailable(tokenStore: SecureTokenStore?): Boolean =
-        !tokenStore?.aiKey(id.uppercase()).isNullOrBlank()
+        com.codespace.ide.chat.ChatKeyPool.hasAnyKey(tokenStore, id)
 
     override fun unavailableMessage(): String =
         "No $displayName API key found. Add it in Settings."
@@ -97,7 +97,7 @@ class GeminiProvider : ChatProvider {
         ).execute()
         // FIX (404 regression): include the vendor error body so 404 model-not-found
         // is distinguishable from auth errors (old message always blamed the key).
-        if (!resp.isSuccessful) throw Exception(OpenAiCompatibleTransport.transportError("Gemini API error", resp))
+        if (!resp.isSuccessful) throw com.codespace.ide.chat.ChatHttpException(resp.code, OpenAiCompatibleTransport.transportErrorParts("Gemini API error", resp).first, OpenAiCompatibleTransport.retryAfterMs(resp))
         val json = JSONObject(resp.body?.string() ?: "")
         json.getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
             .getJSONArray("parts").getJSONObject(0).getString("text")
@@ -124,7 +124,7 @@ class GeminiProvider : ChatProvider {
                     .post(body.toRequestBody("application/json".toMediaType())).build()
             )
             val resp = call.execute()
-            if (!resp.isSuccessful) throw Exception(OpenAiCompatibleTransport.transportError("Gemini API error", resp))
+            if (!resp.isSuccessful) throw com.codespace.ide.chat.ChatHttpException(resp.code, OpenAiCompatibleTransport.transportErrorParts("Gemini API error", resp).first, OpenAiCompatibleTransport.retryAfterMs(resp))
             val sb = StringBuilder()
             val reader = resp.body?.byteStream()?.bufferedReader()
             try {

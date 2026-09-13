@@ -3286,3 +3286,32 @@ Full findings below in chat reply. Root cause confirmed in source: CustomOpenAiP
 
 ### [BUILD-FIX] #2764: catch-scoped `e` referenced outside its catch block
 CopilotChatPanelOverlay.kt:271 — `catch (e: Exception) { null }` assigns null but `e` ceases to exist outside the catch; the next line read `e.message` ('Unresolved reference: e'). Fixed the same pattern already used in AiKeysSection: hoist `var fetchError: String? = null`, assign inside catch, read after. Roadmap unchanged from the previous entry (all items as listed there).
+
+## [2026-09-13 01:35 WAT] — AI Agent: Claude Sonnet 5.6 (MULTI-KEY unlimited + automatic 401/403-vs-429 failover)
+
+**Commit:** (this push) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [MULTI-KEY] Wisdom-approved plan built (storage + UI + failover engine)
+1. **UNLIMITED slots, confirmed scaling:** values live in SecureTokenStore under ai_<ID>, ai_<ID>_2, ai_<ID>_3... (first-free-slot allocation, no limit); ORDER in plain prefs JSON index (chat_key_pool file); slot 1 = the legacy location, always index[0] — ZERO MIGRATION. Settings UI = a GROWING LIST under each provider (label + masked preview + Test + delete per row), not a fixed layout.
+2. **NEW chat/ChatKeyPool.kt:** slots()/keys()/hasAnyKey()/addKey()/removeKey()/labels. All 7 provider isAvailable overrides + chat() pre-check + fetchLiveModelEntries + Settings live-check are now pool-aware (a provider with ONLY extra keys still appears and works).
+3. **NEW chat/ChatKeyFailover.kt — the automatic policy (the 401/403 vs 429 distinction):**
+   - 401/403 (key REJECTED): 10-minute session cooldown on that slot, immediate failover to the next key. [KEY-FAILOVER] lines in the Output/chat channel.
+   - 429 (rate LIMITED): back off and retry the SAME key first — Retry-After header honored (capped 30s), else 1.5s then 4s; only after 2 failed retries move to the next key.
+   - 400/404/5xx: surfaced as-is, NEVER fail over (not a key problem).
+   - Mid-stream: a stream that already produced output is never re-attempted (no duplicated text).
+   - Cooldowns session-scoped in memory; malformed-token detection stays at SAVE time (AiKeyFormats).
+4. **Typed failures:** NEW ChatHttpException(statusCode, message, retryAfterMs) in ChatProvider.kt; transport call/callStreaming/fetchModelList + Gemini/Anthropic complete/completeStreaming now throw it (Retry-After parsed, capped 30s). Clean error text preserved from the custom-endpoint fix.
+5. **chat() send path:** request constructed per-candidate-key inside ChatKeyFailover.execute; streaming deltas set streamedAnything, which blocks failover once output exists.
+
+**Re-test (MK-1..MK-6):** MK-1 add a 2nd OpenAI key (label, masked preview, Test = live: N models). MK-2 put a GARBAGE key in slot 1 + real key in slot 2 -> chat still works via failover, [KEY-FAILOVER] visible in Output; picker models load. MK-3 delete slot-1 key with extra present -> provider still listed, "Failover only" hint shows. MK-4 a 429'd key retries the SAME key (watch Output timing), does not instantly burn other keys. MK-5 no keys at all -> clean "No API key configured" message. MK-6 remove extra key row -> gone from list, cooldowns cleared.
+
+**Next on roadmap (ALL pending items):**
+1. This build green -> re-test MK-1..MK-6 + CE-1..CE-4 + AU-1..AU-3 + V2/V3/V4.
+2. VS Code INTEGRATION MAP delivered in chat (chatDebug/chatStatus/contextContrib/attachments/promptSyntax etc.) — phased INTEGRATION rounds I1..I6 proposed there, awaiting Wisdom prioritization.
+3. TLS/Cloudflare diagnostic logging — ON HOLD per Wisdom (diagnostics first).
+4. R6 re-test R6-1..R6-10; R7 re-test R7-1..R7-7; R8 re-test R8-1..R8-6; MC-3 tap-collapse; R1-R5 re-test batches.
+5. RETEST batch A (locked-root, AQ. paste, zero-tab quiet); streaming retest; MCP Batch D; Exit-9; Debugger P3; Batch J.
+6. Round 9 Skills/agents/hooks (scope flag first); Round 10 status-bar/settings/history/a11y.
+7. PEEK — PARKED. Dead CopilotChatPanelOverlay composable cleanup — recommended, not scheduled.
