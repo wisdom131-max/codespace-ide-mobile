@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | R8-vision ALL providers + halt-fix pushed, CI pending. Last GREEN: #2754 (996a6be, R6). APK artifact: codespace-ide-arm64-v8a |
+| CI build | GREEN: #2791/#2792 (be3a32e+a8a6e90, PAD-2 multi-split + 64KB fix + PERSIST-A editor-state persistence). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -3561,7 +3561,7 @@ NEW ui/screens/ChatScreenshotAttach.kt \u2014 PixelCopy-captures the CURRENT act
 
 ## [2026-09-13 12:40 WAT] — AI Agent: Claude Sonnet 5.6 (PAD-2 multi-split + BUILD-FIX #2790 Method-too-large + PERSIST-A editor state persistence)
 
-**Commit:** b95cb4f (PAD-2, CI #2790 FAILED) → be3a32e (fix+PERSIST-A) | **CI:** #2790 FAILED — Method too large: CodeEditorKt.CodeEditor (the 64KB rule, broken by my own PAD-2 inline effects); be3a32e pending
+**Commit:** b95cb4f (PAD-2, CI #2790 FAILED) → be3a32e (fix+PERSIST-A, CI #2791 GREEN) + a8a6e90 (docs, #2792 GREEN) | **CI:** #2790 FAILED — Method too large: CodeEditorKt.CodeEditor (the 64KB rule, broken by my own PAD-2 inline effects) → fixed by extraction, GREEN
 
 **RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
 
