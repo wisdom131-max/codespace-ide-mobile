@@ -4535,76 +4535,18 @@ private fun PssEditorColumn(
             HorizontalDivider(color = DividerColor)
         }
 
-        // ── Editor toolbar — quick action icons ───────────────────
-        if (activeEditorTab != null) {
-            Row(
-                Modifier.fillMaxWidth().height(28.dp).background(BgColor)
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Find (Fix Test 45: opens CodeEditor's own working find bar — see EditorPane.onFindBarOpenChanged)
-                Box(Modifier.size(28.dp).clickable { showFindBar = !showFindBar }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Search, null, tint = if (showFindBar) TabActiveIndicator else TabTextInactive, modifier = Modifier.size(16.dp))
-                }
-                // Replace — same working find bar; it always shows the Replace row too.
-                Box(Modifier.size(28.dp).clickable { showFindBar = !showFindBar }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.FindReplace, null, tint = if (showFindBar) TabActiveIndicator else TabTextInactive, modifier = Modifier.size(16.dp))
-                }
-                Spacer(Modifier.width(4.dp))
-                Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
-                Spacer(Modifier.width(4.dp))
-                // Zoom out
-                Box(Modifier.size(28.dp).clickable { editorFontSize = (editorFontSize - 1).coerceAtLeast(8) }, contentAlignment = Alignment.Center) {
-                    Text("−", fontSize = 16.sp, color = TabTextInactive)
-                }
-                Text("\$editorFontSize", fontSize = 10.sp, color = TabTextInactive, modifier = Modifier.padding(horizontal = 2.dp))
-                // Zoom in
-                Box(Modifier.size(28.dp).clickable { editorFontSize = (editorFontSize + 1).coerceAtMost(32) }, contentAlignment = Alignment.Center) {
-                    Text("+", fontSize = 16.sp, color = TabTextInactive)
-                }
-                Spacer(Modifier.width(4.dp))
-                Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
-                Spacer(Modifier.width(4.dp))
-                // Word wrap toggle
-                Box(Modifier.size(28.dp).clickable { FeatureToggleStore.set("word_wrap", !wordWrap) }, contentAlignment = Alignment.Center) {
-                    Text("↵", fontSize = 14.sp, color = if (wordWrap) TabActiveIndicator else TabTextInactive)
-                }
-                Box(Modifier.size(28.dp).clickable { FeatureToggleStore.set("inlay_hints", !showInlayHints) }, contentAlignment = Alignment.Center) {
-                    Text("⊕", fontSize = 13.sp, color = if (showInlayHints) TabActiveIndicator else TabTextInactive)
-                }
-                // Go to line
-                Box(Modifier.size(28.dp).clickable { showGoToLine = true }, contentAlignment = Alignment.Center) {
-                    Text(":\$", fontSize = 14.sp, color = TabTextInactive, fontFamily = FontFamily.Monospace)
-                }
-                Spacer(Modifier.width(4.dp))
-                Box(Modifier.width(1.dp).height(16.dp).background(DividerColor))
-                Spacer(Modifier.width(4.dp))
-                // P2-10 Nav back
-                Box(
-                    Modifier.size(28.dp).clickable(enabled = navBackStack.isNotEmpty()) { navBack() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("←", fontSize = 16.sp,
-                        color = if (navBackStack.isNotEmpty()) TabTextInactive else TabTextInactive.copy(alpha = 0.25f))
-                }
-                // P2-10 Nav forward
-                Box(
-                    Modifier.size(28.dp).clickable(enabled = navFwdStack.isNotEmpty()) { navForward() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("→", fontSize = 16.sp,
-                        color = if (navFwdStack.isNotEmpty()) TabTextInactive else TabTextInactive.copy(alpha = 0.25f))
-                }
-                Spacer(Modifier.weight(1f))
-                // Fix Test 45: The "Match count for find" text block that used to live
-                // here has been removed — it re-read the file from DISK on every
-                // recomposition just to show a number. showFindBar now opens
-                // CodeEditor's OWN working find bar (see EditorPane's
-                // externalFindBarOpen sync), which already shows its own live
-                // match count ("2/3" etc.) right next to its Find field.
-            }
-            HorizontalDivider(color = DividerColor)
-        }
+        // ── Editor toolbar row REMOVED (PAD-1, 2026-09-13) ────────────────
+        // It held THREE find/replace triggers for the same working find bar (its
+        // Find + Replace icons, both `showFindBar = !showFindBar`, plus the
+        // Find & Replace button already in EditorPane's tab strip) and a set of
+        // quick actions that have been RELOCATED into the scrollable tab strip
+        // row (EditorStripQuickActions: zoom −/$/+, word-wrap, inlay hints,
+        // nav ←/→). One find/replace control remains (the strip's own); the
+        // dedicated 28dp row + divider are gone, reclaiming editor height.
+        // Gutter regression check: the virtualized gutter derives its window
+        // from live vScroll.viewportSize, so the height change flows through
+        // the single geometry source (GUTTER-VIRT-REWORK) — retest deep-scroll
+        // gutter numbers anyway (see AGENTS.md PAD-1 retest batch).
 
         // Fix Test 45: Removed — this used to render a SEPARATE, buggy find/replace
         // UI here that read file content from DISK (stale vs in-memory editor
@@ -4645,6 +4587,11 @@ private fun PssEditorColumn(
                     onAiFixRequest     = { prompt -> showChatPanel = true; pendingChatPrompt = prompt },
                     formatOnSaveTrigger = formatOnSaveTrigger,
                     onFontSizeChange = onFontSizeChange,
+                    // PAD-1: nav-history state for the relocated nav back/forward strip buttons
+                    navCanGoBack = navBackStack.isNotEmpty(),
+                    navCanGoForward = navFwdStack.isNotEmpty(),
+                    onNavBack = { navBack() },
+                    onNavForward = { navForward() },
                     udm = udm,
                     externalFindQuery = if (showFindBar) findQuery else null,
                     externalFindBarOpen = showFindBar,

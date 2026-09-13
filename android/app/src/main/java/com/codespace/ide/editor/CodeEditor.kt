@@ -510,6 +510,9 @@ fun CodeEditor(
     reviewMarkLines: Set<Int> = emptySet(),
     wordWrap: Boolean = false,
     scrollToLine: Int = 0,
+    /** PAD-1: view id (tab path or split id) for per-view scroll lock.
+     *  Gates ONLY the IME-AWARE-SCROLL effect; live sync is never gated. */
+    viewKey: String? = null,
     findReplaceOpen: Boolean = false,
     onFindReplaceClose: () -> Unit = {},
     /** External find query from the top find bar (white bar in ProjectShellScreen).
@@ -687,8 +690,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // what you're typing. Uses WindowInsets.ime (already imported).
     val imeInsetsPx = WindowInsets.ime.getBottom(scrollDensity)
     val imeHeightPx = imeInsetsPx.coerceAtLeast(0)
-    LaunchedEffect(value.selection.end, imeHeightPx) {
-        if (imeHeightPx > 0) {
+    // PAD-1: per-view scroll lock — while locked, skip the keyboard-reveal auto-scroll
+    // (declared ABOVE the effect that reads it: local declarations must precede use).
+    val scrollLockActive = viewKey != null && com.codespace.ide.editor.ViewScrollLockStore.isLocked(viewKey)
+    LaunchedEffect(value.selection.end, imeHeightPx, scrollLockActive) {
+        if (imeHeightPx > 0 && !scrollLockActive) {
             val lhPx = with(scrollDensity) { lineHeightDp.toPx() }
             val cursorLine = positionMapper.offsetToLine(value.selection.end)
             val cursorY = (cursorLine + 1) * lhPx - vScroll.value

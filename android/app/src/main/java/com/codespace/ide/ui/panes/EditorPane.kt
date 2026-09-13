@@ -165,6 +165,11 @@ fun EditorPane(
     formatOnSaveTrigger: Int = 0,
     /** Pinch-to-zoom: propagated to CodeEditor for font size adjustment. */
     onFontSizeChange: ((Int) -> Unit)? = null,
+    /** PAD-1: nav-history state for the relocated nav back/forward strip buttons. */
+    navCanGoBack: Boolean = false,
+    navCanGoForward: Boolean = false,
+    onNavBack: (() -> Unit)? = null,
+    onNavForward: (() -> Unit)? = null,
     /** External find query from the top white find bar in ProjectShellScreen. */
     externalFindQuery: String? = null,
     /** When true, the top find bar is open — drive CodeEditor's find highlighting. */
@@ -579,6 +584,9 @@ fun EditorPane(
                 // Restore per-file scroll and cursor positions
                 store.loadScrollPositions(pid).forEach { (p, line) -> tabScrollLines[p] = line }
                 store.loadCursors(pid).forEach { (p, off) -> tabCursorOffsets[p] = off }
+                // PAD-1: scroll locks are per-project runtime state — drop stale keys
+                // when switching projects (persistence lands in PERSIST-A).
+                com.codespace.ide.editor.ViewScrollLockStore.clear()
             } else {
                 // One-time legacy migration
                 val (legacy, legacyActive) = migrateLegacySession(context)
@@ -907,7 +915,14 @@ fun EditorPane(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.widthIn(max = 120.dp),
                                 )
-                                Spacer(Modifier.width(6.dp))
+                                Spacer(Modifier.width(4.dp))
+                                // PAD-1: per-view scroll-lock padlock (genuine codicon)
+                                com.codespace.ide.ui.panes.EditorViewLockIcon(
+                                    viewKey = tab.id,
+                                    activeTint = tabColors.activeIndicator,
+                                    inactiveTint = tabColors.textInactive,
+                                )
+                                Spacer(Modifier.width(4.dp))
                                 Icon(
                                     Icons.Default.Close,
                                     contentDescription = "Close",
@@ -1007,7 +1022,14 @@ fun EditorPane(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.widthIn(max = 120.dp),
                                 )
-                                Spacer(Modifier.width(6.dp))
+                                Spacer(Modifier.width(4.dp))
+                                // PAD-1: per-view scroll-lock padlock (genuine codicon)
+                                com.codespace.ide.ui.panes.EditorViewLockIcon(
+                                    viewKey = sv.id,
+                                    activeTint = tabColors.activeIndicator,
+                                    inactiveTint = tabColors.textInactive,
+                                )
+                                Spacer(Modifier.width(4.dp))
                                 Icon(
                                     Icons.Default.Close,
                                     contentDescription = "Close Split View",
@@ -1207,6 +1229,19 @@ fun EditorPane(
                         color = if (showBookmarkPanel) Color(0xFF61AFEF) else TabTextInactive,
                     )
                 }
+                // PAD-1: relocated controls from the removed shell toolbar row (zoom,
+                // wrap, inlay, nav back/forward) — everything scrolls with the strip (D1).
+                com.codespace.ide.ui.panes.EditorStripQuickActions(
+                    fontSize = fontSize,
+                    onFontSizeChange = { fs -> onFontSizeChange?.invoke(fs) },
+                    wordWrap = wordWrap,
+                    showInlayHints = showInlayHints,
+                    navCanGoBack = navCanGoBack,
+                    navCanGoForward = navCanGoForward,
+                    onNavBack = onNavBack,
+                    onNavForward = onNavForward,
+                    separatorColor = tabColors.divider,
+                )
             }
             HorizontalDivider(color = DividerColor)
         }
@@ -1934,6 +1969,8 @@ fun EditorPane(
                         onInsertHandler = onInsertRequest,
                         modifier = Modifier.fillMaxSize(),
                         wordWrap = wordWrap,
+                        // PAD-1: view id for per-view scroll lock (tab path or split id)
+                        viewKey = active.id,
                         showInlayHints = showInlayHints,
                         toggles = toggles,
                         formatSelectionTrigger = formatSelectionTrigger,
