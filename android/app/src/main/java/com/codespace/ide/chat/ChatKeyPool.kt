@@ -132,7 +132,7 @@ object ChatKeyPool {
 
     private fun readLabels(): org.json.JSONObject {
         val p = prefs ?: return org.json.JSONObject()
-        val raw: String? = try { p.getString("labels") } catch (_: Exception) { null }
+        val raw: String? = try { p.getString("labels", null) } catch (_: Exception) { null }
         val txt = raw ?: return org.json.JSONObject()
         return try { org.json.JSONObject(txt) } catch (_: Exception) { org.json.JSONObject() }
     }

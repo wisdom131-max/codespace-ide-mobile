@@ -3335,3 +3335,12 @@ CopilotChatPanelOverlay.kt:271 — `catch (e: Exception) { null }` assigns null 
 ChatKeyPool now persists a manual ACTIVE slot per provider ("active_<id>" plain pref). keys() returns the ACTIVE key first, then the rest in slot order — one ordering drives both halves of the policy: the user's pick is tried first on every request (manual selection wins while it works), and the ChatKeyFailover engine walks the remaining pairs only on an actual 401/403 failure. 429 unchanged (same-key backoff first). Removing the active key (or primary slot-1 deletion) clears the manual choice and falls back to slot order. Settings UI: "● Active" badge + "Set active" button per extra key, "Set primary active" + "Active key: <label>" line, so a manual pick is visible and switchable at any time.
 **Re-test additions (MK-7..MK-9):** MK-7 tap "Set active" on a 2nd key -> chat uses it (● Active badge shows, Active key line appears). MK-8 manually-picked key that then 401s -> system auto-fails to next key WITHOUT changing the manual pick; manual pick is retried first again after app restart (cooldown is session-scoped). MK-9 delete the active key -> active falls back to primary silently.
 **Next on roadmap (ALL pending items):** unchanged from the previous entry.
+
+## [2026-09-13 01:35 WAT] — AI Agent: Claude Sonnet 5.6 (BUILD-FIX #2767)
+
+**Commit:** (this push) | **CI:** #2767 FAILED — 1 Kotlin error
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] #2767: SharedPreferences.getString requires BOTH params in Kotlin
+ChatKeyPool.readLabels called p.getString("labels") — Android's getString(key, defValue) has no single-arg overload in Kotlin (the #2766 "No value passed for parameter p1" at 114:46 was THIS, not the JSONObject line I also fixed — both were real, only one was patched). Now getString("labels", null). Roadmap unchanged from the previous entry (all items as listed there).
