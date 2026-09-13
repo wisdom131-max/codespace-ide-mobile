@@ -27,6 +27,7 @@ object ChatSlashCommands {
         Command("new", "Start a new chat session"),
         Command("rename", "Rename the current session (usage: /rename <title>, or /rename alone to edit)", takesArg = true),
         Command("models", "Open the model picker"),
+        Command("skills", "Run a skill — prefills the input and attaches its context (review before sending)"),
         Command("tools", "List the tools available in Agent mode"),
         Command("help", "Show available slash commands"),
     )

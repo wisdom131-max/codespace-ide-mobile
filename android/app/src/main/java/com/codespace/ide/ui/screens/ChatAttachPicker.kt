@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
@@ -149,6 +150,8 @@ internal fun ChatAttachPickerDialog(
     onPickSelection: ((ChatAttachment) -> Unit)? = null,
     /** I6 — prompt files: tap inserts the file's content into the chat input. */
     onInsertPrompt: ((String) -> Unit)? = null,
+    /** R9-B — skills: tap RUNS the skill (prefill input + auto-attach hinted context; NEVER auto-send — D4). */
+    onRunSkill: ((com.codespace.ide.chat.SkillsCatalog.Skill) -> Unit)? = null,
     // R8-VISION: non-null enables the "attach image from device" row
     onPickImage: (() -> Unit)? = null,
 ) {
@@ -468,6 +471,48 @@ internal fun ChatAttachPickerDialog(
                             Column {
                                 Text("/" + pname, fontSize = 11.sp, color = colors.text)
                                 Text(ptext.lineSequence().firstOrNull()?.take(60) ?: "Empty prompt", fontSize = 9.sp, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+                // R9-B — "Skills" section (VS Code agentPluginsView/skills analog).
+                // Tap = RUN: prefill input + auto-attach hinted context, then stop (D4).
+                if (onRunSkill != null) {
+                    val skills = remember(projectRoot) {
+                        com.codespace.ide.chat.SkillsCatalog.all(projectRoot)
+                    }
+                    if (skills.isNotEmpty()) {
+                        Text(
+                            "Skills",
+                            color = colors.text,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        )
+                        skills.forEach { sk ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(colors.surface)
+                                    .clickable { onRunSkill(sk) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Default.AutoAwesome, null,
+                                    tint = colors.accent,
+                                    modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(sk.name, fontSize = 11.sp, color = colors.text)
+                                    if (sk.description.isNotBlank()) {
+                                        Text(sk.description, fontSize = 9.sp, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                Text(
+                                    (if (sk.context != null) sk.context + " \u00b7 " else "") + sk.source,
+                                    fontSize = 9.sp, color = colors.textSecondary,
+                                )
                             }
                         }
                     }

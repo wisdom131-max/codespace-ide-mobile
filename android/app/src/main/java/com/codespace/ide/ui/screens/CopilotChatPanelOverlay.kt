@@ -976,6 +976,17 @@ internal fun CopilotChatPanelInline(
         if (wasActive) switchSession(sessions.first().id)
     }
 
+    // R9-B — run a skill: PREFILL + auto-attach, never auto-send (D4).
+    fun runSkill(skill: com.codespace.ide.chat.SkillsCatalog.Skill) {
+        chatInput = skill.body
+        val att = com.codespace.ide.chat.SkillsCatalog.buildContextAttachment(
+            skill.context, projectRootPath, currentFilePath, context)
+        if (att != null && attachments.none { it.path == att.path }) {
+            attachments = attachments + att
+        }
+        showAttachPicker = false
+    }
+
     // ── R1-CHAT-PARITY: slash commands ──────────────────────────────────────
     // Intercepted in send() before the model call; each maps to a UI action.
     fun handleCommand(name: String, arg: String) {
@@ -991,6 +1002,8 @@ internal fun CopilotChatPanelInline(
                 }
             }
             "models" -> showModelMenu = true
+            // R9-B: /skills opens the attach picker (Skills section at the top)
+            "skills" -> showAttachPicker = true
             "tools" -> {
                 messages.add(ChatMsg("assistant", com.codespace.ide.chat.ChatSlashCommands.toolsText()))
                 persistSessions()
@@ -1704,6 +1717,7 @@ internal fun CopilotChatPanelInline(
                     chatInput = text
                     showAttachPicker = false
                 },
+                onRunSkill = { sk -> runSkill(sk) },
                 onPickImage = { imageLauncher.launch("*/*") },
                 onDismiss = { showAttachPicker = false },
                 colors = colors,
