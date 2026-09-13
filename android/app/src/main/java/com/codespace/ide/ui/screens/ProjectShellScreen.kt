@@ -3360,7 +3360,8 @@ private fun PssBottomPanelContent(
     onJumpToSource: (Int) -> Unit = {},
     onOpenFile: (String) -> Unit = {},
     onJumpToSourceWithPath: (String, Int) -> Unit = { _, _ -> },
-    fullScreen: Boolean = false,
+    /** I2 — terminal explain-chip → open chat with a prefilled prompt. */
+    onAskAi: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -3507,8 +3508,7 @@ private fun PssBottomPanelContent(
                 // callback (opens the file in the editor + scrolls), matching the
                 // Problems panel behavior: bottom panel hides, editor takes focus.
                 onOpenFileAtLine = { path, line -> onJumpToSourceWithPath(path, line + 1) },
-                // I2 — TERMINAL BRIDGE: terminal explain-chip → open chat with the prompt
-                onAskAi = { prompt -> showChatPanel = true; pendingChatPromptMs.value = prompt },
+                onAskAi = onAskAi,
             )
             BottomTab.PROBLEMS -> AdvancedProblemsPanel(
                 onJumpToSource = { filePath, line, col ->
@@ -4760,6 +4760,8 @@ private fun PssEditorColumn(
                 showBottomPanel = false
             },
             fullScreen = fullScreen,
+            // I2 — TERMINAL BRIDGE: PssEditorColumn owns showChatPanelMs/pendingChatPromptMs
+            onAskAi = { p -> showChatPanel = true; pendingChatPromptMs.value = p },
         )
 
     } // end editor Column

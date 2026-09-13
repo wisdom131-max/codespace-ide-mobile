@@ -916,33 +916,6 @@ internal fun CopilotChatPanelOverlay(
                 error = Color(0xFFEF4444),
             )
 
-            // I3 — SCM AI: repo pill — branch + dirty count; tap attaches the working diff
-        val pillNow = repoPill
-        if (pillNow != null && !chatLoading) {
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 2.dp)) {
-                androidx.compose.material3.Surface(
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                    color = colors.surface,
-                    modifier = Modifier.clickable(enabled = pillNow.third.isNotBlank()) {
-                        if (attachments.none { it.relPath == "git-diff" }) {
-                            attachments = attachments + com.codespace.ide.chat.ChatAttachment(
-                                path = "git", relPath = "git-diff", name = "git-diff",
-                                kind = com.codespace.ide.chat.ChatAttachment.Kind.SELECTION,
-                                selText = "Working diff vs HEAD:\n" + pillNow.third,
-                            )
-                        }
-                    },
-                ) {
-                    Text(
-                        "\u21c4 " + pillNow.first + " \u00b7 " + pillNow.second + " changed \u00b7 tap to attach diff",
-                        color = colors.textSecondary,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        maxLines = 1,
-                    )
-                }
-            }
-        }
         // ── Input ─────────────────────────────────────────────────────────
             Row(
                 Modifier
@@ -1930,6 +1903,34 @@ internal fun CopilotChatPanelInline(
             warning = Color(0xFFF59E0B),
             error = Color(0xFFEF4444),
         )
+
+        // I3 — SCM AI: repo pill — branch + dirty count; tap attaches the working diff
+        val pillNow = repoPill
+        if (pillNow != null && !chatLoading) {
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 2.dp)) {
+                androidx.compose.material3.Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    color = colors.surface,
+                    modifier = Modifier.clickable(enabled = pillNow.third.isNotBlank()) {
+                        if (attachments.none { it.relPath == "git-diff" }) {
+                            attachments = attachments + com.codespace.ide.chat.ChatAttachment(
+                                path = "git", relPath = "git-diff", name = "git-diff",
+                                kind = com.codespace.ide.chat.ChatAttachment.Kind.SELECTION,
+                                selText = "Working diff vs HEAD:\n" + pillNow.third,
+                            )
+                        }
+                    },
+                ) {
+                    Text(
+                        "\u21c4 " + pillNow.first + " \u00b7 " + pillNow.second + " changed \u00b7 tap to attach diff",
+                        color = colors.textSecondary,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
 
         // R2-AUTOINSTR: chip shows when the project has instruction files
         AutoInstructionsChip(
