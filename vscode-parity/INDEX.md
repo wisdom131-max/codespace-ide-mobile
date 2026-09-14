@@ -21,7 +21,7 @@
 | B03 | File explorer & workspace (explorer, tabs/groups/split, breadcrumbs, autosave/backup, workspace trust) | [B03-files-workspace.md](B03-files-workspace.md) | ✅ DONE 2026-09-14 |
 | B04 | IntelliSense (completions, snippets, hover, sig help, smart select, rename, format, code actions) | [B04-intellisense.md](B04-intellisense.md) | ✅ DONE 2026-09-14 |
 | B05 | Global search & replace (search editor, replace preview) | [B05-search-replace.md](B05-search-replace.md) | ✅ DONE 2026-09-14 |
-| B06 | Terminal (xterm, profiles, shell integration, persistent sessions) | B06-terminal.md | ⬜ |
+| B06 | Terminal (xterm, profiles, shell integration, persistent sessions) | [B06-terminal.md](B06-terminal.md) | ✅ DONE 2026-09-14 |
 | B07 | Source control (SCM API, git, diff/merge editor, blame, timeline) | B07-source-control.md | ⬜ |
 | B08 | Debugger (DAP, breakpoints, watch/repl, inline values) | B08-debugger.md | ⬜ |
 | B09 | Language platform (LSP wiring, notebooks, markdown, language detection) | B09-language-platform.md | ⬜ |
@@ -64,6 +64,12 @@ Edges recorded so far (B05):
 - UNIQUE PARITY ADVANTAGE: our search overlays R6 PendingChangesStore staged edits — VS Code cannot search unsaved AI-staged state
 - AI search (AISearch.ts now in-tree VS Code): ours is inverse — search FEEDS AI; both shapes documented
 - editor find/replace PARTIAL: regex+nav+replace-all HAVE, no history/case-preserve
+
+Edges recorded so far (B06):
+- terminal = our densest AI-integration surface (run_command gating, transcript attach, paste-record) — mirrors VS Code agentHost/chatTerminalCommandMirror family (→ R6/B13)
+- HAVE-UNIQUE: OSC 7777 Acode-style terminal→editor open-at-line bridge
+- MISSING w/ cheap-win potential: terminal find-in-buffer, OSC 633 command marks; PARTIAL: session persistence (layout only, processes die), profiles (built-in modes)
+- terminal is pane-bound not tab-bound (VS Code terminalEditor) — structural divergence, likely fine on mobile
 
 ## Notes
 
