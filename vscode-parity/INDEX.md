@@ -101,6 +101,12 @@ Edges recorded so far (B11):
 - 3rd chat-context edge found: markersChatContext.ts (after SCM history + terminal transcript) — attach-picker candidate (→ B13)
 - CHEAP WIN: file:line links in Output text (open-at-line entry already exists)
 
+Edges recorded so far (B12):
+- chrome parity solid: status bar + notification trio (bell/toast/drawer) + themed dialogs (standing UI rules = our dialog spec) + keybinding editor = HAVE
+- HAVE-UNIQUE: entire touch chrome layer (double-tap MC, long-press, IME insets, portrait-adaptive rows) — VS Code has zero
+- MISSING (mobile-accepted): auxiliarybar, draggable views, editor-group grids, declarative menu service
+- PERSIST-B counterpart confirmed: VS Code serializes part layout into workspace state — pane/tab persistence audit still pending on our side
+
 ## Notes
 
 - The user's roadmap/testing protocol is unaffected: parity files are docs-only

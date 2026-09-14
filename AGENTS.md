@@ -3728,3 +3728,13 @@ B10-extension-system.md: IMPOSSIBLE-PARITY confirmed (out-of-process Node extens
 ### [DOCS] vscode-parity B11 COMPLETE
 B11-problems-output-diagnostics.md: VS Code side = markerService hub, markersView+Table+FilterOptions, markersFileDecorations (explorer badges), markersChatContext (problems-as-chat-context — 3rd chat edge), outputLinkProvider (file:line links in Output); ours = DiagnosticManager full-fidelity model (4 severities, RelatedInfo, SourceHealth READY/UNAVAILABLE/FAILED/STALE — HAVE-UNIQUE provider-health surface), ProblemsPanel 399 + AdvancedProblemsPanel 319, squiggles + QUICK_FIX, own LintChecker/LintAnalyzer layer, AppOutputLog 6 channels (info/build/git/debug/terminal/lsp), PortsScanner. DOUBLE-CONFIRMED GAP: explorer problem badges (B03 both sides). CHEAP WIN: output file:line links. 6 open questions (B11 §6).
 **Next on roadmap (ALL pending items):** B12 UI & workbench chrome (next turn) -> B13 chat/AI -> B14 tasks/lifecycle -> FINAL REVIEW. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-15 01:00 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B12: UI & workbench chrome)
+
+**Commit:** (this push) | **CI:** docs-only
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity B12 COMPLETE
+B12-ui-workbench.md: VS Code side = parts model (activitybar/auxiliarybar/banner/dialogs/editor/notifications/panel/sidebar/statusbar/titlebar/views + paneComposite*), declarative MenuService, contrib/preferences settings editor w/ search; ours = StatusBarContent @4181, ActivityBar (WorkspaceShapes), NotificationDrawerOverlay FULL TRIO (bell+toast+drawer), 30+ themed dialogs under standing UI rules, SettingsScreen + InProjectSettingsDialog + KeybindingSettingsPanel, tab+SplitViewStore layout. HAVE-UNIQUE: touch-first chrome (double-tap MC, long-press, IME insets, portrait-adaptive). MISSING (mobile-accepted): auxiliarybar, draggable views, group grids, menu service. PERSIST-B counterpart noted. 6 open questions (B12 §6).
+**Next on roadmap (ALL pending items):** B13 chat & AI/Copilot (next turn) -> B14 tasks/lifecycle -> FINAL REVIEW. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
