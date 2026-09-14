@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | GREEN: #2791/#2792 (be3a32e+a8a6e90, PAD-2 multi-split + 64KB fix + PERSIST-A editor-state persistence). APK artifact: codespace-ide-arm64-v8a |
+| CI build | GREEN: #2794 (9e9cb6a, FIX-BATCH: portrait find bar, chat-find width, voice branches, picker scroll, perf idle + CE-CLASSIFY WAF + manual-model escape hatch). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -3576,3 +3576,35 @@ LIVE-CAPTURE + MOUNT-RESTORE shipped inside the extraction: CodeEditor reports (
 
 **PAD-2/PERSIST-A re-tests (add to batch):** PS-1 split button 2x → "f 2" entry + 2nd synced view; 3x/4x → "f 3"/"f 4"; 5th tap → cap Toast. PS-2 close "f 2" via strip X → others intact; close primary → all views cascade. PS-3 per-view scroll lock: lock view 2, scroll view 1 → view 2 holds position. PS-4 restart app → split views return, active view restored (not yanked to newest), labels keep numbers. PS-5 scroll view to line ~100, switch tab, back → position + cursor restored. PS-6 fold a function, restart → still folded (all views). PS-7 toggle blame, restart → blame state returns. PS-8 lock a view, restart → padlock restored. PS-9 open find bar, type query + case toggle, restart, reopen → query + toggle restored.
 **Next on roadmap (ALL pending items):** CI green for be3a32e → PERSIST-B (terminal per-session state: cwd + recent commands already exist — audit gaps vs VS Code: editor group layout/active group per window) → PERSIST-C/D (per-plan review) → Wisdom batched re-tests (PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). TLS/Cloudflare ON HOLD. MC-3 tap-collapse. PEEK PARKED.
+
+## [2026-09-14 19:45 WAT] — AI Agent: Claude Sonnet 5.6 (FIX-BATCH: five reported bugs + CE-CLASSIFY WAF + manual-model escape hatch)
+
+**Commit:** 9e9cb6a | **CI:** #2794 GREEN
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [UI] Find/replace portrait squish — adaptive layout (BoxWithConstraints, <480dp = stacked 2-row; landscape IDENTICAL to previous single-row)
+Extracted shared FrTextField/FrToggle/FrNavButtons into editor/FindReplaceBar.kt. Narrow: row 1 = field + match label + prev/next/close; row 2 = .* / Aa / W / AB toggles. Wide branch byte-equivalent layout to before.
+
+### [UI][R7] Find-in-chat typed text invisible — RENDERING bug (state was fine)
+ui/screens/ChatFindBar.kt: the BasicTextField's wrapper Box had NO width modifier -> zero intrinsic width inside the weighted Row -> text captured (match count ticked) but never drawn. Box now weight(1f) + field fillMaxWidth.
+
+### [R8] Voice dictation silent failure — result-boundary branches now all speak+log
+CopilotChatPanelOverlay speechLauncher: non-OK resultCode and OK-with-no-extras previously swallowed silently. Now: Toast + [voice] Output log on every branch; alternate extras key fallback (android.speech.extra.RESULTS literal). If the vendor recognizer still misbehaves, the log names the exact resultCode.
+
+### [UI][R3] Attach-picker sections unreachable on short screens
+ui/screens/ChatAttachPicker.kt: dialog body Column now verticalScroll + heightIn(max 85% screen height) — search bar + file list reachable; file list keeps its fixed 320dp.
+
+### [PERF] PerfProbe idle spam gated + stall attribution
+editor/PerfProbe.kt: activity windows summarize as before (worstFrame now @wall-clock-time); a window with ZERO keystrokes logs ONE idle line then goes quiet until typing resumes; >5s frame gap logs an immediate [perf] STALL line with timestamp for correlation (the 14593ms spike is now traceable).
+
+### [CE-CLASSIFY] WAF/firewall 401/403 distinct from key rejection — the Mistral 403 was Cloudflare, not the key
+OpenAiCompatibleTransport.classifyHttpError: HTTP 401/403 + Cloudflare Server header + body markers (cloudflare/cf-ray/Attention Required/Just a moment) => "Firewall block ... BEFORE your API key was checked. Your key may be fine." ChatHttpException gains isWafBlock; ChatKeyFailover NEVER cools keys for WAF blocks ([KEY-FAILOVER] log says so). Applied to call/callStreaming/fetchModelList throw sites. Live-error truncation 120->200 chars so the classification survives.
+
+### [CE-ESCAPE] Manual model IDs (Cline-style escape hatch, Wisdom-approved)
+CustomEndpointStore.manualModels()/setManualModels (plain prefs). Custom provider fetchModels: manual MERGED with live list; on live failure falls back to manual ([custom-endpoint] log) — broken /models can never block chat. Picker lists manual entries INSTANTLY (registeredModelEntries). Settings custom section: "Manual model IDs" editor + "Save model IDs" (re-runs live check).
+
+**Files touched:** editor/FindReplaceBar.kt (rewrite), editor/PerfProbe.kt, ui/screens/ChatFindBar.kt, ui/screens/ChatAttachPicker.kt, ui/screens/AiKeysSection.kt, ui/screens/CopilotChatPanelOverlay.kt, chat/ChatProvider.kt, chat/ChatKeyFailover.kt, chat/CustomEndpointStore.kt, chat/providers/CustomOpenAiProvider.kt, chat/providers/OpenAiCompatibleTransport.kt
+
+**New re-test batch (FIX-2026-09-14):** F1 portrait find bar: open find, field usable, toggles on 2nd row, landscape unchanged single row. F2 find-in-chat: type -> text VISIBLE, filters transcript, match count ticks. F3 voice: mic -> speak -> text lands; if not, read [voice] Output line and report resultCode. F4 attach picker on portrait: scroll reaches search bar + file list. F5 perf: after ~5s idle ONE quiet line then silence; [perf] STALL lines now have HH:MM:SS. F6 Mistral custom endpoint: re-check live status line -> firewall-block message (not "rejected"), keys NOT cooled; enter manual model IDs (e.g. mistral-large-latest) -> picker lists it without any /models fetch -> chat works through the manual model.
+**Next on roadmap (ALL pending items):** Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B (terminal per-session state audit) -> PERSIST-C/D. VS Code FULL-SOURCE parity sweep (vscode-parity/ folder, batched, plan awaiting Wisdom approval). TLS/Cloudflare root-cause: CE-CLASSIFY diagnostic settles WAF vs key on first F6 retest. MC-3 tap-collapse. PEEK PARKED.
