@@ -113,6 +113,14 @@ Edges recorded so far (B13 = synthesis batch):
 - MISSING real projects: inline editor-zone chat, checkpoint timeline UI, voice STT pipeline, sessions-as-tabs, todos/plan-review render parts, export/import
 - mobile-accepted: in-editor review overlay replaced by transcript card (R6 shape)
 
+Edges recorded so far (B14, final subsystem batch):
+- task stack rich: 8 task types + RunState + BuildHistory/ArtifactManager/ToolchainManager; agent run_command in-terminal w/ FlowGate
+- CONFIRMED MISSING (grep-verified): problem matchers (build output never reaches Problems panel — B11+B14 shared edge), autoSave, unified WorkingCopy hub, pre-launch debug tasks
+- hot exit UNKNOWN = PERSIST-B audit must test unsaved-buffer-restore explicitly
+- HAVE-UNIQUE: CloudBackup, DownloadCenter, ProjectWizard/Templates, LivePreviewServer (VS Code needs extensions for all of these)
+
+ALL 14 SUBSYSTEM BATCHES COMPLETE. Next: FINAL CROSS-BATCH REVIEW.
+
 ## Notes
 
 - The user's roadmap/testing protocol is unaffected: parity files are docs-only
