@@ -119,7 +119,13 @@ Edges recorded so far (B14, final subsystem batch):
 - hot exit UNKNOWN = PERSIST-B audit must test unsaved-buffer-restore explicitly
 - HAVE-UNIQUE: CloudBackup, DownloadCenter, ProjectWizard/Templates, LivePreviewServer (VS Code needs extensions for all of these)
 
-ALL 14 SUBSYSTEM BATCHES COMPLETE. Next: FINAL CROSS-BATCH REVIEW.
+ALL 14 SUBSYSTEM BATCHES + FINAL REVIEW COMPLETE (2026-09-15). RESEARCH PHASE DONE.
+
+TOP-LEVEL FINDINGS (see FINAL-REVIEW.md for full scoreboard):
+- 60 HAVE + 12 HAVE-UNIQUE vs 101 PARTIAL + 73 MISSING — the PARTIALs are the roadmap
+- 8 CHEAP WINS ordered in FINAL-REVIEW §3 (problem matchers first)
+- 8 REAL PROJECTS ordered in FINAL-REVIEW §4 (action registry + ContextKeyExpr-lite first)
+- connection map = 8 shared infra hubs + 6 unconnected edges (FINAL-REVIEW §7)
 
 ## Notes
 
