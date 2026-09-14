@@ -40,11 +40,15 @@ object PerfProbe {
     private var jankCount = 0L
     private var droppedFrames = 0L
     private var worstFrameMs = 0.0
+    // PERF-IDLE (2026-09-14): probe goes quiet when nothing is happening.
+    private var worstFrameAtMs = 0L
+    private var idleNoted = false
 
     /** Call at the top of onValueChange when the text actually changed. */
     fun onEdit() {
         editAtNanos = System.nanoTime()
         editPending = true
+        idleNoted = false
     }
 
     /** Call from onTextLayout (the render side of the keystroke path). */
@@ -59,6 +63,10 @@ object PerfProbe {
         }
     }
 
+    /** Wall-clock time for correlating stalls with device activity. */
+    private fun fmtTime(ms: Long): String =
+        java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(ms))
+
     /** Call with the timestamp from withFrameNanos. */
     fun onFrame(nanos: Long) {
         if (lastFrameNanos != 0L) {
@@ -69,17 +77,42 @@ object PerfProbe {
                 val dropped = ((gap / 16_700_000L) - 1L).coerceAtLeast(0L)
                 droppedFrames += dropped
             }
-            if (gap / 1e6 > worstFrameMs) worstFrameMs = gap / 1e6
+            if (gap / 1e6 > worstFrameMs) {
+                worstFrameMs = gap / 1e6
+                worstFrameAtMs = System.currentTimeMillis()
+            }
+            // PERF-STALL: a >5s frame gap means the UI thread was hard-blocked.
+            // Log it IMMEDIATELY with a wall-clock timestamp so it can be
+            // correlated with what was happening on device at that moment.
+            if (gap / 1e6 > 5000.0) {
+                AppOutputLog.log(
+                    "[perf] STALL " + (gap / 1e6).toInt() + "ms ending " + fmtTime(System.currentTimeMillis()) +
+                        " — the UI thread was blocked for this whole gap (correlate with what you did then)",
+                    "perf"
+                )
+            }
         }
         if (lastSummaryNanos == 0L) lastSummaryNanos = nanos
         if (nanos - lastSummaryNanos >= SUMMARY_PERIOD_NS) {
-            if (frameCount > 0 && (jankCount > 0 || keystrokeCount > 0)) {
+            // PERF-IDLE (2026-09-14): summarize activity windows as before, but
+            // when a window had ZERO keystrokes, say "idle" ONCE and go quiet —
+            // the probe no longer narrates silence every 5 seconds forever.
+            if (keystrokeCount > 0) {
                 AppOutputLog.log(
                     "[perf] 5s: frames=" + frameCount + " jank=" + jankCount +
                         " dropped≈" + droppedFrames + " worstFrame=" + worstFrameMs.toInt() +
-                        "ms | keystrokes=" + keystrokeCount + " maxLatency=" + keystrokeMaxMs.toInt() + "ms",
+                        "ms@" + fmtTime(worstFrameAtMs) +
+                        " | keystrokes=" + keystrokeCount + " maxLatency=" + keystrokeMaxMs.toInt() + "ms",
                     "perf"
                 )
+            } else if (!idleNoted && frameCount > 0 && (jankCount > 0 || droppedFrames > 0)) {
+                AppOutputLog.log(
+                    "[perf] idle — no keystrokes this window (jank=" + jankCount +
+                        " worst=" + worstFrameMs.toInt() + "ms@" + fmtTime(worstFrameAtMs) +
+                        "); probe quiet until typing resumes",
+                    "perf"
+                )
+                idleNoted = true
             }
             frameCount = 0; jankCount = 0; droppedFrames = 0; worstFrameMs = 0.0
             keystrokeCount = 0; keystrokeMaxMs = 0.0

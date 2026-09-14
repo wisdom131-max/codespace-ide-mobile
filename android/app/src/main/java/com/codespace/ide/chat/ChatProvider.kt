@@ -151,6 +151,13 @@ class ChatHttpException(
     message: String,
     /** 429 Retry-After in ms from the response header, capped at 30s; null = none. */
     val retryAfterMs: Long? = null,
+    /**
+     * CE-CLASSIFY: true when the HTTP 401/403 came from the endpoint's WEB
+     * FIREWALL (Cloudflare bot/challenge block), not the vendor's auth layer.
+     * The key was never checked — ChatKeyFailover must NOT cool keys down
+     * for this and the message says so explicitly.
+     */
+    val isWafBlock: Boolean = false,
 ) : Exception(message)
 
 /** One base64 image sent with a request (vendor docs: JPEG/PNG/GIF/WebP accepted). */

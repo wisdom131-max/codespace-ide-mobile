@@ -251,7 +251,10 @@ private fun relativeTime(ts: Long): String {
 private fun registeredModelEntries(tokenStore: SecureTokenStore?): List<String> =
     ChatProviderRegistry.available(tokenStore)
         .filter { !it.defaultModelIsPlaceholder } // CUSTOM-ENDPOINT-FIX: never list "custom-model" as real
-        .map { "${it.id}:${it.defaultModel}" }
+        .map { "${it.id}:${it.defaultModel}" } +
+        // CE-ESCAPE: manual model IDs are real, user-confirmed entries \u2014
+        // listed instantly, before/independent of any live /models fetch.
+        com.codespace.ide.chat.CustomEndpointStore.manualModels().map { "custom:$it" }
 
 /**
  * FIX (404 regression): the picker previously offered ONLY the hardcoded default
@@ -1177,9 +1180,23 @@ internal fun CopilotChatPanelInline(
     // R8-VOICE: mic dictation via the system speech activity (no app permission
     // needed — the recognizer handles the mic itself). Spoken text appends to input.
     val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        // R8-VOICE-FIX (2026-09-14): the old code silently swallowed every
+        // non-OK result (and OK-with-no-extras) \u2014 on devices whose vendor
+        // recognizer returns CANCELLED or an alternate extras bundle, dictation
+        // looked dead with no clue. Every branch now speaks + logs.
         if (res.resultCode == android.app.Activity.RESULT_OK) {
             val spoken = res.data?.getStringArrayListExtra(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-            if (!spoken.isNullOrBlank()) chatInput = (chatInput + " " + spoken).trim()
+                ?: res.data?.getStringArrayListExtra("android.speech.extra.RESULTS")?.firstOrNull()
+            if (!spoken.isNullOrBlank()) {
+                chatInput = (chatInput + " " + spoken).trim()
+                com.codespace.ide.diagnostics.AppOutputLog.log("[voice] dictation inserted: " + spoken.length + " chars", "chat")
+            } else {
+                android.widget.Toast.makeText(context, "Speech recognizer returned no text", android.widget.Toast.LENGTH_SHORT).show()
+                com.codespace.ide.diagnostics.AppOutputLog.log("[voice] RESULT_OK but no text extras (data=" + (res.data != null) + ")", "chat")
+            }
+        } else {
+            android.widget.Toast.makeText(context, "Speech input ended early (code " + res.resultCode + ")", android.widget.Toast.LENGTH_SHORT).show()
+            com.codespace.ide.diagnostics.AppOutputLog.log("[voice] recognizer resultCode=" + res.resultCode + " (RESULT_OK=" + android.app.Activity.RESULT_OK + ")", "chat")
         }
     }
     fun startVoiceInput() {

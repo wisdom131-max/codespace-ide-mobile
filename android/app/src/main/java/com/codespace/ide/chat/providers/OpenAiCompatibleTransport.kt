@@ -47,7 +47,7 @@ internal object OpenAiCompatibleTransport {
                     .build()
             ).execute()
             if (!resp.isSuccessful) {
-                throw com.codespace.ide.chat.ChatHttpException(resp.code, transportErrorParts("API error", resp).first, retryAfterMs(resp))
+                throw classifyHttpError(resp, "API error")
             }
             val json = JSONObject(resp.body?.string() ?: "")
             json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
@@ -162,7 +162,7 @@ internal object OpenAiCompatibleTransport {
         )
         val resp = call.execute()
         if (!resp.isSuccessful) {
-            throw com.codespace.ide.chat.ChatHttpException(resp.code, transportErrorParts("API error", resp).first, retryAfterMs(resp))
+            throw classifyHttpError(resp, "API error")
         }
         val sb = StringBuilder()
         val reader = resp.body?.byteStream()?.bufferedReader()
@@ -218,6 +218,33 @@ internal object OpenAiCompatibleTransport {
         return (if (clean.isNotEmpty()) clean else fallback) to (body?.take(400) ?: "")
     }
 
+
+    /**
+     * CE-CLASSIFY (2026-09-14): classify an HTTP failure the way the known
+     * BYOK tools do — a WAF/firewall block (Cloudflare challenge page) is
+     * DISTINCT from a vendor auth rejection, and never treated as "bad key".
+     * Detection: HTTP 401/403 + Cloudflare server header + Cloudflare body
+     * markers (challenge HTML names itself; vendor auth errors are JSON).
+     */
+    internal fun classifyHttpError(resp: okhttp3.Response, prefix: String): com.codespace.ide.chat.ChatHttpException {
+        val parts = transportErrorParts(prefix, resp)
+        if (resp.code == 401 || resp.code == 403) {
+            val server = try { resp.header("Server") ?: "" } catch (_: Exception) { "" }
+            val body = parts.second
+            val cfHeaders = server.contains("cloudflare", true)
+            val cfBody = body.contains("cloudflare", true) || body.contains("cf-ray", true) ||
+                body.contains("Attention Required", true) || body.contains("Just a moment", true)
+            if (cfHeaders && cfBody) {
+                return com.codespace.ide.chat.ChatHttpException(
+                    resp.code,
+                    "Firewall block (" + resp.code + "): the endpoint's web protection (Cloudflare) rejected this app's connection BEFORE your API key was checked. Your key may be fine. Try a different endpoint URL, or enter model IDs manually in Settings.",
+                    retryAfterMs(resp), true,
+                )
+            }
+        }
+        return com.codespace.ide.chat.ChatHttpException(resp.code, parts.first, retryAfterMs(resp))
+    }
+
     /** Clean vendor error + raw body behind a RAW_RESPONSE block (ChatErrorBubble expands it). */
     internal fun transportError(prefix: String, resp: okhttp3.Response): String {
         val (clean, raw) = transportErrorParts(prefix, resp)
@@ -252,7 +279,7 @@ internal object OpenAiCompatibleTransport {
             if (bearer) builder.header("Authorization", "Bearer $apiKey")
             val resp = http.newCall(builder.get().build()).execute()
             if (!resp.isSuccessful) {
-                throw com.codespace.ide.chat.ChatHttpException(resp.code, transportErrorParts("Model list fetch failed", resp).first, retryAfterMs(resp))
+                throw classifyHttpError(resp, "Model list fetch failed")
             }
             val bodyText = resp.body?.string() ?: throw Exception("Model list fetch failed: empty response body.")
             val arr = try { JSONObject(bodyText).getJSONArray("data") } catch (_: Exception) {

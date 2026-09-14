@@ -95,7 +95,7 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
         mutableStateMapOf<String, AiKeyUiState>().apply {
             providers.forEach {
                 put(it.id, if (it.id == "custom") {
-                    AiKeyUiState(urlDraft = CustomEndpointStore.baseUrl ?: "")
+                    AiKeyUiState(urlDraft = CustomEndpointStore.baseUrl ?: "", manualDraft = com.codespace.ide.chat.CustomEndpointStore.manualModels().joinToString(", "))
                 } else AiKeyUiState())
             }
         }
@@ -380,6 +380,63 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                         },
                     ) { Text(if (CustomEndpointStore.baseUrl == null) "Save endpoint" else "Update endpoint") }
                 }
+
+                // CE-ESCAPE (2026-09-14): manual model IDs \u2014 the Cline-style
+                // escape hatch. The user types model IDs; they appear in the picker
+                // and remain usable even when the endpoint's /models fetch is
+                // WAF-blocked, unreachable or wrong-path.
+                OutlinedTextField(
+                    value = state.manualDraft,
+                    onValueChange = { raw ->
+                        val cur = uiStates[provider.id] ?: state
+                        uiStates[provider.id] = cur.copy(manualDraft = raw, manualError = null, manualSaved = false)
+                    },
+                    label = { Text("Manual model IDs") },
+                    singleLine = true,
+                    isError = state.manualError != null,
+                    supportingText = if (state.manualError != null) {
+                        { Text(state.manualError ?: "", color = MaterialTheme.colorScheme.error) }
+                    } else {
+                        { Text("Optional: comma-separated, e.g. mistral-large-latest, mistral-small-latest \u2014 always pickable even if the model list fails") }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    if (state.manualSaved) {
+                        Text("Model IDs saved", style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+                    }
+                    Button(
+                        shape = RoundedCornerShape(10.dp),
+                        onClick = {
+                            val trimmed = state.manualDraft.trim()
+                            val ids = trimmed.split(',', ';', ' ')
+                                .map { it.trim() }.filter { it.isNotEmpty() }
+                            if (ids.isEmpty()) {
+                                uiStates[provider.id] = state.copy(
+                                    manualError = "Enter at least one model ID, e.g. mistral-large-latest",
+                                )
+                            } else {
+                                com.codespace.ide.chat.CustomEndpointStore.setManualModels(ids.joinToString(", "))
+                                val cur = uiStates[provider.id] ?: state
+                                uiStates[provider.id] = cur.copy(manualSaved = true, manualError = null)
+                                // A manual list makes the provider usable even
+                                // without a live fetch \u2014 re-run the check so the
+                                // status line reflects the new reality.
+                                if (savedKeyIds.contains(provider.id)) {
+                                    uiStates[provider.id] =
+                                        (uiStates[provider.id] ?: cur).copy(liveStatus = LiveStatus.CHECKING)
+                                    runLiveCheck(provider, tokenStore, uiStates, scope)
+                                }
+                            }
+                        },
+                    ) { Text("Save model IDs") }
+                }
             }
 
             // ── Key editor (phase 1): one input, auto-save, empty = delete ──
@@ -504,6 +561,10 @@ private data class AiKeyUiState(
     // Custom-endpoint URL editor (provider id "custom" only)
     val urlDraft: String = "",
     val urlError: String? = null,
+    // CE-ESCAPE: manual model IDs editor (custom only)
+    val manualDraft: String = "",
+    val manualError: String? = null,
+    val manualSaved: Boolean = false,
     // MULTI-KEY: per-slot live-check results (slot suffix -> status line)
     val slotChecks: Map<String, String> = emptyMap(),
     // MULTI-KEY: "+ Add another key" inline editor
@@ -547,7 +608,7 @@ private fun runLiveCheck(
                 provider.fetchModels(k)
             }
         } catch (e: Exception) {
-            fetchError = e.message?.take(120)
+            fetchError = e.message?.take(200)
             emptyList()
         }
         val current = uiStates[provider.id] ?: AiKeyUiState()

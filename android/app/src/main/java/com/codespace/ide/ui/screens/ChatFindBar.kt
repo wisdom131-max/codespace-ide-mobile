@@ -47,7 +47,11 @@ internal fun ChatFindBar(
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box {
+            // R7-FIND-FIX (2026-09-14): this Box had NO width modifier \u2014 inside
+            // the weighted Row it laid out at ~zero width, so typed text WAS
+            // captured (match count ticked) but never drawn. Give the field the
+            // full width of its container.
+            Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) {
                     Text("Find in chat", fontSize = 12.sp, color = colors.textSecondary)
                 }
@@ -57,6 +61,7 @@ internal fun ChatFindBar(
                     singleLine = true,
                     textStyle = TextStyle(fontSize = 12.sp, color = colors.text),
                     cursorBrush = SolidColor(colors.accent),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

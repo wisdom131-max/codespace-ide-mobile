@@ -65,12 +65,27 @@ class CustomOpenAiProvider : ChatProvider {
         )
     }
 
-    /** Live model list from the user's own server: GET {base}/models. */
+    /**
+     * Live model list from the user's own server: GET {base}/models.
+     * CE-ESCAPE (2026-09-14): manual model IDs are MERGED with the live list,
+     * and serve as the FALLBACK when the live fetch fails for any reason
+     * (WAF block, unreachable, wrong path). A broken /models endpoint can
+     * never make the provider unusable \u2014 Cline's approach: the user
+     * always has the final say on model IDs.
+     */
     override suspend fun fetchModels(apiKey: String?): List<String> {
-        val base = CustomEndpointStore.baseUrl ?: return emptyList()
-        if (apiKey.isNullOrBlank()) return emptyList()
-        return OpenAiCompatibleTransport.fetchModelList(modelsUrl(base), apiKey)
-            .take(60)
+        val manual = CustomEndpointStore.manualModels()
+        val base = CustomEndpointStore.baseUrl ?: return manual
+        if (apiKey.isNullOrBlank()) return manual
+        val live = try {
+            OpenAiCompatibleTransport.fetchModelList(modelsUrl(base), apiKey).take(60)
+        } catch (e: Exception) {
+            if (manual.isEmpty()) throw e
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[custom-endpoint] live /models failed (" + (e.message?.take(80) ?: "no detail") + ") \u2014 falling back to manual model IDs", "chat")
+            return manual
+        }
+        return (manual + live).distinct()
     }
 
     /** STREAMING: OpenAI-compatible SSE against the user's configured server. */

@@ -33,4 +33,23 @@ object CustomEndpointStore {
                 else p.edit().putString("base_url", value.trim()).apply()
             } catch (_: Exception) { }
         }
+
+    /**
+     * CE-ESCAPE (manual model IDs, Cline-style): user-entered model IDs for the
+     * custom endpoint, separated by commas/semicolons/spaces. Used as a fallback
+     * when the live /models fetch fails (WAF-blocked, unreachable, wrong path)
+     * and merged with the live list when it works \u2014 a broken model-list
+     * endpoint can never block chat entirely.
+     */
+    fun manualModels(): List<String> = try {
+        (prefs?.getString("manual_models", "") ?: "")
+            .split(',', ';', ' ', '\n')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+    } catch (_: Exception) { emptyList() }
+
+    fun setManualModels(raw: String) {
+        try { prefs?.edit()?.putString("manual_models", raw)?.apply() } catch (_: Exception) { }
+    }
 }

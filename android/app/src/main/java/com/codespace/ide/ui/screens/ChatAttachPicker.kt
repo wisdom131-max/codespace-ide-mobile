@@ -8,12 +8,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -160,6 +162,11 @@ internal fun ChatAttachPickerDialog(
     onPickScreenshot: (() -> Unit)? = null,
 ) {
     if (projectRoot.isNullOrBlank()) { onDismiss(); return }
+    // R3-PICKER-FIX (2026-09-14): the dialog body overflowed short screens with
+    // no scroll \u2014 sections below the fold (search bar, file list) were simply
+    // unreachable. Whole body now scrolls; the file list keeps its fixed height.
+    val maxDialogH = (android.content.res.Resources.getSystem().displayMetrics.heightPixels /
+        android.content.res.Resources.getSystem().displayMetrics.density * 0.85f).dp
     var query by remember { mutableStateOf("") }
     val allFiles = remember(projectRoot) { walkProjectFiles(projectRoot) }
     val shown = remember(query, allFiles) {
@@ -173,7 +180,7 @@ internal fun ChatAttachPickerDialog(
             color = colors.background,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState()).heightIn(max = maxDialogH)) {
                 Text(
                     "Attach file to chat",
                     color = colors.text,

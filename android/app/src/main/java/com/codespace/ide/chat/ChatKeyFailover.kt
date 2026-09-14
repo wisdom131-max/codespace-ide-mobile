@@ -67,6 +67,12 @@ object ChatKeyFailover {
                         // Output already streamed — retrying would duplicate it.
                         throw he
                     }
+                    if (he.isWafBlock) {
+                        // CE-CLASSIFY: firewall block — NOT a key problem. Never
+                        // cool keys down for it; the message already explains.
+                        onInfo?.invoke("[KEY-FAILOVER] firewall block (" + he.statusCode + ") \u2014 NOT a key rejection; keys not cooled")
+                        throw he
+                    }
                     if (he.statusCode == 401 || he.statusCode == 403) {
                         authCooldowns[suffix] = System.currentTimeMillis() + AUTH_COOLDOWN_MS
                         onInfo?.invoke("[KEY-FAILOVER] '" + label + "' rejected (" + he.statusCode + ") \\u2014 switching to the next key")
