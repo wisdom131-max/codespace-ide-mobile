@@ -17,7 +17,7 @@
 | # | Batch | File | Status |
 |---|---|---|---|
 | B01 | Editor core | [B01-editor-core.md](B01-editor-core.md) | ✅ DONE 2026-09-14 |
-| B02 | Command & keybinding system (palette, menus, context keys, dispatch) | B02-command-keybinding.md | ⬜ |
+| B02 | Command & keybinding system (palette, menus, context keys, dispatch) | [B02-command-keybinding.md](B02-command-keybinding.md) | ✅ DONE 2026-09-14 |
 | B03 | File explorer & workspace (explorer, tabs/groups/split, breadcrumbs, autosave/backup, workspace trust) | B03-files-workspace.md | ⬜ |
 | B04 | IntelliSense (completions, snippets, hover, sig help, smart select, rename, format, code actions) | B04-intellisense.md | ⬜ |
 | B05 | Global search & replace (search editor, replace preview) | B05-search-replace.md | ⬜ |
@@ -40,6 +40,12 @@ Edges recorded so far (B01):
 - SCM ⇄ editor decorations (blame gutter, GitDiffAnalyzer, PendingChangesStore apply)
 - keybindings ⇄ core editor dispatch (KeyBindingRegistry/KeyInsertDispatcher ⇔ coreCommands.ts)
 - tabs/views ⇄ editor view state (SplitViewStore/EditorViewStateEffects ⇔ editorState contrib)
+
+Edges recorded so far (B02):
+- command/keybinding dispatch ⇄ editor ops, IntelliSense actions, tab actions (KeyBindingRegistry 34-action enum ⇔ CommandsRegistry)
+- palette ⇄ files + settings routing (single fuzzy mode ⇔ multi-provider quick access)
+- MISSING across app: when-clause context-key DSL — VS Code's core glue for context-sensitive bindings/menus (largest structural gap found in B02)
+- terminal/chat own separate key paths (⇔ VS Code per-context keybinding maps)
 
 ## Notes
 

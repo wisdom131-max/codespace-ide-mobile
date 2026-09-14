@@ -86,12 +86,12 @@ Files: `editor/CodeEditor.kt` (5,292 lines — the monolith), plus the extracted
 | Whitespace/EOL render + unusual terminators | PARTIAL | whitespace render exists; no mixed-EOL detector (unicodeHighlighter/unusualLineTerminators both MISSING) |
 | Unicode highlighter | MISSING | — |
 | Lines ops (linesOperations) | PARTIAL | BuiltinSourceActions; sort-lines verify |
-| Comment toggle (contrib/comment) | MISSING | no toggle-comment action found in editor/ |
+| Comment toggle (contrib/comment) | PARTIAL | COMMENT_TOGGLE action wired (CodeEditor:3006; B02 erratum 2026-09-14) — full line-comment modes (block comments) verify |
 | Indentation (contrib/indentation, indentationGuesser.ts) | PARTIAL | auto-indent on enter + DocumentFormatter; no indent auto-detection per file |
 | Clipboard contrib (copy line down etc.) | PARTIAL | core clipboard yes; copy-line-down verify |
 | Links in editor (contrib/links) | MISSING | no clickable URL detection |
 | DnD text (contrib/dnd) | N/A on touch | long-press drag select exists instead (different paradigm) |
-| Font zoom (contrib/fontZoom) | MISSING | global font size only |
+| Font zoom (contrib/fontZoom) | PARTIAL | ZOOM_IN/OUT/RESET actions in KeyBindingRegistry (B02 erratum 2026-09-14) |
 | Placeholder text | PARTIAL | empty-state placeholder text exists |
 | Read-only mode banner (readOnlyMessage) | MISSING | — |
 | Editor state save/restore (contrib/editorState) | HAVE | PERSIST-A + per-view maps + find-state — exceeds VS Code scope (survives process death) |
