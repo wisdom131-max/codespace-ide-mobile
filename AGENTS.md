@@ -3658,3 +3658,13 @@ B03-files-workspace.md: VS Code side = explorerView/openEditorsView, editorGroup
 ### [DOCS] vscode-parity B04 COMPLETE
 B04-intellisense.md: VS Code side = languageFeatureRegistry pivot + contrib members (suggest/snippet/hover/parameterHints/gotoSymbol/rename/format/codeAction/inlineCompletions/wordHighlighter/smartSelect/inlayHints/documentSymbols); ours = full lsp/ package (19 files KLS JsonRPC: sync, hover, completion, signature, codeAction, format, diagnostics, semantic tokens, workspace) + CompletionEngine w/ history/refilter + SnippetEngine + choices + SignatureHelp trio + RenameDialog + LightbulbIndicator + DocumentFormatter + ghost text + smart select + inlay. HAVE: completion, hover, sig help, code actions, rename, format. Cheap wins queued: on-type formatting, format-on-save (pairs B03 Q2), goto references binding. 6 open questions (B04 §6). Strongest equivalence to date — lsp/ package mirrors the languageFeatureRegistry pivot.
 **Next on roadmap (ALL pending items):** B05 global search & replace (next turn) -> B06..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED.
+
+## [2026-09-14 22:20 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B05: global search & replace)
+
+**Commit:** (this push) | **CI:** docs-only
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity B05 COMPLETE
+B05-search-replace.md: VS Code side = searchView + patternInput + replaceService (preview replace, $1 capture groups), searchActions family, searchEditor (results-as-document), quickTextSearch + anythingQuickAccess, AISearch.ts (new in-tree AI search), contrib/find (findState, findWidgetSearchHistory, replacePattern); ours = FindReplaceBar (regex/nav/replace-all, F1 layout fixed) + SearchResultsAttach (project content search as CHAT ATTACHMENT ONLY: 500-file/80-line/4k-char caps, contains-ignoreCase, overlays R6 staged edits — unique parity advantage) + name/symbol/shell-history search panels. BIGGEST GAP SO FAR: no search view UI, no project-wide replace, no glob filters, no regex toggles. 5 open questions (B05 §6).
+**Next on roadmap (ALL pending items):** B06 terminal (next turn) -> B07..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED.

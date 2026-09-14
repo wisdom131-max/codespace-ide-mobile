@@ -20,7 +20,7 @@
 | B02 | Command & keybinding system (palette, menus, context keys, dispatch) | [B02-command-keybinding.md](B02-command-keybinding.md) | ✅ DONE 2026-09-14 |
 | B03 | File explorer & workspace (explorer, tabs/groups/split, breadcrumbs, autosave/backup, workspace trust) | [B03-files-workspace.md](B03-files-workspace.md) | ✅ DONE 2026-09-14 |
 | B04 | IntelliSense (completions, snippets, hover, sig help, smart select, rename, format, code actions) | [B04-intellisense.md](B04-intellisense.md) | ✅ DONE 2026-09-14 |
-| B05 | Global search & replace (search editor, replace preview) | B05-search-replace.md | ⬜ |
+| B05 | Global search & replace (search editor, replace preview) | [B05-search-replace.md](B05-search-replace.md) | ✅ DONE 2026-09-14 |
 | B06 | Terminal (xterm, profiles, shell integration, persistent sessions) | B06-terminal.md | ⬜ |
 | B07 | Source control (SCM API, git, diff/merge editor, blame, timeline) | B07-source-control.md | ⬜ |
 | B08 | Debugger (DAP, breakpoints, watch/repl, inline values) | B08-debugger.md | ⬜ |
@@ -58,6 +58,12 @@ Edges recorded so far (B04):
 - HAVEs: completion popup+history+refilter, hover, signature help, code actions w/ lightbulb, rename (dialog), format doc/selection
 - cheap parity wins queued: on-type formatting, format-on-save (pairs w/ B03 Q2), goto references/type-def binding
 - ghost text (AI) shares the Copilot/AI provider stack (→ B13)
+
+Edges recorded so far (B05):
+- BIGGEST FEATURE GAP of the sweep so far: no search view UI and no project-wide replace (engine exists as chat attachment only — SearchResultsAttach)
+- UNIQUE PARITY ADVANTAGE: our search overlays R6 PendingChangesStore staged edits — VS Code cannot search unsaved AI-staged state
+- AI search (AISearch.ts now in-tree VS Code): ours is inverse — search FEEDS AI; both shapes documented
+- editor find/replace PARTIAL: regex+nav+replace-all HAVE, no history/case-preserve
 
 ## Notes
 
