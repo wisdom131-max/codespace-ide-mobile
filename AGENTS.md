@@ -3608,3 +3608,23 @@ CustomEndpointStore.manualModels()/setManualModels (plain prefs). Custom provide
 
 **New re-test batch (FIX-2026-09-14):** F1 portrait find bar: open find, field usable, toggles on 2nd row, landscape unchanged single row. F2 find-in-chat: type -> text VISIBLE, filters transcript, match count ticks. F3 voice: mic -> speak -> text lands; if not, read [voice] Output line and report resultCode. F4 attach picker on portrait: scroll reaches search bar + file list. F5 perf: after ~5s idle ONE quiet line then silence; [perf] STALL lines now have HH:MM:SS. F6 Mistral custom endpoint: re-check live status line -> firewall-block message (not "rejected"), keys NOT cooled; enter manual model IDs (e.g. mistral-large-latest) -> picker lists it without any /models fetch -> chat works through the manual model.
 **Next on roadmap (ALL pending items):** Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B (terminal per-session state audit) -> PERSIST-C/D. VS Code FULL-SOURCE parity sweep (vscode-parity/ folder, batched, plan awaiting Wisdom approval). TLS/Cloudflare root-cause: CE-CLASSIFY diagnostic settles WAF vs key on first F6 retest. MC-3 tap-collapse. PEEK PARKED.
+
+## [2026-09-14 20:05 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B01: editor core)
+
+**Commit:** (this push) | **CI:** docs-only (workflow runs, green expected)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity sweep START — B01 editor core COMPLETE
+NEW top-level folder vscode-parity/ (Wisdom-approved plan 2026-09-14): INDEX.md (TOC 14 batches + master connection map) + B01-editor-core.md. B01 method: live microsoft/vscode listings (src/vs/editor/contrib 55 contribs, common/model, common/cursor, browser/viewParts) vs our repo greps at 9e9cb6a. Highlights: our editorState persistence (PERSIST-A) and TextMate engine are HAVE; column selection, bracket/indent guides, comment toggle, unicode highlighter, cursor-undo, links-in-editor are MISSING; undo lacks per-snapshot cursor restore (VS Code editStack stores it); sticky scroll single-line vs VS Code multi-line. 5 open questions queued for on-device verification (B01 §6). Next batches B02..B14 per INDEX.
+**Next on roadmap (ALL pending items):** B02 command/keybinding system (next turn) -> B03..B14 one per turn. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare root-cause via F6 retest. MC-3 tap-collapse. PEEK PARKED.
+
+## [2026-09-14 20:05 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B01: editor core)
+
+**Commit:** (this push) | **CI:** docs-only (workflow runs, green expected)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity sweep START — B01 editor core COMPLETE
+NEW top-level folder vscode-parity/ (Wisdom-approved plan 2026-09-14): INDEX.md (TOC 14 batches + master connection map) + B01-editor-core.md. B01 method: live microsoft/vscode listings (src/vs/editor/contrib 55 contribs, common/model, common/cursor, browser/viewParts) vs our repo greps at 9e9cb6a. Highlights: our editorState persistence (PERSIST-A) and TextMate engine are HAVE; column selection, bracket/indent guides, comment toggle, unicode highlighter, cursor-undo, links-in-editor are MISSING; undo lacks per-snapshot cursor restore (VS Code editStack stores it); sticky scroll single-line vs VS Code multi-line. 5 open questions queued for on-device verification (B01 §6). Next batches B02..B14 per INDEX.
+**Next on roadmap (ALL pending items):** B02 command/keybinding system (next turn) -> B03..B14 one per turn. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare root-cause via F6 retest. MC-3 tap-collapse. PEEK PARKED.
