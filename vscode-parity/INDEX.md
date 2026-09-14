@@ -18,7 +18,7 @@
 |---|---|---|---|
 | B01 | Editor core | [B01-editor-core.md](B01-editor-core.md) | ✅ DONE 2026-09-14 |
 | B02 | Command & keybinding system (palette, menus, context keys, dispatch) | [B02-command-keybinding.md](B02-command-keybinding.md) | ✅ DONE 2026-09-14 |
-| B03 | File explorer & workspace (explorer, tabs/groups/split, breadcrumbs, autosave/backup, workspace trust) | B03-files-workspace.md | ⬜ |
+| B03 | File explorer & workspace (explorer, tabs/groups/split, breadcrumbs, autosave/backup, workspace trust) | [B03-files-workspace.md](B03-files-workspace.md) | ✅ DONE 2026-09-14 |
 | B04 | IntelliSense (completions, snippets, hover, sig help, smart select, rename, format, code actions) | B04-intellisense.md | ⬜ |
 | B05 | Global search & replace (search editor, replace preview) | B05-search-replace.md | ⬜ |
 | B06 | Terminal (xterm, profiles, shell integration, persistent sessions) | B06-terminal.md | ⬜ |
@@ -46,6 +46,12 @@ Edges recorded so far (B02):
 - palette ⇄ files + settings routing (single fuzzy mode ⇔ multi-provider quick access)
 - MISSING across app: when-clause context-key DSL — VS Code's core glue for context-sensitive bindings/menus (largest structural gap found in B02)
 - terminal/chat own separate key paths (⇔ VS Code per-context keybinding maps)
+
+Edges recorded so far (B03):
+- working-copy pivot MISSING: text-file-only dirty state; R6 PendingChangesStore is a bespoke mini-working-copy (biggest structural note of B03)
+- explorer decorations from git MISSING in tree (user-visible gap); TimelinePanel = local-only, git merge pending (→ B07)
+- hot-exit content backup MISSING = the missing half of PERSIST-A (view state restored, buffer content not) (→ B14)
+- breadcrumbs symbol segment needs LSP doc symbols (→ B09)
 
 ## Notes
 

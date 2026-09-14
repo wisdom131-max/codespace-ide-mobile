@@ -3638,3 +3638,13 @@ NEW top-level folder vscode-parity/ (Wisdom-approved plan 2026-09-14): INDEX.md 
 ### [DOCS] vscode-parity B02 COMPLETE (+ B01 errata)
 B02-command-keybinding.md: VS Code side = commands.ts / keybindingResolver + usLayoutResolvedKeybinding / contextkey scanner (ContextKeyExpr when-DSL) / MenuRegistry / quickaccess commandsQuickAccess; ours = KeyBindingRegistry (34-action enum, rebind+persist), KeyInsertDispatcher, KeybindingSettingsPanel, palette (ProjectShellScreen ~2132, 55 MenuActions, fuzzy). Verdicts: keybinding persistence HAVE; palette/rebind/actions PARTIAL; chords, context-key when-DSL, declarative menu registry, layout independence MISSING (when-DSL = biggest structural gap). B01 ERRATA: comment toggle + font zoom exist (actions wired) — B01 table corrected. 3 open questions queued (B02 §6).
 **Next on roadmap (ALL pending items):** B03 file explorer & workspace (next turn) -> B04..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED.
+
+## [2026-09-14 21:40 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B03: file explorer & workspace)
+
+**Commit:** (this push) | **CI:** #2798 first attempt FAILED on transient network (Hilt plugin unresolvable from Google/Maven — same tree built green #2796; re-run queued, not a code issue)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity B03 COMPLETE
+B03-files-workspace.md: VS Code side = explorerView/openEditorsView, editorGroupView + editorDropTarget + editorAutoSave, breadcrumbs*, textFileEditorModel + save participants, workingCopyBackupService/Tracker (hot exit), timeline, workspaceTrust; ours = ExplorerPane (CRUD+Trash+local-history), tabs/splits (PAD-2 = views-of-file NOT groups), breadcrumbs path-only, manual-save only (no autosave), view-state restores but unsaved CONTENT does not (PERSIST-A half), no untitled/scratch, no git decorations in tree, no multi-root, TimelinePanel local-only. 4 open questions (B03 §6). Biggest structural note: no unified working-copy service — R6 PendingChangesStore is a bespoke mini-working-copy.
+**Next on roadmap (ALL pending items):** B04 IntelliSense (next turn) -> B05..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED.
