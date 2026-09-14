@@ -87,6 +87,13 @@ Edges recorded so far (B09):
 - Gaps: no declarative LanguageConfiguration registry (static per-lang data hardcoded), background tokenization behavior unknown on huge files, multi-language server support partial (KLS-first)
 - comment threads + languageStatus parked until B10 extension question
 
+Edges recorded so far (B10):
+- VERDICT: impossible-parity confirmed (extension host = Node RPC process; out of scope) — batch delivered as analog map
+- our ONE true pluggable boundary = MCP (mcp_* tools, permission-gated) — functionally our extension API
+- second "installable" surface = R9 modes (.agent.md) + skills — declarative user files extending chat
+- candidate roadmap item: "extension-lite" pack format (modes+skills+grammars+snippet packs) — declarative files, no host needed
+- BYOK AI stack = HAVE-UNIQUE: 7 providers + custom endpoints + key pool are CORE for us; VS Code ships no providers at all
+
 ## Notes
 
 - The user's roadmap/testing protocol is unaffected: parity files are docs-only

@@ -3708,3 +3708,13 @@ B08-debug-dap.md: VS Code side = debugService/Session/AdapterManager, breakpoint
 ### [DOCS] vscode-parity B09 COMPLETE
 B09-language-lsp.md: VS Code side = languageConfiguration + registry, textMateTokenizationFeature + backgroundTokenization, stickyScroll/folding/bracketMatching/indentation contribs, callHierarchy/typeHierarchy/comments/languageStatus; ours = BIGGEST POSITIVE SURPRISE OF SWEEP: IncrementalTmHighlighter (real TextMate layer) + SemanticTokensApplier (two-layer color model matches VS Code shape), sticky scroll (R10, re-test pending), call AND type hierarchy (CallHierarchyPanel), folding, BracketPairConfig, toggle comment. Gaps: no declarative LanguageConfiguration registry, background-tokenization behavior on huge files unknown, multi-language servers partial (KLS-first), comment threads + languageStatus parked until B10. 6 open questions (B09 §6).
 **Next on roadmap (ALL pending items):** B10 extension system (next turn) -> B11..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-15 00:15 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B10: extension system)
+
+**Commit:** (this push) | **CI:** docs-only
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity B10 COMPLETE
+B10-extension-system.md: IMPOSSIBLE-PARITY confirmed (out-of-process Node extension host + marketplace out of scope on-device) — delivered as ANALOG MAP instead. Map: git/scm=ours-built-in, debug adapters=compile-time, languages=TM grammars+lsp, chat modes=CustomModeStore R9, skills=SkillsCatalog, tools=MCP mcp_* (our ONE true pluggable boundary, permission-gated). HAVE-UNIQUE: BYOK AI stack (7 providers + custom endpoints + key pool) is CORE for us vs VS Code shipping none. CANDIDATE ROADMAP ITEM: "extension-lite" pack format (modes+skills+grammars+snippets as declarative files, no host needed). 5 open questions (B10 §6).
+**Next on roadmap (ALL pending items):** B11 problems/output/diagnostics (next turn) -> B12 UI/workbench -> B13 chat/AI -> B14 tasks/lifecycle -> FINAL REVIEW. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
