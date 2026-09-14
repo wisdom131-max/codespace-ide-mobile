@@ -19,7 +19,7 @@
 | B01 | Editor core | [B01-editor-core.md](B01-editor-core.md) | ✅ DONE 2026-09-14 |
 | B02 | Command & keybinding system (palette, menus, context keys, dispatch) | [B02-command-keybinding.md](B02-command-keybinding.md) | ✅ DONE 2026-09-14 |
 | B03 | File explorer & workspace (explorer, tabs/groups/split, breadcrumbs, autosave/backup, workspace trust) | [B03-files-workspace.md](B03-files-workspace.md) | ✅ DONE 2026-09-14 |
-| B04 | IntelliSense (completions, snippets, hover, sig help, smart select, rename, format, code actions) | B04-intellisense.md | ⬜ |
+| B04 | IntelliSense (completions, snippets, hover, sig help, smart select, rename, format, code actions) | [B04-intellisense.md](B04-intellisense.md) | ✅ DONE 2026-09-14 |
 | B05 | Global search & replace (search editor, replace preview) | B05-search-replace.md | ⬜ |
 | B06 | Terminal (xterm, profiles, shell integration, persistent sessions) | B06-terminal.md | ⬜ |
 | B07 | Source control (SCM API, git, diff/merge editor, blame, timeline) | B07-source-control.md | ⬜ |
@@ -52,6 +52,12 @@ Edges recorded so far (B03):
 - explorer decorations from git MISSING in tree (user-visible gap); TimelinePanel = local-only, git merge pending (→ B07)
 - hot-exit content backup MISSING = the missing half of PERSIST-A (view state restored, buffer content not) (→ B14)
 - breadcrumbs symbol segment needs LSP doc symbols (→ B09)
+
+Edges recorded so far (B04):
+- lsp/ package (19 files, KLS JsonRPC) is our analog of VS Code languageFeatureRegistry pivot — strongest equivalence so far
+- HAVEs: completion popup+history+refilter, hover, signature help, code actions w/ lightbulb, rename (dialog), format doc/selection
+- cheap parity wins queued: on-type formatting, format-on-save (pairs w/ B03 Q2), goto references/type-def binding
+- ghost text (AI) shares the Copilot/AI provider stack (→ B13)
 
 ## Notes
 

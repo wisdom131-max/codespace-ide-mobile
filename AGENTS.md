@@ -3648,3 +3648,13 @@ B02-command-keybinding.md: VS Code side = commands.ts / keybindingResolver + usL
 ### [DOCS] vscode-parity B03 COMPLETE
 B03-files-workspace.md: VS Code side = explorerView/openEditorsView, editorGroupView + editorDropTarget + editorAutoSave, breadcrumbs*, textFileEditorModel + save participants, workingCopyBackupService/Tracker (hot exit), timeline, workspaceTrust; ours = ExplorerPane (CRUD+Trash+local-history), tabs/splits (PAD-2 = views-of-file NOT groups), breadcrumbs path-only, manual-save only (no autosave), view-state restores but unsaved CONTENT does not (PERSIST-A half), no untitled/scratch, no git decorations in tree, no multi-root, TimelinePanel local-only. 4 open questions (B03 §6). Biggest structural note: no unified working-copy service — R6 PendingChangesStore is a bespoke mini-working-copy.
 **Next on roadmap (ALL pending items):** B04 IntelliSense (next turn) -> B05..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED.
+
+## [2026-09-14 22:00 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B04: IntelliSense)
+
+**Commit:** (this push) | **CI:** docs-only
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity B04 COMPLETE
+B04-intellisense.md: VS Code side = languageFeatureRegistry pivot + contrib members (suggest/snippet/hover/parameterHints/gotoSymbol/rename/format/codeAction/inlineCompletions/wordHighlighter/smartSelect/inlayHints/documentSymbols); ours = full lsp/ package (19 files KLS JsonRPC: sync, hover, completion, signature, codeAction, format, diagnostics, semantic tokens, workspace) + CompletionEngine w/ history/refilter + SnippetEngine + choices + SignatureHelp trio + RenameDialog + LightbulbIndicator + DocumentFormatter + ghost text + smart select + inlay. HAVE: completion, hover, sig help, code actions, rename, format. Cheap wins queued: on-type formatting, format-on-save (pairs B03 Q2), goto references binding. 6 open questions (B04 §6). Strongest equivalence to date — lsp/ package mirrors the languageFeatureRegistry pivot.
+**Next on roadmap (ALL pending items):** B05 global search & replace (next turn) -> B06..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED.
