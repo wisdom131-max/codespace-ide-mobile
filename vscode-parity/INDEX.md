@@ -76,6 +76,11 @@ Edges recorded so far (B07):
 - biggest SCM gaps: quickDiff gutter indicators, git-as-timeline merge (B03 edge), explorer git badges (B03), conflict in-editor decorations
 - VS Code scmHistoryChatContext.ts = SCM history as chat context — edge queued for chat attach picker (→ B13)
 
+Edges recorded so far (B08):
+- debug verdict: HAVE core (DAP Node+Python, state machine, breakpoints incl. logpoints, hover eval, stepping); MISSING cheap-win: conditional breakpoints (DAP wire fields likely ready), data/exception bps, launch.json
+- debugChatIntegration.ts (VS Code chat↔debug) — our analog = CrashLog AI path; live-session chat context = future I-round (→ B13)
+- Android-native debug extras (logcat/dex/elf/apk/disassembly) = HAVE-UNIQUE, out of VS Code scope
+
 ## Notes
 
 - The user's roadmap/testing protocol is unaffected: parity files are docs-only

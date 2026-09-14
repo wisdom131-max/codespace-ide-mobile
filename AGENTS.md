@@ -3688,3 +3688,13 @@ B06-terminal.md: VS Code side = xtermTerminal + addons, shell-integration script
 ### [DOCS] vscode-parity B07 COMPLETE
 B07-scm-git.md: VS Code side = scmViewPane + provider abstraction, scmHistoryViewPane graph + scmHistoryChatContext (history-as-chat-context), quickDiff gutter family, git contrib (stage/commit/merge/blame/timeline-provider); ours = GitService 44 ops (stage/branch/tag/stash/rebase/merge/blame/conflicts), SourceControlPane 1,918 lines (history, stash, conflict flow, .gitignore, tags, 30s snapshots), DiffViewer + GitDiffAnalyzer (R6), I4 AI commit wired, blame persisted. Strongest completeness batch yet. Gaps: quickDiff gutter (likely missing), git-into-TimelinePanel merge, explorer git badges, conflict in-editor decorations. 5 open questions (B07 §6).
 **Next on roadmap (ALL pending items):** B08 debug & DAP (next turn) -> B09..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-14 23:30 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B08: debug & DAP)
+
+**Commit:** (this push) | **CI:** docs-only
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity B08 COMPLETE
+B08-debug-dap.md: VS Code side = debugService/Session/AdapterManager, breakpointWidget (inline cond/hit-count edit), disassemblyView + debugMemory, exceptionWidget, debugChatIntegration (chat<->debug), loadedScriptsView, launch.json configs, debugConsoleQuickAccess; ours = UniversalDebugManager (state machine w/ isValidTransition, Variable/StackFrame/Thread/Breakpoint/Watch models), DAPClient + Node/Python adapters, P54 editor breakpoints, logpoints, DebugHoverEvaluate, DebugEditDialogs, thin DebugConsoleSection (96 lines). HAVE-UNIQUE: logcat/dex/elf/apk/disassembly viewers (outside VS Code scope). CHEAP WIN: conditional breakpoints (DAP fields likely ready, grep shows UI absent). 6 open questions (B08 §6).
+**Next on roadmap (ALL pending items):** B09 language features & LSP services (next turn) -> B10..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
