@@ -71,6 +71,11 @@ Edges recorded so far (B06):
 - MISSING w/ cheap-win potential: terminal find-in-buffer, OSC 633 command marks; PARTIAL: session persistence (layout only, processes die), profiles (built-in modes)
 - terminal is pane-bound not tab-bound (VS Code terminalEditor) — structural divergence, likely fine on mobile
 
+Edges recorded so far (B07):
+- SCM verdict: strongest feature-completeness batch so far — 44-op GitService + 1.9k-line pane; HAVEs: full branch/stash/tag/merge/blame/diff/AI-commit(I4)
+- biggest SCM gaps: quickDiff gutter indicators, git-as-timeline merge (B03 edge), explorer git badges (B03), conflict in-editor decorations
+- VS Code scmHistoryChatContext.ts = SCM history as chat context — edge queued for chat attach picker (→ B13)
+
 ## Notes
 
 - The user's roadmap/testing protocol is unaffected: parity files are docs-only

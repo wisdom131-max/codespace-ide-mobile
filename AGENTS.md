@@ -3678,3 +3678,13 @@ B05-search-replace.md: VS Code side = searchView + patternInput + replaceService
 ### [DOCS] vscode-parity B06 COMPLETE
 B06-terminal.md: VS Code side = xtermTerminal + addons, shell-integration scripts (OSC 633), chatTerminalCommandMirror + agentHostPty (AI terminals), terminalEditor (terminal-as-tab), groups, env-var collection, terminalEditingService, profiles; ours = native JNI pty (NativePty/libptynative) + vendored termux emulator, proot/ssh/mcp modes, TerminalSessionStore (per-project saved tabs), OSC 7777 Acode-style file-link bridge (HAVE-UNIQUE), TerminalAiBridge (transcriptTail/recordRun/recordPaste — densest AI-terminal surface, = run_command FlowGate + I3 attach). MISSING: OSC 633 marks, terminal find-in-buffer, env collection, groups, terminal-as-tab (fine on mobile). 5 open questions (B06 §6).
 **Next on roadmap (ALL pending items):** B07 source control & git (next turn) -> B08..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-14 23:05 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B07: source control & git)
+
+**Commit:** (this push) | **CI:** docs-only
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity B07 COMPLETE
+B07-scm-git.md: VS Code side = scmViewPane + provider abstraction, scmHistoryViewPane graph + scmHistoryChatContext (history-as-chat-context), quickDiff gutter family, git contrib (stage/commit/merge/blame/timeline-provider); ours = GitService 44 ops (stage/branch/tag/stash/rebase/merge/blame/conflicts), SourceControlPane 1,918 lines (history, stash, conflict flow, .gitignore, tags, 30s snapshots), DiffViewer + GitDiffAnalyzer (R6), I4 AI commit wired, blame persisted. Strongest completeness batch yet. Gaps: quickDiff gutter (likely missing), git-into-TimelinePanel merge, explorer git badges, conflict in-editor decorations. 5 open questions (B07 §6).
+**Next on roadmap (ALL pending items):** B08 debug & DAP (next turn) -> B09..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
