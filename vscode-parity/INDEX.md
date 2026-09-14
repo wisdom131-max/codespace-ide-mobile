@@ -94,6 +94,13 @@ Edges recorded so far (B10):
 - candidate roadmap item: "extension-lite" pack format (modes+skills+grammars+snippet packs) — declarative files, no host needed
 - BYOK AI stack = HAVE-UNIQUE: 7 providers + custom endpoints + key pool are CORE for us; VS Code ships no providers at all
 
+Edges recorded so far (B11):
+- diagnostic model parity is HIGH: DiagnosticManager (4 severities incl HINT, RelatedInfo chains) + own LintChecker layer + squiggles + quick-fix HAVE
+- HAVE-UNIQUE: SourceHealth states (READY/UNAVAILABLE/FAILED/STALE) — VS Code has no provider-health surface; PortsScanner ~ VS Code Ports view
+- DOUBLE-CONFIRMED GAP: explorer problem badges (markersFileDecorations.ts) — closes B03's most user-visible gap
+- 3rd chat-context edge found: markersChatContext.ts (after SCM history + terminal transcript) — attach-picker candidate (→ B13)
+- CHEAP WIN: file:line links in Output text (open-at-line entry already exists)
+
 ## Notes
 
 - The user's roadmap/testing protocol is unaffected: parity files are docs-only

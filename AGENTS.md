@@ -3718,3 +3718,13 @@ B09-language-lsp.md: VS Code side = languageConfiguration + registry, textMateTo
 ### [DOCS] vscode-parity B10 COMPLETE
 B10-extension-system.md: IMPOSSIBLE-PARITY confirmed (out-of-process Node extension host + marketplace out of scope on-device) — delivered as ANALOG MAP instead. Map: git/scm=ours-built-in, debug adapters=compile-time, languages=TM grammars+lsp, chat modes=CustomModeStore R9, skills=SkillsCatalog, tools=MCP mcp_* (our ONE true pluggable boundary, permission-gated). HAVE-UNIQUE: BYOK AI stack (7 providers + custom endpoints + key pool) is CORE for us vs VS Code shipping none. CANDIDATE ROADMAP ITEM: "extension-lite" pack format (modes+skills+grammars+snippets as declarative files, no host needed). 5 open questions (B10 §6).
 **Next on roadmap (ALL pending items):** B11 problems/output/diagnostics (next turn) -> B12 UI/workbench -> B13 chat/AI -> B14 tasks/lifecycle -> FINAL REVIEW. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-15 00:35 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B11: problems, output & diagnostics)
+
+**Commit:** (this push) | **CI:** docs-only
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity B11 COMPLETE
+B11-problems-output-diagnostics.md: VS Code side = markerService hub, markersView+Table+FilterOptions, markersFileDecorations (explorer badges), markersChatContext (problems-as-chat-context — 3rd chat edge), outputLinkProvider (file:line links in Output); ours = DiagnosticManager full-fidelity model (4 severities, RelatedInfo, SourceHealth READY/UNAVAILABLE/FAILED/STALE — HAVE-UNIQUE provider-health surface), ProblemsPanel 399 + AdvancedProblemsPanel 319, squiggles + QUICK_FIX, own LintChecker/LintAnalyzer layer, AppOutputLog 6 channels (info/build/git/debug/terminal/lsp), PortsScanner. DOUBLE-CONFIRMED GAP: explorer problem badges (B03 both sides). CHEAP WIN: output file:line links. 6 open questions (B11 §6).
+**Next on roadmap (ALL pending items):** B12 UI & workbench chrome (next turn) -> B13 chat/AI -> B14 tasks/lifecycle -> FINAL REVIEW. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
