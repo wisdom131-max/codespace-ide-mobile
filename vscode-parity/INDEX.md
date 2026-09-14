@@ -107,6 +107,12 @@ Edges recorded so far (B12):
 - MISSING (mobile-accepted): auxiliarybar, draggable views, editor-group grids, declarative menu service
 - PERSIST-B counterpart confirmed: VS Code serializes part layout into workspace state — pane/tab persistence audit still pending on our side
 
+Edges recorded so far (B13 = synthesis batch):
+- chat = our STRONGEST parity surface: R6 staged apply/review = chatEditing analog; modes/skills/permission levels/model management all HAVE; BYOK+failover = HAVE-UNIQUE core
+- 2 of 3 chat-context edges UNCONNECTED: problems attach + SCM-history attach (terminal transcript connected) — cheapest remaining chat work
+- MISSING real projects: inline editor-zone chat, checkpoint timeline UI, voice STT pipeline, sessions-as-tabs, todos/plan-review render parts, export/import
+- mobile-accepted: in-editor review overlay replaced by transcript card (R6 shape)
+
 ## Notes
 
 - The user's roadmap/testing protocol is unaffected: parity files are docs-only
