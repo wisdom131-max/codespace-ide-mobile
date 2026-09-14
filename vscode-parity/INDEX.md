@@ -81,6 +81,12 @@ Edges recorded so far (B08):
 - debugChatIntegration.ts (VS Code chat↔debug) — our analog = CrashLog AI path; live-session chat context = future I-round (→ B13)
 - Android-native debug extras (logcat/dex/elf/apk/disassembly) = HAVE-UNIQUE, out of VS Code scope
 
+Edges recorded so far (B09):
+- BIGGEST POSITIVE SURPRISE: IncrementalTmHighlighter = real TextMate syntactic layer (same tech family as VS Code) + SemanticTokensApplier = two-layer color model roughly matches
+- HAVEs beyond expectation: sticky scroll (R10), call AND type hierarchy (CallHierarchyPanel), folding, bracket pairs, toggle comment
+- Gaps: no declarative LanguageConfiguration registry (static per-lang data hardcoded), background tokenization behavior unknown on huge files, multi-language server support partial (KLS-first)
+- comment threads + languageStatus parked until B10 extension question
+
 ## Notes
 
 - The user's roadmap/testing protocol is unaffected: parity files are docs-only

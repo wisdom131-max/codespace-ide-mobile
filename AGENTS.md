@@ -3698,3 +3698,13 @@ B07-scm-git.md: VS Code side = scmViewPane + provider abstraction, scmHistoryVie
 ### [DOCS] vscode-parity B08 COMPLETE
 B08-debug-dap.md: VS Code side = debugService/Session/AdapterManager, breakpointWidget (inline cond/hit-count edit), disassemblyView + debugMemory, exceptionWidget, debugChatIntegration (chat<->debug), loadedScriptsView, launch.json configs, debugConsoleQuickAccess; ours = UniversalDebugManager (state machine w/ isValidTransition, Variable/StackFrame/Thread/Breakpoint/Watch models), DAPClient + Node/Python adapters, P54 editor breakpoints, logpoints, DebugHoverEvaluate, DebugEditDialogs, thin DebugConsoleSection (96 lines). HAVE-UNIQUE: logcat/dex/elf/apk/disassembly viewers (outside VS Code scope). CHEAP WIN: conditional breakpoints (DAP fields likely ready, grep shows UI absent). 6 open questions (B08 §6).
 **Next on roadmap (ALL pending items):** B09 language features & LSP services (next turn) -> B10..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-14 23:55 WAT] — AI Agent: Claude Sonnet 5.6 (PARITY-SWEEP B09: language features & LSP services)
+
+**Commit:** (this push) | **CI:** docs-only
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] vscode-parity B09 COMPLETE
+B09-language-lsp.md: VS Code side = languageConfiguration + registry, textMateTokenizationFeature + backgroundTokenization, stickyScroll/folding/bracketMatching/indentation contribs, callHierarchy/typeHierarchy/comments/languageStatus; ours = BIGGEST POSITIVE SURPRISE OF SWEEP: IncrementalTmHighlighter (real TextMate layer) + SemanticTokensApplier (two-layer color model matches VS Code shape), sticky scroll (R10, re-test pending), call AND type hierarchy (CallHierarchyPanel), folding, BracketPairConfig, toggle comment. Gaps: no declarative LanguageConfiguration registry, background-tokenization behavior on huge files unknown, multi-language servers partial (KLS-first), comment threads + languageStatus parked until B10. 6 open questions (B09 §6).
+**Next on roadmap (ALL pending items):** B10 extension system (next turn) -> B11..B14. Wisdom batched re-tests (F1-F6 + PS-1..PS-9 + R10-1..R10-12 + ALL prior batches: I1-I6, MK, CE, AU, V2/V3/V4, R6/R7/R8, R9). PERSIST-B audit. TLS/Cloudflare via F6. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
