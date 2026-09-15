@@ -38,7 +38,7 @@ internal fun EditorBreakpointDot(isConditional: Boolean) {
  * P54 — debug current-line arrow, extracted from CodeEditor's body (CW3 64KB fix).
  */
 @Composable
-internal fun EditorGutterDebugArrow(fontSize: Float) {
+internal fun EditorGutterDebugArrow(fontSize: Int) {
     androidx.compose.material3.Text(
         text = "\u2192",
         color = Color(0xFFCCA700),
