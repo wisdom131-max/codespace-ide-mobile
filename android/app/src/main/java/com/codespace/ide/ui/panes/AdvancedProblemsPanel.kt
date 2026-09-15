@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,10 @@ import com.codespace.ide.diagnostics.DiagnosticManager
  * Supports: severity filtering, source filtering, search, grouping by file,
  * stale indicators, source health display, and click-to-navigate.
  */
+
+/** CW5: preset applied to the search box when an explorer problem badge opens the panel. */
+internal var ProblemsPreset by mutableStateOf("")
+
 @Composable
 fun AdvancedProblemsPanel(
     onJumpToSource: (filePath: String, line: Int, column: Int) -> Unit,
@@ -61,6 +66,16 @@ fun AdvancedProblemsPanel(
     var searchQuery by remember { mutableStateOf("") }
     var sourceFilter by remember { mutableStateOf<DiagnosticManager.DiagnosticSource?>(null) }
     var expandedFile by remember { mutableStateOf<String?>(null) }
+
+    // CW5: consume the explorer-badge preset one-shot (user typing is never clobbered)
+    LaunchedEffect(ProblemsPreset) {
+        if (ProblemsPreset.isNotEmpty()) {
+            searchQuery = ProblemsPreset
+            showErrors = true
+            showWarnings = true
+            ProblemsPreset = ""
+        }
+    }
 
     // Apply filters
     val filteredDiagnostics = remember(

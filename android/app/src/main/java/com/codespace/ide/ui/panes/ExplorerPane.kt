@@ -234,8 +234,14 @@ fun ExplorerSidePanel(
     /** External refresh trigger: when this changes, the explorer re-scans the file tree.
      *  Used by terminal to notify explorer of file system changes (e.g. after `echo > file.txt`). */
     externalRefreshTrigger: Int = 0,
+    /** CW5: explorer problem badge tap -> open Problems panel filtered to this file name. */
+    onShowProblems: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    // CW5: per-file problem counts (errors to warnings) for explorer badges —
+    // re-keyed whenever the diagnostics list content changes (list equals = structural).
+    val explorerDiags = com.codespace.ide.diagnostics.DiagnosticManager.diagnostics
+    val problemCounts = remember(explorerDiags) { buildProblemCounts(explorerDiags) }
     // Rotation fix (#8): Compose Dialog/AlertDialog windows don't resize when the
     // Activity itself doesn't recreate on rotation (configChanges="orientation|screenSize"
     // in the manifest). Keying on orientation forces a full subtree rebuild so Android
@@ -1316,6 +1322,32 @@ fun ExplorerSidePanel(
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
                             )
+                            // CW5: problem badge — files show own count, folders roll up children
+                            val bpCounts: Pair<Int, Int> = if (node.file.isDirectory) {
+                                var ffe = 0; var ffw = 0
+                                val fprefix = node.file.absolutePath + "/"
+                                for (e in problemCounts.entries) {
+                                    if (e.key.startsWith(fprefix)) { ffe += e.value.first; ffw += e.value.second }
+                                }
+                                ffe to ffw
+                            } else {
+                                problemCounts[node.file.absolutePath]
+                                    ?: problemCounts.entries.firstOrNull { it.key.endsWith("/" + node.file.name) }?.value
+                                    ?: (0 to 0)
+                            }
+                            if (bpCounts.first + bpCounts.second > 0) {
+                                val bpIsError = bpCounts.first > 0
+                                Text(
+                                    (if (bpIsError) bpCounts.first else bpCounts.second).toString(),
+                                    fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                    color = if (bpIsError) Color(0xFFE51400) else Color(0xFFCCA700),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { onShowProblems?.invoke(node.file.name) }
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                            }
                             // Git status badge
                             val gitChar = gitStatus[node.file.absolutePath]
                             if (gitChar != null) {
@@ -2366,6 +2398,26 @@ fun ExplorerSidePanel(
 private fun String.matchesSimpleGlob(pattern: String): Boolean {
     val regex = pattern.replace(".", "\\.").replace("*", ".*").replace("?", ".")
     return try { Regex(regex, RegexOption.IGNORE_CASE).matches(this) } catch (_: Exception) { this.contains(pattern, ignoreCase = true) }
+}
+
+/** CW5: aggregate diagnostics into per-file (errors, warnings) counts. */
+private fun buildProblemCounts(
+    diags: List<com.codespace.ide.diagnostics.DiagnosticManager.Diagnostic>,
+): Map<String, Pair<Int, Int>> {
+    val m = HashMap<String, Pair<Int, Int>>()
+    for (d in diags) {
+        if (d.isStale) continue
+        when (d.severity) {
+            com.codespace.ide.diagnostics.DiagnosticManager.Severity.ERROR -> {
+                val c = m[d.filePath] ?: (0 to 0); m[d.filePath] = (c.first + 1) to c.second
+            }
+            com.codespace.ide.diagnostics.DiagnosticManager.Severity.WARNING -> {
+                val c = m[d.filePath] ?: (0 to 0); m[d.filePath] = c.first to (c.second + 1)
+            }
+            else -> { /* INFO/HINT: not badged */ }
+        }
+    }
+    return m
 }
 
 fun fileIcon(name: String): androidx.compose.ui.graphics.vector.ImageVector {

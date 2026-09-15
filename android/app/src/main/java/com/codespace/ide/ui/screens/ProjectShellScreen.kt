@@ -1391,6 +1391,13 @@ fun ProjectShellScreen(
                             SidePanel.EXPLORER -> ExplorerSidePanel(
                                 projectId = projectId,
                                 externalRefreshTrigger = terminalActivityCounter,
+                                // CW5: badge tap -> Problems panel pre-filtered to the file
+                                onShowProblems = { fileName ->
+                                    com.codespace.ide.ui.panes.ProblemsPreset = fileName
+                                    showBottomPanel = true
+                                    activeBottomTab = BottomTab.PROBLEMS
+                                    activePanel = null
+                                },
                                 onOpenFile = { path ->
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
                                     pushNavEntry(activeEditorTab, scrollTargetLine)

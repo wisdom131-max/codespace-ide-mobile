@@ -3941,3 +3941,19 @@ Audit finding: DebugBreakpoint model + NodeDAPAdapter ALREADY carry condition/lo
 **Files:** NEW ui/panels/BreakpointConditionDialog.kt, M editor/CodeEditor.kt (+OptIn(ExperimentalFoundationApi) on composable, ring render, long-press), M ui/panes/EditorPane.kt (condBpLine state + wiring + dialog host), M debug/UniversalDebugManager.kt (setter).
 
 **Next on roadmap (ALL pending items):** CW5 explorer problem badges (approved, NEXT — code started), CW7 snippet packs + declarative comment/bracket configs (approved). Then: real projects (action registry #1). Wisdom batch-test when all done: CW3 (set bp, long-press, condition i>5 on loop, ring visible, pauses only when true), CW1 (run task w/ error -> Problems; agent make-style run -> Problems), CW4 (tap output line w/ path:line -> editor opens), CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-15 19:40 WAT] — AI Agent: Claude Sonnet 5.6 (CW3 64KB fix + CW5 explorer badges)
+
+**Commit:** (this push) | **CI:** (pending)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [CW3][BUILD-FIX] Method too large: CodeEditorKt.CodeEditor (#2826 failure)
+CW3's ~10 inline gutter lines tipped the ZERO-headroom 64KB limit. Fix = extraction (never feature removal): NEW editor/EditorBreakpointDot.kt holds EditorBreakpointDot (solid dot / CW3 hollow ring) + EditorGutterDebugArrow (P54 arrow). Gutter body now 2 one-line calls — net SMALLER than pre-CW3 baseline. RULE REINFORCED: gutter marker changes go in EditorBreakpointDot.kt, never inline in CodeEditor.
+
+### [CW5][UI] Explorer problem badges (Wisdom-approved)
+Explorer file rows now carry a trailing problem badge: red count for errors, amber for warnings, from the same DiagnosticManager data the Problems panel uses (stale diagnostics skipped). Folders roll up child counts like VS Code MarkersFileDecorations (prefix scan). Badge rounded+padded per UI rule; TAP opens the bottom Problems panel pre-filtered to that file — via NEW internal ProblemsPreset in AdvancedProblemsPanel (one-shot LaunchedEffect consume, never clobbers user typing). Path matching: direct absolute key + endsWith(name) fallback so LSP (host path) and gradle (workspace path) diagnostics both match.
+
+**Files:** NEW editor/EditorBreakpointDot.kt, M editor/CodeEditor.kt (gutter slim), M ui/panes/ExplorerPane.kt (onShowProblems + buildProblemCounts + badge), M ui/panes/AdvancedProblemsPanel.kt (ProblemsPreset + consume), M ui/screens/ProjectShellScreen.kt (badge tap wiring).
+
+**Next on roadmap (ALL pending items):** CW7 snippet packs + declarative comment/bracket configs (approved, NEXT). Then: real projects (action registry #1). Wisdom batch-test when all done: CW5 (break a file -> red badge, fix -> clears; folder rollup; tap badge -> Problems filtered), CW3 (bp long-press condition editor, ring marker, condition i>5), CW1/CW4 retests, CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).

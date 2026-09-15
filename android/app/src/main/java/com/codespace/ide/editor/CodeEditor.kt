@@ -2255,25 +2255,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             ) {
                                 // P54: Debug current-line indicator — yellow arrow (▶) in gutter
                                 if (debugCurrentLine > 0 && lineNum == debugCurrentLine - 1) {
-                                    Text(
-                                        text = "→",
-                                        color = Color(0xFFCCA700),
-                                        fontSize = (fontSize * 0.8f).sp,
-                                    )
+                                    EditorGutterDebugArrow(fontSize)
                                     Spacer(Modifier.width(2.dp))
                                 }
                                 if (breakpointLines.contains(lineNum)) {
-                                    // CW3: hollow ring marks a conditional/log breakpoint
-                                    val condBp = conditionalBreakpointLines.contains(lineNum)
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .then(
-                                                if (condBp) Modifier.border(1.5.dp, Color(0xFFE51400), CircleShape)
-                                                else Modifier.background(Color(0xFFE51400))
-                                            )
-                                    )
+                                    // CW3: ring = conditional/log bp (extracted: CodeEditor is at 64KB)
+                                    EditorBreakpointDot(isConditional = conditionalBreakpointLines.contains(lineNum))
                                     Spacer(Modifier.width(4.dp))
                                 }
                                 Text(
