@@ -3971,3 +3971,18 @@ NOTE: CW3 (conditional breakpoints incl. ring marker) + CW5 (explorer problem ba
 **Files:** M editor/EditorBreakpointDot.kt (Int param).
 
 **Next on roadmap (ALL pending items):** CW7 snippet packs + declarative comment/bracket configs (approved, NEXT — spec FINAL-REVIEW §3 item 7). Then: real projects (action registry #1). Wisdom batch-test when all done + green: CW5 (break a file -> red badge; folder rollup; tap badge -> Problems filtered), CW3 (bp long-press condition editor, ring marker, condition i>5), CW1/CW4 retests, CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-15 20:12 WAT] — AI Agent: Claude Sonnet 5.6 (CW7 — workspace snippet packs)
+
+**Commit:** (this push) | **CI:** (pending)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [CW7][SNIPPETS] Workspace snippet packs (VS Code user-snippets parity) — part 1 of 2
+NEW editor/SnippetPackStore.kt: loads `<workspaceRoot>/.codespace/snippets/<language>.json` + global `all.json` in the exact VS Code user-snippet format: `{ "Function": { "prefix": "fun", "body": ["line1","line2"], "description": "..." } }` (body array or string both accepted). Placeholders $1/${1:label}/$0 are already what our parseSnippet/SnippetSession engine expands — zero new runtime. Pack entries are ADDED to built-in snippets and WIN on prefix collision (VS Code semantics); malformed packs are skipped + [SNIPPETS] Output log, never crash. Workspace root resolved by walking up from the open file (max 8 hops, same pattern as .codespace/modes); mtime-keyed cache so typing a snippet file takes effect on the next completion. Wired into BOTH trigger paths: completion popup (completionsFor) and space/word snippet-expansion matching (2 sites).
+
+CW7 part 2 (NEXT push): declarative comment/bracket configs (.codespace/language-config.json) replacing the hardcoded per-language comment tokens at CodeEditor ~3016.
+
+**Files:** NEW editor/SnippetPackStore.kt, M editor/CodeEditor.kt (allSnippets + 4 call-site threads).
+
+**Next on roadmap (ALL pending items):** CW7 part 2: declarative comment/bracket configs. Then: real projects (action registry #1). Wisdom batch-test when all done + green: CW7 (drop a .codespace/snippets/kotlin.json with prefix "mfun", type mfun -> pack entry appears + expands tabstops; pack overrides built-in same-prefix), CW5 (break a file -> red badge; folder rollup; tap badge -> Problems filtered), CW3 (bp long-press condition editor, ring marker, condition i>5), CW1/CW4 retests, CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).

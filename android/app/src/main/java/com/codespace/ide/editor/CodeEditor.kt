@@ -351,7 +351,17 @@ private fun snippetsFor(lang: Language): List<Completion> = when (lang) {
         Completion("FIXME", CompletionKind.SNIPPET, "FIXME", "Mark as needing a fix"),
     )
 }
-private fun completionsFor(prefix: String, lang: Language): List<Completion> {
+/**
+ * CW7: built-in snippets + workspace snippet pack (.codespace/snippets/<lang>.json
+ * and all.json, VS Code user-snippet format). Pack entries win on label collision.
+ */
+private fun allSnippets(lang: Language, currentFilePath: String?): List<Completion> {
+    val pack = SnippetPackStore.packSnippets(lang, currentFilePath)
+    val packLabels = pack.map { it.label }.toSet()
+    return pack + snippetsFor(lang).filter { it.label !in packLabels }
+}
+
+private fun completionsFor(prefix: String, lang: Language, currentFilePath: String? = null): List<Completion> {
     if (prefix.isEmpty()) return emptyList()
     val spec = LanguageSpecs.forLanguage(lang)
     val p = prefix.lowercase()
@@ -361,7 +371,7 @@ private fun completionsFor(prefix: String, lang: Language): List<Completion> {
     val ty = spec.types.filter { it.lowercase().startsWith(p) }.sorted().map {
         Completion(it, CompletionKind.TYPE, it, hoverDocFor(it))
     }
-    val snips = snippetsFor(lang).filter {
+    val snips = allSnippets(lang, currentFilePath).filter {
         it.label.lowercase().startsWith(p) || it.insertText.lowercase().startsWith(p)
     }
     // C13: Stdlib completions — builtins, modules, and dot-qualified members
@@ -1173,7 +1183,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // inserted character was a dot. Distinguishes from isDotContext which is true
     // whenever the cursor happens to be after a dot (file open, cursor move, etc.).
     val dotWasTyped = editorEvent is EditorEvent.UserTyping && isDotContext
-    val completions = remember(prefix, language, disableBuiltinCompletion) { if (disableBuiltinCompletion) emptyList() else completionsFor(prefix, language) }
+    val completions = remember(prefix, language, disableBuiltinCompletion) { if (disableBuiltinCompletion) emptyList() else completionsFor(prefix, language, currentFilePath) }
     val showCompletionsState = remember { mutableStateOf(false) }
     var showCompletions by showCompletionsState
     // NEW (2026-08-10): Resizable completion popup — drag bottom edge to grow/shrink, like VS Code.
@@ -1770,7 +1780,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                             val twoWord = if (twoWordStart < wordStart) value.text.substring(twoWordStart, cursor) else singleWord
                             if (singleWord.isNotEmpty()) {
-                                val localSnippets = snippetsFor(language)
+                                val localSnippets = allSnippets(language, currentFilePath)
                                 val matched = localSnippets.firstOrNull { it.label == twoWord }
                                     ?: localSnippets.firstOrNull { it.label == singleWord }
                                     ?: localSnippets.firstOrNull { it.label.startsWith(singleWord) && singleWord.length >= 3 }
@@ -2761,7 +2771,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                                 val twoWord = if (twoWordStart < wordStart) value.text.substring(twoWordStart, cursor) else singleWord
                                 if (singleWord.isNotEmpty()) {
-                                    val localSnippets = snippetsFor(language)
+                                    val localSnippets = allSnippets(language, currentFilePath)
                                     // Try two-word exact match first, then single word
                                     val matched = localSnippets.firstOrNull { it.label == twoWord }
                                         ?: localSnippets.firstOrNull { it.label == singleWord }
