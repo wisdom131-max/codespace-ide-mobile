@@ -29,7 +29,7 @@
 
 ## §4 Specs
 
-- **SPEC-U6-1 — DropdownMenu audit per polish turn.** Now: 14 files use M3 DropdownMenu; M3's default 4dp corners + default row insets drift from our standing rule (8-12dp radius, ≥12h/10v padding); one shell menu row at 12h/5v (below vertical floor). After: each surface's polish turn confirms its menus use the standing radius/padding and ≥40dp rows; fix the 5v straggler when that surface's turn comes. Why: menus are where our own standing rules leak most easily — M3 defaults silently fight them; their card tier (xLarge 12px) shows menus-on-phone want the *larger* radius.
+- **SPEC-U6-1 — DropdownMenu audit per polish turn.** *(APPROVED 2026-09-15.)* Now: 14 files use M3 DropdownMenu; M3's default 4dp corners + default row insets drift from our standing rule (8-12dp radius, ≥12h/10v padding); one shell menu row at 12h/5v (below vertical floor). After: each surface's polish turn confirms its menus use the standing radius/padding and ≥40dp rows; fix the 5v straggler when that surface's turn comes. Why: menus are where our own standing rules leak most easily — M3 defaults silently fight them; their card tier (xLarge 12px) shows menus-on-phone want the *larger* radius.
 
 No other specs — the dropdown-vs-sheet question is closed (SPEC-6 skip, confirmed), and long-press flows are a deliberate ahead-of-them pattern.
 
@@ -46,4 +46,4 @@ No other specs — the dropdown-vs-sheet question is closed (SPEC-6 skip, confir
 
 ## Status
 
-**DONE** — 2026-09-15. SPEC-U6-1 logged pending per-item approval. Next: U07 overlays (palette, dialogs, notifications).
+**DONE** — 2026-09-15. SPEC-U6-1 APPROVED per-item by Wisdom 2026-09-15. ChatModelMenuButton dropdown: confirmed CLOSED (consistent w/ SPEC-6 skip). U07 done. Next research batch: U08 terminal & debug visuals.
