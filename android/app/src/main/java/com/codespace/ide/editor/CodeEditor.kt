@@ -2229,62 +2229,34 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 }
                             }
                             Spacer(Modifier.width(2.dp))
-                            // P2-9 Bookmark dot (◆) — tappable to toggle
-                            Box(
-                                modifier = Modifier
-                                    .size(fontSize.dp)
-                                    .clickable {
-                                        bookmarkedLines = if (bookmarkedLines.contains(lineNum))
-                                            bookmarkedLines - lineNum
-                                        else
-                                            bookmarkedLines + lineNum
-                                    },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (bookmarkedLines.contains(lineNum)) {
-                                    Text(
-                                        text = "◆",
-                                        color = colors.keyword,  // P50-FIX: theme-aware bookmark color (was hardcoded 0xFF61AFEF)
-                                        fontSize = (fontSize * 0.6f).sp,
-                                    )
-                                }
-                            }
+                            // P2-9 Bookmark dot (extracted: CodeEditor at 64KB limit)
+                            EditorGutterBookmarkDot(
+                                isBookmarked = bookmarkedLines.contains(lineNum),
+                                fontSize = fontSize,
+                                colors = colors,
+                                onToggle = {
+                                    bookmarkedLines = if (bookmarkedLines.contains(lineNum))
+                                        bookmarkedLines - lineNum
+                                    else
+                                        bookmarkedLines + lineNum
+                                },
+                            )
                             Spacer(Modifier.width(2.dp))
-                            // P8-1 Breakpoint dot + tappable line number (VS Code style: show both)
-                            Row(
+                            // P8-1 Breakpoint dot + tappable line number (extracted: 64KB limit)
+                            EditorGutterBreakpointRow(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(lineHeightDp)
-                                    // CW3: long-press opens the condition editor (VS Code: Add Condition)
-                                    .combinedClickable(
-                                        onClick = { onBreakpointToggle(lineNum) },
-                                        onLongClick = { onBreakpointLongPress(lineNum) },
-                                    ),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.End,
-                            ) {
-                                // P54: Debug current-line indicator — yellow arrow (▶) in gutter
-                                if (debugCurrentLine > 0 && lineNum == debugCurrentLine - 1) {
-                                    EditorGutterDebugArrow(fontSize)
-                                    Spacer(Modifier.width(2.dp))
-                                }
-                                if (breakpointLines.contains(lineNum)) {
-                                    // CW3: ring = conditional/log bp (extracted: CodeEditor is at 64KB)
-                                    EditorBreakpointDot(isConditional = conditionalBreakpointLines.contains(lineNum))
-                                    Spacer(Modifier.width(4.dp))
-                                }
-                                Text(
-                                    text = (lineNum + 1).toString(),
-                                    color = if (debugCurrentLine > 0 && lineNum == debugCurrentLine - 1)
-                                        Color(0xFFCCA700)  // P54: yellow highlight on current debug line
-                                    else if (bookmarkedLines.contains(lineNum))
-                                        colors.keyword else colors.gutter,  // P50-FIX: theme-aware bookmark color
-                                    fontSize = fontSize.sp,
-                                    lineHeight = (fontSize * 1.25f).sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                                )
-                            }
+                                    .height(lineHeightDp),
+                                lineNum = lineNum,
+                                hasBreakpoint = breakpointLines.contains(lineNum),
+                                isConditionalBp = conditionalBreakpointLines.contains(lineNum),
+                                isDebugLine = debugCurrentLine > 0 && lineNum == debugCurrentLine - 1,
+                                isBookmarked = bookmarkedLines.contains(lineNum),
+                                fontSize = fontSize,
+                                colors = colors,
+                                onBreakpointToggle = onBreakpointToggle,
+                                onBreakpointLongPress = onBreakpointLongPress,
+                            )
                         }
                     }
                 }

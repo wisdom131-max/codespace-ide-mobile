@@ -3986,3 +3986,17 @@ CW7 part 2 (NEXT push): declarative comment/bracket configs (.codespace/language
 **Files:** NEW editor/SnippetPackStore.kt, M editor/CodeEditor.kt (allSnippets + 4 call-site threads).
 
 **Next on roadmap (ALL pending items):** CW7 part 2: declarative comment/bracket configs. Then: real projects (action registry #1). Wisdom batch-test when all done + green: CW7 (drop a .codespace/snippets/kotlin.json with prefix "mfun", type mfun -> pack entry appears + expands tabstops; pack overrides built-in same-prefix), CW5 (break a file -> red badge; folder rollup; tap badge -> Problems filtered), CW3 (bp long-press condition editor, ring marker, condition i>5), CW1/CW4 retests, CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-15 20:35 WAT] — AI Agent: Claude Sonnet 5.6 (CW3 fix 3 — real 64KB extraction)
+
+**Commit:** (this push) | **CI:** (pending; #2826-#2830 ALL RED on this root cause)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [CW3][BUILD-FIX] #2826-#2830 audit: MethodTooLarge CodeEditor (root cause + real fix)
+AUDIT RESULT: #2826 = MethodTooLarge (CW3 inline gutter code, zero headroom); #2827 = real Int/Float error (fontSize is Int); #2828/#2829/#2830 = SAME MethodTooLarge — my first extraction (dot+arrow only, net -6 lines) was too small; baseline headroom was under ~10 source lines so the ring code alone overflowed it. LESSON REINFORCED: at zero headroom, new gutter/marker UI needs a STRUCTURAL extraction, not a nibble.
+REAL FIX: EditorBreakpointDot.kt now holds the FULL gutter marker set — EditorBreakpointDot (ring/dot), EditorGutterDebugArrow, EditorGutterBookmarkDot (P2-9), and EditorGutterBreakpointRow (P8-1 row incl. combinedClickable + line-number Text; weight/height stay in caller's RowScope via modifier param). CodeEditor body shrank 28 net source lines vs HEAD (~25 vs green #2825 baseline). RULE NOW HARD: ALL gutter marker changes go in EditorBreakpointDot.kt.
+
+**Files:** M editor/EditorBreakpointDot.kt (bookmark + bp-row composables), M editor/CodeEditor.kt (two 1-call replacement call sites).
+
+**Next on roadmap (ALL pending items):** VERIFY GREEN (this push carries CW3 + CW5 + CW7 part 1 — all awaiting first green). CW7 part 2: declarative comment/bracket configs. Then: real projects (action registry #1). Wisdom batch-test when all done + green: CW7 (drop .codespace/snippets/kotlin.json prefix mfun -> appears + expands), CW5 (break file -> red badge; folder rollup; tap -> Problems filtered), CW3 (bp long-press condition editor, ring, condition i>5), CW1/CW4 retests, CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
