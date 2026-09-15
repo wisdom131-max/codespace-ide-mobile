@@ -31,8 +31,8 @@
 
 ## §4 Specs
 
-- **SPEC-U7-1 — Search panel edge-to-edge.** Now: `fillMaxWidth(0.92f)` vs their ~98%. After: widen to 96-98% (side margins ~8dp) at the panel's polish turn; same turn applies approved SPEC-U3-3 (16sp entry) and audits result-row heights toward the 44dp floor. Why: their phone palette deliberately reaches screen edges — 8% dead margin each side makes a touch-first palette feel inset/webby.
-- **SPEC-U7-2 — NotificationToastBanner phone sizing.** Now: fixed 320dp (~78% width), 6dp radius. After: full-width minus 16dp, 12dp radius (their xLarge), ~44dp rows, positioned below the status bar — banner polish turn. Why: their phone notification card is the proven spec (top-anchored, near-full-width, xLarge radius); ours is desktop-toast-sized on a phone.
+- **SPEC-U7-1 — Search panel edge-to-edge.** *(APPROVED 2026-09-15.)* Now: `fillMaxWidth(0.92f)` vs their ~98%. After: widen to 96-98% (side margins ~8dp) at the panel's polish turn; same turn applies approved SPEC-U3-3 (16sp entry) and audits result-row heights toward the 44dp floor. Why: their phone palette deliberately reaches screen edges — 8% dead margin each side makes a touch-first palette feel inset/webby.
+- **SPEC-U7-2 — NotificationToastBanner phone sizing.** *(APPROVED 2026-09-15.)* Now: fixed 320dp (~78% width), 6dp radius. After: full-width minus 16dp, 12dp radius (their xLarge), ~44dp rows, positioned below the status bar — banner polish turn. Why: their phone notification card is the proven spec (top-anchored, near-full-width, xLarge radius); ours is desktop-toast-sized on a phone.
 
 No dialog spec — M3 defaults are deliberate keeps; the 44dp button floor rides already-approved SPEC-U3-1 at each dialog's own turn.
 
@@ -50,4 +50,4 @@ No dialog spec — M3 defaults are deliberate keeps; the 44dp button floor rides
 
 ## Status
 
-**DONE** — 2026-09-15. SPEC-U7-1..2 logged pending per-item approval. Next: U08 terminal & debug visuals (final research batch).
+**DONE** — 2026-09-15. SPEC-U7-1..2 APPROVED per-item by Wisdom 2026-09-15; deliberate keeps (M3 AlertDialog, system Toasts) confirmed. U08 + synthesis done. Research phase CLOSED (FINAL-UI.md).

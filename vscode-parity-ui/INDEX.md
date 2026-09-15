@@ -16,7 +16,7 @@
 | U05 | Panels & list surfaces (explorer/SCM/problems rows) | [U05-panels-lists.md](U05-panels-lists.md) | ✅ DONE 2026-09-15 |
 | U06 | Menus, dropdowns & popovers | [U06-menus-popovers.md](U06-menus-popovers.md) | ✅ DONE 2026-09-15 |
 | U07 | Overlays (palette, dialogs, notifications) | — | ⬜ |
-| U08 | Terminal & debug visuals | — | ⬜ |
+| U08 | Terminal & debug visuals | [U08-terminal-debug.md](U08-terminal-debug.md) | ✅ DONE 2026-09-15 |
 
 ## Method (per batch)
 
@@ -39,3 +39,6 @@
 - **U06 (menus):** VS Code phone menu strategy = REPLACE menus, don't restyle them — zero context-menu phone rules anywhere; dropdown triggers swap to QuickPick sheets (PickerActionViewItem / MobilePermissionPicker); when pickers open they get 44px rows + edge-to-edge-8px + 50vh. Ours: M3 DropdownMenus (14 files) + long-press purpose-built flows = MATCH-or-AHEAD; ChatModelMenuButton dropdown = deliberate keep (SPEC-6 skip). One audit spec: SPEC-U6-1 (M3 default 4dp corners + one 12h/5v straggler row vs standing rule).
 - **Approvals ledger (all per-item, Wisdom):** SPEC-1..5 ✅ (queued behind CW2/CW8) · SPEC-U2-1..5 ✅ (per-surface) · SPEC-U3-1..5 ✅ ALL (U3-4 confirmed-closed) · SPEC-U4-1 pending (rides F1) · SPEC-U5-1..2 ✅ · SPEC-U6-1 ✅ (ChatModelMenuButton dropdown confirmed closed) · SPEC-U7-1..2 presented 2026-09-15, pending.
 - **U07 (overlays):** our search panel already imePads (the model citizen) but sits at 92% width vs their ~98% edge-to-edge quick-input (44px rows, 50vh cap) -> SPEC-U7-1 widen+audit; custom NotificationToastBanner 320dp/6dp vs their full-width-8px xLarge-12px 44px-row top-anchored card -> SPEC-U7-2. Dialogs = M3 platform defaults (28dp corners ~40dp buttons) logged DELIBERATE keeps; 44dp button floor + 16sp entry already covered by approved SPEC-U3-1/U3-3 at each dialog's turn.
+
+- **U08 (terminal/debug):** VS Code ships their desktop terminal unre-styled on phone (zero phone rules) — OURS IS AHEAD. They DO have a phone-tuned diff color trio (mobileDiffColors.ts: #81b88b added / #E2C08D modified / #c74e39 deleted, dark) -> SPEC-U8-1 adopt at diff surfaces' polish turns (our modified-yellow already ~theirs). Their keyboard signal: --vscode-keyboard-height CSS var w/ keyboard-sized-delta threshold = our WindowInsets/imePadding analog (approved U3-5; their noise threshold = implementation guidance). Debug P54 arrow + #CCA700 = same convention as theirs. SPEC-U7-1/U7-2 APPROVED; M3 AlertDialog + system Toast keeps confirmed.
+- **RESEARCH PHASE CLOSED 2026-09-15:** FINAL-UI.md synthesis written — full spec ledger (SPEC-1..5 approved behind CW2/CW8; 14 cross-cutting approved per-surface; SPEC-U4-1 + SPEC-U8-1 pending; deliberate keeps closed), 3 transferable lessons (CI-enforced tokens / overlay-card phone / where-they-route-around-we're-ahead), execution order per approved plan, scoreboard. Implementation gated exactly as approved; no closed surface re-opened by this sweep.
