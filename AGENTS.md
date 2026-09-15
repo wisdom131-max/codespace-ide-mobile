@@ -3914,7 +3914,7 @@ CW2: git-history attach row in picker (problems row pre-existed — I4, not redo
 
 ## [2026-09-15 12:05 WAT] — AI Agent: Claude Sonnet 5.6 (CW1 + CW4 — cheap wins continue)
 
-**Commit:** (this push) | **CI:** (pending)
+**Commit:** 3126411 | **CI:** build #2824 SUCCESS
 
 **RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
 
