@@ -132,3 +132,11 @@ TOP-LEVEL FINDINGS (see FINAL-REVIEW.md for full scoreboard):
 - The user's roadmap/testing protocol is unaffected: parity files are docs-only
   commits; every push still runs CI (green required, same as always).
 - B01 flagged 5 open questions needing on-device verification (see its §6).
+
+## Settings series (S)
+
+| Batch | Topic | File | Status |
+|---|---|---|---|
+| S01 | Settings inventory (census, access paths, comparison) | [S01-settings-inventory.md](S01-settings-inventory.md) | ✅ DONE 2026-09-15 |
+
+S01 findings: VS Code = ~1,000+ settings from 144 registration points + 107 built-in manifests (runtime-assembled, no official count) across 7 access paths; ours = ~70-80 across 3 surfaces (InProjectSettingsDialog 18 categories/52 rows + search bar EXISTS, SettingsScreen 12 rows, KeybindingSettingsPanel). Worth adding: reset-to-default + modified indicators (shared defaults registry on SettingsRow), JSON export/import (pairs w/ CloudBackup), filter tokens on existing search. Parked: language overrides until RP5. Settings feature block slots after Phase 4 per approved ordering plan.
