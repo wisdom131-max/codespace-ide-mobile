@@ -3957,3 +3957,17 @@ Explorer file rows now carry a trailing problem badge: red count for errors, amb
 **Files:** NEW editor/EditorBreakpointDot.kt, M editor/CodeEditor.kt (gutter slim), M ui/panes/ExplorerPane.kt (onShowProblems + buildProblemCounts + badge), M ui/panes/AdvancedProblemsPanel.kt (ProblemsPreset + consume), M ui/screens/ProjectShellScreen.kt (badge tap wiring).
 
 **Next on roadmap (ALL pending items):** CW7 snippet packs + declarative comment/bracket configs (approved, NEXT). Then: real projects (action registry #1). Wisdom batch-test when all done: CW5 (break a file -> red badge, fix -> clears; folder rollup; tap badge -> Problems filtered), CW3 (bp long-press condition editor, ring marker, condition i>5), CW1/CW4 retests, CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-15 19:55 WAT] — AI Agent: Claude Sonnet 5.6 (CW3 fix 2 + CW5 push)
+
+**Commit:** (this push) | **CI:** (pending; #2827 RED — see fix)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [CW3][BUILD-FIX] #2827 failure: EditorGutterDebugArrow(fontSize) type mismatch (Int vs Float)
+CodeEditor's fontSize param is an Int (default 13) — the extracted arrow composable declared Float. Fixed: param now Int, `(fontSize * 0.8f).sp` still yields Float internally. PITFALL LOGGED: when extracting helpers out of CodeEditor, copy param TYPES exactly — this composable's scalars are Int/Float mixed.
+NOTE: CW3 (conditional breakpoints incl. ring marker) + CW5 (explorer problem badges + tap-to-filter Problems) are IN the #2827/#2828 commits awaiting green.
+
+**Files:** M editor/EditorBreakpointDot.kt (Int param).
+
+**Next on roadmap (ALL pending items):** CW7 snippet packs + declarative comment/bracket configs (approved, NEXT — spec FINAL-REVIEW §3 item 7). Then: real projects (action registry #1). Wisdom batch-test when all done + green: CW5 (break a file -> red badge; folder rollup; tap badge -> Problems filtered), CW3 (bp long-press condition editor, ring marker, condition i>5), CW1/CW4 retests, CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
