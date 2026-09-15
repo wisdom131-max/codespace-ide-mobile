@@ -21,7 +21,12 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        # CI-FIX 2026-09-15: Google removed the legacy 'tools' SDK package, which
+        # broke every build from #2812 up (sdkmanager exit 1 in setup, before any
+        # Kotlin compiled). v4 + explicit packages skips the dead 'tools' package.
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install patchelf
         run: sudo apt-get update && sudo apt-get install -y patchelf
