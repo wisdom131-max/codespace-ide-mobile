@@ -10,7 +10,7 @@
 |---|---|---|---|
 | — | Source-extracted VS Code tokens (radius, chat values, spacing) | [MEASUREMENTS.md](MEASUREMENTS.md) | ✅ living |
 | U01 | Chat panel UI (composer, buttons, spacing) | [U01-chat-panel-ui.md](U01-chat-panel-ui.md) | ✅ DONE 2026-09-15 |
-| U02 | Design tokens & density foundation | — | ⬜ |
+| U02 | Design tokens & density foundation | [U02-design-tokens.md](U02-design-tokens.md) | ✅ DONE 2026-09-15 |
 | U03 | Shell & navigation (narrow-width) | — | ⬜ |
 | U04 | Editor surface (tabs, find bar, gutters) | — | ⬜ |
 | U05 | Panels & list surfaces (explorer/SCM/problems rows) | — | ⬜ |
@@ -28,3 +28,5 @@
 ## Key findings so far
 
 - **U01 (chat, the flagged surface):** VS Code ships a dedicated phone stylesheet (`chatInputMobile.css`) — toolbar row SEPARATE from input, borderless radius-large input box, 36dp FILLED rounded-square send (vs desktop ghost circle), bottom-sheet mode pickers. Our composer squeezes ~180dp of field between 48dp IconButtons in one row, uses a bordered OutlinedTextField, and a ghost send — that stack is the "off" feeling. SPEC-1..5 written, awaiting per-item approval after CW2/CW8.
+
+- **U02 (tokens):** VS Code's scales are CI-ENFORCED (build stylelint validator): spacing [2..40 on 2-6px steps], radius 2/4/6/8/12, fonts 26/18/13/12/11/10 (400/600 only), icons 16/12 ONLY. Ours: typography MATCHES their ramp exactly (11/12/13sp dominant — best-parity dimension), spacing on-scale, but icons drift badly (14/18/20dp in their "always a mistake" zone) and 129 sub-10sp text uses. SPEC-U2-1..5 logged. Exact radii fed back into U01 SPEC-2/3.

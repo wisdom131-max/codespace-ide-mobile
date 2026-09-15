@@ -3,12 +3,22 @@
 > Extracted 2026-09-15 from `microsoft/vscode` @ `main` (sessions chat media CSS).
 > All U-batches cite these; update only with new source citations.
 
-## Radius tokens
-| Token | Value (approx) | Used for |
+## Radius tokens (EXACT per build/lib/stylelint/validateDesignTokens.ts — U02)
+| Token | Value | Used for |
 |---|---|---|
-| `--vscode-cornerRadius-large` | ~10px | chat input box (all corners), input container top |
-| `--vscode-cornerRadius-small` | ~4-6px | phone send button, toolbar buttons |
-| `--vscode-cornerRadius-circle` | 50% | desktop send button (ghost circle) |
+| cornerRadius-xSmall | 2px | |
+| cornerRadius-small | **4px** | phone send button, toolbar buttons |
+| cornerRadius-medium | 6px | |
+| cornerRadius-large | **8px** | chat input box (all corners), input container top |
+| cornerRadius-xLarge | 12px | |
+| cornerRadius-circle | 9999 (>=100px) | desktop send button (ghost circle) |
+
+## Full scales (U02, from validateDesignTokens.ts)
+- Spacing: [2,4,6,8,10,12,16,20,24,28,32,36,40]px (size{px*10}, sizeNone=0) — CI-enforced snap
+- Font ramp: 26/18/13 (headings,600) 13/12/11/10 (body1/label1/body2-label2/label3) weights 400/600 only
+- Icons: 16px base / 12px compact ONLY (13-15px = "always a mistake" per validator)
+- Borders: strokeThickness = 1px
+|---|---|---|
 
 ## Chat input (sessions UI)
 | Element | Desktop | Phone (`phone-layout`) |
