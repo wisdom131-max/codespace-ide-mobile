@@ -14,7 +14,7 @@
 | U03 | Shell & navigation (narrow-width) | [U03-shell-navigation.md](U03-shell-navigation.md) | ✅ DONE 2026-09-15 |
 | U04 | Editor surface (tabs, find bar, gutters) | [U04-editor-surface.md](U04-editor-surface.md) | ✅ DONE 2026-09-15 |
 | U05 | Panels & list surfaces (explorer/SCM/problems rows) | [U05-panels-lists.md](U05-panels-lists.md) | ✅ DONE 2026-09-15 |
-| U06 | Menus, dropdowns & popovers | — | ⬜ |
+| U06 | Menus, dropdowns & popovers | [U06-menus-popovers.md](U06-menus-popovers.md) | ✅ DONE 2026-09-15 |
 | U07 | Overlays (palette, dialogs, notifications) | — | ⬜ |
 | U08 | Terminal & debug visuals | — | ⬜ |
 
@@ -36,4 +36,5 @@
 - **U04 (editor surface):** VS Code phone collapses tabs to a single-tab title (their shell is chat-first — we deliberately keep our scrollable strip); phone FIND = commandeered full-width row (52px, thumb targets, single input) while their in-editor find widget stays desktop-styled — our <480dp adaptive FindReplaceBar is arguably AHEAD (F1 retest will confirm). REFINEMENT: their compact chrome runs 28-32px (editor-tabs-compact-height) — SPEC-U3-1 amended with a compact-tier exemption pending Wisdom re-confirm. SPEC-U4-1 (find thumb-target pass) rides F1. Edge-swipe skip + mobile-layer logging confirmed by Wisdom.
 
 - **U05 (lists):** VS Code's only phone list rules: actions ALWAYS VISIBLE (hover killed), :active row = hover bg, touch-action hygiene; SCM gets ZERO phone restyling (desktop-tight on their own phone workbench). Ours already matches "always visible" by default and is more mobile-aware on SCM. Gaps: 14/18dp bare clickable row icons (SPEC-U5-1 padded targets + SPEC-U2-1 icon fix) + press-feedback audit (SPEC-U5-2).
-- **Approvals ledger:** SPEC-1..5 ✅ (behind CW2/CW8) · SPEC-U2-1..5 ✅ (per-surface) · SPEC-U3-1 ✅ re-confirmed w/ compact tier · SPEC-U3-2..5 presented 2026-09-15, pending · SPEC-U4-1 pending (rides F1) · SPEC-U5-1..2 pending.
+- **U06 (menus):** VS Code phone menu strategy = REPLACE menus, don't restyle them — zero context-menu phone rules anywhere; dropdown triggers swap to QuickPick sheets (PickerActionViewItem / MobilePermissionPicker); when pickers open they get 44px rows + edge-to-edge-8px + 50vh. Ours: M3 DropdownMenus (14 files) + long-press purpose-built flows = MATCH-or-AHEAD; ChatModelMenuButton dropdown = deliberate keep (SPEC-6 skip). One audit spec: SPEC-U6-1 (M3 default 4dp corners + one 12h/5v straggler row vs standing rule).
+- **Approvals ledger (all per-item, Wisdom):** SPEC-1..5 ✅ (queued behind CW2/CW8) · SPEC-U2-1..5 ✅ (per-surface) · SPEC-U3-1..5 ✅ ALL (U3-4 confirmed-closed) · SPEC-U4-1 pending (rides F1) · SPEC-U5-1..2 ✅ · SPEC-U6-1 pending.

@@ -33,8 +33,8 @@ The sessions list is the only list they phone-restyle, with four rules (`session
 
 ## §4 Specs
 
-- **SPEC-U5-1 — Padded hit targets for row-inline actions.** Now: bare 14-18dp clickable icons in rows (explorer MoreVert/close, similar in SCM). After: icons 16dp (per approved SPEC-U2-1) inside padded targets ≥36dp wide × row-height, centered — target grows, icon doesn't, density preserved. Why: their 44px action floor is about the TARGET, not the glyph; we can keep rows tight while making every tappable miss-proof. Per-surface (explorer's polish turn first).
-- **SPEC-U5-2 — Press-feedback audit.** Now: ripple via Compose defaults — believed universal but unaudited (some rows may override indication). After: during each surface's polish turn, confirm every list row shows pressed state. Why: their `:active` rule exists because touch needs visible response; any ripple-less row reads dead.
+- **SPEC-U5-1 — Padded hit targets for row-inline actions.** *(APPROVED 2026-09-15.)* Now: bare 14-18dp clickable icons in rows (explorer MoreVert/close, similar in SCM). After: icons 16dp (per approved SPEC-U2-1) inside padded targets ≥36dp wide × row-height, centered — target grows, icon doesn't, density preserved. Why: their 44px action floor is about the TARGET, not the glyph; we can keep rows tight while making every tappable miss-proof. Per-surface (explorer's polish turn first).
+- **SPEC-U5-2 — Press-feedback audit.** *(APPROVED 2026-09-15.)* Now: ripple via Compose defaults — believed universal but unaudited (some rows may override indication). After: during each surface's polish turn, confirm every list row shows pressed state. Why: their `:active` rule exists because touch needs visible response; any ripple-less row reads dead.
 
 ## §5 Connections
 
@@ -50,4 +50,4 @@ The sessions list is the only list they phone-restyle, with four rules (`session
 
 ## Status
 
-**DONE** — 2026-09-15. SPEC-U5-1..2 logged pending per-item approval. Next: U06 menus, dropdowns & popovers.
+**DONE** — 2026-09-15. SPEC-U5-1..2 APPROVED per-item by Wisdom 2026-09-15. Next: U06 menus, dropdowns & popovers.
