@@ -41,13 +41,32 @@ The `modernUI` contrib (experimental `workbench.experimental.modernUI` setting) 
 | 1dp vertical paddings | DIVERGES-BAD (minor) — 30 uses; scale has 0 or 2 |
 | CI token enforcement | **MISSING** — they lint, we don't |
 
-## §4 Cross-cutting specs (pending per-item approval; applied PER-SURFACE inside each U-batch's polish turn, never as one global sweep)
+## §4 Cross-cutting specs — now → after → why (presented to Wisdom 2026-09-15; PENDING per-item approval; applied PER-SURFACE inside each U-batch's polish turn, never as one global sweep)
 
-- **SPEC-U2-1 — Icon normalization to 16/12-only.** All icons 16dp primary / 12dp compact; 14→16 (toolbar/panel icons) or →12 (dense rows), 18/20→16. Highest-impact density fix; phased per-surface.
-- **SPEC-U2-2 — 10sp text floor.** 7/8/9sp → 10sp minimum (badges/labels); 129 uses phased per-surface.
-- **SPEC-U2-3 — Radius snap.** 3dp→4dp (or 2dp chips), 10dp→8dp, 14dp→12dp (~44 uses).
-- **SPEC-U2-4 — Kill 1dp vertical paddings** (0 or 2dp).
-- **SPEC-U2-5 — Compose token object + lint script.** One `CsTokens` file (radius/spacing/type constants mirroring this table) + a small CI-side script that greps new code for off-scale values — our analog of `validateDesignTokens.ts`. Tooling, not UI code; separate approval.
+**SPEC-U2-1 — Icon normalization to 16/12-only.**
+- Now: mixed icon scale across the app — 14dp (80 uses), 18dp (43), 20dp (37), alongside 16dp (106) and 12dp (26); adjacent rows often mix 14 and 18 in the same panel.
+- After: every icon is 16dp (primary) or 12dp (compact/dense rows); 14dp→16 in toolbars/panel headers, 18/20dp→16; dense inline icons→12. Applied per surface during its own polish turn.
+- Why: their CI validator calls 13–15px icons "always a mistake" — 16/12-only is enforced discipline, and mixed icon scale is the single biggest driver of an inconsistent, unpolished read.
+
+**SPEC-U2-2 — 10sp text floor.**
+- Now: 9sp (106 uses), 8sp (21), 7sp (2) — session timestamps, snippet previews, badges.
+- After: minimum 10sp (their label3 floor) for all text; 7/8/9→10.
+- Why: their ramp's floor is 10px; below it text stops being readable on-device and reads as "crammed" rather than "dense."
+
+**SPEC-U2-3 — Radius snap.**
+- Now: off-scale radii 3dp (28), 10dp (13), 14dp (3) alongside dominant on-scale 4/8/12.
+- After: 3dp→4dp (chips may go 2dp), 10dp→8dp, 14dp→12dp — full conformance to their 2/4/6/8/12 scale.
+- Why: their validator flags every off-scale radius; snapping aligns the ~17% off-scale corners with the 83% already correct, cheap mechanical fix.
+
+**SPEC-U2-4 — Kill 1dp vertical paddings.**
+- Now: 30 uses of `vertical = 1.dp` (sub-visual nudge spacing).
+- After: 0dp or 2dp (their scale has no 1).
+- Why: 1dp is invisible-but-jittery; their scale is CI-enforced from 2 up; trivial fix, done per-surface.
+
+**SPEC-U2-5 — CsTokens object + scale lint script.**
+- Now: no shared constants — dp literals inline everywhere; nothing enforces any scale; drift recurs by default.
+- After: one `CsTokens` object (radius/spacing/type constants mirroring this table) for new code, + a small grep-based lint script in CI that flags off-scale values in changed files — our mirror of `build/lib/stylelint/validateDesignTokens.ts`.
+- Why: VS Code's discipline comes from CI enforcement, not reviewer taste; a lint gate makes every U-batch spec mechanical and prevents regressions after surfaces close.
 
 ## §5 Connections
 
@@ -62,4 +81,4 @@ The `modernUI` contrib (experimental `workbench.experimental.modernUI` setting) 
 
 ## Status
 
-**DONE** — 2026-09-15. SPEC-U2-1..5 logged pending per-item approval (per-surface application). Next: U03 shell & navigation.
+**DONE** — 2026-09-15. SPEC-U2-1..5 presented individually 2026-09-15, awaiting per-item verdicts (per-surface application). U03 done. Next research batch: U04 editor surface.

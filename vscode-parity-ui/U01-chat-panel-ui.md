@@ -41,7 +41,7 @@ Live-render caveat: vscode.dev's chat is GitHub-sign-in-gated, so no screenshot 
 
 ## §4 Spec items — now → after → why (awaiting per-item approval; code lands in Phase 1 AFTER CW2/CW8)
 
-- **REVISED 2026-09-15 (U02 exact tokens):** radii corrected to their scale (8dp box/container, 4dp send); SPEC-6 (bottom-sheet model picker) SKIPPED per Wisdom's decision — header dropdown stays. IME finding added to SPEC-1. SPEC-1..5 still AWAITING per-item verdicts (unfilled template — re-requested).
+- **REVISED 2026-09-15 (U02 exact tokens):** radii corrected to their scale (8dp box/container, 4dp send); SPEC-6 (bottom-sheet model picker) SKIPPED per Wisdom's decision — header dropdown stays. IME finding added to SPEC-1. **APPROVED 2026-09-15 (Wisdom, per-item): SPEC-1..5 ALL — approved-pending-its-turn, queued behind CW2/CW8 per Phase 1 ordering. NOT implemented.**
 
 **SPEC-1 — Composer split into toolbar + input rows.** Now: one Row, 6 controls inline. After: a compact toolbar Row above the input (attach, workspace-ctx, input-history — 20dp icons in 32dp clickable targets, 4dp gaps, 6dp container padding), and an input Row (field weight(1f) + send). Why: restores ~370dp field width on your device; matches phone-layout structure; `touch-action: manipulation` analog = compact targets.
 
@@ -69,4 +69,4 @@ Message bubbles, message-list spacing, and header row: NOT in the minimal pass (
 
 ## Status
 
-**DONE** — 2026-09-15 (research). SPEC-1..5 awaiting Wisdom's per-item approval; implementation gated behind CW2/CW8 per approved ordering plan. Next research batch: U02 design tokens & density.
+**DONE** — 2026-09-15 (research). SPEC-1..5 APPROVED 2026-09-15 (per-item) — queued behind CW2/CW8; on-device IME tap-test result pending from Wisdom. U02 done. Next research batch: U04 editor surface.
