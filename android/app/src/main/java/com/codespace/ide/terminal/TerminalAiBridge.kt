@@ -43,6 +43,8 @@ object TerminalAiBridge {
     fun recordRun(command: String, output: String) {
         lastRunCommand = command.trim().take(500)
         lastRunOutput = output.take(6000)
+        // CW1: problem matchers — build-ish run commands feed the Problems panel
+        com.codespace.ide.diagnostics.ProblemMatcher.publishFromCommand(command, output)
     }
 
     private val ANSI = Regex("\u001B\\[[0-9;?]*[A-Za-z]|\u001B\\][^\u0007\u001B]*(\u0007|\u001B\\\\)")

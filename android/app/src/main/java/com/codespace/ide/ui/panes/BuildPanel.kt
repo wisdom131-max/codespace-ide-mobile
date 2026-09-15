@@ -95,6 +95,13 @@ fun BuildPanel(
                             buildOutput = result.output
                             isBuilding = false
                             onProblemsUpdate(GradleErrorParser.extractAllProblems(result.output))
+                            // CW1: panel-run build problems -> Problems panel too
+                            val bp = GradleErrorParser.extractAllProblems(result.output)
+                            if (bp.isEmpty()) {
+                                com.codespace.ide.diagnostics.DiagnosticPublisher.clearBuildDiagnostics()
+                            } else {
+                                com.codespace.ide.diagnostics.DiagnosticPublisher.publishBuildDiagnostics(bp)
+                            }
                         }
                     }
                 },

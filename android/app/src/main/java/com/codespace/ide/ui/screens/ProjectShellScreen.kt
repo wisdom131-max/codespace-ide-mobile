@@ -3534,6 +3534,9 @@ private fun PssBottomPanelContent(
                 panelBg = panelBg,
                 dividerColor = dividerColor,
                 tabTextInactive = tabTextInactive,
+                // CW4: same jump-to-source route as terminal taps (0-based in, +1 at shell)
+                onOpenFileAtLine = { path, line -> onJumpToSourceWithPath(path, line + 1) },
+                projectId = projectId,
             )
             BottomTab.DEBUG    -> DebugConsolePanel(
                 context = context,
@@ -3758,7 +3761,18 @@ private fun buildRunCommand(path: String): String? {
     }
 }
 
-@Composable private fun OutputPanel(panelBg: Color = Color(0xFF1E1E1E), dividerColor: Color = Color(0xFF2D2D30), tabTextInactive: Color = Color(0xFF858585)) {
+// CW4: file:line token in output lines (path restricted to link-safe chars; lazy path so
+// "src/Main.kt:42:5" pairs with 42, col ignored). Non-matching tokens cost only File.exists checks.
+private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
+
+@Composable private fun OutputPanel(
+    panelBg: Color = Color(0xFF1E1E1E),
+    dividerColor: Color = Color(0xFF2D2D30),
+    tabTextInactive: Color = Color(0xFF858585),
+    // CW4: tap a line with a file:line token to open it in the editor
+    onOpenFileAtLine: ((String, Int) -> Unit)? = null,
+    projectId: String? = null,
+) {
     val logs = AppOutputLog.lines
     val listState = rememberLazyListState()
     var selectedChannel by remember { mutableStateOf("all") }
@@ -3871,7 +3885,27 @@ private fun buildRunCommand(path: String): String? {
         LazyColumn(Modifier.fillMaxSize().padding(8.dp), state = listState) {
             items(filteredLogs.size) { index ->
                 val line = if (index < filteredLogs.size) filteredLogs[index] else return@items
-                Text(line, fontSize = 12.sp, color = logText, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 2.dp))
+                // CW4: tappable when the line carries a plausible file:line token
+                val canTap = onOpenFileAtLine != null &&
+                    (line.contains('/') || line.contains('.')) && OUTPUT_FILE_LINE.containsMatchIn(line)
+                Text(
+                    line, fontSize = 12.sp, color = logText, fontFamily = FontFamily.Monospace,
+                    modifier = Modifier
+                        .padding(vertical = 2.dp)
+                        .then(
+                            if (canTap) Modifier.clickable {
+                                for (m in OUTPUT_FILE_LINE.findAll(line)) {
+                                    val ln = m.groupValues[2].toIntOrNull() ?: continue
+                                    val resolved = com.codespace.ide.terminal.IdeTerminalBridge
+                                        .resolveTappedFileLinkUnscoped(context, null, m.groupValues[1] + ":" + ln, projectId)
+                                    if (resolved != null) {
+                                        onOpenFileAtLine?.invoke(resolved.first.absolutePath, resolved.second)
+                                        break
+                                    }
+                                }
+                            } else Modifier
+                        ),
+                )
             }
         }
     }

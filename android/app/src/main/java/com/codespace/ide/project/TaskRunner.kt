@@ -83,7 +83,14 @@ object TaskRunner {
                 task = task.gradleTask,
             )
             markDone(taskId, result)
-            onProblemsUpdate?.invoke(GradleErrorParser.extractAllProblems(result.output))
+            val gradleProblems = GradleErrorParser.extractAllProblems(result.output)
+            onProblemsUpdate?.invoke(gradleProblems)
+            // CW1: task problems -> Problems panel (was dead path: publishBuildDiagnostics existed, never called)
+            if (gradleProblems.isEmpty()) {
+                com.codespace.ide.diagnostics.DiagnosticPublisher.clearBuildDiagnostics()
+            } else {
+                com.codespace.ide.diagnostics.DiagnosticPublisher.publishBuildDiagnostics(gradleProblems)
+            }
             result
         } catch (e: Exception) {
             val failed = BuildRunner.BuildResult(
