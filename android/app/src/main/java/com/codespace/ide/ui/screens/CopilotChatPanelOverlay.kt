@@ -1712,6 +1712,45 @@ internal fun CopilotChatPanelInline(
                     )
                 }
             }
+
+            // CW8: retry last turn + export session (chat/ChatRetryExport.kt)
+            val lastVisibleMsg = visibleMsgs.lastOrNull()
+            val showRetryBar = !chatLoading && lastVisibleMsg != null && lastVisibleMsg.role != "user"
+            val canExportBar = visibleMsgs.isNotEmpty() && !projectRootPath.isNullOrBlank()
+            if (showRetryBar || canExportBar) {
+                item {
+                    com.codespace.ide.chat.ChatRetryExportBar(
+                        showRetry = showRetryBar,
+                        canExport = canExportBar,
+                        onRetry = {
+                            if (!chatLoading) {
+                                var lastUserIdx = -1
+                                for (i in messages.indices.reversed()) {
+                                    if (messages[i].role == "user") { lastUserIdx = i; break }
+                                }
+                                if (lastUserIdx >= 0) {
+                                    val text = messages[lastUserIdx].text
+                                    while (messages.size > lastUserIdx) messages.removeAt(messages.size - 1)
+                                    send(text)
+                                }
+                            }
+                        },
+                        onExport = {
+                            val rel = com.codespace.ide.chat.writeSessionMarkdown(
+                                projectRootPath,
+                                activeSession.title,
+                                messages.map { it.role to it.text },
+                            )
+                            if (rel != null) {
+                                android.widget.Toast.makeText(context, "Session exported: " + rel, android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                error = "Export failed \u2014 open a project first"
+                            }
+                        },
+                        colors = colors,
+                    )
+                }
+            }
         }
 
         if (error.isNotEmpty()) {
@@ -1836,25 +1875,22 @@ internal fun CopilotChatPanelInline(
             )
         }
 
-        // ── Input ─────────────────────────────────────────────────────────
-        Row(
-            Modifier.fillMaxWidth().padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = { showAttachPicker = true }, enabled = !chatLoading && !projectRootPath.isNullOrBlank()) {
-                Icon(Icons.Default.AttachFile, "Attach file to chat", tint = colors.textSecondary, modifier = Modifier.size(18.dp))
-            }
-            IconButton(onClick = {
+        // ── Input — SPEC-1..5 mobile composer (see chat/ChatComposerMobile.kt) ──
+        com.codespace.ide.chat.ChatComposerMobile(
+            input = chatInput,
+            onInput = { chatInput = it; inputHistIdx = -1 },
+            chatLoading = chatLoading,
+            onSend = { send(it) },
+            onStop = { stopChat() },
+            onAttach = { showAttachPicker = true },
+            attachEnabled = !chatLoading && !projectRootPath.isNullOrBlank(),
+            implicitCtxOn = implicitCtxOn,
+            onToggleImplicit = {
                 implicitCtxOn = !implicitCtxOn
                 context.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
                     .edit().putBoolean("implicit_workspace_ctx", implicitCtxOn).apply()
-            }) {
-                Icon(Icons.Default.AccountTree, "Implicit workspace context on/off",
-                    tint = if (implicitCtxOn) colors.accent else colors.textSecondary,
-                    modifier = Modifier.size(18.dp))
-            }
-            // R10-B: walk back through sent inputs (tap = older, wraps to draft)
-            IconButton(onClick = {
+            },
+            onHistory = {
                 val hist = com.codespace.ide.chat.ChatInputHistory.list(context, projectRootPath)
                 if (hist.isNotEmpty()) {
                     if (inputHistIdx == -1) {
@@ -1869,55 +1905,13 @@ internal fun CopilotChatPanelInline(
                         chatInput = hist[inputHistIdx]
                     }
                 }
-            }, enabled = !chatLoading && com.codespace.ide.chat.ChatInputHistory.list(context, projectRootPath).isNotEmpty()) {
-                Icon(Icons.Default.History, "Input history",
-                    tint = if (inputHistIdx >= 0) colors.accent else colors.textSecondary,
-                    modifier = Modifier.size(18.dp))
-            }
-            OutlinedTextField(
-                value = chatInput,
-                onValueChange = { chatInput = it; inputHistIdx = -1 },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Ask Copilot\u2026", color = colors.textSecondary) },
-                // R8-QUEUE: input stays live while streaming — sends become queued.
-                maxLines = 4,
-                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = colors.text,
-                    unfocusedTextColor = colors.text,
-                    focusedBorderColor = colors.accent,
-                    unfocusedBorderColor = colors.divider,
-                    focusedContainerColor = colors.inputBg,
-                    unfocusedContainerColor = colors.inputBg,
-                ),
-            )
-            // R8-VOICE: mic dictation into the input (system speech activity)
-            Icon(
-                Icons.Default.Mic, "Voice input",
-                tint = colors.textSecondary,
-                modifier = Modifier
-                    .size(20.dp)
-                    .clickable { startVoiceInput() },
-            )
-            if (chatLoading) {
-                // R8-QUEUE: send now queues the message for after the stream
-                IconButton(
-                    onClick = { send(chatInput) },
-                    enabled = chatInput.isNotBlank(),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Queue message", tint = colors.accent)
-                }
-                IconButton(onClick = { stopChat() }) {
-                    Icon(Icons.Default.Stop, contentDescription = "Stop", tint = Color(0xFFEF4444))
-                }
-            } else {
-                IconButton(
-                    onClick = { send(chatInput) },
-                    enabled = chatInput.isNotBlank(),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = colors.accent)
-                }
-            }
-        }
+            },
+            historyEnabled = !chatLoading && com.codespace.ide.chat.ChatInputHistory.list(context, projectRootPath).isNotEmpty(),
+            historyActive = inputHistIdx >= 0,
+            onMic = { startVoiceInput() },
+            colors = colors,
+        )
+
             } // end chat column
         }
 

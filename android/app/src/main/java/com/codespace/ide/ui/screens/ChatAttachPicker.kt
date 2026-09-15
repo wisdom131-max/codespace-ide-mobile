@@ -257,6 +257,44 @@ internal fun ChatAttachPickerDialog(
                         }
                     }
                 }
+                // CW2 — "Attach git history" row (VS Code chat git-context analog; B07/B13)
+                val gitLog = remember(projectRoot) {
+                    try {
+                        if (projectRoot == null) emptyList()
+                        else com.codespace.ide.scm.GitService(termCtx).log(projectRoot, 50)
+                    } catch (_: Exception) { emptyList() }
+                }
+                if (gitLog.isNotEmpty() && onPickSelection != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable {
+                                onPickSelection(
+                                    ChatAttachment(
+                                        path = "git-history", relPath = "git-history", name = "git-history",
+                                        kind = ChatAttachment.Kind.SELECTION,
+                                        selText = gitLog.joinToString("\n") { c ->
+                                            c.hash.take(7) + " " + c.author + " " + c.date + " " +
+                                                c.message.replace('\n', ' ').take(160)
+                                        }.take(12000),
+                                    )
+                                )
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.History, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(16.dp).width(16.dp),
+                        )
+                        Column {
+                            Text("Attach git history (" + gitLog.size + " commits)", fontSize = 11.sp, color = colors.text)
+                            Text("Latest commits from this repo", fontSize = 9.sp, color = colors.textSecondary, maxLines = 1)
+                        }
+                    }
+                }
                 // I2 — TERMINAL BRIDGE rows: last pasted command, recent shell history, output tail
                 if (termPasted != null && onPickSelection != null) {
                     Row(
