@@ -41,7 +41,7 @@ The `modernUI` contrib (experimental `workbench.experimental.modernUI` setting) 
 | 1dp vertical paddings | DIVERGES-BAD (minor) — 30 uses; scale has 0 or 2 |
 | CI token enforcement | **MISSING** — they lint, we don't |
 
-## §4 Cross-cutting specs — now → after → why (presented to Wisdom 2026-09-15; PENDING per-item approval; applied PER-SURFACE inside each U-batch's polish turn, never as one global sweep)
+## §4 Cross-cutting specs — now → after → why (ALL FIVE APPROVED per-item by Wisdom 2026-09-15; applied PER-SURFACE inside each U-batch's polish turn, never as one global sweep)
 
 **SPEC-U2-1 — Icon normalization to 16/12-only.**
 - Now: mixed icon scale across the app — 14dp (80 uses), 18dp (43), 20dp (37), alongside 16dp (106) and 12dp (26); adjacent rows often mix 14 and 18 in the same panel.
@@ -81,4 +81,4 @@ The `modernUI` contrib (experimental `workbench.experimental.modernUI` setting) 
 
 ## Status
 
-**DONE** — 2026-09-15. SPEC-U2-1..5 presented individually 2026-09-15, awaiting per-item verdicts (per-surface application). U03 done. Next research batch: U04 editor surface.
+**DONE** — 2026-09-15. SPEC-U2-1..5 ALL APPROVED per-item 2026-09-15 (per-surface application confirmed by Wisdom). U03, U04 done. Next research batch: U05 panels & list surfaces.
