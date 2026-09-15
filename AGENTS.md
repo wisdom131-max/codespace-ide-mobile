@@ -3896,3 +3896,18 @@ FINAL-UI.md (synthesis): full spec ledger — SPEC-1..5 approved behind CW2/CW8;
 **Files:** NEW chat/ChatComposerMobile.kt, NEW chat/ChatRetryExport.kt, M ui/screens/ChatAttachPicker.kt (+git row), M ui/screens/CopilotChatPanelOverlay.kt (+bar item, composer swap).
 
 **Next on roadmap (ALL pending items):** CI build green → Wisdom fetches arm64-v8a APK → on-device test: chat composer layout + IME clear-of-send (the original bug), attach picker git-history row (real repo), Retry regeneration, Export .md + toast path, queue+stop chips while streaming, voice mic. UI sweep follow-ups: SPEC-U4-1 verdict (rides F1), SPEC-U8-1 verdict. Settings feature block (S01) after Phase 4. Wisdom re-tests (F1-F6 + PS + R10 + prior batches). PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-15 11:15 WAT] — AI Agent: Claude Sonnet 5.6 (CI-FIX + PHASE-1 GREEN #2822)
+
+**Commit:** a79dbb5 | **CI:** build #2822 SUCCESS (first green since #2811)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] Audit of builds #2812–#2821 (all failed)
+ROOT CAUSE (audited via downloadable CI logs — NOT code): Google removed the legacy 'tools' SDK package; android-actions/setup-android@v3 runs `sdkmanager "tools"` at setup and dies with exit 1 BEFORE any Kotlin compiles. Confirmed: #2812–#2820 were all docs-only commits failing identically; android-actions issue #537 opened same day (2026-09-15). NONE of the 10 failures were code — Phase-1 code (7740aa1) had never actually compiled until this fix.
+FIX: android-build.yml setup step v3 → v4 + `packages: platform-tools` (v4 default installs the dead 'tools' package too; explicit packages input skips it). Committed a79dbb5 → build #2822 GREEN — Phase-1 Kotlin compiled CLEAN FIRST TRY (ChatComposerMobile, ChatRetryExport, picker git row, composer swap: zero Kotlin errors).
+
+### [CW2][CW8][UI] Phase-1 chat (code in 7740aa1, first green build #2822)
+CW2: git-history attach row in picker (problems row pre-existed — I4, not redone). CW8: Retry chip (pops to last user turn, re-sends) + Export .md chip (.codespace/exports/chat-<ts>.md + toast). Polish SPEC-1..5: split toolbar/input composer, flat borderless 16sp input, 36dp filled send, 32dp mic target, rounded-top container, imePadding+navigationBarsPadding (the IME-covers-send fix), 16dp icons, radii 12/8. Per Wisdom 2026-09-15 grant: chat surface self-directed; other surfaces KEEP per-item approval.
+
+**Next on roadmap (ALL pending items):** Wisdom fetches codespace-ide-arm64-v8a from #2822 artifacts → on-device: composer layout, IME clear-of-send, attach picker git-history row (real repo), Retry regen, Export path toast, queue/stop chips streaming, mic voice. Then re-tests F1–F6 + PS + R10 + prior batches. Awaiting verdicts: SPEC-U4-1 (rides F1), SPEC-U8-1. Settings feature block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
