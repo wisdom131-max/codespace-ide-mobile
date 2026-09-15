@@ -3928,3 +3928,16 @@ OutputPanel lines are now tappable: OUTPUT_FILE_LINE regex pulls path:line token
 **Files:** NEW diagnostics/ProblemMatcher.kt, M project/TaskRunner.kt, M ui/panes/BuildPanel.kt, M terminal/TerminalAiBridge.kt, M ui/screens/ProjectShellScreen.kt (OutputPanel sig + tap + call site).
 
 **Next on roadmap (ALL pending items):** CW3 conditional breakpoints + CW5 explorer problem badges — UI PRESENTATIONS required per-item (see chat: now/after/why, awaiting Wisdom sign-off). CW7 snippet packs + declarative comment/bracket configs (next build item, no new UI). Then: real projects (action registry #1). Wisdom batch-test when all done: CW1 (run task w/ error → Problems panel; agent `make`-style run → Problems), CW4 (tap build output line w/ path:line → editor opens), CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-15 19:06 WAT] — AI Agent: Claude Sonnet 5.6 (CW3 — conditional breakpoints)
+
+**Commit:** (this push) | **CI:** (pending)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [CW3][DAP] Conditional breakpoints (Wisdom-approved)
+Audit finding: DebugBreakpoint model + NodeDAPAdapter ALREADY carry condition/logMessage/hitCondition to the DAP server — the gap was purely UI (nothing could ever SET them). Shipped: (1) gutter is now combinedClickable — long-press opens NEW ui/panels/BreakpointConditionDialog.kt (rounded 12dp dialog, 8dp fields, padded): Condition expression (pause-only-when-true, DAP evaluates), optional Log message (print w/o pause), Apply/Remove/Cancel; long-press on a line with NO breakpoint creates one. (2) CodeEditor renders conditional/log breakpoints as a HOLLOW RING vs solid dot (conditionalBreakpointLines param). (3) NEW UniversalDebugManager.setBreakpointCondition (blank -> cleared) + immediate republish to active session. Persistence already stored condition/logMessage (P23-8). hitCondition field exists but no UI yet (parked, deliberate v1 scope).
+
+**Files:** NEW ui/panels/BreakpointConditionDialog.kt, M editor/CodeEditor.kt (+OptIn(ExperimentalFoundationApi) on composable, ring render, long-press), M ui/panes/EditorPane.kt (condBpLine state + wiring + dialog host), M debug/UniversalDebugManager.kt (setter).
+
+**Next on roadmap (ALL pending items):** CW5 explorer problem badges (approved, NEXT — code started), CW7 snippet packs + declarative comment/bracket configs (approved). Then: real projects (action registry #1). Wisdom batch-test when all done: CW3 (set bp, long-press, condition i>5 on loop, ring visible, pauses only when true), CW1 (run task w/ error -> Problems; agent make-style run -> Problems), CW4 (tap output line w/ path:line -> editor opens), CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).

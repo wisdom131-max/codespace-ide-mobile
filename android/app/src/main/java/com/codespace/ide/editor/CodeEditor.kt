@@ -499,6 +499,7 @@ private suspend fun doFormatSelection(
 
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun CodeEditor(
     content: String,
     language: Language,
@@ -565,6 +566,10 @@ fun CodeEditor(
     breakpointLines: Set<Int> = emptySet(),
     /** P8-1 Breakpoints: called when user taps a line number to toggle a breakpoint. */
     onBreakpointToggle: (Int) -> Unit = {},
+    /** CW3: lines whose breakpoint has a condition/logMessage — rendered as a ring. */
+    conditionalBreakpointLines: Set<Int> = emptySet(),
+    /** CW3: long-press a gutter line opens the breakpoint condition editor. */
+    onBreakpointLongPress: (Int) -> Unit = {},
     /** P54: Current debug line (1-based) for yellow arrow indicator in gutter. 0 = none. */
     debugCurrentLine: Int = 0,
     /** P41-W: LSP semantic token ranges — overlaid on regex highlighting */
@@ -2240,7 +2245,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(lineHeightDp)
-                                    .clickable { onBreakpointToggle(lineNum) },
+                                    // CW3: long-press opens the condition editor (VS Code: Add Condition)
+                                    .combinedClickable(
+                                        onClick = { onBreakpointToggle(lineNum) },
+                                        onLongClick = { onBreakpointLongPress(lineNum) },
+                                    ),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.End,
                             ) {
@@ -2254,11 +2263,16 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     Spacer(Modifier.width(2.dp))
                                 }
                                 if (breakpointLines.contains(lineNum)) {
+                                    // CW3: hollow ring marks a conditional/log breakpoint
+                                    val condBp = conditionalBreakpointLines.contains(lineNum)
                                     Box(
                                         modifier = Modifier
                                             .size(8.dp)
                                             .clip(CircleShape)
-                                            .background(Color(0xFFE51400))
+                                            .then(
+                                                if (condBp) Modifier.border(1.5.dp, Color(0xFFE51400), CircleShape)
+                                                else Modifier.background(Color(0xFFE51400))
+                                            )
                                     )
                                     Spacer(Modifier.width(4.dp))
                                 }

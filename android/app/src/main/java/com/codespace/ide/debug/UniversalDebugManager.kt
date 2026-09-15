@@ -924,6 +924,22 @@ object UniversalDebugManager {
     fun hasBreakpoint(filePath: String, line: Int): Boolean =
         breakpoints[filePath]?.any { it.line == line } == true
 
+    /**
+     * CW3: set/update a breakpoint's condition + logMessage (blank -> cleared).
+     * Republishes to the active DAP session so live sessions honor it immediately.
+     */
+    fun setBreakpointCondition(filePath: String, line: Int, condition: String?, logMessage: String?) {
+        val list = breakpoints[filePath] ?: return
+        val idx = list.indexOfFirst { it.line == line }
+        if (idx < 0) return
+        list[idx] = list[idx].copy(
+            condition = condition?.trim()?.takeIf { it.isNotEmpty() },
+            logMessage = logMessage?.trim()?.takeIf { it.isNotEmpty() },
+        )
+        notifyBreakpointsChanged()
+        sendBreakpointsToActiveSession(filePath)
+    }
+
     fun setBreakpointEnabled(filePath: String, line: Int, enabled: Boolean) {
         breakpoints[filePath]?.find { it.line == line }?.let { bp ->
             val idx = breakpoints[filePath]!!.indexOf(bp)

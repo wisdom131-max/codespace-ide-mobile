@@ -551,6 +551,8 @@ fun EditorPane(
         }
     }
     var goToLineOpen by remember { mutableStateOf(false) }
+    // CW3: long-pressed gutter line -> breakpoint condition editor (null = closed)
+    var condBpLine by remember { mutableStateOf<Int?>(null) }
     // Pinned tab paths set
     val pinnedPaths = remember { mutableStateListOf<String>() }
     // Per-file scroll line memory (path → first visible line)
@@ -2004,6 +2006,14 @@ fun EditorPane(
                         if (staged == null || staged == active.content) emptySet()
                         else com.codespace.ide.ui.screens.aiReviewAffectedLines(active.content, staged)
                     }
+                    // CW3: breakpoint condition editor overlay (no-op while condBpLine == null)
+                    if (condBpLine != null) {
+                        com.codespace.ide.ui.panels.BreakpointConditionDialog(
+                            filePath = active.path,
+                            line0 = condBpLine,
+                            onDismiss = { condBpLine = null },
+                        )
+                    }
                     CodeEditor(
                         content = active.content,
                         language = active.language,
@@ -2069,6 +2079,14 @@ fun EditorPane(
                             // [BAND-DIAG]: 0-based gutter line as tapped and stored.
                             com.codespace.ide.diagnostics.AppOutputLog.log(
                                 "[BAND-DIAG] toggle: gutterLine0=" + line + " file=" + active.path.takeLast(40), "lsp")
+                        },
+                        // CW3: conditional/log breakpoints render as rings; long-press edits them
+                        conditionalBreakpointLines = udm?.getBreakpoints(active.path)
+                            ?.filter { it.condition != null || it.logMessage != null }
+                            ?.map { it.line }?.toSet() ?: emptySet(),
+                        onBreakpointLongPress = { line ->
+                            if (udm?.hasBreakpoint(active.path, line) == true) condBpLine = line
+                            else udm?.toggleBreakpoint(active.path, line) // nothing to edit yet -> create one
                         },
                         initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
