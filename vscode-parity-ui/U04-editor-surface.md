@@ -50,4 +50,4 @@ Tab strip rendered at `EditorPane.kt:660` (`tabs.forEachIndexed` in a horizontal
 
 ## Status
 
-**DONE** — 2026-09-15. SPEC-U4-1 logged (rides F1); SPEC-U3-1 amendment logged. Next: U05 panels & list surfaces.
+**DONE** — 2026-09-15. SPEC-U4-1 logged (rides F1). SPEC-U3-1 amendment RE-CONFIRMED APPROVED 2026-09-15 (compact tier: EditorStripQuickActions stays as-is). Wisdom confirmed keeps: adaptive FindReplaceBar (ahead of VS Code), scrollable tab strip (editor-first), gutter width discipline. Landscape gesture-nav check + IME tap-test pending from Wisdom (together). Next research batch: U06 menus & popovers.

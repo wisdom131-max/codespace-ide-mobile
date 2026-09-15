@@ -13,7 +13,7 @@
 | U02 | Design tokens & density foundation | [U02-design-tokens.md](U02-design-tokens.md) | ✅ DONE 2026-09-15 |
 | U03 | Shell & navigation (narrow-width) | [U03-shell-navigation.md](U03-shell-navigation.md) | ✅ DONE 2026-09-15 |
 | U04 | Editor surface (tabs, find bar, gutters) | [U04-editor-surface.md](U04-editor-surface.md) | ✅ DONE 2026-09-15 |
-| U05 | Panels & list surfaces (explorer/SCM/problems rows) | — | ⬜ |
+| U05 | Panels & list surfaces (explorer/SCM/problems rows) | [U05-panels-lists.md](U05-panels-lists.md) | ✅ DONE 2026-09-15 |
 | U06 | Menus, dropdowns & popovers | — | ⬜ |
 | U07 | Overlays (palette, dialogs, notifications) | — | ⬜ |
 | U08 | Terminal & debug visuals | — | ⬜ |
@@ -34,3 +34,6 @@
 - **U03 (shell):** VS Code phone = single-pane + everything becomes OVERLAY CARDS: 60vh bottom sheet w/ 16px rounded top + 36x5px drag handle, full-screen modal editors, 44x44 touch floor, ALL inputs forced 16px, hovers disabled, edge-swipe sidebar (16px zone/48px commit). Ours: single-column philosophy already MATCHES (B12 differentiator = their phone direction); real gaps = drag-handle affordance, input font size, sub-44dp clickables, imePadding app-wide. Edge-swipe LOGGED-DELIBERATE skip (system-back conflict). SPEC-U3-1..5 pending.
 - **SPEC-1..5 (U01 chat) APPROVED per-item 2026-09-15** — approved-pending-its-turn behind CW2/CW8 (Phase 1). SPEC-U2-1..5 ALL APPROVED per-item 2026-09-15 (per-surface application confirmed); SPEC-U3-1..5 awaiting verdicts.
 - **U04 (editor surface):** VS Code phone collapses tabs to a single-tab title (their shell is chat-first — we deliberately keep our scrollable strip); phone FIND = commandeered full-width row (52px, thumb targets, single input) while their in-editor find widget stays desktop-styled — our <480dp adaptive FindReplaceBar is arguably AHEAD (F1 retest will confirm). REFINEMENT: their compact chrome runs 28-32px (editor-tabs-compact-height) — SPEC-U3-1 amended with a compact-tier exemption pending Wisdom re-confirm. SPEC-U4-1 (find thumb-target pass) rides F1. Edge-swipe skip + mobile-layer logging confirmed by Wisdom.
+
+- **U05 (lists):** VS Code's only phone list rules: actions ALWAYS VISIBLE (hover killed), :active row = hover bg, touch-action hygiene; SCM gets ZERO phone restyling (desktop-tight on their own phone workbench). Ours already matches "always visible" by default and is more mobile-aware on SCM. Gaps: 14/18dp bare clickable row icons (SPEC-U5-1 padded targets + SPEC-U2-1 icon fix) + press-feedback audit (SPEC-U5-2).
+- **Approvals ledger:** SPEC-1..5 ✅ (behind CW2/CW8) · SPEC-U2-1..5 ✅ (per-surface) · SPEC-U3-1 ✅ re-confirmed w/ compact tier · SPEC-U3-2..5 presented 2026-09-15, pending · SPEC-U4-1 pending (rides F1) · SPEC-U5-1..2 pending.

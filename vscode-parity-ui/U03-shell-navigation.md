@@ -40,7 +40,7 @@ Single-column touch-first shell (B12 differentiator): 48dp activity bar (hamburg
 
 ## §4 Specs (pending per-item approval; per-surface application)
 
-- **SPEC-U3-1 — 44dp touch-target floor** *(AMENDED by U04, pending Wisdom re-confirm: adds compact-tier exemption).* Now: bare clickables below 44dp (20dp mic, 12–16dp row icons). After: every tappable ≥44dp target with centered content (IconButtons already pass at 48) — EXCEPT dense editor chrome, which keeps a 28–32dp compact tier (their `editor-tabs-compact-height` exception). Why: their enforced floor; mis-taps on-device.
+- **SPEC-U3-1 — 44dp touch-target floor** *(AMENDED by U04; RE-CONFIRMED APPROVED by Wisdom 2026-09-15 with compact-tier exemption: 28-32dp chrome like EditorStripQuickActions stays, floor applies to action buttons/rows only).* Now: bare clickables below 44dp (20dp mic, 12–16dp row icons). After: every tappable ≥44dp target with centered content (IconButtons already pass at 48) — EXCEPT dense editor chrome, which keeps a 28–32dp compact tier (their `editor-tabs-compact-height` exception). Why: their enforced floor; mis-taps on-device.
 - **SPEC-U3-2 — Bottom panel becomes a real sheet.** Now: square-cornered inline panel, height draggable but no affordance. After: 16dp rounded-top corners + 36×5dp centered drag handle (grabs = resize, existing bottomPanelHeight/maximized logic). Why: their panel pattern; the handle *shows* the resize affordance we already implemented but never advertised.
 - **SPEC-U3-3 — Input text 16sp on phone-class layouts.** Now: chat input 13sp, panel searches 11sp. After: 16sp for chat composer + text-entry fields (NOT labels/rows). Why: their phone CSS forces all inputs to 16px — deliberate accessibility override of the 13px ramp; bigger entry text is the single most-used text on a phone.
 - **SPEC-U3-4 — LOGGED-DELIBERATE: no edge-swipe nav** (system-back conflict, §3).
@@ -59,4 +59,4 @@ Single-column touch-first shell (B12 differentiator): 48dp activity bar (hamburg
 
 ## Status
 
-**DONE** — 2026-09-15. SPEC-U3-1..5 logged pending per-item approval. Next: U04 editor surface.
+**DONE** — 2026-09-15. SPEC-U3-1 APPROVED (re-confirmed w/ compact-tier amendment 2026-09-15); SPEC-U3-2..5 presented in chat 2026-09-15, awaiting per-item verdicts. U04, U05 done. Next research batch: U06 menus & popovers.
