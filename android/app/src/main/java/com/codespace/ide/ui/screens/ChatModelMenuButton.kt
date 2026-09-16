@@ -73,7 +73,7 @@ internal fun ChatModelMenuButton(
     onDeleteManualModel: (String) -> Unit = { },
     onAddManualModel: (String, String) -> Unit = { _, _ -> },
     onRefetchCustom: () -> Unit = { },
-    colors: EditorColors = EditorColors(),
+    colors: EditorColors,
 ) {
     val isAuto = selectedModel == com.codespace.ide.chat.ChatModelSelection.AUTO_MODEL
     val label = if (isAuto) "Auto" else selectedModel.take(12)
