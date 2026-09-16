@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | GREEN: #2832 (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
+| CI build | GREEN: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -4046,3 +4046,22 @@ NEW editor/LanguageConfigStore.kt — workspace-declarative overrides, mtime-cac
 **Files:** NEW editor/LanguageConfigStore.kt, M editor/BracketPairConfig.kt (param thread), M editor/CodeEditor.kt (comment when -> store call; 9 call sites pass path).
 
 **Next on roadmap (ALL pending items):** VERIFY GREEN. Then: real projects (action registry + ContextKeyExpr-lite #1, per FINAL-REVIEW §4). CW batch-test (CW7p1 snippets + CW7p2 configs + CW5 + CW3) once green, then CW1/CW4 retests, CW2/CW8/composer retest, F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-16 07:50 WAT] — AI Agent: Claude Sonnet 5.6 (CW7p2 verdict: GREEN, batch COMPLETE)
+
+**Commit:** (docs) | **CI: GREEN #2835** — CW7p2 compile clean; APK artifact codespace-ide-arm64-v8a.
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated (#2835). 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [CW7][INTELLIGENSE] #2834 fix + #2835 GREEN — cheap-wins batch COMPLETE
+#2834 red: canSurround() accessor body got the threaded forLanguage(language, currentFilePath) call but its SIGNATURE missed the param (my blanket replace hit bodies only where checked — PITFALL: when threading a new param through a family of accessors, grep EVERY `fun name(` signature AND every internal call in the same sweep). Fixed in one line; #2835 GREEN.
+BATCH STATUS: CW3 (conditional breakpoints) GREEN #2832. CW5 (explorer problem badges) GREEN #2832. CW7 (snippet packs + language-config) GREEN #2835. All 8 cheap wins done except: problem matchers (CW1, #2822), git log Timeline (CW4, #2822), output file:line links (done earlier), CW2 (problems+SCM attach rows, #2822), CW8 (retry + export, #2822). REMAINING CHEAP WIN: NONE — all 8 shipped.
+
+**WISDOM TEST BATCH (install #2835 arm64-v8a APK):**
+- CW7p1: create .codespace/snippets/kotlin.json with {"MyFun": {"prefix":"mfun","body":["fun myFun() {","\t$0","}"]}} -> type "mfun" -> pack entry in completion + tabstop expansion; same-prefix pack entry overrides built-in.
+- CW7p2: create .codespace/language-config.json {"kotlin": {"comments": {"lineComment": "##"}}} -> Toggle Comment now uses "## " (remove file -> back to "// "); brackets section e.g. [["<",">"]] adds < auto-close for Kotlin.
+- CW3: gutter tap = solid bp dot; LONG-PRESS = condition editor (set i>5 on a loop bp, Continue respects it); conditional bp = HOLLOW RING.
+- CW5: break a file -> red explorer badge; warnings amber; folder rollup; TAP badge -> Problems pre-filtered; fix -> badge clears.
+- Plus pending retests: CW1 (Problems matchers), CW4 (git log in TimelinePanel), CW2 (problems+SCM attach rows), CW8 (retry + session export), F1-F6, PS, R10.
+
+**Next on roadmap (ALL pending items):** Wisdom on-device batch above. Then real projects per FINAL-REVIEW §4 order: action registry + ContextKeyExpr-lite (#1), WorkingCopy hub (#2), inline editor-zone chat (#3), checkpoint timeline (#4), LanguageConfiguration registry full (#5 — CW7p2 covers core), voice STT (#6), sessions-as-tabs (#7), tokenization audit (#8). SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
