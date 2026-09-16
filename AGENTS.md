@@ -4000,3 +4000,16 @@ REAL FIX: EditorBreakpointDot.kt now holds the FULL gutter marker set — Editor
 **Files:** M editor/EditorBreakpointDot.kt (bookmark + bp-row composables), M editor/CodeEditor.kt (two 1-call replacement call sites).
 
 **Next on roadmap (ALL pending items):** VERIFY GREEN (this push carries CW3 + CW5 + CW7 part 1 — all awaiting first green). CW7 part 2: declarative comment/bracket configs. Then: real projects (action registry #1). Wisdom batch-test when all done + green: CW7 (drop .codespace/snippets/kotlin.json prefix mfun -> appears + expands), CW5 (break file -> red badge; folder rollup; tap -> Problems filtered), CW3 (bp long-press condition editor, ring, condition i>5), CW1/CW4 retests, CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-16 05:45 WAT] — AI Agent: Claude Sonnet 5.6 (CW3 fix 4 — #2831 audit: two clean compile errors)
+
+**Commit:** (this push) | **CI:** (pending; #2831 RED)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [CW3][BUILD-FIX] #2831 audit — 64KB WON, two plain errors left
+GOOD NEWS: MethodTooLarge is GONE — the structural gutter extraction (28 lines out of CodeEditor) cleared the limit. #2831 failed on two ordinary errors in the NEW files: (1) EditorBreakpointDot.kt used combinedClickable without @OptIn(ExperimentalFoundationApi) — the opt-in lived in CodeEditor, extraction moved the call but not the annotation (PITFALL: extraction carries API requirements — check @OptIn/@Experimental annotations on every moved call). (2) SnippetPackStore.kt referenced Language without import — Language is com.codespace.ide.domain.Language, not editor-local (PITFALL: types that appear unqualified inside CodeEditor may be imports, not locals — copy the import when extracting).
+
+**Files:** M editor/EditorBreakpointDot.kt (+OptIn), M editor/SnippetPackStore.kt (+Language import).
+
+**Next on roadmap (ALL pending items):** VERIFY GREEN (push carries CW3 + CW5 + CW7p1). CW7 part 2: declarative comment/bracket configs. Then: real projects (action registry #1). Wisdom batch-test when all done + green: CW7 (drop .codespace/snippets/kotlin.json prefix mfun -> appears + expands), CW5 (break file -> red badge; folder rollup; tap -> Problems filtered), CW3 (bp long-press condition editor, ring, condition i>5), CW1/CW4 retests, CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
