@@ -4029,3 +4029,20 @@ Root-cause chain: #2826 MethodTooLarge (CW3 inline gutter code at zero headroom)
 - CW7p1: create .codespace/snippets/kotlin.json with {"MyFun": {"prefix":"mfun","body":["fun myFun() {","\t\$0","}"]}} in your project -> type "mfun" -> pack entry appears in completion + expands with tabstop.
 
 **Next on roadmap (ALL pending items):** CW7 part 2: declarative comment/bracket configs (.codespace/language-config.json). Then: real projects (action registry #1). CW1/CW4 retests, CW2/CW8/composer retest (CW2/CW8 were in #2822), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-16 07:20 WAT] — AI Agent: Claude Sonnet 5.6 (CW7 part 2 — declarative comment/bracket configs)
+
+**Commit:** (this push) | **CI:** (pending)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [CW7][INTELLIGENSE] .codespace/language-config.json (VS Code language-configuration parity)
+NEW editor/LanguageConfigStore.kt — workspace-declarative overrides, mtime-cached, malformed file = [LANGCFG] Output log + built-in fallback (never crash):
+- comments.lineComment overrides Toggle Comment token (trailing space auto-appended to match built-in behavior); comments.blockComment parsed + stored for future block-comment toggle (not consumed yet).
+- brackets / autoClosingPairs (both keys accepted; [open,close] arrays or {open,close} objects; single-char pairs only) override ALL bracket behavior: auto-close, skip-over, surround-selection, smart-enter closer, match highlighting — via an optional currentFilePath param threaded through all 10 BracketPairConfig accessors (default null = built-in; 9 CodeEditor call sites pass the open file path).
+- Sections keyed by language name (case-insensitive) or "all" (base layer, language section wins per-entry; bracket pairs MERGE by open char).
+- Built-in comment tokens MOVED from CodeEditor's body into the store (identical when, -9 body lines at zero headroom).
+
+**Files:** NEW editor/LanguageConfigStore.kt, M editor/BracketPairConfig.kt (param thread), M editor/CodeEditor.kt (comment when -> store call; 9 call sites pass path).
+
+**Next on roadmap (ALL pending items):** VERIFY GREEN. Then: real projects (action registry + ContextKeyExpr-lite #1, per FINAL-REVIEW §4). CW batch-test (CW7p1 snippets + CW7p2 configs + CW5 + CW3) once green, then CW1/CW4 retests, CW2/CW8/composer retest, F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).

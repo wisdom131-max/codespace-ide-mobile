@@ -1830,7 +1830,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     // P-BRACKET: Auto-close brackets/quotes from extra keys toolbar
                     // (Keyboard input goes through onValueChange which already auto-closes,
                     // but extra keys toolbar inserts directly here — add the closing pair)
-                    val closing = BracketPairConfig.getCloser(language, text.firstOrNull() ?: ' ')?.toString()
+                    val closing = BracketPairConfig.getCloser(language, text.firstOrNull() ?: ' ', currentFilePath)?.toString()
                     if (closing != null) {
                         val newText = value.text.substring(0, selStart) + text + closing + value.text.substring(selEnd)
                         // Place cursor between the pair (e.g. between ( and ))
@@ -1986,14 +1986,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val before = if (pos > 0) value.text[pos - 1] else null
             val at = if (pos < value.text.length) value.text[pos] else null
             val bracket = before ?: at
-            val allBrackets = BracketPairConfig.getAllBracketChars(language)
+            val allBrackets = BracketPairConfig.getAllBracketChars(language, currentFilePath)
             val bracketPos = if (before != null && bracket in allBrackets) pos - 1
                           else if (at != null && bracket in allBrackets) pos
                           else -1
             if (bracketPos >= 0 && bracket != null) {
-                val match = BracketPairConfig.getMatchingBracket(language, bracket)
+                val match = BracketPairConfig.getMatchingBracket(language, bracket, currentFilePath)
                 if (match != null) {
-                    val dir = if (BracketPairConfig.isOpener(language, bracket)) 1 else -1
+                    val dir = if (BracketPairConfig.isOpener(language, bracket, currentFilePath)) 1 else -1
                     var depth = 0
                     var i = bracketPos
                     var found = -1
@@ -2380,7 +2380,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         if (newValue.text.length == value.text.length + 1 &&
                             value.selection.start != value.selection.end) {
                             val typedChar = newValue.text.getOrNull(newValue.selection.end - 1)
-                            val bpPair = BracketPairConfig.getPairByOpen(language, typedChar ?: ' ')
+                            val bpPair = BracketPairConfig.getPairByOpen(language, typedChar ?: ' ', currentFilePath)
                             val openChar = bpPair?.open
                             val closeChar = bpPair?.close
                             if (openChar != null && closeChar != null && bpPair.surround) {
@@ -2402,7 +2402,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             val cursor = newValue.selection.end
                             if (cursor > 0 && cursor <= newValue.text.length) {
                                 val insertedChar = newValue.text[cursor - 1]
-                                val closer = BracketPairConfig.getCloser(language, insertedChar)
+                                val closer = BracketPairConfig.getCloser(language, insertedChar, currentFilePath)
                                 if (closer != null) {
                                     // R2-3: Skip-over if the next char is already the closer
                                     if (cursor < newValue.text.length && newValue.text[cursor] == closer) {
@@ -2465,9 +2465,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 val fullIndent = indent + extraIndent
                                 // Smart Enter: if prevLine ends with an unmatched opener, add closing bracket below
                                 val smartCloserChar = when {
-                                    endsWithBrace -> BracketPairConfig.getCloser(language, '{')
-                                    endsWithBracket -> BracketPairConfig.getCloser(language, '[')
-                                    endsWithParen -> BracketPairConfig.getCloser(language, '(')
+                                    endsWithBrace -> BracketPairConfig.getCloser(language, '{', currentFilePath)
+                                    endsWithBracket -> BracketPairConfig.getCloser(language, '[', currentFilePath)
+                                    endsWithParen -> BracketPairConfig.getCloser(language, '(', currentFilePath)
                                     else -> null
                                 }
                                 val closer = smartCloserChar?.toString()
@@ -2991,15 +2991,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val lineStart = value.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
                                         val lineEnd = value.text.indexOf('\n', cursor).let { if (it == -1) value.text.length else it }
                                         val lineText = value.text.substring(lineStart, lineEnd)
-                                        val commentPrefix = when (language) {
-                                            Language.PYTHON, Language.SHELL -> "# "
-                                            Language.KOTLIN, Language.JAVA, Language.JAVASCRIPT,
-                                            Language.TYPESCRIPT, Language.GO, Language.RUST,
-                                            Language.CPP, Language.C -> "// "
-                                            Language.HTML, Language.XML -> "<!-- "
-                                            Language.CSS -> "/* "
-                                            else -> "// "
-                                        }
+                                        // CW7p2: .codespace/language-config.json override, built-in fallback
+                                        val commentPrefix = LanguageConfigStore.lineCommentFor(language, currentFilePath)
                                         val commentTrim = commentPrefix.trim()
                                         val newText: String
                                         val newCursor: Int

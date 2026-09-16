@@ -26,7 +26,7 @@ data class BracketPair(
  * are active, which auto-close, which support skip-over, and which wrap selections.
  *
  * Usage:
- *   BracketPairConfig.forLanguage(language)  → List<BracketPair>
+ *   BracketPairConfig.forLanguage(language, currentFilePath)  → List<BracketPair>
  *   BracketPairConfig.getCloser(language, '(')  → ')' or null
  *   BracketPairConfig.getPair(language, '(')  → BracketPair or null
  *   BracketPairConfig.isOpener(language, '(')  → true
@@ -129,14 +129,19 @@ object BracketPairConfig {
         Language.PLAIN to PLAIN,
     )
 
-    /** Get all bracket pairs for a language. */
-    fun forLanguage(language: Language): List<BracketPair> {
+    /**
+     * Get all bracket pairs for a language. CW7p2: workspace overrides from
+     * .codespace/language-config.json (brackets / autoClosingPairs) win over
+     * the built-in per-language lists when [currentFilePath] resolves a config.
+     */
+    fun forLanguage(language: Language, currentFilePath: String? = null): List<BracketPair> {
+        LanguageConfigStore.bracketPairsFor(language, currentFilePath)?.let { return it }
         return configs[language] ?: DEFAULT
     }
 
     /** Get the closing character for an opening character, or null if not a bracket opener. */
-    fun getCloser(language: Language, char: Char): Char? {
-        val pairs = forLanguage(language)
+    fun getCloser(language: Language, char: Char, currentFilePath: String? = null): Char? {
+        val pairs = forLanguage(language, currentFilePath)
         for (pair in pairs) {
             if (pair.open == char && pair.autoClose) return pair.close
         }
@@ -144,8 +149,8 @@ object BracketPairConfig {
     }
 
     /** Get the BracketPair for a character (either open or close), or null. */
-    fun getPair(language: Language, char: Char): BracketPair? {
-        val pairs = forLanguage(language)
+    fun getPair(language: Language, char: Char, currentFilePath: String? = null): BracketPair? {
+        val pairs = forLanguage(language, currentFilePath)
         for (pair in pairs) {
             if (pair.open == char || pair.close == char) return pair
         }
@@ -153,8 +158,8 @@ object BracketPairConfig {
     }
 
     /** Get the BracketPair where the open char matches, or null. */
-    fun getPairByOpen(language: Language, char: Char): BracketPair? {
-        val pairs = forLanguage(language)
+    fun getPairByOpen(language: Language, char: Char, currentFilePath: String? = null): BracketPair? {
+        val pairs = forLanguage(language, currentFilePath)
         for (pair in pairs) {
             if (pair.open == char) return pair
         }
@@ -162,32 +167,32 @@ object BracketPairConfig {
     }
 
     /** Check if a character is an opening bracket for the given language. */
-    fun isOpener(language: Language, char: Char): Boolean {
-        val pairs = forLanguage(language)
+    fun isOpener(language: Language, char: Char, currentFilePath: String? = null): Boolean {
+        val pairs = forLanguage(language, currentFilePath)
         return pairs.any { it.open == char }
     }
 
     /** Check if a character is a closing bracket for the given language. */
-    fun isCloser(language: Language, char: Char): Boolean {
-        val pairs = forLanguage(language)
+    fun isCloser(language: Language, char: Char, currentFilePath: String? = null): Boolean {
+        val pairs = forLanguage(language, currentFilePath)
         return pairs.any { it.close == char }
     }
 
     /** Check if a character is any bracket (open or close) for the given language. */
-    fun isBracket(language: Language, char: Char): Boolean {
-        val pairs = forLanguage(language)
+    fun isBracket(language: Language, char: Char, currentFilePath: String? = null): Boolean {
+        val pairs = forLanguage(language, currentFilePath)
         return pairs.any { it.open == char || it.close == char }
     }
 
     /** Check if a character is a quote (string delimiter) for the given language. */
-    fun isQuote(language: Language, char: Char): Boolean {
-        val pairs = forLanguage(language)
+    fun isQuote(language: Language, char: Char, currentFilePath: String? = null): Boolean {
+        val pairs = forLanguage(language, currentFilePath)
         return pairs.any { (it.open == char || it.close == char) && it.isQuote }
     }
 
     /** Get the matching bracket character for bracket match highlighting. */
-    fun getMatchingBracket(language: Language, char: Char): Char? {
-        val pairs = forLanguage(language)
+    fun getMatchingBracket(language: Language, char: Char, currentFilePath: String? = null): Char? {
+        val pairs = forLanguage(language, currentFilePath)
         for (pair in pairs) {
             if (pair.open == char) return pair.close
             if (pair.close == char) return pair.open
@@ -196,14 +201,14 @@ object BracketPairConfig {
     }
 
     /** Get all bracket chars (open + close) for the highlighter. */
-    fun getAllBracketChars(language: Language): Set<Char> {
-        val pairs = forLanguage(language)
+    fun getAllBracketChars(language: Language, currentFilePath: String? = null): Set<Char> {
+        val pairs = forLanguage(language, currentFilePath)
         return pairs.flatMap { listOf(it.open, it.close) }.toSet()
     }
 
     /** Check if surround-selection is enabled for a character. */
     fun canSurround(language: Language, char: Char): Boolean {
-        val pairs = forLanguage(language)
+        val pairs = forLanguage(language, currentFilePath)
         return pairs.any { it.open == char && it.surround }
     }
 }
