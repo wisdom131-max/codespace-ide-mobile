@@ -207,7 +207,7 @@ object BracketPairConfig {
     }
 
     /** Check if surround-selection is enabled for a character. */
-    fun canSurround(language: Language, char: Char): Boolean {
+    fun canSurround(language: Language, char: Char, currentFilePath: String? = null): Boolean {
         val pairs = forLanguage(language, currentFilePath)
         return pairs.any { it.open == char && it.surround }
     }
