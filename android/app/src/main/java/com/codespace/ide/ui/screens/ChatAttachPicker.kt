@@ -180,7 +180,12 @@ internal fun ChatAttachPickerDialog(
             color = colors.background,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState()).heightIn(max = maxDialogH)) {
+            // F4-FIX-2 (2026-09-16): heightIn MUST WRAP verticalScroll (order matters!).
+                // Old order put heightIn INSIDE the scroll — it clamped the CONTENT to 85%
+                // of the screen, so the scroll modifier saw content == viewport height
+                // and had ZERO scroll range: the dialog rendered but could never scroll.
+                // Correct: heightIn limits the DIALOG height; scroll handles overflow inside.
+                Column(Modifier.padding(12.dp).heightIn(max = maxDialogH).verticalScroll(rememberScrollState())) {
                 Text(
                     "Attach file to chat",
                     color = colors.text,
