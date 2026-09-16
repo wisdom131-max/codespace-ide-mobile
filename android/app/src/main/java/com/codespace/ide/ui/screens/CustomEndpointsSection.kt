@@ -168,7 +168,6 @@ internal fun CustomEndpointsSection(
                                     val pid = CustomEndpointStore.providerIdFor(ep.id)
                                     scope.launch {
                                         try {
-                                            val provider = ChatProviderRegistry.byId(pid)
 
                                             val key = try {
                                                 com.codespace.ide.chat.ChatKeyPool.keys(tokenStore, pid).firstOrNull()?.second
@@ -177,7 +176,12 @@ internal fun CustomEndpointsSection(
                                                 fetchNote = "Set the key for " + ep.label + " first (provider row below)."
                                                 return@launch
                                             }
-                                            val models = provider.fetchModels(key)
+                                            val liveProvider = ChatProviderRegistry.byId(pid)
+                                            if (liveProvider == null) {
+                                                fetchNote = "Provider missing for " + ep.label + " — reopen Settings."
+                                                return@launch
+                                            }
+                                            val models = liveProvider.fetchModels(key)
                                             fetchNote = ep.label + ": " + models.size.toString() +
                                                 " model(s) — " + CustomEndpointStore.liveModels(ep.id).size + " live cached."
                                             tick++

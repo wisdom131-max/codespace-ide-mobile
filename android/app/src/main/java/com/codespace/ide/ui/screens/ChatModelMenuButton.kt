@@ -31,7 +31,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.codespace.ide.ui.EditorColors
 
 /**
  * One custom endpoint's model group in the picker (MK-RESTRUCTURE B, 2026-09-16).
@@ -73,7 +72,7 @@ internal fun ChatModelMenuButton(
     onDeleteManualModel: (String) -> Unit = { },
     onAddManualModel: (String, String) -> Unit = { _, _ -> },
     onRefetchCustom: () -> Unit = { },
-    colors: EditorColors,
+    colors: ChatPanelColors,
 ) {
     val isAuto = selectedModel == com.codespace.ide.chat.ChatModelSelection.AUTO_MODEL
     val label = if (isAuto) "Auto" else selectedModel.take(12)
@@ -96,7 +95,7 @@ internal fun ChatModelMenuButton(
         DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
             // Auto first — VS Code's default picker entry
             DropdownMenuItem(
-                text = { Text("Auto" + if (isAuto) "  ✓", fontSize = 12.sp) },
+                text = { Text("Auto" + if (isAuto) "  ✓" else "", fontSize = 12.sp) },
                 onClick = { onPick(com.codespace.ide.chat.ChatModelSelection.AUTO_MODEL); onExpandedChange(false) },
             )
             // CUSTOM-ENDPOINT-FIX: providers whose live model list FAILED get a
