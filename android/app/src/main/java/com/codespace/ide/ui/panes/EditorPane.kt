@@ -1520,7 +1520,7 @@ fun EditorPane(
             AppOutputLog.log("[SQUIGGLE-DIAG] handler REGISTERED for uri=" + uri + " lang=" + snap.language.displayName, "lsp")
             // BUG-B SPLIT-SAFE: paired add/remove (each split pane keeps its own
             // handler; the old single-slot setHandler let pane B replace pane A).
-            bugbHandlerRef = { diagUri: String, diags: org.json.JSONArray ->
+            bugbHandlerRef = bugb@{ diagUri: String, diags: org.json.JSONArray ->
                 AppOutputLog.log("[SQUIGGLE-DIAG] handler FIRED diagUri=" + diagUri + " diagCount=" + diags.length(), "lsp")
                 // SQUIGGLE-STALE-FIX (2026-09-10): `snap` is captured once when the file
                 // opens (content EMPTY for a newly created file), so snap.content is
@@ -1532,7 +1532,7 @@ fun EditorPane(
                 val live = liveTab
                 if (live == null || live.id != snap.id) {
                     AppOutputLog.log("[SQUIGGLE-DIAG] DROPPED — live tab mismatch (live=" + (live?.id ?: "null") + " snap=" + snap.id + ")", "lsp")
-                    return@setDiagnosticsHandler
+                    return@bugb
                 }
                 // Server-gen check at callback invocation time (handler survives server
                 // restarts — must read CURRENT generation, not registration-time value).
@@ -1541,7 +1541,7 @@ fun EditorPane(
                 val gen = LspManager.getServerGeneration(live.language)
                 if (gen == 0) {
                     AppOutputLog.log("[SQUIGGLE-DIAG] DROPPED — server generation is 0 (no healthy server) for " + live.language.displayName, "lsp")
-                    return@setDiagnosticsHandler
+                    return@bugb
                 }
                 // P33-INTELLISENSE: Normalize both URIs before comparing — server may
                 // return %20 for spaces while our URI has raw spaces (or vice versa).

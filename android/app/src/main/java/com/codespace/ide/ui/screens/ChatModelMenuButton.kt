@@ -31,7 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.codespace.ide.ui.theme.EditorColors
+import com.codespace.ide.ui.EditorColors
 
 /**
  * One custom endpoint's model group in the picker (MK-RESTRUCTURE B, 2026-09-16).
