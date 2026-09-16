@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | GREEN: #2794 (9e9cb6a, FIX-BATCH: portrait find bar, chat-find width, voice branches, picker scroll, perf idle + CE-CLASSIFY WAF + manual-model escape hatch). APK artifact: codespace-ide-arm64-v8a |
+| CI build | GREEN: #2832 (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -4013,3 +4013,19 @@ GOOD NEWS: MethodTooLarge is GONE — the structural gutter extraction (28 lines
 **Files:** M editor/EditorBreakpointDot.kt (+OptIn), M editor/SnippetPackStore.kt (+Language import).
 
 **Next on roadmap (ALL pending items):** VERIFY GREEN (push carries CW3 + CW5 + CW7p1). CW7 part 2: declarative comment/bracket configs. Then: real projects (action registry #1). Wisdom batch-test when all done + green: CW7 (drop .codespace/snippets/kotlin.json prefix mfun -> appears + expands), CW5 (break file -> red badge; folder rollup; tap -> Problems filtered), CW3 (bp long-press condition editor, ring, condition i>5), CW1/CW4 retests, CW2/CW8/composer (build #2822 APK), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-16 06:35 WAT] — AI Agent: Claude Sonnet 5.6 (AUDIT RESULT: GREEN)
+
+**Commit:** (docs) | **CI: GREEN #2832** — CW3 + CW5 + CW7p1 all compile, APK artifact codespace-ide-arm64-v8a available.
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated (#2832). 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [BUILD-FIX] AUDIT CLOSED: #2826-#2831 red -> #2832 GREEN
+Root-cause chain: #2826 MethodTooLarge (CW3 inline gutter code at zero headroom) -> #2827 Int/Float (fontSize is Int) -> #2828-#2830 nibble-extraction too small -> #2831 two clean errors in new files (combinedClickable missing @OptIn; Language is com.codespace.ide.domain.Language) -> #2832 GREEN with the full structural gutter extraction. TWO NEW PITFALLS LOGGED ABOVE (extraction must carry @OptIn annotations AND imports of apparently-local types).
+
+**WISDOM TEST BATCH (install #2832 arm64-v8a APK):**
+- CW3: tap gutter = solid bp dot; LONG-PRESS bp = condition editor sheet (set condition "i>5" on a loop bp, Continue respects it); conditional bp renders as HOLLOW RING; log-message bp too; Remove works.
+- CW5: break a file (type garbage) -> explorer row gets red count badge; warnings amber; folder rolls up children; TAP badge -> Problems panel opens pre-filtered to that file; fix file -> badge clears.
+- CW7p1: create .codespace/snippets/kotlin.json with {"MyFun": {"prefix":"mfun","body":["fun myFun() {","\t\$0","}"]}} in your project -> type "mfun" -> pack entry appears in completion + expands with tabstop.
+
+**Next on roadmap (ALL pending items):** CW7 part 2: declarative comment/bracket configs (.codespace/language-config.json). Then: real projects (action registry #1). CW1/CW4 retests, CW2/CW8/composer retest (CW2/CW8 were in #2822), F1-F6 + PS + R10 retests. SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
