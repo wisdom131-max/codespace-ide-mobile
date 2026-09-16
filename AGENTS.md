@@ -3931,7 +3931,7 @@ OutputPanel lines are now tappable: OUTPUT_FILE_LINE regex pulls path:line token
 
 ## [2026-09-15 19:06 WAT] — AI Agent: Claude Sonnet 5.6 (CW3 — conditional breakpoints)
 
-**Commit:** (this push) | **CI:** (pending)
+**Commit:** fe9a6f9 | **CI:** #2839/#2840/#2841 failed -> **#2842 GREEN** (fix commits: import ChatPanelColors not EditorColors, labeled handler lambda, EditorColors() default dropped, provider null-guard)
 
 **RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
 
@@ -4123,3 +4123,17 @@ heightIn must come BEFORE verticalScroll in the modifier chain (order bug — se
 **PENDING INVESTIGATION (plan only, NO code):** CW7 dotfile bug — Explorer buildNodes() filters ALL dot-prefixed names from the tree (hardcoded, no toggle) so created dotfiles ARE created on disk but INVISIBLE (perceived as "not created"); New File/Folder dialogs pass dots fine (strip only backtick+NUL); walkProjectFiles (chat attach picker) ALSO skips dot-dirs + dot-files so .codespace/snippets/kotlin.json is unattachable; SourceControlPane already has a Show-dotfiles toggle as precedent. VS Code behavior: files.exclude hides a TARGETED set (.git/.svn/.DS_Store etc.) NOT all dotfiles — dot-prefixed creation works and files are VISIBLE by default. Plan: targeted default-hide list + show-hidden toggle in Explorer + walkProjectFiles parity + audit SAF CreateDocument path. AWAITING Wisdom review.
 
 **Next on roadmap (ALL pending items):** CI green -> Wisdom retests: F4 swipe, MK-RESTRUCTURE (endpoints CRUD + per-endpoint key/model + picker groups + rejection diagnostics), BUG-A (CW4 output links + problems jump; CW1 agent-run python), BUG-B (squiggles clear on tab switch; split views same/different files). CW1 exact test = agent-mode run_command "python3 cwtest.py" (matcher fires ONLY on agent run commands). CW7 dotfile fix after review. Then real projects (action registry #1). PERSIST-B audit. MC-3 tap-collapse. Settings block (S01) after Phase 4. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-16 20:15 WAT] — AI Agent: Claude Sonnet 5.6 ([BUILD-FIX] x3 chain for MK-restructure push; GREEN #2842)
+
+**Commit:** fe9a6f9 (feature) + 3 fix commits | **CI:** #2839 FAIL -> #2840 FAIL -> #2841 FAIL -> **#2842 GREEN** (latest green APK: codespace-ide-arm64-v8a)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+Errors + fixes (each pulled from real CI logs, never guessed):
+- #2839: (a) EditorPane `return@setDiagnosticsHandler` x2 unresolved after BUG-B handler conversion — labeled lambda `bugb@{}` + `return@bugb`. (b) ChatModelMenuButton import `com.codespace.ide.ui.theme.EditorColors` — package does not exist (real home: com.codespace.ide.ui, but see #2841).
+- #2840: ChatModelMenuButton `EditorColors()` default — data class has required params; default dropped (sole caller passes colors).
+- #2841: ChatModelMenuButton used `colors.accent/.surface/.textSecondary` — those fields belong to **ChatPanelColors** (defined in CopilotChatPanelOverlay.kt), the original param type; my rewrite had wrongly switched to EditorColors. Param reverted to ChatPanelColors (no import needed — same package). Also: if-as-expression needs else branch; CustomEndpointsSection null-guarded `ChatProviderRegistry.byId` before fetchModels.
+- LESSON (saved to memory): before changing a param TYPE in an existing composable, grep the CALLER for what it actually passes — caller passed ChatPanelColors all along.
+
+**Next on roadmap (ALL pending):** Wisdom on-device retests on #2842 APK: F4-FIX-2 attach-picker swipe, MK-RESTRUCTURE batch (endpoints CRUD, per-endpoint key/model, picker groups, rejection diagnostics), BUG-A (problems jump + output file:line links + CW1 agent-run python), BUG-B (squiggles clear on tab switch, split-view same/different files). CW7 dotfile fix after Wisdom reviews plan. Then: action registry + ContextKeyExpr-lite (real project #1). PERSIST-B audit. MC-3 tap-collapse. Settings block S01 after Phase 4. PEEK PARKED. Emoji IME diagnostic (standing).
