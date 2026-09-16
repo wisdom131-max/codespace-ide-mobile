@@ -2,45 +2,85 @@ package com.codespace.ide.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.codespace.ide.ui.theme.EditorColors
 
 /**
- * ROUND 5 (64KB extraction from CopilotChatPanelInline): the model-picker
- * chip in the chat panel header. VS Code-parity features:
- *  - "Auto" entry at the top (default) — resolved at send time by
- *    ChatModelSelection.resolveAuto, never dispatched literally.
+ * One custom endpoint's model group in the picker (MK-RESTRUCTURE B, 2026-09-16).
+ * entries are full "providerId:model" strings, split by source for labeling.
+ */
+data class CustomMenuGroup(
+    val providerId: String,
+    val label: String,
+    val live: List<String>,
+    val manual: List<String>,
+    val fetchedAtLabel: String,
+)
+
+/**
+ * ChatModelMenuButton — chat model picker (VS Code model-picker parity).
+ *
+ * MK-RESTRUCTURE B (2026-09-16): custom endpoints get their own GROUP in the
+ * menu — "Custom · <label>" — split into "From server (HH:MM)" (live-cached
+ * entries) and "Manual" (user-typed entries, each deletable, Cline-style: type
+ * any model ID, the server is the judge). Inline Add-model row + Refetch per
+ * endpoint. The flat "Models" list EXCLUDES custom entries (they render grouped).
+ *
  *  - Pinned (starred) models sort above the rest; pin/unpin the current
- *    selection from the menu footer.
+ *    model from the footer (R5).
+ *  - CUSTOM-ENDPOINT-FIX: providers whose live model list FAILED show a
+ *    visible warning row — never a silent placeholder entry.
  */
 @Composable
 internal fun ChatModelMenuButton(
     selectedModel: String,
-    availModels: List<String>,
-    pinned: List<String>,
-    /** CUSTOM-ENDPOINT-FIX (a)+(b): (id, displayName, reason) fetch failures, shown as warning rows. */
-    errors: List<Triple<String, String, String>> = emptyList(),
-    colors: ChatPanelColors,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
+    availModels: List<String>,
+    errors: List<Triple<String, String, String>>,
+    pinned: List<String>,
     onPick: (String) -> Unit,
     onTogglePin: () -> Unit,
+    customGroups: List<CustomMenuGroup> = emptyList(),
+    onDeleteManualModel: (String) -> Unit = { },
+    onAddManualModel: (String, String) -> Unit = { _, _ -> },
+    onRefetchCustom: () -> Unit = { },
+    colors: EditorColors = EditorColors(),
 ) {
     val isAuto = selectedModel == com.codespace.ide.chat.ChatModelSelection.AUTO_MODEL
     val label = if (isAuto) "Auto" else selectedModel.take(12)
+    // MK-B: inline "add model id" state (all remember() at top — CI rule)
+    var addFor by remember { mutableStateOf<String?>(null) }
+    var addText by remember { mutableStateOf("") }
+    val customPrefixes = remember(customGroups) { customGroups.map { it.providerId + ":" } }
     Box {
         Text(
             label,
@@ -56,7 +96,7 @@ internal fun ChatModelMenuButton(
         DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
             // Auto first — VS Code's default picker entry
             DropdownMenuItem(
-                text = { Text("Auto" + if (isAuto) "  ✓" else "", fontSize = 12.sp) },
+                text = { Text("Auto" + if (isAuto) "  ✓", fontSize = 12.sp) },
                 onClick = { onPick(com.codespace.ide.chat.ChatModelSelection.AUTO_MODEL); onExpandedChange(false) },
             )
             // CUSTOM-ENDPOINT-FIX: providers whose live model list FAILED get a
@@ -91,7 +131,94 @@ internal fun ChatModelMenuButton(
                     )
                 }
             }
-            val rest = availModels.filter { it !in pinned }
+            // ── MK-B: custom endpoint groups — labeled live/manual, per-entry delete,
+            // inline add, refetch (VS Code Language Models editor pattern) ──
+            customGroups.forEach { g ->
+                DropdownMenuItem(
+                    text = { Text("Custom · " + g.label, fontSize = 10.sp, color = colors.textSecondary) },
+                    onClick = { },
+                    enabled = false,
+                )
+                if (g.live.isNotEmpty()) {
+                    DropdownMenuItem(
+                        text = { Text("From server (" + g.fetchedAtLabel + ")", fontSize = 9.sp, color = colors.textSecondary) },
+                        onClick = { },
+                        enabled = false,
+                    )
+                    g.live.forEach { m ->
+                        DropdownMenuItem(
+                            text = { Text(m.substringAfter(':'), fontSize = 12.sp) },
+                            onClick = { onPick(m); onExpandedChange(false) },
+                        )
+                    }
+                }
+                if (g.manual.isNotEmpty()) {
+                    DropdownMenuItem(
+                        text = { Text("Manual", fontSize = 9.sp, color = colors.textSecondary) },
+                        onClick = { },
+                        enabled = false,
+                    )
+                    g.manual.forEach { m ->
+                        DropdownMenuItem(
+                            text = { Text(m.substringAfter(':'), fontSize = 12.sp) },
+                            trailingIcon = {
+                                TextButton(onClick = { onDeleteManualModel(m) }) {
+                                    Icon(Icons.Default.Delete, null, tint = colors.textSecondary)
+                                }
+                            },
+                            onClick = { onPick(m); onExpandedChange(false) },
+                        )
+                    }
+                }
+                // Inline "Type a model ID" add row (Cline-style escape hatch)
+                if (addFor == g.providerId) {
+                    DropdownMenuItem(
+                        text = {
+                            OutlinedTextField(
+                                value = addText,
+                                onValueChange = { addText = it },
+                                label = { Text("Model ID", fontSize = 10.sp) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(0.7f),
+                            )
+                        },
+                        onClick = { },
+                        enabled = false,
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(
+                                    shape = RoundedCornerShape(10.dp),
+                                    onClick = {
+                                        val id = addText.trim()
+                                        if (id.isNotEmpty()) onAddManualModel(g.providerId, id)
+                                        addText = ""; addFor = null
+                                    },
+                                ) { Text("Add") }
+                                Spacer(Modifier.width(6.dp))
+                                OutlinedButton(
+                                    shape = RoundedCornerShape(10.dp),
+                                    onClick = { addText = ""; addFor = null },
+                                ) { Text("Cancel") }
+                            }
+                        },
+                        onClick = { },
+                        enabled = false,
+                    )
+                } else {
+                    DropdownMenuItem(
+                        text = { Text("＋ Add model ID…", fontSize = 11.sp, color = colors.textSecondary) },
+                        onClick = { addText = ""; addFor = g.providerId },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("↻ Refetch " + g.label, fontSize = 11.sp, color = colors.textSecondary) },
+                        leadingIcon = { Icon(Icons.Default.Refresh, null, tint = colors.textSecondary) },
+                        onClick = { onRefetchCustom() },
+                    )
+                }
+            }
+            val rest = availModels.filter { it !in pinned && customPrefixes.none { p -> it.startsWith(p) } }
             if (rest.isNotEmpty()) {
                 DropdownMenuItem(
                     text = { Text("Models", fontSize = 10.sp, color = colors.textSecondary) },

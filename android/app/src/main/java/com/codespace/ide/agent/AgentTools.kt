@@ -222,7 +222,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     private fun runCommand(command: String, workdir: String?, context: Context): String {
         val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, workdir).take(4000)
         // I2 — TERMINAL BRIDGE: last agent-run command + output are attachable in chat
-        com.codespace.ide.terminal.TerminalAiBridge.recordRun(command, out)
+        com.codespace.ide.terminal.TerminalAiBridge.recordRun(command, out, workdir)
         return out
     }
 

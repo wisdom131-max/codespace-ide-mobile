@@ -252,9 +252,36 @@ private fun registeredModelEntries(tokenStore: SecureTokenStore?): List<String> 
     ChatProviderRegistry.available(tokenStore)
         .filter { !it.defaultModelIsPlaceholder } // CUSTOM-ENDPOINT-FIX: never list "custom-model" as real
         .map { "${it.id}:${it.defaultModel}" } +
-        // CE-ESCAPE: manual model IDs are real, user-confirmed entries \u2014
-        // listed instantly, before/independent of any live /models fetch.
-        com.codespace.ide.chat.CustomEndpointStore.manualModels().map { "custom:$it" }
+        // CE-ESCAPE / MK-v2: manual model IDs are real, user-confirmed entries \u2014
+        // listed instantly, per endpoint, before/independent of any live fetch.
+        com.codespace.ide.chat.CustomEndpointStore.list().flatMap { ep ->
+            val pid = com.codespace.ide.chat.CustomEndpointStore.providerIdFor(ep.id)
+            com.codespace.ide.chat.CustomEndpointStore.manualModels(ep.id).map { pid + ":" + it }
+        }
+
+/**
+ * MK-RESTRUCTURE B (2026-09-16): per-endpoint picker groups — live vs manual
+ * model entries, labeled, from the per-endpoint registry + live cache.
+ */
+internal fun buildCustomMenuGroups(availModels: List<String>): List<com.codespace.ide.ui.screens.CustomMenuGroup> {
+    val groups = ArrayList<com.codespace.ide.ui.screens.CustomMenuGroup>()
+    com.codespace.ide.chat.CustomEndpointStore.list().forEach { ep ->
+        val pid = com.codespace.ide.chat.CustomEndpointStore.providerIdFor(ep.id)
+        val entries = availModels.filter { it.startsWith(pid + ":") }
+        if (entries.isNotEmpty()) {
+            val manualIds = com.codespace.ide.chat.CustomEndpointStore.manualModels(ep.id).toHashSet()
+            val manual = entries.filter { it.substringAfter(':') in manualIds }
+            val live = entries.filter { it !in manual }
+            val ts = com.codespace.ide.chat.CustomEndpointStore.liveModelsFetchedAt(ep.id)
+            val cal = java.util.Calendar.getInstance()
+            cal.timeInMillis = ts
+            val fetchedAt = if (ts > 0) String.format("%02d:%02d",
+                cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE)) else "not fetched"
+            groups.add(com.codespace.ide.ui.screens.CustomMenuGroup(pid, ep.label, live, manual, fetchedAt))
+        }
+    }
+    return groups
+}
 
 /**
  * FIX (404 regression): the picker previously offered ONLY the hardcoded default
@@ -1438,6 +1465,25 @@ internal fun CopilotChatPanelInline(
                         com.codespace.ide.chat.ChatModelSelection.setForMode(context, mode.name, m)
                     },
                     onTogglePin = { pinnedModels = com.codespace.ide.chat.ChatModelSelection.togglePin(context, selectedModel) },
+                    // MK-B: per-endpoint groups + manual model CRUD + refetch
+                    customGroups = buildCustomMenuGroups(availModels),
+                    onDeleteManualModel = { entry ->
+                        val pid = entry.substringBefore(':')
+                        val eid = com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(pid)
+                        if (eid != null) {
+                            com.codespace.ide.chat.CustomEndpointStore.removeManualModel(eid, entry.substringAfter(':'))
+                            availModels = availModels.filter { it != entry }
+                        }
+                    },
+                    onAddManualModel = { pid, modelId ->
+                        val eid = com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(pid)
+                        if (eid != null) {
+                            com.codespace.ide.chat.CustomEndpointStore.addManualModel(eid, modelId)
+                            val entry = pid + ":" + modelId
+                            if (entry !in availModels) availModels = availModels + entry
+                        }
+                    },
+                    onRefetchCustom = { liveModelsFetched = false },
                 )
                 Spacer(Modifier.width(8.dp))
                 Icon(

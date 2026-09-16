@@ -159,9 +159,24 @@ object ProblemMatcher {
      * Scan a command's output and REPLACE the previous matcher batch in the
      * Problems panel (clean run clears, no-op for non-build commands).
      */
-    fun publishFromCommand(command: String?, output: String?) {
+    // BUG-A FIX: resolve matched tool paths (often RELATIVE, e.g. python tracebacks
+    // "File "cwtest.py", line 2") against the command's working directory so the
+    // Problems panel carries absolute paths and jump-to-source finds the open tab.
+    private fun bugaResolve(raw: String, workdir: String?): String {
+        if (raw.isBlank()) return raw
+        return try {
+            var f = java.io.File(raw)
+            if (!f.isAbsolute && !workdir.isNullOrBlank()) f = java.io.File(workdir, raw)
+            val canon = f.canonicalFile
+            if (canon.exists()) canon.absolutePath else f.absolutePath
+        } catch (_: Exception) { raw }
+    }
+
+    fun publishFromCommand(command: String?, output: String?, workdir: String? = null) {
         if (!isBuildishCommand(command)) return
-        val problems = scan(output)
+        val problems = scan(output).map { m ->
+            MatchedProblem(bugaResolve(m.file, workdir), m.line, m.column, m.severity, m.message)
+        }
         if (problems.isEmpty()) {
             if (published) {
                 DiagnosticManager.clearSource(DiagnosticManager.DiagnosticSource.BUILD, "matcher")

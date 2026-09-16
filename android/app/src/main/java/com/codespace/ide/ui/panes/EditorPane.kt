@@ -416,6 +416,7 @@ fun EditorPane(
     var debugHoverValue by remember { mutableStateOf<String?>(null) }
     // P24-1: LSP diagnostic squiggles — updated by setDiagnosticsHandler callback
     var lspSquiggles by remember { mutableStateOf<List<com.codespace.ide.editor.LintError>>(emptyList()) }
+
     // P24: visible banner shown when LSP server fails to start (not just logcat)
     var lspStatusMessage by remember { mutableStateOf<String?>(null) }
     // P44-2: Reactive LSP health check — polls every 5s to detect OOM-killed servers.
@@ -1353,6 +1354,29 @@ fun EditorPane(
         }
 
         val active = resolveActiveTab(activeId, tabs) ?: tabs.firstOrNull()
+        // BUG-B STALE-SQUIGGLE FIX (2026-09-16): lspSquiggles previously survived
+        // tab switches — the previous file's ranges rendered on the new file until
+        // a text change or a fresh server push. Clear on every active-tab change,
+        // then re-pull the server's cached diagnostics for the NEW tab so known
+        // squiggles return instantly instead of waiting for the next edit.
+        // SPLIT-SAFE: lspSquiggles is per-EditorPane-instance state (each split
+        // view owns its own EditorPane + its own handler registration), so this
+        // effect only ever touches THIS pane's active tab.
+        LaunchedEffect(active?.id, active?.language) {
+            lspSquiggles = emptyList()
+            val snap = active ?: return@LaunchedEffect
+            val snapLang = snap.language ?: return@LaunchedEffect
+            try {
+                if (com.codespace.ide.lsp.LspManager.isSupported(snapLang)) {
+                    val uri = com.codespace.ide.lsp.LspManager.fileUriFromHostPath(context, snap.path)
+                    val diags = if (uri != null) com.codespace.ide.lsp.LspManager.getDiagnostics(snapLang, uri) else null
+                    if (uri != null && diags != null && diags.length() > 0 &&
+                        com.codespace.ide.lsp.LspManager.getServerGeneration(snapLang) > 0) {
+                        lspSquiggles = lspDiagnosticsToLintErrors(diags, snap.content)
+                    }
+                }
+            } catch (_: Exception) { }
+        }
 
         // TEST-70-FIX: Watch master LSP toggle — restart server when re-enabled
         LaunchedEffect(ProjectSettingsStore.lspEnabled.value) {
@@ -1476,6 +1500,9 @@ fun EditorPane(
             val snap = active
             val snapLang = snap?.language
             var registered = false
+            // BUG-B SPLIT-SAFE: this pane's OWN handler instance; hoisted so onDispose
+            // can remove exactly ours without touching other split panes' handlers.
+            var bugbHandlerRef: ((String, org.json.JSONArray) -> Unit)? = null
             if (snap != null && snapLang != null && LspManager.isSupported(snapLang)) {
                 val uri = LspManager.fileUriFromHostPath(context, snap.path)
                 if (uri != null) {
@@ -1491,7 +1518,9 @@ fun EditorPane(
             // failing, the server-gen guard dropping it, or diags arriving but
             // lspDiagnosticsToLintErrors returning empty.
             AppOutputLog.log("[SQUIGGLE-DIAG] handler REGISTERED for uri=" + uri + " lang=" + snap.language.displayName, "lsp")
-            LspManager.setDiagnosticsHandler(snap.language) { diagUri, diags ->
+            // BUG-B SPLIT-SAFE: paired add/remove (each split pane keeps its own
+            // handler; the old single-slot setHandler let pane B replace pane A).
+            bugbHandlerRef = { diagUri: String, diags: org.json.JSONArray ->
                 AppOutputLog.log("[SQUIGGLE-DIAG] handler FIRED diagUri=" + diagUri + " diagCount=" + diags.length(), "lsp")
                 // SQUIGGLE-STALE-FIX (2026-09-10): `snap` is captured once when the file
                 // opens (content EMPTY for a newly created file), so snap.content is
@@ -1531,14 +1560,15 @@ fun EditorPane(
                 }
                 }
             }
+            LspManager.addDiagnosticsHandler(snap.language, bugbHandlerRef!!)
             }
             onDispose {
                 // ZERO-TAB-LSP-FIX: without this unregister, the handler outlived its
                 // tab and every server publish kept logging FIRED/DROPPED with NO editor
                 // open at all — background LSP noise that never stops.
-                if (registered && snapLang != null) {
+                if (registered && snapLang != null && bugbHandlerRef != null) {
                     AppOutputLog.log("[SQUIGGLE-DIAG] handler UNREGISTERED for " + snapLang.displayName + " (tab closed/switched)", "lsp")
-                    LspManager.clearDiagnosticsHandler(snapLang)
+                    LspManager.removeDiagnosticsHandler(snapLang, bugbHandlerRef!!)
                 }
             }
         }
@@ -2092,21 +2122,51 @@ fun EditorPane(
                         onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
                         projectRoot = projectRootPath,
                         currentFilePath = active.path,
-                        onOpenFileAtLine = { filePath, line ->  // TEST-11-FIX: now scrolls to the line after opening
-                            val file = java.io.File(filePath)
-                            if (tabs.none { it.path == filePath }) {
-                                tabs.add(EditorTab(
-                                    id = filePath,
-                                    path = filePath,
-                                    name = file.name,
-                                    content = try { file.readText() } catch (_: Exception) { "" },
-                                    language = Language.fromPath(filePath),
-                                    isDirty = false,
-                                    savedContent = try { file.readText() } catch (_: Exception) { "" },
-                                ))
+                        onOpenFileAtLine = { filePath, line ->
+                            // BUG-A FIX (2026-09-16): matchers/LSP can hand us relative or
+                            // differently-prefixed paths; the old exact-string tab lookup failed
+                            // -> spawned a duplicate tab -> disk read of the bad path ->
+                            // "Could not read file: denied". Now: normalize against the
+                            // project root + canonicalize, resolve the EXISTING tab (exact,
+                            // canonical, then path-suffix), and only create a new tab when the
+                            // file is genuinely not open. Highlight lands on the resolved tab.
+                            val projRoot = projectRootPath
+                            fun bugaResolve(raw: String): String {
+                                return try {
+                                    var f = java.io.File(raw)
+                                    if (!f.isAbsolute && !projRoot.isNullOrBlank()) f = java.io.File(projRoot, raw)
+                                    val canon = f.canonicalFile
+                                    if (canon.exists()) canon.absolutePath else f.absolutePath
+                                } catch (_: Exception) { raw }
                             }
-                            activeId = filePath
-                            // TEST-11-FIX: Schedule scroll-to-line after the new tab is active
+                            val resolved = bugaResolve(filePath)
+                            val isSuffixOf: (String, String) -> Boolean = { longRaw, shortRaw ->
+                                val long = bugaResolve(longRaw)
+                                val short = bugaResolve(shortRaw)
+                                (long.endsWith(short) && (long.length == short.length ||
+                                    long.get(long.length - short.length - 1) == '/')) ||
+                                (short.endsWith(long) && (short.length == long.length ||
+                                    short.get(short.length - long.length - 1) == '/'))
+                            }
+                            val matchTab = tabs.firstOrNull { bugaResolve(it.path) == resolved }
+                                ?: tabs.firstOrNull { isSuffixOf(it.path, resolved) }
+                            if (matchTab != null) {
+                                activeId = matchTab.id
+                            } else {
+                                val file = java.io.File(resolved)
+                                val content = try { file.readText() } catch (_: Exception) { "" }
+                                tabs.add(EditorTab(
+                                    id = resolved,
+                                    path = resolved,
+                                    name = file.name,
+                                    content = content,
+                                    language = Language.fromPath(resolved),
+                                    isDirty = false,
+                                    savedContent = content,
+                                ))
+                                activeId = resolved
+                            }
+                            // TEST-11-FIX: Schedule scroll-to-line AFTER the target tab is active
                             if (line > 0) {
                                 scrollToLine = line
                                 kotlinx.coroutines.MainScope().launch {

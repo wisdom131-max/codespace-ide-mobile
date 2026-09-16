@@ -40,11 +40,15 @@ object TerminalAiBridge {
         pastedChip.value = t
     }
 
-    fun recordRun(command: String, output: String) {
+    fun recordRun(command: String, output: String, workdir: String? = null) {
         lastRunCommand = command.trim().take(500)
         lastRunOutput = output.take(6000)
-        // CW1: problem matchers — build-ish run commands feed the Problems panel
-        com.codespace.ide.diagnostics.ProblemMatcher.publishFromCommand(command, output)
+        // CW1: problem matchers — build-ish run commands feed the Problems panel.
+        // BUG-A FIX (2026-09-16): workdir passed through so RELATIVE tool paths
+        // (python tracebacks, kotlinc) resolve to absolute paths at publish time —
+        // previously they hit the Problems panel as bare relative strings and the
+        // jump-to-source handler spawned unreadable duplicate tabs.
+        com.codespace.ide.diagnostics.ProblemMatcher.publishFromCommand(command, output, workdir)
     }
 
     private val ANSI = Regex("\u001B\\[[0-9;?]*[A-Za-z]|\u001B\\][^\u0007\u001B]*(\u0007|\u001B\\\\)")

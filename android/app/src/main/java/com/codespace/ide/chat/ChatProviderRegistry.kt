@@ -18,6 +18,11 @@ object ChatProviderRegistry {
         providers[provider.id] = provider
     }
 
+    /** MK-RESTRUCTURE: drop a provider instance (deleted custom endpoint). */
+    fun unregister(id: String) {
+        providers.remove(id)
+    }
+
     fun all(): List<ChatProvider> = providers.values.toList()
 
     fun byId(id: String): ChatProvider? = providers[id]

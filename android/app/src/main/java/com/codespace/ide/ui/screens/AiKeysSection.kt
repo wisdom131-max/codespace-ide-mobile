@@ -79,7 +79,10 @@ import kotlinx.coroutines.launch
 internal fun AiKeysSection(tokenStore: SecureTokenStore) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val providers = remember { ChatProviderRegistry.all() }
+    // MK-v2: registryTick refreshes the provider list when endpoints change
+    // (each endpoint is its own provider instance now).
+    var registryTick by remember { mutableStateOf(0) }
+    val providers = remember(registryTick) { ChatProviderRegistry.all() }
 
     // Saved-key presence — the recomposition source of truth, synced to the store.
     val savedKeyIds = remember {
@@ -93,11 +96,7 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
     // Per-provider editing + live-check state (all remember() at top — CI rule).
     val uiStates = remember {
         mutableStateMapOf<String, AiKeyUiState>().apply {
-            providers.forEach {
-                put(it.id, if (it.id == "custom") {
-                    AiKeyUiState(urlDraft = CustomEndpointStore.baseUrl ?: "", manualDraft = com.codespace.ide.chat.CustomEndpointStore.manualModels().joinToString(", "))
-                } else AiKeyUiState())
-            }
+            providers.forEach { put(it.id, AiKeyUiState()) }
         }
     }
 
@@ -112,6 +111,15 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
     }
 
     Text("AI Providers", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+
+    // MK-v2 (2026-09-16): custom endpoints are a CRUD registry (VS Code Language
+    // Models editor pattern). Each endpoint also appears as its own provider row
+    // below ("Custom · <label>") for its KEY.
+    CustomEndpointsSection(
+        tokenStore = tokenStore,
+        onRegistryChanged = { registryTick++ },
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
 
     providers.forEach { provider ->
         val state = uiStates[provider.id] ?: AiKeyUiState()
@@ -325,117 +333,6 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                         val cur = uiStates[provider.id] ?: state
                         uiStates[provider.id] = cur.copy(addingKey = true, addDraft = "", addLabel = "", addError = null)
                     }) { Text("+ Add another key") }
-                }
-            }
-
-            // ── CUSTOM ENDPOINT URL (2026-09-11): base URL against the shared
-            // OpenAI-compatible transport. Auto-saved on tap; live check re-runs so
-            // "live: N models" verifies the endpoint, not just the key. ──
-            if (provider.id == "custom") {
-                OutlinedTextField(
-                    value = state.urlDraft,
-                    onValueChange = { raw ->
-                        val cur = uiStates[provider.id] ?: state
-                        uiStates[provider.id] = cur.copy(urlDraft = raw, urlError = null, urlSaved = false)
-                    },
-                    label = { Text("Endpoint base URL") },
-                    singleLine = true,
-                    isError = state.urlError != null,
-                    supportingText = if (state.urlError != null) {
-                        { Text(state.urlError ?: "", color = MaterialTheme.colorScheme.error) }
-                    } else {
-                        { Text("https://host/v1 — /chat/completions is appended automatically") }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp),
-                )
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    if (state.urlSaved) {
-                        Text("Endpoint saved", style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
-                    }
-                    Button(
-                        shape = RoundedCornerShape(10.dp),
-                        onClick = {
-                            val trimmed = state.urlDraft.trim()
-                            if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-                                uiStates[provider.id] = state.copy(
-                                    urlError = "Endpoint must start with http:// or https://",
-                                )
-                            } else {
-                                CustomEndpointStore.baseUrl = trimmed
-                                val cur = uiStates[provider.id] ?: state
-                                uiStates[provider.id] = cur.copy(urlSaved = true, urlError = null)
-                                // Re-verify the endpoint with a live model fetch.
-                                if (savedKeyIds.contains(provider.id)) {
-                                    uiStates[provider.id] =
-                                        (uiStates[provider.id] ?: cur).copy(liveStatus = LiveStatus.CHECKING)
-                                    runLiveCheck(provider, tokenStore, uiStates, scope)
-                                }
-                            }
-                        },
-                    ) { Text(if (CustomEndpointStore.baseUrl == null) "Save endpoint" else "Update endpoint") }
-                }
-
-                // CE-ESCAPE (2026-09-14): manual model IDs \u2014 the Cline-style
-                // escape hatch. The user types model IDs; they appear in the picker
-                // and remain usable even when the endpoint's /models fetch is
-                // WAF-blocked, unreachable or wrong-path.
-                OutlinedTextField(
-                    value = state.manualDraft,
-                    onValueChange = { raw ->
-                        val cur = uiStates[provider.id] ?: state
-                        uiStates[provider.id] = cur.copy(manualDraft = raw, manualError = null, manualSaved = false)
-                    },
-                    label = { Text("Manual model IDs") },
-                    singleLine = true,
-                    isError = state.manualError != null,
-                    supportingText = if (state.manualError != null) {
-                        { Text(state.manualError ?: "", color = MaterialTheme.colorScheme.error) }
-                    } else {
-                        { Text("Optional: comma-separated, e.g. mistral-large-latest, mistral-small-latest \u2014 always pickable even if the model list fails") }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp),
-                )
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    if (state.manualSaved) {
-                        Text("Model IDs saved", style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
-                    }
-                    Button(
-                        shape = RoundedCornerShape(10.dp),
-                        onClick = {
-                            val trimmed = state.manualDraft.trim()
-                            val ids = trimmed.split(',', ';', ' ')
-                                .map { it.trim() }.filter { it.isNotEmpty() }
-                            if (ids.isEmpty()) {
-                                uiStates[provider.id] = state.copy(
-                                    manualError = "Enter at least one model ID, e.g. mistral-large-latest",
-                                )
-                            } else {
-                                com.codespace.ide.chat.CustomEndpointStore.setManualModels(ids.joinToString(", "))
-                                val cur = uiStates[provider.id] ?: state
-                                uiStates[provider.id] = cur.copy(manualSaved = true, manualError = null)
-                                // A manual list makes the provider usable even
-                                // without a live fetch \u2014 re-run the check so the
-                                // status line reflects the new reality.
-                                if (savedKeyIds.contains(provider.id)) {
-                                    uiStates[provider.id] =
-                                        (uiStates[provider.id] ?: cur).copy(liveStatus = LiveStatus.CHECKING)
-                                    runLiveCheck(provider, tokenStore, uiStates, scope)
-                                }
-                            }
-                        },
-                    ) { Text("Save model IDs") }
                 }
             }
 

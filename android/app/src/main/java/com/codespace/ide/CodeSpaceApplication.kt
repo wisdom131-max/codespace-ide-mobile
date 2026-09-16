@@ -65,6 +65,9 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         SettingsUsageTracker.init(this) // P-SETTINGS-RESTRUCTURE: track setting usage for "Commonly Used" ranking
         KeyBindingRegistry.init(this) // Load persisted keybinding overrides
         super.onCreate()
+        // MK-RESTRUCTURE v2: endpoint registry must be initialized (prefs +
+        // legacy migration + provider sync) BEFORE anything enumerates providers.
+        try { com.codespace.ide.chat.CustomEndpointStore.init(this) } catch (_: Exception) { }
         // X7 fix: Start Agent API server on app launch so the MCP status indicator
         // is green from startup, not just when a terminal session is created.
         // start() no-ops if already running, so this is safe to call here.

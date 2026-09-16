@@ -3357,6 +3357,14 @@ object LspManager {
     fun clearDiagnosticsHandler(language: Language) =
         LspDiagnosticsHandler.clearHandler(language)
 
+    // BUG-B SPLIT-SAFE (2026-09-16): paired registration — split panes each own their
+    // handler; every pane gets every push and drops URIs that are not its live tab.
+    fun addDiagnosticsHandler(language: Language, handler: (String, JSONArray) -> Unit) =
+        LspDiagnosticsHandler.addHandler(language, handler)
+
+    fun removeDiagnosticsHandler(language: Language, handler: (String, JSONArray) -> Unit) =
+        LspDiagnosticsHandler.removeHandler(language, handler)
+
     // ── Utility ────────────────────────────────────────────────────
 
     /**
