@@ -4065,3 +4065,15 @@ BATCH STATUS: CW3 (conditional breakpoints) GREEN #2832. CW5 (explorer problem b
 - Plus pending retests: CW1 (Problems matchers), CW4 (git log in TimelinePanel), CW2 (problems+SCM attach rows), CW8 (retry + session export), F1-F6, PS, R10.
 
 **Next on roadmap (ALL pending items):** Wisdom on-device batch above. Then real projects per FINAL-REVIEW §4 order: action registry + ContextKeyExpr-lite (#1), WorkingCopy hub (#2), inline editor-zone chat (#3), checkpoint timeline (#4), LanguageConfiguration registry full (#5 — CW7p2 covers core), voice STT (#6), sessions-as-tabs (#7), tokenization audit (#8). SPEC-U4-1 (rides F1), SPEC-U8-1 verdicts. Settings block (S01) after Phase 4. PERSIST-B audit. MC-3 tap-collapse. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-16 08:20 WAT] — AI Agent: Claude Sonnet 5.6 (FULL COMBINED RE-TEST BATCH compiled)
+
+**Commit:** (this push) | **CI:** docs-only (no code)
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated (#2835). 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+### [DOCS] RETEST-MASTER.md — every untested item, source-verified, 4 phases
+Wisdom asked for the FULL combined batch (everything built + not yet tested, tap-by-tap, verified against source). Compiled into RETEST-MASTER.md at repo root: Phase 1 foundational (MC-1..8, R6-1..11, PS-1..9=PERSIST-A, MK-1..9), Phase 2 core (PAD via PS, CE-1..4+F6/WAF/manual-model, R8V vision incl. Gemini fix + 5MB, AU-1..3 audio, R7-1..12+R8-9/10, R9-1..10), Phase 3 workflow (R1-R5, R8 incl. F3 voice append, I1-I6 ALL VERIFIED BUILT with retest lists, R10, CW1-CW8b, SPEC-1..5 polish — flag dislikes per Phase-1 grant), Phase 4 standing (F5 PerfProbe, Batch K cross-routing, Batch J skipped pending credentials, emoji-IME diag, SPEC-U4-1/U8-1 verdicts).
+SOURCE-AUDIT FINDINGS: MC-3 chip tap-collapse NOT built (tap-elsewhere collapse IS built — both distinguished in doc). PERSIST-B audit pending (not a device test). I1-I6 ARE built (older "proposal" notes stale — changelog + code verified). PAD padlock lives in EditorStripQuickActions (ViewScrollLockStore honored in CodeEditor 731-733). CW2 problems-row = I4 (pre-existing, not re-done), git-history row is the new part.
+
+**Next on roadmap (ALL pending items):** Wisdom runs RETEST-MASTER.md on #2835 APK -> fixes batch -> re-test fixed items on next green. Then real projects (action registry + ContextKeyExpr-lite #1, per FINAL-REVIEW §4). PERSIST-B audit. MC-3 tap-collapse. Settings block (S01) after Phase 4. PEEK PARKED. Emoji IME diagnostic (standing).
