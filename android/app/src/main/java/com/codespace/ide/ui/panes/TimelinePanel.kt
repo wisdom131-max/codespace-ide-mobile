@@ -54,11 +54,20 @@ fun TimelinePanel(
 ) {
     val context = LocalContext.current
     val snapScope = rememberCoroutineScope()
-    var entries by remember { mutableStateOf<List<TimelineEntry>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
-    var isGitRepo by remember { mutableStateOf(false) }
+    // LAYER-1 KEYED STATE (2026-09-19, audit F5 layer 1, Wisdom-approved): these four
+    // were plain remember — a file switch left the previous file's commits AND its
+    // Restore buttons visible through the refill window (a stale Restore could copy
+    // the previous file's snapshot into the NEW file). Keyed on (filePath, projectDir):
+    // the keys change in the SAME composition frame as the panel params, so the state
+    // resets instantly — no one-frame stale window. Same-file operations (Restore,
+    // appliedTick refreshes) keep both keys identical, so a Timeline viewed for the
+    // SAME file is never wiped. Layer 2 (tap-time guard) is BLOCKED on the
+    // .versionhistory name-only collision — see VERSIONHISTORY_NAMING_PLAN.md.
+    var entries by remember(filePath, projectDir) { mutableStateOf<List<TimelineEntry>>(emptyList()) }
+    var loading by remember(filePath, projectDir) { mutableStateOf(false) }
+    var isGitRepo by remember(filePath, projectDir) { mutableStateOf(false) }
     // I1: local .versionhistory snapshots (checkpoints incl. AI pre-apply backups)
-    var snapshots by remember { mutableStateOf<List<File>>(emptyList()) }
+    var snapshots by remember(filePath, projectDir) { mutableStateOf<List<File>>(emptyList()) }
 
     LaunchedEffect(filePath, projectDir) {
         if (filePath.isBlank() || projectDir == null) {
