@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | GREEN: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
+| CI build | GREEN: #2845 (2bc8d7f, CW7 dotfile fix; earlier #2844 bbd6567 BUG-A/MK/Mistral fixes) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -4163,7 +4163,7 @@ Wisdom's #2842 retest verdicts: BUG-B PASS, F4 PASS, BUG-A STILL BROKEN (real bu
 
 ## [2026-09-19 16:20 WAT] — AI Agent: Claude Sonnet 5.6 ([UI][CW7] dotfile visibility fix — plan v2 approved by Wisdom, built as approved)
 
-**Commit:** (this push, CI pending) | **CI:** pending
+**Commit:** 2bc8d7f | **CI:** GREEN #2845
 
 **RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated below. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
 
