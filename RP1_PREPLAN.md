@@ -1,6 +1,6 @@
 # RP1 PRE-PLAN — Action Registry + ContextKeyExpr-lite (NO CODE until Wisdom approves)
 
-Status: PLAN v2 2026-09-19 — Wisdom review round 1 answered: menu counts
+Status: PLAN v3 2026-09-19 — Wisdom round 2: palette option (B) LOCKED for P2, plus a hard no-drop requirement and exact before/after check (section 3a updated); P1 still hard-gated on his CW7 device result; no code in either plan until he says go. Round 1 had: menu counts
 RECOUNTED from current source (his stale-count catch confirmed); command
 palette located (ProjectShellScreen inline, static 35-item list) + wiring
 options added; P1 HARD-GATED on CW7 passing on his device; dead keybindings
@@ -134,8 +134,35 @@ stands: a registry nobody reads is unverifiable from the outside. Options:
     no visible payoff until a future command-palette project — weakest review
     signal, hardest for Wisdom to verify on device.
 
-WISDOM DECIDES. My recommendation is (B); (A) is acceptable if he wants the
-payoff in P1 and accepts the wider first phase.
+WISDOM DECIDED (round 2): option (B) LOCKED — the palette is wired to the
+registry in P2.
+
+### P2 HARD REQUIREMENT — the palette loses NOTHING (Wisdom, round 2)
+
+Mechanics: P2 converts the ~35 static command strings
+(ProjectShellScreen.kt :2279-2295) into registry ENTRIES in a new registration
+file, each entry's run = the SAME handleMenuAction(...) call it runs today —
+zero dispatch semantics change in the conversion commit. Surfaces migrate
+LATER and swap their entries' handlers in place; non-migrated entries keep
+their handleMenuAction-backed handler until their phase. The palette file/@
+symbol modes are untouched.
+
+EXACT before/after check (device + code):
+  CODE CHECK (pre-merge): the new registration file must contain exactly the
+  35 labels from :2279-2295, verbatim, same strings — diffed against the
+  source list before the commit goes in.
+  BEFORE (on #2854, before P2 ships): open palette ">" with an empty query ->
+  the full command list is visible; screenshot top and bottom; count the rows
+  (expect the same list as source: 35). Tap at least: "Git: Commit",
+  "Toggle Word Wrap", "Notifications: Clear All", "Open Folder",
+  "Collapse All in Explorer" — note what each does.
+  AFTER (P2 build): empty query -> EVERY one of the 35 labels still present,
+  none dropped, none renamed; registry-added actions (Explorer's 9 + the
+  tab-close entries) appear APPENDED at the end. Tap EACH of the 35 commands
+  once: each dispatches the same visible effect as the BEFORE notes.
+  FAILURE: any missing label, any renamed label, any dead tap, any changed
+  dispatch, or a migrated entry whose effect differs from its pre-P2
+  handleMenuAction behavior.
 
 ## 4. The design — what gets added, what stays
 
@@ -184,7 +211,7 @@ P2 — EDITOR TAB CONTEXT MENU: Close/Close Others/Close All/Close Saved/Copy
 P3 — TERMINAL MENUS: TerminalPane (13 items, 6 enabled= conditions) and
   TerminalRootMenu (10) — the highest enable/disable density; introduces the
   ContextKeys value map updated from terminal state.
-P4 — KEYBRIDGE: map the 10 LIVE EditorActions (CodeEditor.kt dispatch) into
+P4 — KEYBRIDGE (unchanged in round 2): map the 10 LIVE EditorActions (CodeEditor.kt dispatch) into
   registry ids so a binding and a menu item share one implementation. The 29
   DEAD bindings are NOT part of RP1 (Wisdom, v2): they are documented with
   grep evidence in DEAD_KEYBINDINGS_REPORT.md and await a separate review.

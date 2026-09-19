@@ -1,6 +1,6 @@
 # No-Undo Notice Plan (APPLY without checkpoint) — PLAN ONLY, no code until Wisdom approves
 
-Status: PLAN v2 2026-09-19 — Wisdom review round 1 answered: (a) CONFIRMED as
+Status: PLAN v3 2026-09-19 — Wisdom review round 2: tiers LOCKED (3-tier split of app-internal), canonical classification spec + tests, forceApply non-interference proven, test-round build ref fixed to #2854. Supersedes the round-1 text of section 3a; earlier sections still stand. Wisdom review round 1 had: (a) CONFIRMED as
 direction; shared predicate CONFIRMED (one function serves both the notice
 and writeCheckpoint); out-of-root analysis extended with app-private paths +
 new options; surfaces + re-polish declared; BUILD WAITS for Wisdom's go after
@@ -160,7 +160,7 @@ intact, and converts two silent failure modes into honest, glanceable text.
    under Phase 1 authority) — this change DECLARES its re-polish pass: the
    notice line styling (muted, small, rounded container per UI rule) and the
    undo-result line are that pass, shipped together in one build.
-   GATE: no code until Wisdom says go, and it WAITS for his #2844 device test
+   GATE: no code until Wisdom says go, and it WAITS for his #2854 device test
    round (T1-T9 + consolidated re-test) — do not stack a second build on an
    unverified surface.
 
@@ -195,3 +195,129 @@ N4 — C2 (root not yet bound): a launch-timing race, not reliably tappable;
 Failure checks: if the warning shows on a normal small in-project file (false
 positive, N3), or if Apply behavior changed in ANY of the three cases (blocked,
 toast, different flow), the phase failed.
+
+---
+
+## 3b. Wisdom review round 2 — LOCKED three-tier design (v3)
+
+### Tier census — exact paths from source (READ)
+
+TIER 1 — HARD BLOCK, no Force apply, apply() AND forceApply() both refuse:
+  1. /data/user/0/<pkg>/shared_prefs/** — 42 source files call
+     getSharedPreferences; this holds EVERYTHING sensitive:
+     - data/SecureTokenStore.kt:24 — EncryptedSharedPreferences
+       "codespace_secure" (refresh token, role, PIN hash, biometric-lock flag).
+     - chat/ChatProvider.kt — second EncryptedSharedPreferences holding the AI
+       key pool (ChatKeyPool slots ai_<ID>, the multi-key registry).
+     - JsonSettingsStore, SessionStateStore, and the other ~39 plain-prefs
+       files (settings, session state, UI state).
+  2. /data/user/0/<pkg>/databases/** — no app-internal database CODE found by
+     grep (the only SQLite opens are the SqliteViewer's read-only opens of
+     USER project .db files, SqliteViewerDialog.kt:54/:90); the tier covers
+     the dir defensively (WebView/keystore may create files there).
+  3. App code: the APK install tree /data/app/** (read-only by the OS
+     regardless; classified Tier 1 for explicitness) and bundled assets/lib
+     (same read-only class).
+  4. Everything else under /data/user/0/<pkg> EXCEPT the two named carve-outs
+     below: files/ (logs, crash dumps, misc), cache/, code_cache/, no_backup/.
+     RULE: app-internal = whole dataDir minus (ubuntu-rootfs -> Tier 2,
+     projects -> Tier 3).
+
+TIER 2 — BLOCK with Force apply + strong warning ("Ubuntu rootfs — applying
+  can break the IDE; Force apply to proceed; no undo"):
+  - filesDir/ubuntu-rootfs/** (ProotInstaller.kt:68). Editing config there is
+    legitimate, so Force stays available.
+  - IMPORTANT guest-path note (READ): the model usually speaks GUEST paths
+    ("/etc/hostname"). A staged literal "/etc/hostname" is NOT under the
+    rootfs on the host side — apply() fails its own write (host /etc is not
+    writable), so it self-protects. Classification catches the cases where
+    the model emits the HOST spelling of a rootfs path (learned from tool
+    output), because classification runs AFTER guest->host translation.
+
+TIER 3 — MILD notice only ("no undo — outside the active project's history
+  root"), Apply proceeds as today:
+  - filesDir/projects/<other project>/** (ProotInstaller.kt:102 — the
+    host-files project store; other projects are user data, mild tier).
+  - Everything else not under the active project root: /storage/emulated/0/**
+    (Download, DCIM, ...), any other writable path.
+
+### Canonical classification (how ".." tricks, spelling gaps, symlinks die)
+
+Pipeline, in order (all four steps in ONE function, classifyTarget(path)):
+  1. GUEST->HOST translation FIRST: reuse ProotInstaller.guestToHostPath
+     (already carries the /sdcard <-> /storage/emulated/0 and /host-files
+     special cases — the audit-F2-fixed reverse direction included).
+  2. /sdcard spelling: folded into step 1's special case (no separate logic
+     that could drift).
+  3. File(path).canonicalFile — the OS resolves "..", ".", and EVERY existing
+     symlink in the chain (this is how /sdcard, already a symlink to
+     /storage/emulated/0, collapses; a symlink planted into dataDir would
+     resolve to its real target before comparison).
+  4. Compare the canonical path against CANONICAL tier roots
+     (context.dataDir.canonicalPath, filesDir/ubuntu-rootfs.canonicalPath,
+     filesDir/projects.canonicalPath, active project root canonicalPath).
+     Tier roots themselves are canonicalized, so spelling/symlink games
+     cannot desynchronize the two sides.
+  NEW-FILE RULE (fail-open where creation is legit, fail-closed where not):
+  write_file creates NEW files, whose full path may not exist yet. Rule:
+  canonicalize the DEEPEST EXISTING ANCESTOR and classify by that ancestor's
+  containment. A new file inside the active project = normal apply (with
+  checkpoint); a new file "inside" dataDir = still Tier 1/2 (its ancestor is
+  the blocked dir); a new file in Download = Tier 3.
+  If canonicalization throws entirely: classify Tier 2 (block with Force) —
+  fail closed with an escape, never silent.
+
+### Q3 — proof Force apply changes nothing for existing drift blocks (READ)
+
+  - DRIFT (disk changed since staging): apply() rebases the diff and the card
+    shows "Apply anyway" (ChatDiffReviewCard.kt:165-171) — REGULAR apply
+    path, NOT Force. forceApply() is never offered for drift. Untouched.
+  - BLOCKED (disk unreadable -> cannot verify): markBlocked
+    (PendingChangesStore.kt:323) + card shows "Force apply"/"Discard"
+    (ChatDiffReviewCard.kt:172-178). forceApply (:220) skips ONLY the drift
+    verify; it still runs the same temp+rename write and tolerates a null
+    checkpoint. This exact semantics is preserved.
+  - HOW THE TIERS AVOID TOUCHING IT: tier outcomes are a NEW field on the
+    Blocked class (reason + forceAllowed flag). The existing unreadable-disk
+    Blocked keeps forceAllowed=true exactly as today. Tier 2 sets
+    forceAllowed=true with the strong warning; Tier 1 sets forceAllowed=false.
+    DEFENSE IN DEPTH (not just UI hiding): apply() AND forceApply() both call
+    classifyTarget() FIRST and return Blocked for Tier 1 even when invoked
+    directly — a hidden button cannot write Tier 1 paths.
+  - Test N5 below pins the existing behavior on device before any change.
+
+### Tests added (v3) — canonical + tier + force non-interference
+
+N5 (regression, run FIRST on #2854 BEFORE the tier build ships): stage an
+  AI edit to a file, then in the terminal delete that file; tap Apply ->
+  BLOCKED banner "could not read the file on disk" with Force apply + Discard
+  EXACTLY as today; Force apply recreates the file with the staged content.
+  (This pins today's Blocked semantics so the tier build can be diffed.)
+N6 (".." trick): chat: "Write a file to <project>/../main.py" (one level
+  above the root). Card shows TIER 3 mild notice if that lands outside the
+  root (canonicalization exposes the escape); Apply behaves per Tier 3.
+N7 (spelling): stage an edit to /sdcard/<project>/a.py when the project root
+  is spelled /storage/emulated/0/<project> — the SAME file must be treated as
+  INSIDE the project (checkpoint written, NO mild notice). This is the
+  BUG-A-class regression guard.
+N8 (symlink, if creatable on device): from the proot terminal try
+  ln -s /data/data/<pkg>/files /sdcard/proj/shortcut (if the kernel allows
+  it); a write_file to <project>/shortcut/target must classify by the
+  RESOLVED target (Tier 1 if it truly lands in files/), never by the
+  symlink's innocent spelling. If symlink creation is blocked by the kernel
+  (as expected on this device), mark the test SKIPPED and rely on N7 + the
+  canonicalFile code assert.
+N9 (Tier 1, hard block): chat: "Write to
+  /data/data/com.codespace.ide.debug/shared_prefs/codespace_secure.xml the
+  text BROKEN" -> the card row shows the HARD-BLOCK banner, NO Apply button,
+  NO Force apply button. In terminal, cat the file -> unchanged.
+  Same for a databases/ path.
+N10 (Tier 2, rootfs with Force): chat: "Write HELLO into the rootfs file
+  /host-files/.../ubuntu-rootfs/tmp/greeting.txt" (or the host path shown by
+  tools) -> card shows the strong rootfs warning + Force apply; Discard
+  leaves tmp untouched; Force applies it (then delete it in terminal).
+N11 (Tier 3 control): chat: "Write /storage/emulated/0/Download/notice.txt
+  LINE-ONE" -> MILD notice only, plain Apply (no Force needed), applies.
+
+Fix-log: the v2 text said the test round was on #2844 — corrected to #2854
+everywhere in this file (Wisdom, round 2, item 4).
