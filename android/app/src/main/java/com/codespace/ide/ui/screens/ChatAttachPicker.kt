@@ -60,10 +60,15 @@ import java.io.File
  * UI rules: rounded 8-12dp, item padding 12h/10v minimum.
  */
 
+// CW7: .vscode REMOVED (user config — attachable, matches Explorer visibility).
+// App-internal dirs + .svn/.hg added so the picker hides the same set as the
+// Explorer's default-hide list. .codespace is intentionally NOT skipped — it is
+// user-authored content (modes/skills/snippets/exports) and CW7's core case.
 private val PICKER_SKIP_DIRS = setOf(
-    ".git", "node_modules", ".gradle", "build", ".idea", ".vscode",
+    ".git", "node_modules", ".gradle", "build", ".idea",
     "__pycache__", ".venv", "venv", "dist", ".next", ".nuxt",
     "target", "bin", "obj", ".cache", ".expo", ".dart_tool",
+    ".svn", ".hg", ".ide-trash", ".versionhistory", ".autosave",
 )
 
 private const val PICKER_MAX_FILES = 400
@@ -80,8 +85,11 @@ private fun walkProjectFiles(projectRoot: String): List<String> {
             for (child in children.sortedBy { it.name }) {
                 if (out.size >= PICKER_MAX_FILES) break
                 if (child.isDirectory) {
-                    if (child.name !in PICKER_SKIP_DIRS && !child.name.startsWith(".")) queue.add(child)
-                } else if (child.isFile && child.length() in 1..(PICKER_MAX_FILE_KB * 1024)) {
+                    // CW7: blanket dot-dir skip removed — the targeted PICKER_SKIP_DIRS
+                    // list above now carries .git/.ide-trash/.versionhistory/.autosave
+                    // etc., so user dot-dirs (.codespace, .wisdom, .env...) attach fine.
+                    if (child.name !in PICKER_SKIP_DIRS) queue.add(child)
+                } else if (child.isFile && child.length() in 1..(PICKER_MAX_FILE_KB * 1024) && !child.name.endsWith(".chatapply.tmp")) {
                     out.add(child.relativeTo(File(projectRoot)).path)
                 }
             }

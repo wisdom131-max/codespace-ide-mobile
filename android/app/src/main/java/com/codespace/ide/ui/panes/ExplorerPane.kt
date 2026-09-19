@@ -98,6 +98,29 @@ private fun loadWorkspacePath(context: Context, projectId: String): String? =
     context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
         .getString("${KEY_WORKSPACE}_$projectId", null)
 
+// CW7 dotfile fix: the old blanket "hide every dot-prefixed name" filter made
+// created dotfiles LOOK like they failed — they were on disk the whole time.
+// VS Code files.exclude parity: hide a NAMED set (VCS dirs + caches + the app's
+// own internal folders), never all dotfiles. Dotfile creation is untouched.
+private val DEFAULT_HIDDEN_NAMES = setOf(
+    ".git", ".svn", ".hg", ".DS_Store",           // VS Code files.exclude defaults
+    ".gradle", ".idea", ".venv", ".cache",         // build caches / env dirs
+    ".next", ".nuxt", ".dart_tool", ".expo",       // framework caches
+    ".ide-trash", ".versionhistory", ".autosave",  // app-internal (trash / history / autosave)
+)
+private fun isDefaultHidden(name: String): Boolean =
+    name in DEFAULT_HIDDEN_NAMES || name.endsWith(".chatapply.tmp")
+
+// Show-hidden toggle (overflow menu row), persisted so it survives restart.
+private const val KEY_SHOW_HIDDEN = "explorer_show_hidden"
+private fun loadShowHidden(context: Context): Boolean =
+    context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
+        .getBoolean(KEY_SHOW_HIDDEN, false)
+private fun saveShowHidden(context: Context, value: Boolean) {
+    context.getSharedPreferences(PREFS_WORKSPACE, Context.MODE_PRIVATE)
+        .edit().putBoolean(KEY_SHOW_HIDDEN, value).apply()
+}
+
 // BUG-FIX (Test 49): Find in Files query used to live only in Compose `remember` state,
 // which is discarded the moment the Search panel is closed (its `when` branch unmounts
 // it). Reopening always started blank. Persist the last query per project so it's
@@ -417,6 +440,9 @@ fun ExplorerSidePanel(
         }
     }
     var filterQuery   by remember { mutableStateOf("") }
+    // CW7: Show-hidden toggle — declared ABOVE every consumer (declaration-order
+    // rule): buildNodes, the nodes remember block, multi-select bar, overflow menu.
+    var showHidden    by remember { mutableStateOf(loadShowHidden(context)) }
     var sortByType    by remember { mutableStateOf(false) }
     var sortMode      by remember { mutableStateOf(0) } // 0=Name, 1=Date, 2=Size, 3=Type
     var multiSelectMode by remember { mutableStateOf(false) }
@@ -556,7 +582,7 @@ fun ExplorerSidePanel(
         nodes.add(FsNode(dir, depth, isExp))
         if (isExp) {
             val children = dir.listFiles()
-                ?.filter { !it.name.trimEnd().startsWith(".") }
+                ?.filter { showHidden || !isDefaultHidden(it.name) }
                 ?.filter { f ->
                     if (filterQuery.isBlank()) true
                     else f.name.contains(filterQuery, ignoreCase = true) ||
@@ -642,11 +668,11 @@ fun ExplorerSidePanel(
         }
     }
 
-    val nodes = remember(workspacePath, expanded.toMap(), refresh, filterQuery, sortMode) {
+    val nodes = remember(workspacePath, expanded.toMap(), refresh, filterQuery, sortMode, showHidden) {
         val root = workspaceRoot ?: return@remember emptyList()
         if (!root.exists()) return@remember emptyList()
         val children = root.listFiles()
-            ?.filter { !it.name.trimEnd().startsWith(".") }
+            ?.filter { showHidden || !isDefaultHidden(it.name) }
             ?.sortedWith(
                 when (sortMode) {
                     1 -> compareByDescending<File> { it.isDirectory }.thenByDescending { it.lastModified() }.thenBy { it.name }
@@ -805,13 +831,18 @@ fun ExplorerSidePanel(
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
                     workspaceRoot?.let { root ->
+                        // CW7: "All" selects ONLY what the tree shows with Show
+                        // hidden files OFF — it deliberately IGNORES the toggle, so
+                        // .git/.versionhistory/.ide-trash/.autosave (and .chatapply.tmp
+                        // files) can never be swept into a bulk delete, even when the
+                        // user is currently showing them in the tree.
                         fun collectFiles(f: File) {
                             if (!f.isDirectory) selectedFiles.add(f.absolutePath)
                             if (expanded[f.absolutePath] == true && f.isDirectory) {
-                                f.listFiles()?.forEach { collectFiles(it) }
+                                f.listFiles()?.filter { !isDefaultHidden(it.name) }?.forEach { collectFiles(it) }
                             }
                         }
-                        root.listFiles()?.forEach { collectFiles(it) }
+                        root.listFiles()?.filter { !isDefaultHidden(it.name) }?.forEach { collectFiles(it) }
                     }
                 }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)) {
                     Text("All", fontSize = 11.sp, color = Color(0xFF007ACC))
@@ -890,6 +921,17 @@ fun ExplorerSidePanel(
                         DropdownMenuItem(
                             text = { Text(if (multiSelectMode) "✓ Multi-select Mode" else "Multi-select Mode", fontSize = 12.sp) },
                             onClick = { showFolderOverflow = false; multiSelectMode = !multiSelectMode; if (!multiSelectMode) selectedFiles.clear() }
+                        )
+                        // CW7: Show-hidden toggle row — same ✓-prefix on/off convention
+                        // as Multi-select Mode / Device Folders above and below it.
+                        DropdownMenuItem(
+                            text = { Text(if (showHidden) "✓ Show hidden files" else "Show hidden files", fontSize = 12.sp) },
+                            onClick = {
+                                showFolderOverflow = false
+                                val next = !showHidden
+                                showHidden = next
+                                saveShowHidden(context, next)
+                            }
                         )
                         DropdownMenuItem(
                             text = { Text("Sort by: " + when (sortMode) { 0 -> "Name"; 1 -> "Date"; 2 -> "Size"; else -> "Type" }, fontSize = 12.sp) },

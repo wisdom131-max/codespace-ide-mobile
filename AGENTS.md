@@ -4160,3 +4160,31 @@ Wisdom's #2842 retest verdicts: BUG-B PASS, F4 PASS, BUG-A STILL BROKEN (real bu
 - Could NOT fully close this without a live key to test against — asked Wisdom to paste the raw response (Show raw response on the error bubble) for one attempt so the EXACT model string Mistral received (case, whitespace, any stray prefix) can be inspected byte-for-byte.
 
 **Next on roadmap (ALL pending):** Wisdom retest BUG-A (Problems/Output/Terminal jump-to-existing-tab, no dup, no EACCES) + MK delete visibility on this build. Awaiting Wisdom's raw-response paste for Mistral. Then: action registry + ContextKeyExpr-lite (real project #1). PERSIST-B audit. MC-3 tap-collapse. Settings block S01 after Phase 4. PEEK PARKED. Emoji IME diagnostic (standing).
+
+## [2026-09-19 16:20 WAT] — AI Agent: Claude Sonnet 5.6 ([UI][CW7] dotfile visibility fix — plan v2 approved by Wisdom, built as approved)
+
+**Commit:** (this push, CI pending) | **CI:** pending
+
+**RULES REMINDER:** 1. TWO-REPO. 2. CHANGE LOG bottom entry. 3. TAGS. 4. Current State updated below. 5. NO RE-DO. 6. ROADMAP CONTINUITY. 7. UI rounded+padded.
+
+**CW7 root cause recap (plan v2 reviewed + approved in chat before build):** the old blanket filter `!it.name.trimEnd().startsWith(".")` in ExplorerPane made EVERY dot-prefixed name invisible — created dotfiles (.wisdom, .env) were on disk all along (Wisdom's `ls -a` proved it). NOT a creation bug: New File / New Folder / SAF CreateDocument dialogs pass dot names fine (only strip backtick + NUL). Fix = replace blanket filter with VS Code files.exclude-style TARGETED hide list + persisted Show-hidden toggle + attach-picker parity + multi-select safety.
+
+**Changes (all in plan v2 scope, nothing outside):**
+
+1. **ExplorerPane.kt — targeted default-hide list:** `DEFAULT_HIDDEN_NAMES` = `.git .svn .hg .DS_Store .gradle .idea .venv .cache .next .nuxt .dart_tool .expo` (VS Code defaults + Wisdom-approved cache additions) **+ app internals** `.ide-trash .versionhistory .autosave` (searched in source, not memory: trash moves at ExplorerPane:2374/WorkspaceManager:194; history+checkpoints at PendingChangesStore:255/TimelinePanel:67; autosave at EditorPane:794) + `isDefaultHidden()` also hides any file ending `.chatapply.tmp` (R6 apply temp, PendingChangesStore:169/226). BOTH blanket filters replaced (buildNodes child listing + the `nodes` remember root listing). `.codespace` and `.vscode` deliberately NOT hidden — user content/config, VS Code parity.
+
+2. **Show-hidden toggle:** NO toolbar icon (Wisdom's tweak) — text row in the folder-toolbar `⋮` overflow menu, placed directly after Multi-select Mode, styled exactly like the menu's existing on/off rows: `"✓ Show hidden files"` when ON, `"Show hidden files"` when OFF (same ✓ convention as Multi-select Mode / Device Folders). Persisted via SharedPreferences (`workspace_prefs` / `explorer_show_hidden`, survives restart — one better than SCM's remember{} toggle). `showHidden` added to the `nodes` remember(...) key list so the tree re-renders on flip.
+
+3. **Multi-select "All" safety (Wisdom's tweak):** `collectFiles` now filters through `isDefaultHidden()` and **deliberately IGNORES the toggle** — "All" selects ONLY what the tree shows with Show hidden files OFF. `.git/.gradle/.ide-trash/.versionhistory/.autosave/.venv` etc. + `.chatapply.tmp` files can NEVER be swept into a bulk delete, even while the user is showing them in the tree. (Previously collectFiles walked raw `listFiles()` with NO filter at all — a latent path to invisible-file bulk deletes.) Single-item long-press delete unchanged.
+
+4. **ChatAttachPicker.kt parity:** blanket dot-dir skip removed from `walkProjectFiles` (was: `!child.name.startsWith(".")` on queue-add — made `.codespace/**` unattachable, the original CW7 report). `PICKER_SKIP_DIRS` now carries the same internals: added `.svn .hg .ide-trash .versionhistory .autosave`; **`.vscode` REMOVED** (user config — attachable, matches Explorer visibility, one consistent rule approved by Wisdom). `.chatapply.tmp` files excluded from listing. 400-file / 512KB caps unchanged.
+
+**Out of scope on purpose (unchanged, per plan §4):** AI implicit workspace context (WorkspaceContextProvider) still skips dotfiles; search index (FileIndexer) still skips dotfiles; the dedicated Search pane's own walker (ExplorerPane:~2842) still skips dot-dirs — dotfile SEARCH visibility is a separate future decision. Trash/Timeline/R6-checkpoint/autosave restore features read their dirs by direct path, unaffected by tree visibility.
+
+**IMPORTANT test-note correction:** the Explorer's inline "Filter files..." search bar was removed 2026-07-06 — `filterQuery` state remains but has NO UI. Any test step mentioning "Explorer search box" refers to the dedicated Search pane (magnifying glass), which this round does NOT touch.
+
+**Files touched:** `android/app/src/main/java/com/codespace/ide/ui/panes/ExplorerPane.kt` (+52/-8: hide list + helpers, showHidden state, 2 filter sites, remember key, collectFiles, menu row), `android/app/src/main/java/com/codespace/ide/ui/screens/ChatAttachPicker.kt` (+14/-5: skip-list + walker).
+
+**Wisdom test batch (CW7):** (1) existing `.wisdom` now visible without creating anything; (2) new `.testdir` folder creation check; (3) `wisdom.py` inside `.wisdom`; (4) `.env` at root; (5) `.gradle/.ide-trash/.versionhistory` stay hidden by default (on-disk per `ls -a`), appear via ⋮ → Show hidden files (✓ prefix), hide again; (6) `.venv` created but hidden; (7) toggle persists across app restart; (8) Multi-select → All with toggle ON: internals NOT counted; (9) `ls -a` shows everything; (10) attach picker: `.wisdom/wisdom.py` attachable + AI reads content; (11) create `.codespace/snippets/kotlin.json` (VS Code snippet format) → attachable + `logtag` snippet loads in a .kt file (no restart needed — pack cache keyed on dir mtime); (12) regression: normal files/folders/sort/SCM toggle unaffected.
+
+**Next on roadmap (ALL pending):** CW7 on-device retest (above). Mistral raw-response paste from Wisdom (byte-level model-string inspection). BUG-A + MK-delete retest on #2844. Then: action registry + ContextKeyExpr-lite (real project #1). PERSIST-B audit (un-keyed-state pattern — 4 instances fixed so far). MC-3 tap-collapse. Settings block S01 after Phase 4. PEEK PARKED. Emoji IME diagnostic (standing).
