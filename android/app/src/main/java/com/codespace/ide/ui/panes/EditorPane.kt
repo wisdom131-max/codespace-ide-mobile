@@ -537,6 +537,9 @@ fun EditorPane(
     var lspTypeDefResult by remember { mutableStateOf<PeekDefResult?>(null) }
     // P26-1: LSP Implementation — Find Implementations result
     var lspImplResults by remember { mutableStateOf<List<Triple<String, Int, String>>>(emptyList()) }
+    // STALE-LSP-CLEAR (2026-09-19, audit F1): previous active path, used by the
+    // per-file LSP feature clear guard effect below.
+    var lastFeatureFilePath by remember { mutableStateOf<String?>(null) }
     // P26-1: LSP Workspace Symbol search results
     var showBookmarkPanel by remember { mutableStateOf(false) }
     var findReplaceOpen by remember { mutableStateOf(false) }
@@ -1710,6 +1713,30 @@ fun EditorPane(
             }
         }
 
+        // STALE-LSP-CLEAR (2026-09-19, audit F1): per-file LSP feature results (symbols,
+        // folds, links, lenses, colors, inlay hints, semantic tokens, blame) live in plain
+        // remember state, so they used to survive a tab switch and render the PREVIOUS
+        // file's data on the new file — same class as the BUG-B squiggle fix. This guard
+        // runs only when the active path actually CHANGES (a remembered previous path is
+        // compared): content keystrokes never re-fire it, so the path+content-keyed
+        // effects (semantic tokens, inlays, lenses) keep their data while typing. Split
+        // views of the SAME file keep the path identical, so switching between them
+        // never clears anything.
+        LaunchedEffect(active?.path) {
+            val prevFeaturePath = lastFeatureFilePath
+            lastFeatureFilePath = active?.path
+            if (prevFeaturePath != null && prevFeaturePath != active?.path) {
+                lspDocumentSymbols = null
+                lspFoldingRanges = emptyList()
+                lspDocumentLinks = null
+                lspCodeLenses = null
+                lspDocumentColors = null
+                lspInlayHints = null
+                lspSemanticRanges = emptyList()
+                blameData = null
+            }
+        }
+
         // P26-1: LSP Document Symbol — fetch outline structure on file open (debounced)
         LaunchedEffect(active?.path) {
             if (active != null && LspManager.isServerRunning(active.language)) {
@@ -1768,6 +1795,10 @@ fun EditorPane(
                         lspFoldingRanges = foldRanges
                     }
                 }
+            } else {
+                // STALE-LSP-CLEAR: no server for this file's language (e.g. switched
+                // from Kotlin to a .txt) — folds from the previous file must not survive.
+                lspFoldingRanges = emptyList()
             }
         }
 
