@@ -87,6 +87,26 @@ object ProotInstaller {
         return when {
             trimmed == "/sdcard" -> File("/storage/emulated/0")
             trimmed.startsWith("/sdcard/") -> File("/storage/emulated/0/" + trimmed.removePrefix("/sdcard/"))
+            // HOST-FILES (2026-09-19, audit F2): filesDir is bind-mounted as /host-files
+            // in the guest (see launchArgs), and hostToGuestPath already emits
+            // /host-files paths for filesDir content — this reverse lacked the case,
+            // same class as the /sdcard BUG-A gap: /host-files/x resolved to
+            // rootfs/host-files/x, which does not exist on the host. RESTRICTED to
+            // /host-files/projects ONLY: app-private data (databases, settings, token
+            // storage) stays on the nonexistent rootfs fallback, so callers exists()
+            // checks refuse it. Escape attempts with .. fail the canonical containment
+            // check and fall back the same way. File-opening callers still apply the
+            // terminal root-lock AFTER this translation (OSC 7777 open and
+            // resolveTappedFileLink), so locked terminals keep failing closed.
+            trimmed == "/host-files/projects" || trimmed.startsWith("/host-files/projects/") -> {
+                val projectsRoot = File(context.filesDir, "projects")
+                val rel = if (trimmed == "/host-files/projects") "" else trimmed.removePrefix("/host-files/projects/")
+                val candidate = File(projectsRoot, rel)
+                val rootCanonical = try { projectsRoot.canonicalPath } catch (_: Exception) { projectsRoot.absolutePath }
+                val candCanonical = try { candidate.canonicalPath } catch (_: Exception) { candidate.absolutePath }
+                val contained = candCanonical == rootCanonical || candCanonical.startsWith(rootCanonical.trimEnd('/') + "/")
+                if (contained) candidate else File(rootfsDir(context), trimmed.removePrefix("/"))
+            }
             else -> File(rootfsDir(context), trimmed.removePrefix("/"))
         }
     }
