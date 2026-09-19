@@ -1,6 +1,6 @@
 # .versionhistory Name-Only Collision — Plan (NO CODE until Wisdom approves)
 
-Status: PLAN ONLY, 2026-09-19. Trigger: Wisdom question A stopped audit-F5 layer 2.
+Status: PLAN ONLY, v2 2026-09-19 (v1 + Wisdom review fixes: legacy fallback made owner-safe, R6 retention cross-delete verdict added).
 Everything below is READ from source unless marked SUSPECT.
 
 ## 1. What happens TODAY (READ)
@@ -35,6 +35,15 @@ lists `.versionhistory/<f.name>` and its Restore (ExplorerPane.kt:2338) runs
   `(path -> checkpointFile)` pairs captured at write time — NOT from a name-based lookup.
   **Undo therefore cannot restore the wrong file.**
 - Net: the AI's own apply/undo path is pair-keyed and safe; the collision bites through
+- CAN RETENTION DELETE R6 DATA FOR ANOTHER FILE? (Wisdom review question 1b) — READ,
+  not suspect: both retention passes delete keep-newest-20 in the SHARED dir with no
+  owner check (ExplorerPane.kt:1515 loop, PendingChangesStore.kt:259 checkpoints), and
+  undoLastApply (PendingChangesStore.kt:276-279) only restores pairs whose bak STILL
+  exists. So YES: heavy snapshotting of same-named file X can delete file Y's
+  _prechat.bak, and Y's Undo then degrades to "No checkpoints found to restore" —
+  undo DATA lost, but never WRONG content restored (pair-keyed). Trigger needs
+  same-named files + ~20 new snapshots while a batch is still undoable. Per-file
+  dirs (Option A) fix this automatically: retention becomes per-file.
   (a) retention cross-deletion and (b) the two human Restore UIs (Timeline + Local History).
 
 ## 3. Complete reader/writer census (READ)
@@ -58,11 +67,26 @@ ChatAttachPicker.kt:71 (skip list).
 ### Option A — relative-path folders (RECOMMENDED)
 `a/main.py` -> `.versionhistory/a/main.py/<stamp>.bak` (dir tree mirrors project tree).
 - Now: one shared dir per NAME. After: one dir per FILE PATH.
-- Legacy: readers fall back — if the rel-path dir is empty/missing, ALSO read the old
-  name-only dir (read-only, both merged, deduped by timestamp); writers always write
-  the new form. Existing snapshots stay visible and restorable.
+- Legacy (V2 REVISION 2026-09-19, Wisdom review question 1a): the original
+  fallback sketch — "also read the old name-only dir, merged" — does NOT avoid the
+  bug: a legacy name-only dir can hold snapshots of SEVERAL same-named files, so
+  falling back for b/main.py would list a/main.py's snapshots and Restore would
+  repeat the exact data-loss this plan exists to close. REVISED fallback:
+  (1) The rel-path dir is the ONLY Restore source. Period.
+  (2) A legacy name-only dir is consulted only for VIEWING, and only owner-safely:
+      - UNIQUE OWNER: if exactly ONE file with that name exists anywhere in the
+        project (name-count walk), the legacy dir is MIGRATED (moved) into that
+        file's rel-path dir on first read — snapshots become first-class and
+        restorable. This is the common case: most projects have unique names.
+      - AMBIGUOUS (two or more same-named files): legacy entries are shown in a
+        separate "Legacy snapshots (pre-migration, owner unknown)" section with
+        content PREVIEW ONLY — tap to view, NO Restore button. Restoring content
+        of unknown ownership into any owner is exactly the gamble this plan
+        forbids. A human who recognizes the content can copy it manually.
+  (3) Writers never write the legacy form.
 - Root-level files: `main.py` at project root writes to `.versionhistory/main.py/` —
-  identical to the legacy dir by construction, so root files keep their history as-is.
+  identical to the legacy dir by construction, so root files keep their history as-is
+  (and a root file IS the unique owner whenever no same-named file exists elsewhere).
 - Rename/move: new path -> new empty history; old snapshots orphaned under the old
   rel-path dir (same as VS Code local history, which keys by resource path). Optional
   later cleanup pass can purge orphans.
