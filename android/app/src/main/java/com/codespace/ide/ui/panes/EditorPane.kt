@@ -2905,10 +2905,10 @@ fun EditorPane(
                                         id = fp,
                                         path = fp,
                                         name = fp.substringAfterLast('/'),
-                                        content = try { java.io.File(fp).readText() } catch (_: Exception) { "" },
+                                        content = loadFileContent(fp),
                                         language = Language.fromPath(fp),
                                         isDirty = false,
-                                        savedContent = try { java.io.File(fp).readText() } catch (_: Exception) { "" },
+                                        savedContent = loadFileContent(fp),
                                     ))
                                 }
                                 activeId = fp
@@ -2948,10 +2948,10 @@ fun EditorPane(
                                             id = fp,
                                             path = fp,
                                             name = fp.substringAfterLast('/'),
-                                            content = try { java.io.File(fp).readText() } catch (_: Exception) { "" },
+                                            content = loadFileContent(fp),
                                             language = Language.fromPath(fp),
                                             isDirty = false,
-                                            savedContent = try { java.io.File(fp).readText() } catch (_: Exception) { "" },
+                                            savedContent = loadFileContent(fp),
                                         ))
                                     }
                                     activeId = fp
