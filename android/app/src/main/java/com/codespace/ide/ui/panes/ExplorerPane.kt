@@ -380,6 +380,8 @@ fun ExplorerSidePanel(
     var showHistoryDialog  by remember { mutableStateOf(false) }
     var historyFile        by remember { mutableStateOf<File?>(null) }
     var historySnapshots   by remember { mutableStateOf<List<File>>(emptyList()) }
+    var historyProjectDir  by remember { mutableStateOf<File?>(null) }
+    var historyLegacySnapshots by remember { mutableStateOf<List<File>>(emptyList()) }
     var showTrashDialog    by remember { mutableStateOf(false) }
     var trashEntries       by remember { mutableStateOf<List<WorkspaceManager.TrashEntry>>(emptyList()) }
     var trashProjectDir    by remember { mutableStateOf<File?>(null) }
@@ -1504,17 +1506,21 @@ fun ExplorerSidePanel(
             withContext(Dispatchers.IO) {
                 val wsPath = loadWorkspacePath(context, projectId) ?: return@withContext
                 val projectDir = File(wsPath)
-                val vhRoot = File(projectDir, ".versionhistory")
                 val cutoff = System.currentTimeMillis() - 5 * 60 * 1000L
                 projectDir.walkTopDown()
                     .filter { it.isFile && !it.path.contains(".versionhistory") && !it.path.contains(".ide-trash") && it.lastModified() > cutoff && it.length() < 1_048_576L }
                     .take(20)
                     .forEach { file ->
+                        // V2 (plan v3): canonical rel-path dir — same-named files never
+                        // share a snapshot dir. Out-of-root/unsafe = skip (fail closed).
+                        val vhDir = com.codespace.ide.util.VersionHistoryV2.v2DirFor(projectDir, file.absolutePath) ?: return@forEach
                         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(Date())
-                        val vhDir = File(vhRoot, file.name)
                         vhDir.mkdirs()
                         file.copyTo(File(vhDir, "$stamp.bak"), overwrite = true)
-                        vhDir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(20)?.forEach { old -> old.delete() }
+                        // Grouped retention (Q1 fix): autosave .bak and AI _prechat.bak
+                        // are separate newest-20 groups — captures can never evict the
+                        // file's own Undo checkpoint.
+                        com.codespace.ide.util.VersionHistoryV2.trimGrouped(vhDir)
                     }
             }
         }
@@ -1683,10 +1689,11 @@ fun ExplorerSidePanel(
                                                 p ?: f.parentFile
                                             }
                                             if (projectDir != null) {
-                                                val vhDir = File(projectDir, ".versionhistory/${f.name}")
-                                                historySnapshots = if (vhDir.exists())
-                                                    (vhDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList())
-                                                else emptyList()
+                                                historyProjectDir = projectDir
+                                                historySnapshots = com.codespace.ide.util.VersionHistoryV2.listSnapshots(
+                                                    com.codespace.ide.util.VersionHistoryV2.v2DirFor(projectDir, f.absolutePath))
+                                                historyLegacySnapshots = com.codespace.ide.util.VersionHistoryV2.listSnapshots(
+                                                    com.codespace.ide.util.VersionHistoryV2.legacyDirFor(projectDir, f.name))
                                             }
                                             showHistoryDialog = true
                                         }
@@ -2324,8 +2331,8 @@ fun ExplorerSidePanel(
             onDismissRequest = { showHistoryDialog = false },
             title = { Text("Local History — ${hFile.name}", fontSize = 13.sp) },
             text = {
-                if (historySnapshots.isEmpty()) {
-                    Text("No snapshots yet. Snapshots are saved every 30 seconds for recently modified files.", fontSize = 12.sp, color = MutedColor)
+                if (historySnapshots.isEmpty() && historyLegacySnapshots.isEmpty()) {
+                    Text("No snapshots yet. Snapshots are saved every 20 seconds for recently modified files.", fontSize = 12.sp, color = MutedColor)
                 } else {
                     Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                         historySnapshots.forEach { snap ->
@@ -2338,6 +2345,13 @@ fun ExplorerSidePanel(
                                 }
                                 TextButton(onClick = {
                                     scope.launch {
+                                        // REQUIRED assertion (plan v3 cond. 1): the snapshot
+                                        // must live under .versionhistory/v2/<rel of THIS file>/,
+                                        // else do NOTHING (no copy, dialog stays open).
+                                        val ok = withContext(Dispatchers.IO) {
+                                            com.codespace.ide.util.VersionHistoryV2.isSnapshotOf(historyProjectDir, hFile.absolutePath, snap)
+                                        }
+                                        if (!ok) return@launch
                                         withContext(Dispatchers.IO) { snap.copyTo(hFile, overwrite = true) }
                                         showHistoryDialog = false
                                         refresh++
@@ -2346,6 +2360,7 @@ fun ExplorerSidePanel(
                             }
                             HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
                         }
+                        LegacySnapshotSection(historyLegacySnapshots)
                     }
                 }
             },

@@ -252,13 +252,19 @@ object PendingChangesStore {
         if (!f.exists()) return null
         if (f.length() > 1_048_576L) return null // decision #5: 1MB cap
         val root = activeProjectRoot ?: return null
-        val vhDir = File(File(root, ".versionhistory"), f.name)
+        // V2 (plan v3): canonical rel-path dir under .versionhistory/v2/ — same-named
+        // files never share a dir. Out-of-root or unsafe path = NO checkpoint (fail
+        // closed); Apply still proceeds (unchanged null-checkpoint behavior, Q2
+        // reported to Wisdom) and Undo then has nothing to restore for this file.
+        val vhDir = com.codespace.ide.util.VersionHistoryV2.v2DirFor(root, path) ?: return null
         vhDir.mkdirs()
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val bak = File(vhDir, "${stamp}_prechat.bak")
         f.copyTo(bak, overwrite = true)
-        // Same retention as the ExplorerPane 20s loop: keep newest 20 per file.
-        vhDir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(20)?.forEach { it.delete() }
+        // Grouped retention (Q1 fix): .bak captures and _prechat.bak checkpoints are
+        // trimmed as SEPARATE newest-20 groups — autosave captures can no longer
+        // evict this file's own AI Undo checkpoint.
+        com.codespace.ide.util.VersionHistoryV2.trimGrouped(vhDir)
         return bak.absolutePath
     }
 

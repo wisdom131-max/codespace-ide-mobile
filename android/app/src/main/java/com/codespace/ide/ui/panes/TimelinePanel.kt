@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.terminal.ProotInstaller
+import com.codespace.ide.util.VersionHistoryV2
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -68,15 +69,18 @@ fun TimelinePanel(
     var isGitRepo by remember(filePath, projectDir) { mutableStateOf(false) }
     // I1: local .versionhistory snapshots (checkpoints incl. AI pre-apply backups)
     var snapshots by remember(filePath, projectDir) { mutableStateOf<List<File>>(emptyList()) }
+    // V2 (plan v3): legacy name-only snapshots — view-only, NEVER restorable
+    var legacySnapshots by remember(filePath, projectDir) { mutableStateOf<List<File>>(emptyList()) }
 
     LaunchedEffect(filePath, projectDir) {
         if (filePath.isBlank() || projectDir == null) {
             snapshots = emptyList()
+            legacySnapshots = emptyList()
         } else withContext(Dispatchers.IO) {
-            val dir = File(projectDir, ".versionhistory" + File.separator + File(filePath).name)
-            snapshots = if (dir.isDirectory) {
-                dir.listFiles()?.sortedByDescending { it.lastModified() }?.take(20) ?: emptyList()
-            } else emptyList()
+            // V2 (plan v3): restorable snapshots come ONLY from the canonical
+            // rel-path dir; legacy name-only dirs are view-only preview material.
+            snapshots = VersionHistoryV2.listSnapshots(VersionHistoryV2.v2DirFor(projectDir, filePath))
+            legacySnapshots = VersionHistoryV2.listSnapshots(VersionHistoryV2.legacyDirFor(projectDir, File(filePath).name))
         }
     }
 
@@ -129,14 +133,15 @@ fun TimelinePanel(
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = TlIcon)
             }
         } else if (!isGitRepo) {
-            if (snapshots.isEmpty()) {
+            if (snapshots.isEmpty() && legacySnapshots.isEmpty()) {
                 Text(
                     "No timeline available.",
                     fontSize = 11.sp, color = TlMuted,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             } else {
-                LocalSnapshotsSection(snapshots, filePath, snapScope)
+                if (snapshots.isNotEmpty()) LocalSnapshotsSection(snapshots, filePath, projectDir, snapScope)
+                LegacySnapshotSection(legacySnapshots)
             }
         } else if (filePath.isBlank()) {
             Text(
@@ -185,7 +190,10 @@ fun TimelinePanel(
                     HorizontalDivider(color = TlDivider, thickness = 0.5.dp)
                 }
                 if (snapshots.isNotEmpty()) {
-                    item { LocalSnapshotsSection(snapshots, filePath, snapScope) }
+                    item { LocalSnapshotsSection(snapshots, filePath, projectDir, snapScope) }
+                }
+                if (legacySnapshots.isNotEmpty()) {
+                    item { LegacySnapshotSection(legacySnapshots) }
                 }
             }
         }
@@ -204,6 +212,7 @@ fun TimelinePanel(
 private fun LocalSnapshotsSection(
     snapshots: List<File>,
     filePath: String,
+    projectDir: File?,
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
@@ -244,6 +253,10 @@ private fun LocalSnapshotsSection(
                         .background(TlHeaderBg, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                         .clickable {
                             scope.launch(Dispatchers.IO) {
+                                // REQUIRED assertion (plan v3 cond. 1): the snapshot
+                                // must live under .versionhistory/v2/<rel of THIS file>/
+                                // — anything else (legacy, another file's dir) = do nothing.
+                                if (!VersionHistoryV2.isSnapshotOf(projectDir, filePath, snap)) return@launch
                                 try {
                                     com.codespace.ide.chat.PendingChangesStore.discard(filePath)
                                     snap.copyTo(File(filePath), overwrite = true)
