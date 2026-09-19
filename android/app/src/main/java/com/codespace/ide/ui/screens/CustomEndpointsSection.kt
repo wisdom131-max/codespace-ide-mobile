@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,7 +82,14 @@ internal fun CustomEndpointsSection(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             )
         }
-        endpoints.forEach { ep ->
+        // MK-DELETE-FIX (2026-09-19): key(ep.id) gives each card stable composable
+        // identity across recompositions — without it, going from 1 -> 2+ cards (a
+        // list-size change inside a plain Column+forEach, not a keyed LazyColumn) can
+        // let Compose reuse a slot's remembered state across the wrong item. Also:
+        // header Row below now reserves the trailing Edit/Delete icons in a FIXED
+        // area (label gets weight+ellipsis) so a long label can never push them off
+        // screen — delete is now guaranteed visible for every card, at any count.
+        endpoints.forEach { ep -> key(ep.id) {
             val manual = remember(tick, ep.id) { CustomEndpointStore.manualModels(ep.id) }
             val live = remember(tick, ep.id) { CustomEndpointStore.liveModels(ep.id) }
             val fetchedAt = remember(tick, ep.id) { CustomEndpointStore.liveModelsFetchedAt(ep.id) }
@@ -93,15 +101,20 @@ internal fun CustomEndpointsSection(
                 Column(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     ) {
-                        Text(ep.label, style = MaterialTheme.typography.titleSmall)
-                        Row {
-                            TextButton(onClick = {
-                                labelDraft = ep.label; urlDraft = ep.baseUrl; urlError = null; editing = ep
-                            }) { Icon(Icons.Default.Edit, null) }
-                            TextButton(onClick = { deleting = ep }) { Icon(Icons.Default.Delete, null) }
-                        }
+                        Text(
+                            ep.label,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        // Fixed trailing action area — never shrinks, always visible.
+                        TextButton(onClick = {
+                            labelDraft = ep.label; urlDraft = ep.baseUrl; urlError = null; editing = ep
+                        }) { Icon(Icons.Default.Edit, null) }
+                        TextButton(onClick = { deleting = ep }) { Icon(Icons.Default.Delete, null) }
                     }
                     Text(
                         ep.baseUrl,
@@ -195,7 +208,7 @@ internal fun CustomEndpointsSection(
                     }
                 }
             }
-        }
+        } }
         fetchNote?.let {
             Text(it, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

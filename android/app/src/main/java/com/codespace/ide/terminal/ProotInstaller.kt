@@ -74,8 +74,22 @@ object ProotInstaller {
      * so plain host File I/O against this mapped path works fine without going through proot
      * at all (only running guest ELF binaries needs the proot wrapper — see execOnce above).
      */
-    fun guestToHostPath(context: Context, guestPath: String): File =
-        File(rootfsDir(context), guestPath.removePrefix("/"))
+    // BUG-A ROOT-CAUSE FIX (2026-09-19): this was missing the /sdcard special case
+    // that its own REVERSE function (hostToGuestPath, below) already has — every
+    // guest path got dumped verbatim under rootfsDir, so "/sdcard/x" resolved to
+    // "<rootfs>/sdcard/x" (a real but WRONG, unreadable location: EACCES) instead of
+    // the actual Android storage path "/storage/emulated/0/x". This is the exact
+    // path IdeTerminalBridge.guestPathToHostFile already handles correctly in its
+    // own reimplementation — mirrored here so every caller (LspManager, AgentTools
+    // git checks, Problems-panel jump-to-source) gets the same correct mapping.
+    fun guestToHostPath(context: Context, guestPath: String): File {
+        val trimmed = guestPath.trim()
+        return when {
+            trimmed == "/sdcard" -> File("/storage/emulated/0")
+            trimmed.startsWith("/sdcard/") -> File("/storage/emulated/0/" + trimmed.removePrefix("/sdcard/"))
+            else -> File(rootfsDir(context), trimmed.removePrefix("/"))
+        }
+    }
 
     /**
      * Reverse of guestToHostPath: maps a real Android host path (e.g. one picked via the

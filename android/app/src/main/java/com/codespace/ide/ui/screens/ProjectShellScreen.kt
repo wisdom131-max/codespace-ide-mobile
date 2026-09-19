@@ -150,6 +150,16 @@ private data class IdeColors(
     val KeyboardToolbarBg: Color,
 )
 
+// BUG-A FIX (2026-09-19, re-fix): tapping a Problems/Output/Terminal file:line
+// entry for a file that's ALREADY open still created a duplicate tab, because
+// onJumpToSourceWithPath matched editorTabs with a naive exact-string compare —
+// diagnostic-reported paths and Explorer-opened tab paths can be two different
+// (but equivalent) string forms of the same file. Canonicalize both sides before
+// comparing. Falls back to the raw path when canonicalization fails (file may not
+// exist yet, or the path itself is still wrong — see guestToHostPath fix below).
+private fun canonicalPathOrSelf(path: String): String =
+    try { java.io.File(path).canonicalPath } catch (_: Exception) { path }
+
 @Composable
 private fun ideColors(themeName: String): IdeColors {
     val _isDark = !themeName.contains("Light")
@@ -3528,8 +3538,11 @@ private fun PssBottomPanelContent(
                     } else if (filePath.startsWith(context.filesDir.absolutePath)) {
                         filePath
                     } else {
-                        val uri = "file://$filePath"
-                        LspManager.hostPathFromFileUri(context, uri) ?: filePath
+                        val viaTerminal = com.codespace.ide.terminal.IdeTerminalBridge.guestPathToHostFile(context, filePath)
+                        if (viaTerminal != null) viaTerminal.absolutePath else {
+                            val uri = "file://$filePath"
+                            LspManager.hostPathFromFileUri(context, uri) ?: filePath
+                        }
                     }
                     onJumpToSourceWithPath(hostPath, line)
                 },
@@ -4754,9 +4767,12 @@ private fun PssEditorColumn(
             onBuildProblemsChange = { problems -> buildProblems = problems },
             onJumpToSource = { line -> scrollTargetLine = line; showBottomPanel = false },
             onJumpToSourceWithPath = { filePath, line ->
-                if (filePath != activeEditorTab) {
-                    if (!editorTabs.contains(filePath)) editorTabs.add(filePath)
-                    activeEditorTab = filePath
+                val targetCanon = canonicalPathOrSelf(filePath)
+                val existingTab = editorTabs.firstOrNull { canonicalPathOrSelf(it) == targetCanon }
+                val resolvedPath = existingTab ?: filePath
+                if (resolvedPath != activeEditorTab) {
+                    if (existingTab == null && !editorTabs.contains(resolvedPath)) editorTabs.add(resolvedPath)
+                    activeEditorTab = resolvedPath
                 }
                 scrollTargetLine = line
                 showBottomPanel = false

@@ -209,8 +209,16 @@ internal object OpenAiCompatibleTransport {
         val body = try { resp.body?.string() } catch (_: Exception) { null }
         val clean = try {
             val obj = JSONObject(body ?: "")
+            // MISTRAL-FIX (2026-09-19): Mistral's auth errors use a top-level
+            // "detail" field ({"detail":"Invalid API Key"}), not "message" or
+            // "error.message" (that shape IS used for Mistral's model-rejection
+            // errors, e.g. {"object":"error","message":"Invalid model: X",...} —
+            // so "message" stays checked too). Without the "detail" fallback,
+            // Mistral 401s fell through to the raw-JSON-dump fallback message
+            // instead of a clean parsed one.
             val msg = obj.optJSONObject("error")?.optString("message")
-                ?: obj.optString("message")
+                ?: obj.optString("message").ifBlank { null }
+                ?: obj.optString("detail")
             if (msg.isNotBlank()) prefix + " (" + resp.code + "): " + msg else ""
         } catch (_: Exception) { "" }
         val fallback = prefix + " (" + resp.code + ")." +
