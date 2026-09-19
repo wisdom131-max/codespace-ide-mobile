@@ -1,9 +1,10 @@
 # No-Undo Notice Plan (APPLY without checkpoint) — PLAN ONLY, no code until Wisdom approves
 
-Status: PLAN v1 2026-09-19. Trigger: after VERSIONHISTORY-V2, AI Apply proceeds
-silently when no checkpoint could be written; Undo later says "No checkpoints
-found" — except, as READ below, that message never reaches the screen today.
-All facts below are READ from source unless marked GUESS.
+Status: PLAN v2 2026-09-19 — Wisdom review round 1 answered: (a) CONFIRMED as
+direction; shared predicate CONFIRMED (one function serves both the notice
+and writeCheckpoint); out-of-root analysis extended with app-private paths +
+new options; surfaces + re-polish declared; BUILD WAITS for Wisdom's go after
+his #2844 test round. All facts READ from source unless marked GUESS.
 
 ## 1. The three no-checkpoint cases — exactly what you see (READ)
 
@@ -95,6 +96,73 @@ YES. The chain has no path gate:
 RECOMMEND: (a). It matches VS Code's philosophy (apply/save always proceeds;
 local history is best-effort and silently limited), keeps R6 decision #5
 intact, and converts two silent failure modes into honest, glanceable text.
+
+## 3a. Wisdom review round 1 — CONFIRMED DECISIONS + ANSWERS
+
+1. SHARED PREDICATE — CONFIRMED. The plan adds ONE function,
+   PendingChangesStore.checkpointStatus(path), which writeCheckpoint itself
+   then calls to decide each branch (TOO_BIG / NO_ROOT / OUT_OF_ROOT / OK).
+   The pre-Apply notice renders from the same function's result; the notice
+   and the real checkpoint behavior CANNOT disagree because there is only one
+   implementation. No duplicate threshold constants anywhere.
+
+2. WHAT THE CARD SHOWS FOR AN OUT-OF-ROOT PATH (READ): PendingFileRow shows
+   File(entry.path).name as the title and entry.path VERBATIM in 9sp muted
+   text under it (ChatDiffReviewCard.kt ~:149/:155) — an out-of-root file
+   displays e.g. /storage/emulated/0/Download/outside_root.txt in full. So the
+   path IS visible today; what is missing is any signal that it is unusual.
+
+   CAN THE MODEL STAGE APP-PRIVATE PATHS (filesDir, other project roots,
+   databases)? YES — READ: stage() (CopilotChatPanelOverlay.kt:624) takes any
+   path string; apply() writes temp+rename anywhere the process can write,
+   which INCLUDES /data/user/0/com.codespace.ide.debug/** (filesDir, shared_prefs
+   XML, databases/*.db) and filesDir/ubuntu-rootfs/** (the proot rootfs).
+   No gate exists at any layer. Hazard classes, worst first:
+     - filesDir/ubuntu-rootfs/** : an AI edit can CORRUPT the Ubuntu rootfs
+       (breaks the terminal entirely).
+     - databases/*.db : live sqlite corruption (sessions, crash logs).
+     - shared_prefs XML : settings/session corruption.
+     - OTHER project roots : user data, but NO checkpoint (wrong root) and NO
+       20s loop coverage (the loop walks the ACTIVE project only) — a silent
+       unrevertable change to that project.
+   How the model learns such paths: tool outputs (read_file, run_command,
+       ProotInstaller guest-host mappings) leak them; nothing forbids them.
+
+   OPTIONS — now -> after -> risk (WISDOM DECIDES):
+   (A) Tiered warning only. Now: silent everywhere. After: the same shared
+       predicate returns a REASON plus a CLASS: app-internal (filesDir,
+       shared_prefs, databases, ubuntu-rootfs) shows a STRONG warning
+       ("App-internal file — applying can break the IDE; no undo"), other
+       out-of-root shows the mild warning. Apply proceeds in both cases.
+       Risk: LOW (pure display); residual risk: user can still tap through
+       into rootfs corruption.
+   (B) Apply REFUSES app-internal + Force-apply escape. Now: silent success.
+       After: apply() returns Blocked for the app-internal class; the card
+       shows the BLOCKED banner (existing pattern); explicit "Force apply"
+       (manual decision) proceeds. Mild notice (A) still applies to other
+       out-of-root paths. Risk: MEDIUM-LOW — reuses the existing
+       Blocked/Force-apply UI, exact-path classification is simple (filesDir
+       prefix checks); residual risk: Force apply remains a 2-tap escape, and
+       a wrong classification would block a legit file (recoverable via Force).
+   (C) Stage-time workspace gate. Now: anything stages. After: stage() itself
+       refuses paths outside ALL known workspace roots; the model gets a tool
+       result "path outside workspace". Risk: HIGH — changes R6 decision #1
+       (staging ungated), breaks deliberate out-of-root writes (the N2 test
+       case itself becomes impossible), and multi-root flows.
+   RECOMMENDED: (B) for app-internal (real protection for IDE internals, with
+   escape), (A) for everything else out-of-root. But Wisdom decides.
+
+3. SURFACES TOUCHED + RE-POLISH DECLARED: ChatDiffReviewCard.kt (PendingFileRow
+   warning line + the Undo footer now surfaces the result string), and
+   PendingChangesStore.kt (checkpointStatus shared predicate + optional
+   app-internal classification for (B)). CopilotChatPanelOverlay.kt is NOT
+   touched under (A) or (B). The chat review-card surface is CLOSED (polished
+   under Phase 1 authority) — this change DECLARES its re-polish pass: the
+   notice line styling (muted, small, rounded container per UI rule) and the
+   undo-result line are that pass, shipped together in one build.
+   GATE: no code until Wisdom says go, and it WAITS for his #2844 device test
+   round (T1-T9 + consolidated re-test) — do not stack a second build on an
+   unverified surface.
 
 ## 4. Tap-by-tap test for (a) — real content
 

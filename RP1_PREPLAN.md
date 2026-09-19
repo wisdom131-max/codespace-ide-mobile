@@ -1,8 +1,12 @@
 # RP1 PRE-PLAN — Action Registry + ContextKeyExpr-lite (NO CODE until Wisdom approves)
 
-Status: PLAN v1 2026-09-19, RP1 = parity-sweep "real project #1" (biggest
-structural gap). Modeled on R6_PREPLAN.md: decisions locked only after Wisdom
-review. Source facts READ today unless marked GUESS or RESEARCH-BASED.
+Status: PLAN v2 2026-09-19 — Wisdom review round 1 answered: menu counts
+RECOUNTED from current source (his stale-count catch confirmed); command
+palette located (ProjectShellScreen inline, static 35-item list) + wiring
+options added; P1 HARD-GATED on CW7 passing on his device; dead keybindings
+removed from RP1 into DEAD_KEYBINDINGS_REPORT.md (separate report, not
+bundled). Modeled on R6_PREPLAN.md: decisions locked only after Wisdom review.
+Source facts READ today unless marked GUESS or RESEARCH-BASED.
 
 ## 1. What it is, in plain language
 
@@ -63,10 +67,34 @@ registry entries).
 - Menus are hand-written DropdownMenuItem lists, counted today:
   ProjectShellScreen.kt 25, ChatModelMenuButton.kt 17, TerminalPane.kt 13,
   InProjectSettingsDialog.kt 11, TerminalRootMenu.kt 10, SourceControlPane.kt
-  10, ExplorerPane.kt 10, NotificationDrawerOverlay.kt 7,
-  CopilotChatPanelOverlay.kt 7, EditorPane.kt 7, SettingsScreen.kt 2,
-  HomeScreen.kt 2, SqliteViewerDialog.kt 1, BuildPanel.kt 1
+  10, ExplorerPane.kt 10 (9 overflow + 1 file-row context), 
+  NotificationDrawerOverlay.kt 7, CopilotChatPanelOverlay.kt 7,
+  EditorPane.kt 7, SettingsScreen.kt 2, HomeScreen.kt 2,
+  SqliteViewerDialog.kt 1, BuildPanel.kt 1
   = ~123 items across 14 files.
+- RECOUNT (v2, Wisdom's stale-count catch — exact rows from current source):
+  - Explorer ⋮ overflow (ExplorerPane.kt :921-983): NINE rows, not the seven
+    the v1 plan claimed: 1 Multi-select Mode (:923), 2 Show hidden files
+    (:929, CW7 — ALREADY LANDED), 3 Sort by (:938), 4 Expand All (:942),
+    5 Collapse All (:952), 6 Import Images (:958), 7 Add Folder to Workspace
+    (:963), 8 Device Folders (:973), 9 Change Folder (:977) + a HorizontalDivider
+    after Collapse All. (Wisdom's "10" expectation: the CW7 row is ALREADY in
+    the 9 — I count no 10th row; recount posted for his check.)
+  - Editor tab context menus (EditorPane.kt): SEVEN rows across TWO menus —
+    primary tab menu :1006-1042 (Close, Close Others, Close All, Close Saved,
+    Copy Path) + split-view tab menu :1110-1118 (Close Split View, Copy Path).
+  - Terminal: TerminalPane.kt 13 rows (icon-chip menus: extra-keys, quick
+    actions, session chips; 6 `enabled =` conditions), TerminalRootMenu.kt 10
+    rows (icon rows incl. location/pin, folder, checkmark; 6 `enabled =`).
+- THE COMMAND PALETTE ALREADY EXISTS (READ, v2 — earlier audit's "static list"
+  confirmed): it lives INLINE in ProjectShellScreen.kt, not its own file.
+  State `showCommandPalette` (:780), opened via menu-bar items (:1073/:1078),
+  three query modes: plain = file search, ">" prefix = command search
+  (:2279-2295, a hardcoded listOf ~35 command STRINGS, dispatched through
+  handleMenuAction(item) — a when{} at ~:1050-1090), "@" prefix = symbol
+  search. There is ALSO a desktop-style static menu bar (:400-460:
+  File/Edit/View/Go/Run/Terminal/Help MenuBarItem lists) routed through the
+  same handleMenuAction dispatcher.
 - Context menus: editor tab long-press (EditorPane.kt ~1005-1045: Close /
   Close Others / Close All / Close Saved / Copy Path ...), gutter breakpoint
   long-press (EditorPane.kt ~2148), file-row long-press in Explorer.
@@ -78,6 +106,36 @@ registry entries).
   but the plan below migrates ~50-60 items (the menu surfaces with real
   enable/disable logic) across 4 phases; Chat/Settings menus can stay
   hand-written until a later phase without hurting the design.
+
+## 3a. Registry visible-payoff question (Wisdom, v2): why isn't the palette
+wired in P1/P2?
+
+P1-P3 alone change NOTHING a user can see (identical menus, data-driven
+underneath) — true, and deliberate for revert-safety. But the audit's point
+stands: a registry nobody reads is unverifiable from the outside. Options:
+
+(A) P1 wires the palette: P1 additionally swaps the palette's hardcoded
+    ~35-string list (:2279-2295) to read from the registry (Explorer's 9
+    actions appear as runnable commands; the static strings stay until their
+    surfaces migrate). Payoff visible from P1. RISK: touches ProjectShellScreen
+    inline code (huge file, 64KB headroom) in the very first phase, and the
+    palette's ">" list is ALSO used by the static menu bar (:400-460) — the
+    first phase then has two blast radii (Explorer menu + shell palette).
+
+(B) P2 wires the palette (RECOMMENDED): P1 stays pure-Explorer (minimal,
+    CW7-gated, single surface). P2 migrates the editor tab menus AND switches
+    the palette's ">" list to read the registry — by then ~16 real actions
+    exist, the palette shows them, and `handleMenuAction` string dispatch for
+    those items is deleted (the registry entry runs the action directly).
+    The palette's file/@ symbol modes are untouched in both options (separate
+    data sources). RISK: low — one extra consumer added to a working registry.
+
+(C) Palette stays static; registry serves menus only. RISK: the registry has
+    no visible payoff until a future command-palette project — weakest review
+    signal, hardest for Wisdom to verify on device.
+
+WISDOM DECIDES. My recommendation is (B); (A) is acceptable if he wants the
+payoff in P1 and accepts the wider first phase.
 
 ## 4. The design — what gets added, what stays
 
@@ -111,21 +169,25 @@ STAYS AS IS:
 
 ## 5. Phases (each leaves the app fully working, each revertable alone)
 
-P1 — INFRA + ONE SURFACE (the smallest useful slice):
-  ContextKeyExpr + ActionRegistry + migrate Explorer ⋮ overflow (7 rows,
-  ExplorerPane.kt ~888-944: Multi-select, Sort by, Expand/Collapse All,
-  Import Images, Add Folder, Device Folders, Change Folder + the CW7
-  "Show hidden files" row when it lands). Same rows, same order, same ✓
-  toggle rendering, now data-driven with when-clauses and typed actions.
+P1 — INFRA + ONE SURFACE (the smallest useful slice) — HARD GATE: starts
+  only AFTER the CW7 "Show hidden files" fix PASSES on Wisdom's device
+  (CONFIRMED v2). P1 re-touches the same Explorer rows CW7 touched; stacking
+  an unverified-then-refactored surface would make his CW7 retest results
+  uninterpretable.
+  ContextKeyExpr + ActionRegistry + migrate Explorer ⋮ overflow (NINE rows,
+  ExplorerPane.kt :921-983 incl. the already-landed CW7 row). Same rows, same
+  order, same ✓ toggle rendering, now data-driven with when-clauses and typed
+  actions.
 P2 — EDITOR TAB CONTEXT MENU: Close/Close Others/Close All/Close Saved/Copy
   Path (EditorPane.kt ~1005-1045) + first real enable-rules ("Close Saved"
   hidden when no saved tabs, etc.).
 P3 — TERMINAL MENUS: TerminalPane (13 items, 6 enabled= conditions) and
   TerminalRootMenu (10) — the highest enable/disable density; introduces the
   ContextKeys value map updated from terminal state.
-P4 — KEYBRIDGE: map the ~10 live EditorActions into registry ids so a binding
-  and a menu item share one implementation; DECIDE the ~29 dead bindings
-  (give handlers or hide from Settings) — separate review, no silent pruning.
+P4 — KEYBRIDGE: map the 10 LIVE EditorActions (CodeEditor.kt dispatch) into
+  registry ids so a binding and a menu item share one implementation. The 29
+  DEAD bindings are NOT part of RP1 (Wisdom, v2): they are documented with
+  grep evidence in DEAD_KEYBINDINGS_REPORT.md and await a separate review.
 P5 (optional/later) — ProjectShellScreen (25) + chat surfaces (31).
 
 ## 6. Risks + per-phase "what did I remove or change" check
@@ -171,14 +233,20 @@ Each phase ships its re-polish check BEFORE the phase is called closed.
 
 ## 9. Per-phase tap-by-tap tests (with failure checks)
 
-P1: open project -> ⋮ overflow menu: EXACTLY the same rows in the same order
-as build #2854 (screenshot-compare). Tap each row once: Multi-select toggles
+P1 (after CW7 passes on device): open project -> ⋮ overflow menu: EXACTLY
+NINE rows in the same order as the CW7-verified build (screenshot-compare):
+Multi-select Mode, Show hidden files, Sort by, Expand All, Collapse All,
+Import Images, Add Folder to Workspace, Device Folders, Change Folder. Tap each row once: Multi-select toggles
 selection mode; Sort by cycles Name->Date->Size->Type; Expand/Collapse All
 work on a folder with children; Import Images opens the picker; Add Folder
 opens the folder picker; Device Folders shows/hides the ✓; Change Folder opens
 the picker. FAILURE: any row missing/renamed/reordered, any dead tap, or
 Multi-select select-all including internals when hidden-file rules say no.
-P2: open 3 tabs (a.py dirty, b.py saved, c.py saved). Long-press b.py tab:
+P2 (palette wiring per 3a decision): open 3 tabs (a.py dirty, b.py saved,
+c.py saved) — tab menu tests as below; PLUS palette ">" search lists the
+registry actions (Explorer + tab-close entries), tapping one runs it and
+closes the palette (FAILURE: stale list, dead tap, or the static strings
+disappearing before their surface migrates). Long-press b.py tab:
 Close, Close Others, Close All, Close Saved, Copy Path (paste into chat input
 to verify). Long-press with exactly ZERO saved tabs -> "Close Saved" behaves
 per P2 decision (hidden or disabled — whichever Wisdom picks). FAILURE: a
