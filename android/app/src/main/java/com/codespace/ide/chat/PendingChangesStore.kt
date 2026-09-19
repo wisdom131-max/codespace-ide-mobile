@@ -256,7 +256,7 @@ object PendingChangesStore {
         // files never share a dir. Out-of-root or unsafe path = NO checkpoint (fail
         // closed); Apply still proceeds (unchanged null-checkpoint behavior, Q2
         // reported to Wisdom) and Undo then has nothing to restore for this file.
-        val vhDir = com.codespace.ide.util.VersionHistoryV2.v2DirFor(root, path) ?: return null
+        val vhDir = com.codespace.ide.util.VersionHistoryV2.v2DirFor(java.io.File(root), path) ?: return null
         vhDir.mkdirs()
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val bak = File(vhDir, "${stamp}_prechat.bak")
