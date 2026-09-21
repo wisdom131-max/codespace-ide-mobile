@@ -3116,7 +3116,9 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                     items(fileResults, key = { r: SearchResult -> r.file + "_" + r.lineNum }) { result ->
                         Row(
                             Modifier.fillMaxWidth()
-                                .clickable { onOpenFileAtLine?.invoke(result.file, result.lineNum) }
+                                // C3: lineNum is 1-BASED for display; the onOpenFileAtLine
+                                // family contract is 0-BASED, so convert at the source.
+                                .clickable { onOpenFileAtLine?.invoke(result.file, result.lineNum - 1) }
                                 .padding(start = 36.dp, top = 2.dp, bottom = 2.dp),
                         ) {
                             Text(result.lineNum.toString() + ": ", fontSize = 11.sp, color = MutedColor, fontFamily = FontFamily.Monospace)

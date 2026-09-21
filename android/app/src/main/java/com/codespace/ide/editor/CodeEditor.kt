@@ -619,6 +619,7 @@ fun CodeEditor(
     /** P41-G: Current file path — for path completion context detection */
     currentFilePath: String? = null,
     /** P19-A: Cross-file Go-to-Definition — opens file at line. */
+    /** C3 (2026-09-21): 0-BASED line; -1 = open without scrolling. Each consumer wrapper owns the single +1 (family contract). */
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
     /** P20-A: Git blame data — when non-null, shows author+date column next to line numbers */
     blameData: Map<Int, BlameLine>? = null,
@@ -3560,7 +3561,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         .height((fontSize + 2).dp)
                         .clickable {
                             // Open link in browser (handled by caller)
-                            onOpenFileAtLine?.invoke(target, 0)
+                            // C3: -1 = open file, no scroll/band. 0 is now a REAL 0-based line (first line).
+                            onOpenFileAtLine?.invoke(target, -1)
                         }
                         .zIndex(5f),
                 ) {

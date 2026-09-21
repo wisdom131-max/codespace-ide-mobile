@@ -71,7 +71,8 @@ fun GotoDefinitionDialog(
                         Text("In project", color = Color(0xFF888888), fontSize = 10.sp)
                         crossFileResults.forEach { cf ->
                             TextButton(
-                                onClick = { onOpenFileAtLine(cf.filePath, cf.line); onDismiss() },
+                                // C3: FileIndexer line is 1-based; the onOpenFileAtLine family contract is 0-based.
+                                onClick = { onOpenFileAtLine(cf.filePath, cf.line - 1); onDismiss() },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Column(modifier = Modifier.fillMaxWidth()) {

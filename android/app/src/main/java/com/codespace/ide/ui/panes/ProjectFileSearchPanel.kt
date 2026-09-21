@@ -71,7 +71,7 @@ data class TextResult(
  * @param projectRoot  Absolute path to the project root directory.
  * @param onDismiss    Close the panel.
  * @param onOpenFile   Open a file by absolute path.
- * @param onOpenFileAtLine  Open a file and scroll to a specific 1-based line.
+ * @param onOpenFileAtLine  Open a file and scroll to a specific line. C3 (2026-09-21): invoked with a 0-BASED line (lineNumber - 1, family contract; -1 = no scroll); the shell wrapper owns the single +1.
  */
 @Composable
 fun ProjectFileSearchPanel(
@@ -548,7 +548,8 @@ fun ProjectFileSearchPanel(
                                                     .fillMaxWidth()
                                                     .clickable {
                                                         saveRecentSearch(query)
-                                                        onOpenFileAtLine(r.file.path, r.lineNumber)
+                                                        // C3: lineNumber is 1-BASED for display; convert to the 0-based family contract.
+                                                        onOpenFileAtLine(r.file.path, r.lineNumber - 1)
                                                         onDismiss()
                                                     }
                                                     .padding(start = 32.dp, top = 6.dp, end = 16.dp, bottom = 6.dp),

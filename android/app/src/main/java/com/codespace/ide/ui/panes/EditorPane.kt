@@ -157,6 +157,7 @@ fun EditorPane(
     projectId: String? = null,
     sessionStateStore: SessionStateStore? = null,
     udm: com.codespace.ide.debug.UniversalDebugManager? = null,
+    /** C3 (2026-09-21): 0-BASED line; -1 = open without scrolling. The PSS wrapper owns the single 0->1 conversion. */
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
     onAiFixRequest: ((String) -> Unit)? = null,
     /** P41-E: AI ghost text request — returns multi-line code continuation or null */
@@ -2198,8 +2199,11 @@ fun EditorPane(
                                 activeId = resolved
                             }
                             // TEST-11-FIX: Schedule scroll-to-line AFTER the target tab is active
-                            if (line > 0) {
-                                scrollToLine = line
+                            // C3 (2026-09-21): CodeEditor jump sources (peek, find-refs, call/type
+                            // hierarchy, goto-dialog, documentLinks) are 0-BASED, -1 = open without
+                            // scrolling. scrollToLine is 1-BASED — this wrapper owns the single +1.
+                            if (line >= 0) {
+                                scrollToLine = line + 1
                                 kotlinx.coroutines.MainScope().launch {
                                     kotlinx.coroutines.delay(1000)
                                     scrollToLine = 0
@@ -2565,7 +2569,8 @@ fun EditorPane(
                                                     scrollToLine = defLine + 1
                                                 } else {
                                                     // Different file — open it at the definition line
-                                                    onOpenFileAtLine?.invoke(defPath, defLine + 1)
+                                                    // C3: raw 0-based LSP line — the PSS wrapper adds the single +1 (A-9 was a double +1).
+                                                    onOpenFileAtLine?.invoke(defPath, defLine)
                                                 }
                                                 succeeded = true
                                             }
@@ -2592,7 +2597,8 @@ fun EditorPane(
                                                 if (declPath == active.path) {
                                                     scrollToLine = declLine + 1
                                                 } else {
-                                                    onOpenFileAtLine?.invoke(declPath, declLine + 1)
+                                                    // C3: raw 0-based LSP line — the PSS wrapper adds the single +1 (A-9 was a double +1).
+                                                    onOpenFileAtLine?.invoke(declPath, declLine)
                                                 }
                                                 succeeded = true
                                             }

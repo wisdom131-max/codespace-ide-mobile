@@ -1586,13 +1586,18 @@ fun ProjectShellScreen(
                             )
                             SidePanel.SEARCH     -> SearchPanel(
                                 projectId = projectId,
+                                // C3: SearchPanel now invokes with a 0-BASED line (lineNum - 1
+                                // at its source); this wrapper owns the single +1 like every other
+                                // onOpenFileAtLine consumer. Notification still shows the 1-based line.
                                 onOpenFileAtLine = { path, line ->
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
                                     pushNavEntry(activeEditorTab, scrollTargetLine)
                                     activeEditorTab = path
-                                    scrollTargetLine = line
+                                    if (line >= 0) {
+                                        scrollTargetLine = line + 1
+                                    }
                                     activePanel = null
-                                    showNotification("Opened " + path.substringAfterLast("/") + ":" + line, "success")
+                                    showNotification("Opened " + path.substringAfterLast("/") + ":" + (line + 1), "success")
                                 },
                             )
                             SidePanel.GIT        -> GitSidePanel(
@@ -4638,12 +4643,15 @@ private fun PssEditorColumn(
                         if (!editorTabs.contains(path)) editorTabs.add(path)
                         pushNavEntry(activeEditorTab, scrollTargetLine)
                         activeEditorTab = path
-                        // LINE-BASE-FIX (2026-09-11): `line` here is 0-BASED (OSC 7777 + tap
-                        // detector convert 1-based to 0-based), but scrollTargetLine feeds
-                        // EditorPane/CodeEditor's scrollToLine which is 1-BASED. The other two
-                        // call sites (file-search, split terminal) convert with +1; this one
-                        // didn't — every ide-open / terminal path-tap landed one line ABOVE.
-                        scrollTargetLine = line + 1
+                        // C3 LINE-CONVENTION (2026-09-21): the onOpenFileAtLine FAMILY is
+                        // 0-BASED, -1 = open without scrolling. Sources: OSC 7777, terminal tap,
+                        // EditorPane go-to-def/declaration, CodeEditor peek/find-refs/hierarchy/
+                        // goto-dialog/documentLinks. This wrapper owns the SINGLE 0->1
+                        // conversion (scrollTargetLine is 1-BASED). A-9 was a double +1: EditorPane
+                        // previously pre-converted defLine+1 before this wrapper.
+                        if (line >= 0) {
+                            scrollTargetLine = line + 1
+                        }
                     },
                     projectId          = projectId,
                     sessionStateStore  = sessionStateStore,
