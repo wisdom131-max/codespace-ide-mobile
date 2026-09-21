@@ -30,7 +30,7 @@
 | Field | Value |
 |---|---|
 | Latest commit | (see CHANGE LOG bottom) |
-| CI build | pending: C5 multi-select trash (after C2 + C-4 workdir + C3 line-convention + C4 restore-guard, all CI-pending) — last GREEN: #2849 (fbf39bd: Timeline layer-1 keyed state + versionhistory naming plan; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
+| CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
 | Device | TECNO KL4, Android 14 |
@@ -4320,14 +4320,14 @@ RULES REMINDER: TWO-REPO (this repo only) | CI pending | changelog bottom | Curr
 
 ---
 
-**2026-09-21 08:50 — FIX-BATCH C5: MULTI-SELECT DELETE -> TRASH (S-1, last fix commit, CI pending)**
+**2026-09-21 08:50 — FIX-BATCH C5: MULTI-SELECT DELETE -> TRASH (S-1, last fix commit, GREEN #2862)**
 
-RULES REMINDER: TWO-REPO (this repo only) | CI pending | changelog bottom | Current State updated.
+RULES REMINDER: TWO-REPO (this repo only) | GREEN #2862 (5f4ac90) | changelog bottom | Current State updated. Batch CI: #2859 C2, #2860 C3, #2861 C4, #2862 C5 — all SUCCESS.
 
 1. **[C5][EXPLORER] S-1 — multi-select Delete was PERMANENT:** the multi-select bar's Delete icon called f.deleteRecursively()/f.delete() directly — silently destroying files+dirs with NO confirm and NO trash, while single-file delete has used the TrashEntry flow since P7-4 (an entire folder swept with "All" was unrecoverable). Now: (a) Delete icon opens a confirm dialog ("Move N item(s) to trash?") — AlertDialog default rounded corners + standard padding (UI rule). (b) Confirm routes EVERY item through WorkspaceManager.moveToTrash(proj, f) — same TrashEntry flow, restorable from the Trash browser; directories trash whole (renameTo) instead of deleteRecursively. (c) Root = ProjectPathResolver.containingRoot(context, projectId, path) — the C4 convention, so multi-root files trash into their OWN root's .ide-trash (never a wrong-root dir); containingRoot-null or missing file = SKIP + counted, reported as "Moved N to trash, skipped M" (fail loud, never permanent fallback). (d) Multi-select mode + selection preserved when the dialog is cancelled.
 2. **Audit S-3 (ungated writeFile) NOT in this commit** — S-3 was re-scoped during the fix-plan review: pending-changes staging is ungated BY DESIGN (R6 decision) and the remaining exposure is under PLAN A review. No code.
 3. **No unit tests (UI flow); brace-balance verified.**
 
-**FIX-PLAN COMMIT STATUS — all 5 done:** C1 no-op (shipped cbabf03), C2 span links + C-4 workdir (fc2dc40), C3 line convention (9fcc895), C4 restore-guard (e4a9ceb), C5 multi-select trash (this commit). CI: all pending, expect the next build number to compile the batch.
+**FIX-PLAN COMMIT STATUS — all 5 done, ALL CI GREEN:** C1 no-op (shipped cbabf03), C2 span links + C-4 workdir (fc2dc40, #2859), C3 line convention (9fcc895, #2860), C4 restore-guard (e4a9ceb, #2861), C5 multi-select trash (5f4ac90, #2862).
 
 **Next on roadmap (ALL pending):** PLAN A P1/P2 per-file canonical store (squiggles/band/markers keyed by canonical path + scroll restore; independent of the FIX-PLAN P2 palette repair). Re-test batches RT-1..RT-6 on the new APK once CI is green. Wisdom blanks: A-2/C-4 models, E-10 detail, Mistral raw response. A-9 retest usage-line-5. Palette word-wrap decisive check (gates FIX-PLAN P2). T1-T9 versionhistory re-test. Consolidated #2849 re-test checklist. NO-UNDO build go (after #2854 round). RP1 P1 (after CW7 device pass). Dead-keybinding review. PERSIST-B follow-up audit. Chat messages re-key (F4 debt). Action registry RP1 (plan v3). MC-3 tap-collapse. Settings block S01 after Phase 4. PEEK PARKED. Emoji IME diagnostic (standing).
