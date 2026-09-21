@@ -449,6 +449,8 @@ fun ExplorerSidePanel(
     var sortMode      by remember { mutableStateOf(0) } // 0=Name, 1=Date, 2=Size, 3=Type
     var multiSelectMode by remember { mutableStateOf(false) }
     val selectedFiles = remember { androidx.compose.runtime.mutableStateListOf<String>() }
+    // C5 (S-1): multi-select delete now asks + routes through .ide-trash (was permanent).
+    var showMultiDeleteConfirm by remember { mutableStateOf(false) }
     var showOutline   by remember { mutableStateOf(false) }
     var showTimeline  by remember { mutableStateOf(false) }
     // P42: Explorer restructure — independent collapsible sections (VS Code style)
@@ -871,14 +873,9 @@ fun ExplorerSidePanel(
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.Delete, null, tint = Color(0xFFF48771),
                     modifier = Modifier.size(16.dp).clickable {
-                        selectedFiles.forEach { path ->
-                            val f = File(path)
-                            if (f.isDirectory) f.deleteRecursively() else f.delete()
-                        }
-                        selectedFiles.clear()
-                        multiSelectMode = false
-                        refresh++
-                        onShowNotification?.invoke("Deleted files", "success")
+                        // C5 (S-1): NO permanent delete — same Trash flow as single
+                        // delete, behind an N-item confirm dialog.
+                        if (selectedFiles.isNotEmpty()) showMultiDeleteConfirm = true
                     })
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.Close, null, tint = MutedColor,
@@ -2437,6 +2434,47 @@ fun ExplorerSidePanel(
         )
     }
 
+    // C5 (S-1): multi-select delete confirm — moves items to .ide-trash via the SAME
+    // TrashEntry flow as single delete (P7-4) instead of silently destroying them.
+    if (showMultiDeleteConfirm) {
+        key(orientation) {
+        AlertDialog(
+            onDismissRequest = { showMultiDeleteConfirm = false },
+            title = { Text("Move ${selectedFiles.size} item(s) to trash?") },
+            text  = { Text("Items will be moved to .ide-trash/ and can be restored from the Trash browser.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        var moved = 0
+                        var skipped = 0
+                        selectedFiles.forEach { path ->
+                            val f = File(path)
+                            if (!f.exists()) { skipped++; return@forEach }
+                            // C4 convention: the containing workspace root owns .ide-trash/
+                            // (multi-root aware, fail closed — never a wrong-root trash dir).
+                            val proj = com.codespace.ide.util.ProjectPathResolver.containingRoot(context, projectId, path)
+                            if (proj == null) { skipped++; return@forEach }
+                            WorkspaceManager.moveToTrash(proj, f)
+                            moved++
+                        }
+                        selectedFiles.clear()
+                        multiSelectMode = false
+                        refresh++
+                        showMultiDeleteConfirm = false
+                        onShowNotification?.invoke(
+                            if (skipped > 0) "Moved $moved to trash, skipped $skipped" else "Moved $moved item(s) to trash",
+                            if (moved > 0) "success" else "info",
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                ) { Text("Move to Trash") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMultiDeleteConfirm = false }) { Text("Cancel") }
+            },
+        )
+        }
+    }
     if (showDelete && contextFile != null) {
         key(orientation) {
         AlertDialog(
