@@ -157,6 +157,37 @@ object IdeTerminalBridge {
      * INSIDE that root; anything else is refused. Unlocked terminals keep the old
      * behavior (build-output paths resolve against any root).
      */
+    /**
+     * A5-SPAN (2026-09-21, audit #2854): extract the file-link token at
+     * [tapOffset] in [rowText] by matching SPANS instead of Termux's
+     * whitespace-delimited word (which cuts "My Project/src/Main.kt:42" at the
+     * space). xterm.js link providers match against the whole buffer line, so
+     * this takes the full wrapped-line text; a space is accepted INSIDE a path
+     * only when more path characters follow, and the :line suffix anchors the
+     * end so trailing words ("... error") are never swallowed. Two forms:
+     *   1. span:      path with spaces:line[:col]   (file must contain / or .)
+     *   2. gcc/clang: File "path", line 42
+     * Returns the matched token, or null when no match covers the tap offset
+     * (caller falls back to the legacy word).
+     */
+    fun extractFileLinkToken(rowText: String, tapOffset: Int): String? {
+        if (tapOffset < 0 || tapOffset >= rowText.length) return null
+        val gccRegex = Regex("""File +"([^"]+)", *line +(\d+)""")
+        for (m in gccRegex.findAll(rowText)) {
+            if (!m.range.contains(tapOffset)) continue
+            return m.groupValues[1] + ":" + m.groupValues[2]
+        }
+        val spanRegex = Regex("""(?:[\w.\-/\\]+| (?=[\w.\-/\\]))+:\d+(?::\d+)?""")
+        for (m in spanRegex.findAll(rowText)) {
+            if (!m.range.contains(tapOffset)) continue
+            val token = m.value.trimEnd(':', ',', ';')
+            // Same gate as the legacy path: plain words are not file links.
+            if (!token.contains('/') && !token.contains('.')) continue
+            return token
+        }
+        return null
+    }
+
     fun resolveTappedFileLink(
         context: Context,
         session: com.termux.terminal.TerminalSession?,
@@ -185,6 +216,36 @@ object IdeTerminalBridge {
         projectId: String? = null,
     ): Pair<File, Int>? {
         if (token.isBlank()) return null
+        // A5-SPAN: a span token may carry leading filler words ("at My Project/x.kt:42",
+        // "cd My Project/x.kt:42") that the whole-line match cannot exclude. Try the
+        // token as extracted FIRST, then progressively drop leading chunks. No-space
+        // tokens produce a single candidate = exactly the old behavior.
+        for (candidate in linkCandidates(token.trim().trimEnd(':', ',', ';'))) {
+            val r = resolveSingleToken(context, session, candidate, projectId)
+            if (r != null) return r
+        }
+        return null
+    }
+
+    /** A5: progressive leading-chunk drop — bounded (max 5), pure (unit-tested). */
+    fun linkCandidates(token: String): List<String> {
+        val out = mutableListOf(token)
+        var t = token
+        while (out.size < 5 && t.contains(' ')) {
+            val sp = t.indexOf(' ')
+            t = t.substring(sp + 1).trim()
+            if (t.isEmpty()) break
+            if (t != out.last()) out.add(t)
+        }
+        return out
+    }
+
+    private fun resolveSingleToken(
+        context: Context,
+        session: com.termux.terminal.TerminalSession?,
+        token: String,
+        projectId: String?,
+    ): Pair<File, Int>? {
         val clean = token.trim().trimEnd(':', ',', ';')
         // Split optional :line suffix
         var pathPart = clean

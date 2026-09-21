@@ -150,6 +150,34 @@ public final class TerminalBuffer {
         return text.substring(x1 + 1, x2);
     }
 
+    // A5-SPAN (2026-09-21): full wrapped-line text + tap offset for span-based
+    // file-link extraction. Same wrapped-line discovery getWordAtLocation uses;
+    // the token extraction itself stays in Kotlin (IdeTerminalBridge) so the
+    // logic stays unit-testable. Returns null when the tap is right of the last
+    // non-space content (same condition getWordAtLocation returns "" for).
+    public static class WrappedLine {
+        public final String text;
+        public final int offset;
+        WrappedLine(String text, int offset) { this.text = text; this.offset = offset; }
+    }
+
+    public WrappedLine getWrappedLineAtLocation(int x, int y) {
+        int y1 = y;
+        int y2 = y;
+        while (y1 > 0 && !getSelectedText(0, y1 - 1, mColumns, y, true, true).contains("\n")) {
+            y1--;
+        }
+        while (y2 < mScreenRows && !getSelectedText(0, y, mColumns, y2 + 1, true, true).contains("\n")) {
+            y2++;
+        }
+        String text = getSelectedText(0, y1, mColumns, y2, true, true);
+        int textOffset = (y - y1) * mColumns + x;
+        if (textOffset >= text.length()) {
+            return null;
+        }
+        return new WrappedLine(text, textOffset);
+    }
+
     public int getActiveTranscriptRows() {
         return mActiveTranscriptRows;
     }

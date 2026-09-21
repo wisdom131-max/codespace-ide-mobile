@@ -220,9 +220,23 @@ You can use multiple tools in sequence. When done, give a final summary.
     // host ProcessBuilder this used to call never had those binaries on PATH). workdir, if
     // given, must be a guest-side path (e.g. "/root/myproject"), not a host Android path.
     private fun runCommand(command: String, workdir: String?, context: Context): String {
-        val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, workdir).take(4000)
+        // C-4 (audit #2854): the chat panel advertises HOST project roots, so the
+        // model passes host paths as workdir — but execOnce runs inside the proot
+        // GUEST, where the host path fails the `[-d workdir]` guard SILENTLY and the
+        // command lands in guest HOME (git "not a git repository"). Translate
+        // host->guest when the path maps (/host-files, /sdcard, rootfs); guest-style
+        // paths and untranslatable paths pass through unchanged (old behavior).
+        val guestWorkdir = workdir?.let { wd ->
+            val translated = ProotInstaller.hostToGuestPath(context, wd)
+            if (translated != null && translated != wd) {
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[C4] run_command workdir translated host->guest: " + wd + " -> " + translated, "terminal")
+                translated
+            } else wd
+        }
+        val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, guestWorkdir).take(4000)
         // I2 — TERMINAL BRIDGE: last agent-run command + output are attachable in chat
-        com.codespace.ide.terminal.TerminalAiBridge.recordRun(command, out, workdir)
+        com.codespace.ide.terminal.TerminalAiBridge.recordRun(command, out, guestWorkdir)
         return out
     }
 
