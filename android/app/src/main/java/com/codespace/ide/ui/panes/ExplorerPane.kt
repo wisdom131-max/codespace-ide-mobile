@@ -1483,7 +1483,9 @@ fun ExplorerSidePanel(
                 if (activeFilePath != null) {
                     TimelinePanel(
                         filePath = activeFilePath,
-                        projectDir = workspaceRoot,
+                        // B-alpha (C4): same resolver as the 20s loop + Local History
+                        // dialog — the containing root, not the blanket primary.
+                        projectDir = com.codespace.ide.util.ProjectPathResolver.containingRoot(context, projectId, activeFilePath),
                         modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
                     )
                 } else {
@@ -1504,7 +1506,15 @@ fun ExplorerSidePanel(
         while (true) {
             delay(20_000L)
             withContext(Dispatchers.IO) {
-                val wsPath = loadWorkspacePath(context, projectId) ?: return@withContext
+                // B-alpha (C4): ONE resolver for all three history surfaces — the
+                // dialog + TimelinePanel use containingRoot() on the same list below.
+                // S-2: loadWorkspacePath (prefs "Open Folder" override only) was null
+                // for every non-override project -> the snapshot loop silently never
+                // ran. resolveProjectRoot/AllWorkspaceRoots fall back to pathOrUrl
+                // metadata, and multi-root projects now snapshot added roots too.
+                val roots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(context, projectId)
+                if (roots.isEmpty()) return@withContext
+                for (wsPath in roots) {
                 val projectDir = File(wsPath)
                 val cutoff = System.currentTimeMillis() - 5 * 60 * 1000L
                 projectDir.walkTopDown()
@@ -1522,6 +1532,7 @@ fun ExplorerSidePanel(
                         // file's own Undo checkpoint.
                         com.codespace.ide.util.VersionHistoryV2.trimGrouped(vhDir)
                     }
+                }
             }
         }
     }
@@ -1683,11 +1694,12 @@ fun ExplorerSidePanel(
                                         }
                                         "Local History" -> {
                                             historyFile = f
-                                            val projectDir = run {
-                                                var p = f.parentFile
-                                                while (p != null && !File(p, ".git").exists() && p.parentFile?.name != "projects") p = p.parentFile
-                                                p ?: f.parentFile
-                                            }
+                                            // B-alpha (C4): ONE resolver for all three history
+                                            // surfaces. The old .git-walk disagreed with the 20s loop
+                                            // + Timeline for multi-root / non-git projects ->
+                                            // v2DirFor produced a DIFFERENT snapshot dir ->
+                                            // "No snapshots yet" for files that had them.
+                                            val projectDir = com.codespace.ide.util.ProjectPathResolver.containingRoot(context, projectId, f.absolutePath)
                                             if (projectDir != null) {
                                                 historyProjectDir = projectDir
                                                 historySnapshots = com.codespace.ide.util.VersionHistoryV2.listSnapshots(
@@ -2352,7 +2364,13 @@ fun ExplorerSidePanel(
                                             com.codespace.ide.util.VersionHistoryV2.isSnapshotOf(historyProjectDir, hFile.absolutePath, snap)
                                         }
                                         if (!ok) return@launch
+                                        // B-beta (C4): mirror TimelinePanel's restore — discard any
+                                        // staged AI buffer for this file, then bumpExternalRestore()
+                                        // so open editors refresh (the dialog previously copied the
+                                        // file while the open tab kept showing the OLD content).
+                                        com.codespace.ide.chat.PendingChangesStore.discard(hFile.absolutePath)
                                         withContext(Dispatchers.IO) { snap.copyTo(hFile, overwrite = true) }
+                                        com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore()
                                         showHistoryDialog = false
                                         refresh++
                                     }

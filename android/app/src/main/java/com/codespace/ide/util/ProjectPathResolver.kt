@@ -144,6 +144,26 @@ object ProjectPathResolver {
      *
      * Use this when the caller needs to check `.exists()` or list files.
      */
+    /**
+     * C4 (audit #2854, B-alpha): the ONE root-discovery shared by ALL THREE
+     * local-history surfaces (Explorer 20s snapshot loop, Local History dialog,
+     * TimelinePanel). Returns the workspace root that CONTAINS [filePath]
+     * (multi-root aware), falling back to the primary root when the file sits
+     * outside every root — v2DirFor then fails containment = fail-closed, so a
+     * mismatched root can never produce a WRONG-root snapshot dir.
+     */
+    fun containingRoot(context: Context, projectId: String?, filePath: String?): File? {
+        if (filePath.isNullOrBlank()) return resolveProjectRootFile(context, projectId)
+        val canon = try { File(filePath).canonicalFile } catch (_: Exception) { File(filePath) }
+        val canonPath = canon.absolutePath.trimEnd('/')
+        for (r in getAllWorkspaceRoots(context, projectId)) {
+            val rf = try { File(r).canonicalFile } catch (_: Exception) { File(r) }
+            val rp = rf.absolutePath.trimEnd('/')
+            if (canonPath == rp || canonPath.startsWith(rp + "/")) return rf
+        }
+        return resolveProjectRootFile(context, projectId)
+    }
+
     fun resolveProjectRootFile(context: Context, projectId: String?): File? {
         val path = resolveProjectRoot(context, projectId) ?: return null
         val dir = File(path)
