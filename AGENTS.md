@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | (see CHANGE LOG bottom) |
+| Latest commit | e17abc1 — fresh source-only Editor group audit (`GROUP-EDITOR.md`); CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4331,3 +4331,19 @@ RULES REMINDER: TWO-REPO (this repo only) | GREEN #2862 (5f4ac90) | changelog bo
 **FIX-PLAN COMMIT STATUS — all 5 done, ALL CI GREEN:** C1 no-op (shipped cbabf03), C2 span links + C-4 workdir (fc2dc40, #2859), C3 line convention (9fcc895, #2860), C4 restore-guard (e4a9ceb, #2861), C5 multi-select trash (5f4ac90, #2862).
 
 **Next on roadmap (ALL pending):** PLAN A P1/P2 per-file canonical store (squiggles/band/markers keyed by canonical path + scroll restore; independent of the FIX-PLAN P2 palette repair). Re-test batches RT-1..RT-6 on the new APK once CI is green. Wisdom blanks: A-2/C-4 models, E-10 detail, Mistral raw response. A-9 retest usage-line-5. Palette word-wrap decisive check (gates FIX-PLAN P2). T1-T9 versionhistory re-test. Consolidated #2849 re-test checklist. NO-UNDO build go (after #2854 round). RP1 P1 (after CW7 device pass). Dead-keybinding review. PERSIST-B follow-up audit. Chat messages re-key (F4 debt). Action registry RP1 (plan v3). MC-3 tap-collapse. Settings block S01 after Phase 4. PEEK PARKED. Emoji IME diagnostic (standing).
+
+---
+
+**2026-09-23 13:08 WAT — [EDITOR][AUDIT] FRESH EDITOR GROUP COMPLETE (e17abc1, CI pending)**
+
+RULES REMINDER: TWO-REPO (main IDE only; no rootfs changes) | NO SUB-AGENTS | docs-only commit | CI pending | changelog bottom | Current State updated by this entry.
+
+1. **Fresh source-only Editor audit:** added `GROUP-EDITOR.md` with 18 feature rows and exact live entry points, 43 tap-by-tap tests, 14 cross-group connection/state edges, 11 direct comparisons against the checked-out Microsoft VS Code source, 9 source-confirmed integration gaps, and an explicit remaining-group scope ledger.
+2. **Evidence discipline:** all 296 `READ` references resolve to 67 current source files with valid 1-based line bounds. The document contains no inherited test result, build result, `MEMORY`, or `SUSPECT` claim. Tests are instructions, not reported passes/failures.
+3. **Corrected rejected draft claims:** `DecorationStore` is documented as per-mounted-editor state, not a global singleton; `EditorFindState` is documented as query/toggle persistence, not the find engine; `EditorSelectionStore` is not claimed to own multi-cursor state.
+4. **Connections verified:** root/path identity, shell/tab jumps, open-buffer/chat staging, Apply/undo, Local History/Timeline restore, session/view state, diagnostics, LSP, settings/language config, debugger, Git, AI selection attachments, accessory-key focus, tests and performance.
+5. **Source-confirmed risks recorded, not fixed:** G01 edit callback writes disk while marking dirty; G02 history restore bumps a tick without placing restored path in `lastAppliedPaths`; G03 raw/alias path-key split; G04 mounted decoration scope + basename diagnostic fallback; G05 multiple line/viewport writers; G06 view-local snapshot undo; G07 cache/external-copy invalidation; G08 global find-state scope; G09 formatter route differences.
+6. **Files:** `GROUP-EDITOR.md` only in e17abc1. No Kotlin/source behavior changed. Draft files remain outside the repository and were not committed.
+7. **CI:** pending for e17abc1; documentation-only. Last verified green remains #2862 (5f4ac90).
+
+**Next on roadmap (ALL pending):** audit remaining groups from scratch in order, starting Explorer/file lifecycle, then Tabs/split shell, Search/navigation, Problems/Build/Tasks, LSP/IntelliSense/Testing, Debugger, Source Control/History/Trash, Chat/AI/settings, Terminal/Proot, Performance, and Project/workspace restore; generate `MASTER-CONNECTIONS.md` only after every group is complete. PLAN A P1/P2 per-file canonical store (squiggles/band/markers keyed by canonical path + scroll restore; independent of FIX-PLAN P2 palette repair). Run Editor T01-T43 only on a future designated APK, with no inherited result. Re-test batches RT-1..RT-6. Wisdom blanks: A-2/C-4 models, E-10 detail, Mistral raw response. A-9 retest usage-line-5. Palette word-wrap decisive check (gates FIX-PLAN P2). T1-T9 versionhistory re-test. Consolidated #2849 re-test checklist. NO-UNDO build go (after #2854 round). RP1 P1 (after CW7 device pass). Dead-keybinding review. PERSIST-B follow-up audit. Chat messages re-key (F4 debt). Action registry RP1 (plan v3). MC-3 tap-collapse. Settings block S01 after Phase 4. PEEK PARKED. Emoji IME diagnostic (standing).
