@@ -276,12 +276,16 @@ object WorkspaceContextProvider {
 
     /** Compute a relative path from root to file. */
     private fun relativePath(root: File, file: File): String {
-        val rootPath = root.absolutePath.removeSuffix("/")
-        val filePath = file.absolutePath
-        return if (filePath.startsWith(rootPath)) {
-            filePath.removePrefix("$rootPath/").removePrefix(rootPath)
-        } else {
-            filePath
+        // (P2a, containment-table row 9): boundary via the shared utility — the old
+        // startsWith(rootPath) matched sibling directories that share a prefix with the
+        // project root, letting outside content enter AI context under a relative path.
+        val rootCanonical = com.codespace.ide.util.CanonicalPaths.canonical(root).trimEnd('/')
+        val fileCanonical = com.codespace.ide.util.CanonicalPaths.canonical(file)
+        return when {
+            fileCanonical == rootCanonical -> ""
+            fileCanonical.startsWith(rootCanonical + "/") ->
+                fileCanonical.substring(rootCanonical.length + 1)
+            else -> fileCanonical
         }
     }
 }

@@ -131,7 +131,17 @@ object BackupManager {
             TarArchiveInputStream(gz).use { tar ->
                 var entry = tar.nextEntry
                 while (entry != null) {
-                    val outFile = File(rootfs, entry.name)
+                    // RG07 (P2a): entry names arrive from a backup archive file and were
+                    // used RAW at the extraction sink — a crafted archive could write
+                    // outside rootfs. Contain every destination (ProotInstaller.kt:107
+                    // boundary); rejected entries are logged and skipped (nextEntry
+                    // skips their data).
+                    val outFile = com.codespace.ide.util.CanonicalPaths.safeEntryDestination(rootfs, entry.name)
+                    if (outFile == null) {
+                        Log.w(TAG, "Rejected rootfs tar entry (escape attempt): ${entry.name}")
+                        entry = tar.nextEntry
+                        continue
+                    }
                     when {
                         entry.isDirectory -> outFile.mkdirs()
                         entry.isSymbolicLink -> {

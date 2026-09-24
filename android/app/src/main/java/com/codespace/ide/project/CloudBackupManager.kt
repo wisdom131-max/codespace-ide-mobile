@@ -1,6 +1,8 @@
 package com.codespace.ide.project
 
 import android.content.Context
+import android.util.Log
+import com.codespace.ide.util.CanonicalPaths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -15,6 +17,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 
 /**
  * P16-B: Cloud Backup Manager
@@ -247,65 +252,48 @@ object CloudBackupManager {
     // ── Tar.gz helpers ──────────────────────────────────────────────────────────
 
     private fun createTarGz(sourceDir: File, destFile: File) {
-        // Simple tar-like: write each file as a header + data block (POSIX ustar subset)
+        // RG04 (P2a): the hand-rolled ustar writer TRUNCATED entry names to 100
+        // bytes (take(100)) — long paths silently corrupted the archive. Migrated to
+        // commons-compress (same proven dialect as BackupManager): GNU longname mode
+        // writes long paths correctly.
         GZIPOutputStream(BufferedOutputStream(FileOutputStream(destFile))).use { gz ->
-            sourceDir.walkTopDown().filter { it.isFile }.forEach { file ->
-                val relPath = file.relativeTo(sourceDir).path
-                writeTarEntry(gz, file, relPath)
+            TarArchiveOutputStream(gz).use { tar ->
+                tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
+                tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_STAR)
+                sourceDir.walkTopDown().filter { it.isFile }.forEach { file ->
+                    val relPath = file.relativeTo(sourceDir).path
+                    val entry = TarArchiveEntry(file, relPath)
+                    entry.size = file.length()
+                    tar.putArchiveEntry(entry)
+                    FileInputStream(file).use { fis -> fis.copyTo(tar) }
+                    tar.closeArchiveEntry()
+                }
             }
-            // End-of-archive: two 512-byte zero blocks
-            gz.write(ByteArray(1024))
-        }
-    }
-
-    private fun writeTarEntry(out: java.io.OutputStream, file: File, name: String) {
-        val nameBytes = name.toByteArray(Charsets.US_ASCII).take(100)
-        val header = ByteArray(512)
-        nameBytes.forEachIndexed { i, b -> header[i] = b }
-        val size = file.length()
-        // size in octal at offset 124, 12 bytes
-        val sizeOctal = size.toString(8).padStart(11, '0') + ' '
-        sizeOctal.toByteArray().forEachIndexed { i, b -> header[124 + i] = b }
-        // file type: '0' = regular
-        header[156] = '0'.code.toByte()
-        // checksum at offset 148
-        var checksum = 0; header.forEach { b -> checksum += (b.toInt() and 0xFF) }
-        val chkOctal = checksum.toString(8).padStart(6, '0') + '\u0000' + ' '
-        chkOctal.toByteArray().forEachIndexed { i, b -> header[148 + i] = b }
-        out.write(header)
-        FileInputStream(file).use { fis ->
-            val buf = ByteArray(4096); var read: Int
-            var written = 0L
-            while (fis.read(buf).also { read = it } != -1) { out.write(buf, 0, read); written += read }
-            // Pad to 512-byte boundary
-            val pad = ((512 - (written % 512)) % 512).toInt()
-            if (pad > 0) out.write(ByteArray(pad))
         }
     }
 
     private fun extractTarGz(archiveFile: File, destDir: File) {
+        // RG03 (P2a): the hand-rolled reader did raw File(destDir, name) from a
+        // NETWORK header — zero containment (tar-entry traversal), plus an
+        // unbounded ByteArray(size) allocation from the same untrusted header
+        // (OOM on a malicious archive). Migrated to commons-compress streaming;
+        // every entry destination resolves through the shared containment utility.
         GZIPInputStream(BufferedInputStream(FileInputStream(archiveFile))).use { gz ->
-            val header = ByteArray(512)
-            while (true) {
-                val read = gz.read(header); if (read < 512) break
-                val name = header.copyOf(100).toString(Charsets.US_ASCII).trimEnd('\u0000')
-                if (name.isBlank()) break
-                val sizeStr = header.copyOfRange(124, 136).toString(Charsets.US_ASCII).trim().trimEnd('\u0000')
-                val size = sizeStr.toLongOrNull(8) ?: 0L
-                val destFile = File(destDir, name)
-                destFile.parentFile?.mkdirs()
-                if (size > 0) {
-                    val data = ByteArray(size.toInt())
-                    var totalRead = 0
-                    while (totalRead < size) {
-                        val r = gz.read(data, totalRead, (size - totalRead).toInt())
-                        if (r < 0) break
-                        totalRead += r
+            TarArchiveInputStream(gz).use { tar ->
+                var entry = tar.nextEntry
+                while (entry != null) {
+                    val destFile = CanonicalPaths.safeEntryDestination(destDir, entry.name)
+                    if (destFile == null) {
+                        // Fail closed: rejected entries are logged and skipped —
+                        // advancing nextEntry skips their data.
+                        Log.w("CloudBackupManager", "Rejected tar entry (escape attempt): ${entry.name}")
+                    } else if (entry.isDirectory) {
+                        destFile.mkdirs()
+                    } else {
+                        destFile.parentFile?.mkdirs()
+                        destFile.outputStream().use { out -> tar.copyTo(out) }
                     }
-                    destFile.writeBytes(data)
-                    // Skip padding
-                    val pad = ((512 - (size % 512)) % 512).toInt()
-                    if (pad > 0) gz.skip(pad.toLong())
+                    entry = tar.nextEntry
                 }
             }
         }

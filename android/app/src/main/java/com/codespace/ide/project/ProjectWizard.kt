@@ -174,6 +174,13 @@ fun ProjectWizardDialog(
                                     nameError = "Use letters, numbers, spaces, - _ . only"
                                     return@Button
                                 }
+                                // OG04 (P2a): the regex still allowed "." and ".." — a
+                                // project named ".." resolves to the PARENT directory
+                                // (escape was blocked only incidentally by exists-checks).
+                                if (name == "." || name == "..") {
+                                    nameError = "'.' and '..' are not valid project names"
+                                    return@Button
+                                }
                                 createError = ""
                                 // EMPTY type: skip location picker, register project only.
                                 // Do NOT create any folder — the user will use the Explorer's
@@ -332,6 +339,12 @@ fun ProjectWizardDialog(
                         Spacer(Modifier.width(8.dp))
                         Button(
                             onClick = {
+                                // OG04 (P2a): reject "."/".." here too — this button
+                                // constructs File(parentDir, name) directly.
+                                if (name == "." || name == "..") {
+                                    createError = "'.' and '..' are not valid project names"
+                                    return@Button
+                                }
                                 val parentDir = currentDir
                                 val targetDir = File(parentDir, name)
                                 if (targetDir.exists() && targetDir.listFiles()?.isNotEmpty() == true) {

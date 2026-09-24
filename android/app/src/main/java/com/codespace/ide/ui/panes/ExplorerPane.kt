@@ -1193,10 +1193,29 @@ fun ExplorerSidePanel(
                                 if (hostDir != null) {
                                     val canon = try { hostDir.canonicalPath } catch (_: Exception) { hostDir.absolutePath }
                                     val segs = canon.split('/').filter { it.isNotEmpty() }
-                                    if (segs.size >= 3 && hostDir.deleteRecursively()) {
+                                    // EX07 (P2a): the old guard (segs.size >= 3) still let
+                                    // device-critical roots pass — /storage/emulated/0 itself
+                                    // has exactly 3 segments and a registered-root symlink
+                                    // could canonicalize anywhere. Fail closed: refuse
+                                    // unless the canonical target is verifiably INSIDE a
+                                    // known-safe deletion zone (app-private storage or user
+                                    // storage root), and never a critical root itself.
+                                    val filesDirCanonical = com.codespace.ide.util.CanonicalPaths.canonical(context.filesDir)
+                                    val userStorage = java.io.File("/storage/emulated/0")
+                                    val externalFilesDirCanonical = context.getExternalFilesDir(null)
+                                        ?.let { com.codespace.ide.util.CanonicalPaths.canonical(it) }
+                                    val inSafeZone =
+                                        com.codespace.ide.util.CanonicalPaths.isInside(filesDirCanonical, canon) ||
+                                        (externalFilesDirCanonical != null && com.codespace.ide.util.CanonicalPaths.isInside(externalFilesDirCanonical, canon)) ||
+                                        (com.codespace.ide.util.CanonicalPaths.isInside(userStorage, java.io.File(canon)) && canon != com.codespace.ide.util.CanonicalPaths.canonical(userStorage) && canon != "/storage/emulated/0/Android")
+                                    val criticalRoot = canon == "/" || canon == "/data" || canon == "/sdcard" ||
+                                        canon == "/storage" || canon == "/storage/emulated" || canon == "/sdcard/Android"
+                                    if (criticalRoot) {
+                                        note = "directory NOT deleted (device-critical path)"
+                                    } else if (!inSafeZone) {
+                                        note = "directory NOT deleted (outside app/user storage zones)"
+                                    } else if (hostDir.deleteRecursively()) {
                                         note = "directory deleted"
-                                    } else if (segs.size < 3) {
-                                        note = "directory NOT deleted (path too close to a storage root)"
                                     }
                                 }
                                 onShowNotification?.invoke("Removed " + java.io.File(targetRoot).name + " - " + note, "success")
@@ -1743,10 +1762,13 @@ fun ExplorerSidePanel(
                                                     java.util.zip.ZipInputStream(f.inputStream().buffered()).use { zis ->
                                                         var entry = zis.nextEntry
                                                         while (entry != null) {
-                                                            val outFile = File(outDir, entry.name)
-                                                            val outPath = outFile.canonicalPath
-                                                            val dirPath = outDir.canonicalPath
-                                                            if (!outPath.startsWith(dirPath)) {
+                                                            // EX05 (P2a): zip-slip containment via the shared utility —
+                                                            // canonical separator-boundary check (ProotInstaller.kt:107
+                                                            // form) plus explicit rejection of absolute and ".." entry
+                                                            // names BEFORE canonicalization. Sibling-prefix matches
+                                                            // ("out2" passing for "out") no longer slip through.
+                                                            val outFile = com.codespace.ide.util.CanonicalPaths.safeEntryDestination(outDir, entry.name)
+                                                            if (outFile == null) {
                                                                 entry = zis.nextEntry
                                                                 continue
                                                             }
@@ -2163,6 +2185,12 @@ fun ExplorerSidePanel(
                             if (it.isDirectory) it else it.parentFile
                         } ?: workspaceRoot
                         if (targetDir != null) {
+                            // EX04 (P2a): the name was used raw in File(targetDir, nameInput) —
+                            // slash/.. inputs escaped the chosen directory. Contained names only.
+                            if (com.codespace.ide.util.CanonicalPaths.safeEntryDestination(targetDir, nameInput) == null) {
+                                onShowNotification?.invoke("Invalid file name — no absolute paths or '..'", "error")
+                                return@Button
+                            }
                             val newFile = java.io.File(targetDir, nameInput)
                             try {
                                 // P-FC1: Pre-check write permission before attempting creation
@@ -2276,6 +2304,11 @@ fun ExplorerSidePanel(
                         val dir = contextFile?.let {
                             if (it.isDirectory) it else it.parentFile
                         } ?: workspaceRoot ?: return@Button
+                        // EX04 (P2a): contained folder names only — no absolute paths or '..'.
+                        if (com.codespace.ide.util.CanonicalPaths.safeEntryDestination(dir, nameInput) == null) {
+                            onShowNotification?.invoke("Invalid folder name — no absolute paths or '..'", "error")
+                            return@Button
+                        }
                         try {
                             // P-FC1: Pre-check write permission
                             if (!dir.canWrite() && !dir.mkdirs()) {
@@ -2315,6 +2348,13 @@ fun ExplorerSidePanel(
             confirmButton = {
                 Button(onClick = {
                     if (nameInput.isNotBlank()) {
+                        // EX04 (P2a): contained rename targets only — the old raw
+                        // File(parent, nameInput) let slash/.. inputs rename OUTSIDE the folder.
+                        val renameParent = File(contextFile!!.parent)
+                        if (com.codespace.ide.util.CanonicalPaths.safeEntryDestination(renameParent, nameInput) == null) {
+                            onShowNotification?.invoke("Invalid name — no absolute paths or '..'", "error")
+                            return@Button
+                        }
                         val oldPath = contextFile!!.absolutePath
                         val newFile = File(contextFile!!.parent, nameInput)
                         if (contextFile!!.renameTo(newFile)) {

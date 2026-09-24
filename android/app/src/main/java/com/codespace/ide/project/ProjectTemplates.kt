@@ -40,7 +40,12 @@ object ProjectTemplates {
         type: ProjectType,
         rootParent: File,
     ): ScaffoldResult = withContext(Dispatchers.IO) {
-        val root = File(rootParent, projectName)
+        // OG04 (P2a): defense-in-depth at the folder-creation choke point — even if a
+        // caller skips the wizard validation, ".."-style names cannot resolve outside
+        // the chosen parent.
+        val safeName = com.codespace.ide.util.CanonicalPaths.safeNameSegment(projectName)
+            ?: return@withContext ScaffoldResult(false, "Invalid project name: '$projectName' (must be a single folder name)", rootParent)
+        val root = File(rootParent, safeName)
         if (root.exists()) {
             // If the directory only contains .ide-trash (soft-deleted project), clean it up
             // so the user can reuse the name without a spurious collision.

@@ -12,14 +12,20 @@ import java.io.File
  */
 object AgentEntityManager {
 
-    private fun entityDir(entity: String, context: Context): File {
-        val dir = File(context.filesDir, "agent_data/$entity")
+    private fun entityDir(entity: String, context: Context): File? {
+        // IG01 (P2a): `entity` arrives from an AI tool argument and was interpolated
+        // RAW into the store path — "../" escaped agent_data, so update/delete could
+        // rewrite JSON outside the store. Refuse anything that is not a single safe
+        // path segment; the store stays contained by construction.
+        val segment = com.codespace.ide.util.CanonicalPaths.safeNameSegment(entity) ?: return null
+        val dir = File(context.filesDir, "agent_data/$segment")
         dir.mkdirs()
         return dir
     }
 
     fun create(entity: String, data: String, context: Context): String {
         val dir = entityDir(entity, context)
+            ?: return "Invalid entity name: '$entity' (must be a single name — no paths)"
         val json = JSONObject(data)
         val id = System.currentTimeMillis().toString()
         json.put("id", id)
@@ -31,6 +37,7 @@ object AgentEntityManager {
 
     fun read(entity: String, filter: String?, context: Context): String {
         val dir = entityDir(entity, context)
+            ?: return "Invalid entity name: '$entity' (must be a single name — no paths)"
         val files = dir.listFiles()?.sortedBy { it.name } ?: return "No $entity records found."
         if (files.isEmpty()) return "No $entity records found."
 
@@ -56,6 +63,7 @@ object AgentEntityManager {
 
     fun update(entity: String, filter: String, data: String, context: Context): String {
         val dir = entityDir(entity, context)
+            ?: return "Invalid entity name: '$entity' (must be a single name — no paths)"
         val files = dir.listFiles() ?: return "No $entity records found."
         val filterJson = JSONObject(filter)
         val updateJson = JSONObject(data)
@@ -80,6 +88,7 @@ object AgentEntityManager {
 
     fun delete(entity: String, filter: String, context: Context): String {
         val dir = entityDir(entity, context)
+            ?: return "Invalid entity name: '$entity' (must be a single name — no paths)"
         val files = dir.listFiles() ?: return "No $entity records found."
         val filterJson = JSONObject(filter)
         var deleted = 0

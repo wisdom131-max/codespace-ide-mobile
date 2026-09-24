@@ -150,9 +150,12 @@ object LivePreviewServer {
         // Convert an absolute file path to a URL path relative to the project root
         val root = projectRoot ?: return "http://localhost:$PORT/"
         val relative = try {
-            val rootPath = root.canonicalPath
-            val targetPath = File(filePath).canonicalPath
-            if (targetPath.startsWith(rootPath)) {
+            // VG02-b (P2a): boundary via the shared containment utility — a target in a
+            // sibling directory whose name merely SHARES A PREFIX with the project root
+            // no longer produces a forged URL path.
+            val rootPath = com.codespace.ide.util.CanonicalPaths.canonical(root).trimEnd('/')
+            val targetPath = com.codespace.ide.util.CanonicalPaths.canonical(File(filePath))
+            if (targetPath == rootPath || targetPath.startsWith(rootPath + "/")) {
                 targetPath.substring(rootPath.length).replace(File.separatorChar, '/').trimStart('/')
             } else {
                 File(filePath).name
@@ -322,14 +325,11 @@ object LivePreviewServer {
         }
 
         val target = File(root, cleanPath)
-        try {
-            // Canonical path comparison — ensure the resolved file is within the project root
-            val rootCanonical = root.canonicalPath
-            val targetCanonical = target.canonicalPath
-            if (!targetCanonical.startsWith(rootCanonical)) {
-                return null
-            }
-        } catch (_: Exception) {
+        // VG02 (P2a): TRUE containment via the shared utility (ProotInstaller.kt:107
+        // boundary) — the old startsWith(rootCanonical) let an in-project symlink to a
+        // sibling directory (root "myapp" vs sibling "myapp-evil") pass the check. The
+        // explicit ".." rejection above stays as defense-in-depth.
+        if (!com.codespace.ide.util.CanonicalPaths.isInside(root, target)) {
             return null
         }
 
