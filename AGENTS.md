@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 18a Viewers & Binary Inspection audited (GROUP-VIEWERS.md, VG01-VG12; VG01 wildcard-bind LAN exposure, VG03/VG04 AXML OOM); 17 groups done; next: 18b App Shell & Onboarding; CI pending, docs-only |
+| Latest commit | 18a rulings applied: VG01 TOP SECURITY TIER (no device-check gate), cross-cutting containment item created (9 mandatory call sites, ProotInstaller.kt:107 = reference form); next: 18b App Shell & Onboarding; CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4669,3 +4669,11 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 5. **VG02:** LivePreviewServer's traversal guard is the THIRD independent startsWith-without-separator implementation found — 5th call site for the EX05/RG03 shared containment utility.
 6. **Strengths recorded:** windowed readers (Hex/Inspector/Strings/Diff/AiModel), system codecs for PDF/media, basename-contained archive extract with typed result.
 7. **CI:** docs-only commit; no code change.
+
+---
+
+**2026-09-24 — [18a RULINGS] VG01 elevated to TOP SECURITY TIER immediately (no device-check gate); cross-cutting canonical-path containment item created with 9 mandatory call sites (docs-only)**
+
+1. **VG01 → top tier NOW:** owner ruling — `ServerSocket(5500)` with no bound address is unconditionally all-interfaces in Java; ranking needs documentation, not empirical confirmation. BI06 stays as the confirming check. Exposure reasoning recorded: Wi-Fi proximity alone suffices, or none at all via the in-app-browser compound path.
+2. **CROSS-CUTTING CONTAINMENT ITEM added to MASTER-GAPS.md:** all canonical-path/boundary call sites listed in ONE table — EX05 (Explorer zip :1749), EX04 (New File/Folder/Rename), RG03 (cloud tar extraction), RG04 (tar writer truncation), RG07 (rootfs restore sink), IG01 (agent-data entity store), VG02 (LivePreviewServer resolveSafeFile :329), VG02-b (LivePreviewServer getPreviewUrl :155), plus WorkspaceContextProvider.kt:281 (pattern-attached, no prior gap ID). Display-only startsWith uses (SkillsCatalog, ChatAttachPicker) noted as cosmetic, no containment authority. Reference implementation: ProotInstaller.kt:107 — the only in-tree site with the correct separator-boundary form; it becomes the shared utility's specification.
+3. **CI:** docs-only commit; no code change.
