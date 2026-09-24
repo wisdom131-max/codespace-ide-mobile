@@ -257,11 +257,27 @@ private fun LocalSnapshotsSection(
                                 // must live under .versionhistory/v2/<rel of THIS file>/
                                 // — anything else (legacy, another file's dir) = do nothing.
                                 if (!VersionHistoryV2.isSnapshotOf(projectDir, filePath, snap)) return@launch
+                                // SG02 (P1): copy FIRST — the old order discarded the staged
+                                // overlay BEFORE the copy, so a failed copy destroyed the
+                                // overlay AND kept disk stale AND stayed silent. The overlay is
+                                // now dropped only after the restore is verified; failures
+                                // surface as an ERROR notification instead of a swallow.
                                 try {
-                                    com.codespace.ide.chat.PendingChangesStore.discard(filePath)
                                     snap.copyTo(File(filePath), overwrite = true)
+                                    com.codespace.ide.chat.PendingChangesStore.discard(filePath)
                                     com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore()
-                                } catch (_: Exception) { }
+                                    com.codespace.ide.data.NotificationStore.add(
+                                        "Restore", "Restored ${File(filePath).name} ✓",
+                                        com.codespace.ide.data.NotificationStore.Severity.SUCCESS,
+                                        com.codespace.ide.data.NotificationStore.Source.WORKSPACE,
+                                        priority = com.codespace.ide.data.NotificationStore.Priority.LOW)
+                                } catch (e: Exception) {
+                                    com.codespace.ide.data.NotificationStore.add(
+                                        "Restore failed", "Could not restore ${File(filePath).name}: ${e.message} — file unchanged",
+                                        com.codespace.ide.data.NotificationStore.Severity.ERROR,
+                                        com.codespace.ide.data.NotificationStore.Source.WORKSPACE,
+                                        priority = com.codespace.ide.data.NotificationStore.Priority.HIGH)
+                                }
                             }
                         }
                         .padding(horizontal = 12.dp, vertical = 8.dp),

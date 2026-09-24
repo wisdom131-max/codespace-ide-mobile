@@ -2365,11 +2365,23 @@ fun ExplorerSidePanel(
                                         // staged AI buffer for this file, then bumpExternalRestore()
                                         // so open editors refresh (the dialog previously copied the
                                         // file while the open tab kept showing the OLD content).
-                                        com.codespace.ide.chat.PendingChangesStore.discard(hFile.absolutePath)
-                                        withContext(Dispatchers.IO) { snap.copyTo(hFile, overwrite = true) }
-                                        com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore()
-                                        showHistoryDialog = false
-                                        refresh++
+                                        // SG02 (P1): copy FIRST, discard the staged overlay only AFTER
+                                        // the restore is verified — the old order dropped the overlay
+                                        // even when the copy failed, losing staged content and leaving
+                                        // disk stale with NO error. Typed outcome: success closes the
+                                        // dialog; failure keeps it open + ERROR notification.
+                                        try {
+                                            withContext(Dispatchers.IO) { snap.copyTo(hFile, overwrite = true) }
+                                            com.codespace.ide.chat.PendingChangesStore.discard(hFile.absolutePath)
+                                            com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore()
+                                            showHistoryDialog = false
+                                            refresh++
+                                        } catch (e: Exception) {
+                                            NotificationStore.add(
+                                                "Restore failed", "Could not restore ${hFile.name}: ${e.message} — file unchanged",
+                                                NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE,
+                                                priority = NotificationStore.Priority.HIGH)
+                                        }
                                     }
                                 }) { Text("Restore", fontSize = 11.sp, color = IconColor) }
                             }

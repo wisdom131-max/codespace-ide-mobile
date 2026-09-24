@@ -277,20 +277,43 @@ object PendingChangesStore {
         val batch = lastApplied.value
         if (batch.isEmpty()) return "Nothing to undo"
         var restored = 0
+        val notRestored = mutableListOf<Pair<String, String>>() // path to reason
+        val remaining = mutableListOf<Pair<String, String?>>()  // failed pairs kept for retry
         for ((path, bakPath) in batch) {
             val bak = bakPath?.let { File(it) }
-            if (bak != null && bak.exists()) {
-                try {
-                    File(path).parentFile?.mkdirs()
-                    bak.copyTo(File(path), overwrite = true)
-                    restored++
-                } catch (_: Exception) { }
+            when {
+                bak == null ->
+                    notRestored.add(path to "no checkpoint (file was >1MB or outside the project at Apply time)")
+                !bak.exists() ->
+                    notRestored.add(path to "checkpoint file missing")
+                else -> {
+                    try {
+                        File(path).parentFile?.mkdirs()
+                        bak.copyTo(File(path), overwrite = true)
+                        restored++
+                    } catch (e: Exception) {
+                        notRestored.add(path to (e.message ?: "copy failed"))
+                        // CH01 (P1): keep failed pairs so Undo can be RETRIED — the old
+                        // code cleared the whole batch unconditionally and then reported
+                        // "No checkpoints found to restore" while checkpoints existed.
+                        remaining.add(path to bakPath)
+                    }
+                }
             }
         }
-        lastApplied.value = emptyList()
+        lastApplied.value = remaining
         appliedTick.value++
         bumpRevision()
-        return if (restored > 0) "Restored $restored file(s) to pre-chat state" else "No checkpoints found to restore"
+        return buildString {
+            append(
+                if (restored > 0) "Restored $restored file(s) to pre-chat state"
+                else "Undo FAILED — nothing was restored"
+            )
+            notRestored.forEach { (path, reason) ->
+                append("\n• NOT restored: ${File(path).name} ($reason)")
+            }
+            if (remaining.isNotEmpty()) append("\nFailed entries kept — Undo can be retried.")
+        }
     }
 
     // ── Editor integration ──────────────────────────────────────────────────

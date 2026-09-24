@@ -623,7 +623,14 @@ private suspend fun chat(
                     try {
                         com.codespace.ide.chat.PendingChangesStore.stage(
                             toolArgs.getString("path"), toolArgs.getString("content"))
-                    } catch (_: Exception) { null }
+                    } catch (e: Exception) {
+                        // CH05 (P1): staging failed → REFUSE the write outright. The old null
+                        // fallthrough reached FlowGate + AgentTools.writeFile — an UNGATED
+                        // direct disk write with no checkpoint and no pending card. The
+                        // refusal is reported to the model as a typed error; nothing
+                        // touches disk, and CH01's Undo is not left dangling.
+                        "write_file REFUSED — staging failed for ${toolArgs.optString("path")}: ${e.message}. No direct disk write was performed."
+                    }
                 } else if (mode == ChatMode.AGENT && toolName == "plan") {
                     // R7-PLAN: staging a plan is ungated (R6 decision #1 class —
                     // it cannot reach disk). The plan CARD is the review surface.

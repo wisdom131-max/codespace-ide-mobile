@@ -215,6 +215,10 @@ fun EditorPane(
     val tabs = remember { mutableStateListOf<EditorTab>() }
     val activeIdState = remember { mutableStateOf<String?>(null) }
     var activeId by activeIdState
+    // G01 (P1): paths whose last disk write FAILED — keeps the failure visible
+    // (dirty stays true, one notification per path) without spamming
+    // NotificationStore on every keystroke of a broken write.
+    val diskWriteFailedPaths = remember { mutableStateOf(setOf<String>()) }
     // External reload trigger — re-reads the active file from disk (used by external replace)
     LaunchedEffect(reloadTrigger) {
         if (reloadTrigger > 0) {
@@ -305,16 +309,23 @@ fun EditorPane(
     val saveCurrentFile: () -> Unit = {
         val activeTab = resolveActiveTab(activeId, tabs)
         if (activeTab != null && activeTab.path.startsWith("/")) {
-            try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
-            val idx = tabs.indexOfFirst { it.id == activeTab.id }
-            if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
-            // Notify LSP that the file was saved
-            try {
-                val saveUri = LspManager.fileUriFromHostPath(context, activeTab.path)
-                if (saveUri != null && LspManager.isServerRunning(activeTab.language)) {
-                    LspManager.didSave(activeTab.language, saveUri, activeTab.content)
-                }
-            } catch (_: Exception) {}
+            // G01 (P1): typed save — dirty clears ONLY on verified persistence; a failed
+            // write keeps the tab dirty, marks the path failed, and never tells LSP "saved".
+            if (writeTabToDisk(activeTab.path, activeTab.content)) {
+                if (activeTab.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= activeTab.path
+                val idx = tabs.indexOfFirst { it.id == activeTab.id }
+                if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
+                // Notify LSP that the file was saved — only after verified persistence
+                try {
+                    val saveUri = LspManager.fileUriFromHostPath(context, activeTab.path)
+                    if (saveUri != null && LspManager.isServerRunning(activeTab.language)) {
+                        LspManager.didSave(activeTab.language, saveUri, activeTab.content)
+                    }
+                } catch (_: Exception) {}
+            } else {
+                if (activeTab.path !in diskWriteFailedPaths.value) diskWriteFailedPaths.value += activeTab.path
+                NotificationStore.add("Save failed", "Disk write failed for ${activeTab.name} — changes kept in editor", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
+            }
         }
     }
     // P22-G: LSP diagnostics + hover
@@ -467,8 +478,19 @@ fun EditorPane(
             if (toClose.isNotEmpty()) {
                 com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] MULTI-ROOT: closing " + toClose.size + " tab(s) under removed root " + root + " (shared close path, didClose first)", "lsp")
             }
+            // TB03 (P1): this close previously relied on the FALSE comment claim that
+            // every keystroke persists (G01 proved writes can fail silently). Policy for
+            // root removal: save dirty tabs FIRST (typed) — tabs whose save FAILS stay
+            // open with an error instead of discarding the only live buffer.
+            val (savedCount, failedCount) = saveAllDirtyTabs(tabs, onlyPaths = toClose.map { it.path }.toSet())
+            if (failedCount > 0) {
+                NotificationStore.add("Save failed", "$failedCount file(s) under removed root failed to save — tabs kept open", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.HIGH)
+            }
             toClose.forEach { tab ->
-                closeEditorTabInternal(context, tab, tabs, activeIdState, lspOpenedFiles)
+                val now = tabs.firstOrNull { it.id == tab.id }
+                if (now == null || !now.isDirty) {
+                    closeEditorTabInternal(context, tab, tabs, activeIdState, lspOpenedFiles)
+                }
             }
             onCloseRootHandled?.invoke()
         }
@@ -664,16 +686,15 @@ fun EditorPane(
             text = { androidx.compose.material3.Text("You have unsaved changes. Save before leaving?") },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
-                    tabs.forEachIndexed { idx, tab ->
-                        if (tab.isDirty && tab.path.startsWith("/")) {
-                            try {
-                                java.io.File(tab.path).writeText(tab.content)
-                                tabs[idx] = tab.copy(isDirty = false)
-                            } catch (_: Exception) {}
-                        }
-                    }
+                    // G01 (P1): typed save-all — only verified writes go clean; failures
+                    // stay dirty (and honestly re-trigger this warning on next Back).
+                    val (savedCount, failedCount) = saveAllDirtyTabs(tabs)
                     showUnsavedDialog = false
-                    NotificationStore.add("File saved", "Saved ✓", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
+                    if (failedCount > 0) {
+                        NotificationStore.add("Save failed", "$failedCount of ${savedCount + failedCount} file(s) failed to save — still dirty, kept open", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.HIGH)
+                    } else {
+                        NotificationStore.add("File saved", "Saved ✓", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
+                    }
                 }) { androidx.compose.material3.Text("Yes, Save") }
             },
             dismissButton = {
@@ -683,6 +704,46 @@ fun EditorPane(
             },
         )
         }
+    }
+
+    // TB03 (P1): the strip X and context Close/Others/All previously bypassed the
+    // ONLY dirty warning (Android BackHandler). One gate now: dirty tabs route
+    // through DirtyCloseDialog; clean tabs close directly. closeEditorTabInternal
+    // stays the ONE shared close path — the gate wraps it, never replaces it.
+    var pendingCloseTabs by remember { mutableStateOf<List<EditorTab>>(emptyList()) }
+    var showDirtyCloseDialog by remember { mutableStateOf(false) }
+    fun requestCloseTabs(toClose: List<EditorTab>) {
+        if (toClose.none { it.isDirty }) {
+            toClose.forEach { closeEditorTabInternal(context, it, tabs, activeIdState, lspOpenedFiles) }
+        } else {
+            pendingCloseTabs = toClose
+            showDirtyCloseDialog = true
+        }
+    }
+    if (showDirtyCloseDialog && pendingCloseTabs.isNotEmpty()) {
+        DirtyCloseDialog(
+            dirtyNames = pendingCloseTabs.filter { it.isDirty }.map { it.name },
+            onSaveAndClose = {
+                // G01-typed: save only the pending set; failed saves keep their tabs OPEN.
+                val (savedCount, failedCount) = saveAllDirtyTabs(tabs, onlyPaths = pendingCloseTabs.map { it.path }.toSet())
+                pendingCloseTabs.filter { tab -> tabs.firstOrNull { it.id == tab.id }?.isDirty == false }
+                    .forEach { closeEditorTabInternal(context, it, tabs, activeIdState, lspOpenedFiles) }
+                if (failedCount > 0) {
+                    NotificationStore.add("Save failed", "$failedCount file(s) failed to save — tabs kept open", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.HIGH)
+                }
+                pendingCloseTabs = emptyList()
+                showDirtyCloseDialog = false
+            },
+            onDiscardAndClose = {
+                pendingCloseTabs.forEach { closeEditorTabInternal(context, it, tabs, activeIdState, lspOpenedFiles) }
+                pendingCloseTabs = emptyList()
+                showDirtyCloseDialog = false
+            },
+            onCancel = {
+                pendingCloseTabs = emptyList()
+                showDirtyCloseDialog = false
+            },
+        )
     }
 
     // Keyboard toolbar insert is now handled by CodeEditor via onInsertHandler.
@@ -854,10 +915,11 @@ fun EditorPane(
         key(orientation) {
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = {
+                    // TB01 (P1): dismiss no longer DELETES the autosave files — they may
+                    // be the only copy of unsaved edits; deleting them on a stray tap was
+                    // backup destruction by accident. They re-list on next launch; the
+                    // explicit Discard button remains the only destructive path.
                     showAutosaveRestoreDialog = false
-                    // User dismissed without restoring — delete the autosave files
-                    autosaveFiles.forEach { it.delete() }
-                    autosaveFiles = emptyList()
                 },
                 title = { androidx.compose.material3.Text("Restore unsaved edits?") },
                 text = {
@@ -879,20 +941,24 @@ fun EditorPane(
                 confirmButton = {
                     androidx.compose.material3.Button(onClick = {
                         showAutosaveRestoreDialog = false
-                        autosaveFiles.forEach { autosave ->
-                            try {
-                                val originalName = autosave.name.removeSuffix(".autosave")
-                                // Find matching open tab by name, restore its content
-                                val idx = tabs.indexOfFirst { File(it.path).name == originalName }
-                                val recoveredContent = autosave.readText()
-                                if (idx >= 0) {
-                                    tabs[idx] = tabs[idx].copy(content = recoveredContent, isDirty = true)
-                                }
-                                autosave.delete()
-                            } catch (_: Exception) {}
-                        }
+                        // TB01 (P1): the old compare matched an ENCODED FULL PATH against
+                        // File(tab.path).name — never equal — so nothing restored, the
+                        // backup was deleted anyway, and the toast said "Edits restored ✓".
+                        // Now: decode, match by full path, delete ONLY verified restores,
+                        // keep backups for files not open or failed, report typed counts.
+                        val (restoredCount, noTabCount, failedCount) = restoreAutosaveFiles(autosaveFiles, tabs)
                         autosaveFiles = emptyList()
-                        NotificationStore.add("Edits restored", "Edits restored ✓", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
+                        val outcome = buildString {
+                            append("Restored $restoredCount file(s)")
+                            if (noTabCount > 0) append("; $noTabCount kept (file not open this session)")
+                            if (failedCount > 0) append("; $failedCount kept (restore failed)")
+                        }
+                        NotificationStore.add(
+                            "Autosave restore", outcome,
+                            if (failedCount > 0) NotificationStore.Severity.ERROR
+                            else if (noTabCount > 0) NotificationStore.Severity.WARNING
+                            else NotificationStore.Severity.SUCCESS,
+                            NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
                     }) { androidx.compose.material3.Text("Restore") }
                 },
                 dismissButton = {
@@ -988,9 +1054,9 @@ fun EditorPane(
                                     modifier = Modifier
                                         .size(14.dp)
                                         .clickable {
-                                            // MULTI-ROOT (Part B): extracted to EditorTabClose.kt —
-                                            // ONE shared close path for the X button and root removal.
-                                            closeEditorTabInternal(context, tab, tabs, activeIdState, lspOpenedFiles)
+                                            // TB03 (P1): close requests route through the dirty-close
+                                            // gate (dialog for dirty tabs; direct close otherwise).
+                                            requestCloseTabs(listOf(tab))
                                         },
                                 )
                             }
@@ -1007,16 +1073,14 @@ fun EditorPane(
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text("Close", fontSize = 13.sp) },
                                 onClick = {
-                                    closeEditorTabInternal(context, tab, tabs, activeIdState, lspOpenedFiles)
+                                    requestCloseTabs(listOf(tab))
                                     tabContextMenuFor = null
                                 },
                             )
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text("Close Others", fontSize = 13.sp) },
                                 onClick = {
-                                    tabs.toList().forEach { other ->
-                                        if (other.id != tab.id) closeEditorTabInternal(context, other, tabs, activeIdState, lspOpenedFiles)
-                                    }
+                                    requestCloseTabs(tabs.toList().filter { it.id != tab.id })
                                     activeId = tab.id
                                     tabContextMenuFor = null
                                 },
@@ -1024,9 +1088,7 @@ fun EditorPane(
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text("Close All", fontSize = 13.sp) },
                                 onClick = {
-                                    tabs.toList().forEach { other ->
-                                        closeEditorTabInternal(context, other, tabs, activeIdState, lspOpenedFiles)
-                                    }
+                                    requestCloseTabs(tabs.toList())
                                     tabContextMenuFor = null
                                 },
                             )
@@ -2086,7 +2148,16 @@ fun EditorPane(
                             val idx = tabs.indexOfFirst { it.id == active.id }
                             if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
                             if (active.path.startsWith("/")) {
-                                try { File(active.path).writeText(newText); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                                // G01 (P1): typed edit-time write. Failure keeps the tab dirty
+                                // (set above), marks the path failed (one notification, not one
+                                // per keystroke), and never invalidates the cache for content
+                                // that never landed on disk.
+                                if (writeTabToDisk(active.path, newText)) {
+                                    if (active.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= active.path
+                                } else if (active.path !in diskWriteFailedPaths.value) {
+                                    diskWriteFailedPaths.value += active.path
+                                    NotificationStore.add("Save failed", "Disk write failed for ${active.name} — changes kept in editor", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
+                                }
                             }
                             // Phase P: Publish lint diagnostics to central store (debounced)
                             DiagnosticPublisher.publishLintDiagnostics(active.path, newText)
