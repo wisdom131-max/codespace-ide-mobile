@@ -6,8 +6,10 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.URLDecoder
+import java.security.SecureRandom
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -15,9 +17,12 @@ import java.util.concurrent.Executors
  * AgentApiServer — lightweight local HTTP server that exposes ALL AgentTools
  * to ANY AI running in the terminal (Claude Code, llama.cpp, etc.)
  *
- * Runs on port 8765 inside the app process. Terminal AI calls it via:
- *   curl -s -X POST http://localhost:8765/tool/run_command -d '{"command":"ls -la"}'
- *   curl -s http://localhost:8765/tools
+ * Runs on port 8765 inside the app process, bound to LOOPBACK ONLY (TP02 hotfix:
+ * never all-interfaces). Every route except /health requires the per-process
+ * bearer token (Authorization: Bearer), exported into the guest shell profile
+ * alongside AGENT_API_URL so legitimate CLI/agent use keeps working. Terminal AI:
+ *   agent run_command '{"command":"ls -la"}'
+ *   agent_tools
  *
  * This gives terminal-launched AI the SAME 31 tools as the chat panel:
  *   Shell, Git, Secrets, Web, Memory, Connectors, Entities, Scheduler, Media, Packages
@@ -33,12 +38,31 @@ object AgentApiServer {
     @Volatile private var running = false
     private var serverContext: Context? = null
 
+    // TP02 hotfix: per-process session token (generated once per app start, kept across
+    // start/stop cycles so a long-lived guest shell is not broken by a server restart).
+    // Required on every route except /health. Guest processes CAN read it from the shell
+    // profile by design (they are this API's intended clients); what it denies is any
+    // OTHER app on the device — Android loopback is shared between apps, so loopback bind
+    // alone would still expose the socket to every installed app — plus anything on the LAN.
+    @Volatile private var sessionToken: String? = null
+
     // P-MCP-INDICATOR-FIX: `running` only means "the socket is listening" — it stays true
     // for the whole terminal session even when no AI agent is actually talking to it. The
     // status bar needs to know when an agent is ACTIVELY connected, so we track the last
     // time any request came in and treat "active" as "a request landed recently."
     @Volatile private var lastRequestAtMs: Long = 0L
     private const val ACTIVE_WINDOW_MS = 12_000L
+
+    /** Per-process bearer token; null only if the server has never started. */
+    fun currentToken(): String? = sessionToken
+
+    /** Generates the session token once per app process (TP02 hotfix spec: at app start). */
+    private fun ensureSessionToken() {
+        if (sessionToken != null) return
+        val bytes = ByteArray(32)
+        SecureRandom().nextBytes(bytes)
+        sessionToken = bytes.joinToString("") { "%02x".format(it) }
+    }
 
     fun start(context: Context) {
         if (running) {
@@ -51,8 +75,12 @@ object AgentApiServer {
 
         Thread {
             try {
-                serverSocket = ServerSocket(PORT)
-                Log.i(TAG, "Agent API server started on port $PORT")
+                // TP02: bind loopback ONLY. ServerSocket(PORT) with no bind address binds 0.0.0.0
+                // (all interfaces) — that exposed the full tool set to the LAN. Loopback keeps it
+                // reachable from the app process and the proot guest (shared network namespace).
+                serverSocket = ServerSocket(PORT, 50, InetAddress.getLoopbackAddress())
+                ensureSessionToken()
+                Log.i(TAG, "Agent API server started on port $PORT (loopback only, token-auth)")
 
                 while (running) {
                     try {
@@ -116,6 +144,19 @@ object AgentApiServer {
                 reader.read(buf, 0, contentLength)
                 String(buf)
             } else ""
+
+            // TP02: auth gate — ONE choke point before routing. Everything except the
+            // unauthenticated /health probe requires the per-process bearer token.
+            // (PackageManagerPane health pings and agent_health() stay token-free on purpose.)
+            if (path != "/health" && headers["authorization"] != "Bearer ${sessionToken ?: ""}") {
+                val denied = httpJson(401, "{\"error\":\"unauthorized: missing or invalid agent token\"}")
+                writer.write(denied)
+                writer.flush()
+                writer.close()
+                reader.close()
+                client.close()
+                return
+            }
 
             // Route
             val response = route(method, path, body)
@@ -237,6 +278,7 @@ object AgentApiServer {
     private fun httpJson(code: Int, body: String): String {
         val status = when (code) {
             200 -> "OK"
+            401 -> "Unauthorized"
             404 -> "Not Found"
             500 -> "Internal Server Error"
             else -> "OK"

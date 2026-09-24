@@ -10,7 +10,8 @@ import java.io.File
  * agent capabilities via the local AgentApiServer.
  *
  * What gets injected into ~/.bashrc:
- *   AGENT_API_URL  — http://localhost:8765 (local AgentApiServer)
+ *   AGENT_API_URL  — http://localhost:8765 (local AgentApiServer, loopback-only)
+ *   AGENT_API_TOKEN — per-app-start bearer token required on every route but /health
  *   agent()        — call any of the 31 tools from the terminal
  *   agent_tools    — list all available tools
  *   agent_prompt   — get the system prompt for CLI AI tools
@@ -33,6 +34,9 @@ object McpShellProfile {
     fun install(context: Context, backendUrl: String? = null, authToken: String? = null) {
         // Start the local Agent API server (gives terminal AI full 32-tool access)
         AgentApiServer.start(context)
+        // TP02 hotfix: capture the per-process bearer token and export it to the guest
+        // shell so legitimate CLI/agent use keeps working unattended.
+        val apiToken = AgentApiServer.currentToken() ?: ""
 
         // The ubuntu terminal's HOME is /root INSIDE proot, which maps to
         // context.filesDir/ubuntu-rootfs/root/ on the host.  The old code wrote to
@@ -41,7 +45,7 @@ object McpShellProfile {
         val home = File(rootfsDir, "root").apply { mkdirs() }
 
         val script = File(home, ".agent-profile.sh")
-        script.writeText(buildProfile())
+        script.writeText(buildProfile(apiToken))
         script.setReadable(true, false)
 
         val bashrc = File(home, ".bashrc")
@@ -52,7 +56,7 @@ object McpShellProfile {
 
         // Write agent.json config for MCP-compatible clients
         val agentConfig = File(home, ".agent.json")
-        agentConfig.writeText(buildAgentJson())
+        agentConfig.writeText(buildAgentJson(apiToken))
 
         // Write system prompt file for CLI AI tools
         val promptFile = File(home, ".agent-system-prompt.md")
@@ -72,10 +76,12 @@ object McpShellProfile {
         AgentApiServer.stop()
     }
 
-    private fun buildProfile(): String = buildString {
+    private fun buildProfile(apiToken: String): String = buildString {
         appendLine("# CodeSpace Agent Profile — auto-generated")
         appendLine("# Gives ANY terminal AI full access to 32 agent tools via local API")
         appendLine("export AGENT_API_URL='$API_URL'")
+        appendLine("# TP02: required by every route except /health")
+        appendLine("export AGENT_API_TOKEN='$apiToken'")
         appendLine("")
         appendLine("# ── Core tool caller ──────────────────────────────────────────────")
         appendLine("# Usage: agent <tool_name> '<json_args>'")
@@ -86,6 +92,7 @@ object McpShellProfile {
         appendLine("  local resp")
         appendLine("  resp=\$(curl -s -X POST \"\$AGENT_API_URL/tool/\$tool\" \\")
         appendLine("    -H 'Content-Type: application/json' \\")
+        appendLine("    -H \"Authorization: Bearer \$AGENT_API_TOKEN\" \\")
         appendLine("    -d \"\$args\" 2>/dev/null)")
         appendLine("  if [ \$? -ne 0 ]; then")
         appendLine("    echo '[agent] API server not reachable. Is the terminal session active?'")
@@ -96,7 +103,7 @@ object McpShellProfile {
         appendLine("")
         appendLine("# ── List all available tools ──────────────────────────────────────")
         appendLine("agent_tools() {")
-        appendLine("  curl -s \"\$AGENT_API_URL/tools\" 2>/dev/null | python3 -c \"")
+        appendLine("  curl -s -H \"Authorization: Bearer \$AGENT_API_TOKEN\" \"\$AGENT_API_URL/tools\" 2>/dev/null | python3 -c \"")
         appendLine("import sys,json")
         appendLine("d=json.load(sys.stdin)")
         appendLine("for t in d.get('tools',[]):")
@@ -106,7 +113,7 @@ object McpShellProfile {
         appendLine("")
         appendLine("# ── Get system prompt for CLI AI tools ────────────────────────────")
         appendLine("agent_prompt() {")
-        appendLine("  curl -s \"\$AGENT_API_URL/system-prompt\" 2>/dev/null | python3 -c \"")
+        appendLine("  curl -s -H \"Authorization: Bearer \$AGENT_API_TOKEN\" \"\$AGENT_API_URL/system-prompt\" 2>/dev/null | python3 -c \"")
         appendLine("import sys,json; print(json.load(sys.stdin).get('prompt',''))\" 2>/dev/null")
         appendLine("}")
         appendLine("")
@@ -180,9 +187,10 @@ object McpShellProfile {
         appendLine("echo '[Agent] Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search, agent_mem_*, agent_fetch...'")
     }
 
-    private fun buildAgentJson(): String =
+    private fun buildAgentJson(apiToken: String): String =
         """{
   "agentApiUrl": "$API_URL",
+  "agentApiToken": "$apiToken",
   "tools": [
     "run_command","read_file","write_file","list_files","search_files",
     "git_commit_push","git_pull_rebase","git_branch","git_status","git_diff",
@@ -267,6 +275,7 @@ Server: http://localhost:$API_PORT
         appendLine("#!/bin/bash")
         appendLine("# agent - CLI wrapper for CodeSpace AgentApiServer")
         appendLine("AGENT_API_URL=\${AGENT_API_URL:-http://localhost:$API_PORT}")
+        appendLine("AGENT_API_TOKEN=\${AGENT_API_TOKEN:-}")
         appendLine("")
         appendLine("if [ -z \"\$1\" ]; then")
         appendLine("  echo 'Usage: agent <tool_name> [json_args]'")
@@ -277,7 +286,7 @@ Server: http://localhost:$API_PORT
         appendLine("tool=\$1; shift")
         appendLine("args=\${1:-{}}")
         appendLine("")
-        appendLine("resp=\$(curl -s -X POST \$AGENT_API_URL/tool/\$tool -H 'Content-Type: application/json' -d \$args 2>/dev/null)")
+        appendLine("resp=\$(curl -s -X POST \$AGENT_API_URL/tool/\$tool -H 'Content-Type: application/json' -H \"Authorization: Bearer \$AGENT_API_TOKEN\" -d \$args 2>/dev/null)")
         appendLine("")
         appendLine("if [ \$? -ne 0 ]; then")
         appendLine("  echo '[agent] API server not reachable at '\$AGENT_API_URL")
