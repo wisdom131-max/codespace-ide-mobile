@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P1 SHIPPED (G01+TB03+TB01+SG02+CH01+CH05, data-loss chain closed as one workstream); P0 CI #2905 GREEN; TP02 = shipped, device-unconfirmed (verifies in P5); next: P2a containment utility after CI green; CI pending |
+| Latest commit | P1 SHIPPED + CI #2907 GREEN (commit 7216ec0 — G01+TB03+TB01+SG02+CH01+CH05 closed at code level, device checks in P5); TP02 = shipped, device-unconfirmed (verifies in P5); next: P2a containment utility (EX04/EX05/EX07/RG03/RG04/RG07/OG04) |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4764,7 +4764,7 @@ ROADMAP (all pending items): P0 SK01/SK02 (in progress) → P1 data-loss chain G
 
 ---
 
-**2026-09-24 18:20 — [P1 SHIPPED] Data-loss chain closed as one workstream (G01 + TB03 + TB01 + SG02 + CH01 + CH05); own commit, revertable alone; CI pending at push; P2a (containment utility) starts after CI green**
+**2026-09-24 18:20 — [P1 SHIPPED, CI #2907 GREEN, commit 7216ec0] Data-loss chain closed as one workstream (G01 + TB03 + TB01 + SG02 + CH01 + CH05); own commit, revertable alone; P2a (containment utility) is next**
 
 1. **G01 — typed disk writes everywhere editor content persists (new `ui/panes/EditorDiskSafety.kt`):** `writeTabToDisk()` returns Boolean (writeText + FileCache.invalidate inside, verified). Edit path: failure keeps the tab dirty, marks the path in `diskWriteFailedPaths` (one ERROR notification per path, not per keystroke), never invalidates the cache for content that never landed. Save path: dirty clears ONLY on verified write; failed save keeps dirty + ERROR notification + LSP didSave withheld. BackHandler "Yes, Save" now uses typed `saveAllDirtyTabs()` and reports per-count truth instead of an unconditional "Saved ✓".
 2. **TB03 — one dirty-close gate for ALL closes (new `ui/panes/DirtyCloseDialog.kt`):** strip X, context Close/Close Others/Close All route through `requestCloseTabs()` → dialog for dirty tabs (Save & Close typed: failed saves keep tabs open; Discard & Close explicit; Cancel via dismiss). Root-removal close now saves dirty tabs FIRST (typed) instead of relying on the false "every keystroke persists" comment; failed saves keep the tab open with an ERROR. `closeEditorTabInternal` remains the ONE shared close path — the gate wraps it.
