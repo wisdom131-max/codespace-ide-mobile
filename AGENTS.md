@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | AUDIT COMPLETE: OG01 ruled below top tier (TB01 family, no recovery path), TextMate (TM01-06) + ImageGen (IM01-03) addenda added, MASTER-CONNECTIONS.md created (18 groups + 2 addenda + 2 master ledgers); next phase: owner review → fix plan; CI pending, docs-only |
+| Latest commit | F03 Workspace Trust pass + TP02 live-verification committed (F03-WORKSPACE-TRUST.md); F01/F02/F09 backlog, F04-F08+thin non-goals; TP02 recommended immediate hotfix (loopback+token) awaiting approval; FIX-PLAN.md pending P2c sign-off; CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4720,3 +4720,12 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 3. **Minor flags (B2):** Edit Sessions, Untitled/scratch model, code-review comments, 3-way merge editor, update/relauncher/splash, chrome misc (zen/watermark/carousel/surveys/share/customEditor/opener), palette-full-range (already covered by the action-registry gap).
 4. **Ruled elsewhere (B3):** sash/movable views/extension host/multi-window = FINAL-REVIEW DO-NOT-BUILD (2026-09-15); enterprise items N/A.
 5. Fix plan phases (P0-P5) unchanged — awaiting owner ruling on B1 before deciding whether any flag needs its own audit pass first.
+
+---
+
+**2026-09-24 — [F03 PASS + TP02 VERIFICATION] F03-WORKSPACE-TRUST.md committed (docs-only, before P2c lock): VS Code Workspace Trust mapped against FlowGate/IG02; TP02 source-verified LIVE on every app launch; F01/F02/F09 logged as backlog decisions, F04-F08 + thin list ruled non-goals**
+
+1. **Forward-coverage rulings applied:** F01 Notebooks / F02 remote-dev model / F09 tree-sitter → backlog decisions (not blocking fix plan); F04-F08 and the thin/minor list → non-goal, no further action.
+2. **F03 Workspace Trust pass:** VS Code's design verified from source — trusted object = WORKSPACE CONTENT, default untrusted, ONE requestWorkspaceTrust choke point consumed at every executing feature-entry (debugService refuses to start when untrusted; tasks not even enumerated; terminal process creation gated with a user-owned bypass setting; agent sessions + MCP + prompt/plugin surfaces all check isWorkspaceTrusted; extensions flip on trust transitions). Our mismatch stated: we have the ACTOR axis (FlowGate, AI consent) but NO CONTENT axis — IG02, TP02, CH05, IG15 are the same missing axis seen from four surfaces. P2c input recorded: per-project TrustState (after P0/SK01), one shared request choke point at schedule/tool-API/launch/MCP/connector surfaces, trust ≠ authentication (TP02 keeps its own auth fix), CH03 card gets a "Trust this project" quick-action.
+3. **TP02 live status:** source-verified UNCONDITIONAL start (CodeSpaceApplication.kt:74; ServerSocket(8765) all-interfaces; /tool/{name} → executeTool unauthenticated). Device-local (not sandbox-probeable unlike TP01). On-device read-only proof command recorded (curl /tools from the app terminal = the guest attacker path). RECOMMENDATION: immediate hotfix outside phase plan — loopback bind + per-session token (server has live callers: harden, not remove). Awaiting owner approval, no code written.
+4. FIX-PLAN.md still NOT committed — awaiting TP02 hotfix approval + P2c design sign-off.
