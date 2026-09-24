@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | Owner rulings applied: IG02 re-ranked to TOP SECURITY TIER (structural FlowGate bypass); IG06 called — DELETE orphaned SSHJ+TOFU stack, manage rootfs known_hosts on live CLI path; Recovery next; CI pending, docs-only |
+| Latest commit | Recovery group audited (GROUP-RECOVERY.md, RG01-RG12; RG01 crash telemetry VERIFIED dead via backend CrashLog read = 0 records); 16 groups done; next: 18a Viewers & Binary Inspection; CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4635,3 +4635,15 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 4. **Trust-code irony:** IG06 — the hardened SSHJ+TOFU engine (fingerprint pinning, mismatch reject) is ORPHANED; the live path is ssh CLI accept-new with no fingerprint UI. Wire-or-delete before Recovery touches startup. IG03: restoreAll() never called — scheduler persistence promise is false (one-line startup fix). IG07: Hub OAuth uses in-app WebView, contradicting the app's own disallowed_useragent documentation.
 5. **MASTER-GAPS.md:** Integration section added (17 sections); IG01 linked to EX05/CH02, IG02/IG15 to the CH03 approval matrix, IG04/IG05 to TG01/PR07, IG10/IG16 to the SK01/SK02 settings-first pass.
 6. **CI:** docs-only commit; no code change.
+
+---
+
+**2026-09-24 — [RECOVERY] GROUP-RECOVERY.md CREATED: crash telemetry VERIFIED dead (backend read = 0 records), rootfs restore wipe-first + false success, hand-rolled tar data loss (docs-only)**
+
+1. **Recovery group audited** (~1.8k lines): 18 features (RC01-RC18), 10 cross-group edges, 8 VS Code comparisons, 30 pending device checks (RT01-RT30), 12 gaps (RG01-RG12). All citations revalidated.
+2. **RG01 (VERIFIED, not suspected):** the crash reporter posts to THIS Superagent's own `reportCrash` function — the CrashLog entity store it writes was READ DIRECTLY on 2026-09-24: **count = 0**, despite months of confirmed device crashes. The upload thread (4s timeouts) races process death; the app's own comment predicted "empty CrashLog after a confirmed device crash". Every crash-debug loop has been blind.
+3. **RG02 (HIGH, TB03/S01 family):** rootfs restore wipes the container BEFORE extracting, swallows per-file failures, returns true regardless — and TerminalPane prints "✓ Restored from backup!" without checking the return. Mid-restore failure = destroyed container + half-extracted rootfs + success message.
+4. **RG03/RG04 (HIGH, EX05-family + silent data loss):** cloud restore trusts raw tar entry names (`File(destDir, name)` — `../` escapes) and unbounded header sizes (OOM); the hand-rolled tar writer truncates names to 100 bytes so deep paths restore to WRONG filenames with no error. One fix (commons-compress both ways + canonical-path validation) deletes both.
+5. **RG05 (MEDIUM-HIGH — highest-impact MEDIUM in the audit for THIS device):** the uninstall-survival backup is MANUAL-ONLY (one Settings button, never prompted) and prefs-backup covers only 3 XMLs + memory.json — settings, keybindings, SSH profiles, session state, scheduler tasks are all excluded. This user's device forces an uninstall on every CI rebuild.
+6. **MASTER-GAPS.md:** Recovery section added (18 sections); RG02 linked to TB03, RG03 to EX05/IG01/RG07, RG06 to IG03/SK01.
+7. **CI:** docs-only commit; no code change.
