@@ -6,6 +6,7 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -110,8 +111,14 @@ object LivePreviewServer {
 
         Thread {
             try {
-                serverSocket = ServerSocket(PORT)
-                Log.i(TAG, "Live preview server started on port $PORT, serving: $projectRootPath")
+                // VG01 (P2b): ServerSocket(PORT) with no bound address is UNCONDITIONALLY
+                // all-interfaces (0.0.0.0) in Java — the KDoc claim "binds to localhost only"
+                // was false, and the server was reachable by ANY Wi-Fi peer (and, via the
+                // in-app browser's WebView, by fetched web pages too). Bind loopback ONLY:
+                // the preview stays reachable from the app's own WebViews on this device
+                // and refuses external connections outright.
+                serverSocket = ServerSocket(PORT, 50, InetAddress.getLoopbackAddress())
+                Log.i(TAG, "Live preview server started on port $PORT (LOOPBACK-ONLY bind), serving: $projectRootPath")
 
                 while (running) {
                     try {
