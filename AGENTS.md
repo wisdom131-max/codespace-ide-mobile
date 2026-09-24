@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | Testing group audited (GROUP-TESTING.md, TG01-TG10; TG01 lens execution log-only dead); 14 groups done; next: Integration; CI pending, docs-only |
+| Latest commit | Integration group audited (GROUP-INTEGRATION.md, IG01-IG16; IG01 entity path traversal + IG02 scheduler gate bypass HIGH-in-group); 15 groups done; next: Recovery; CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4624,3 +4624,14 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 3. **Shape of the absence:** no discovery service, no results surface (no JUnit XML/pytest/jest parsing, failures past PR03's 2000-line cap never reach Problems), no test explorer, no coverage, no debug-test DAP flow, gradle-only run-all for Android projects in a multi-language IDE. These are additive-feature gaps (TG02-TG04, TG07-TG08), documented as the requirements for a real testing surface.
 4. **MASTER-GAPS.md:** Testing section added (TG01-TG10 + strengths/cross-links); TG01 noted as feature-dead below-top-tier but first-wave device check.
 5. **CI:** docs-only commit; no code change.
+
+---
+
+**2026-09-24 — [INTEGRATION] GROUP-INTEGRATION.md CREATED: two agent-boundary security gaps, orphaned SSH trust engine, placebo Download Center (docs-only)**
+
+1. **Integration group audited** (~4.7k lines, 4 clusters): 20 features (IN01-IN20), 10 cross-group edges, 8 VS Code comparisons, 36 pending device checks (IT01-IT36), 16 gaps (IG01-IG16). All citations revalidated against source.
+2. **Two HIGH security gaps, below the top tier** (same reasoning as CH03 — need adversarial model input, not unconditional routine escape): **IG01** AgentEntityManager path traversal (`agent_data/$entity` unsanitized — agent-controlled `../` walks out of the store; create writes JSON anywhere app-reachable, update/delete rewrite matching JSON files there) and **IG02** schedule_task bypasses FlowGate entirely (ungated unattended execOnce, persisted, result discarded + swallowed).
+3. **Placebo family +2:** IG04 the entire Download Center is orphaned (download() has ZERO callers; the tab can never be non-empty) and IG05 cancel/retry are broken semantics (cancel flips state the transfer never checks; completion overwrites CANCELLED; retry has no engine watching).
+4. **Trust-code irony:** IG06 — the hardened SSHJ+TOFU engine (fingerprint pinning, mismatch reject) is ORPHANED; the live path is ssh CLI accept-new with no fingerprint UI. Wire-or-delete before Recovery touches startup. IG03: restoreAll() never called — scheduler persistence promise is false (one-line startup fix). IG07: Hub OAuth uses in-app WebView, contradicting the app's own disallowed_useragent documentation.
+5. **MASTER-GAPS.md:** Integration section added (17 sections); IG01 linked to EX05/CH02, IG02/IG15 to the CH03 approval matrix, IG04/IG05 to TG01/PR07, IG10/IG16 to the SK01/SK02 settings-first pass.
+6. **CI:** docs-only commit; no code change.
