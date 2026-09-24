@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | TP01 live-confirmed on deployed backend + owner-ruled top tier (remote-server flag); mitigation options presented, no fix; CI pending, docs-only |
+| Latest commit | TP01 RESOLVED — gateway removed (57236a0), redeployed, probe-verified gone; SCM audit resumed with SG05 correction |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4548,3 +4548,13 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 3. **Mitigation options presented to owner, NO fix applied (owner said don't fix yet):** (a) REMOVAL — drop the TerminalModule import from backend/src/app.module.ts and redeploy; minimum safe, feature is dead end-to-end (RemoteTerminalSession has zero callers and never sends the required ticket); (b) REAL AUTH — server-issued single-use short-TTL ticket minted behind the existing JWT AuthModule and consumed in handleConnection (only if remote terminal is ever revived); (c) IP restriction rejected — Render web services have no route-level allowlists. Owner decision pending.
 4. **Docs updated:** MASTER-GAPS.md top-tier paragraph now lists TP01 with the remote-server flag and live-probe evidence; Terminal section TP01 row and intro updated; GROUP-TERMINAL.md TP01 row + TT01/TT02 marked EXECUTED with probe results; GROUP-TERMINAL boundary paragraph rewritten (TP01 ruled, TP02 remains recommended-pending). All citations revalidated.
 5. **CI:** docs-only commit; no Kotlin/backend/runtime change; no fix implemented.
+
+---
+
+**2026-09-24 21:20 WAT — [SECURITY][FIX] TP01 RESOLVED: /ws/terminal gateway REMOVED, redeployed, verified gone (fix commit 57236a0)**
+
+1. **Owner decision:** option (a) REMOVAL. Fix commit **57236a0** (its own commit, separate from audit docs): dropped the TerminalModule import + registration from backend/src/app.module.ts (2 deletions, no other change). Render redeployed from the pushed main.
+2. **Zero-breakage verified BEFORE redeploy:** full workspace grep confirmed the only /ws/terminal reference on Android is RemoteTerminalSession.kt:118 (.encodedPath), itself referenced ONLY by the dead Kotlin com.codespace.ide.terminal.TerminalSession remote branch (terminal/TerminalSession.kt:31-38) — that class has ZERO callers (TerminalService and TerminalPane import the vendored com.termux.terminal.TerminalSession; all construction sites use the termux signature). Chain dead at the root; nothing in the app can touch the endpoint. Backend: only terminal.module.ts referenced the gateway. Nothing broke.
+3. **Post-redeploy confirmation probe (2026-09-24 07:15 UTC):** /socket.io/?EIO=4&transport=polling → 404 RESOURCE_NOT_FOUND (socket.io NO LONGER ATTACHED — no gateway remains, so not even the transport layer answers); /ws/terminal/?EIO=4&transport=polling&ticket=x → 404; /api/v1/health → 200 fresh process. No connection with any ticket is possible. TP01 RESOLVED.
+4. **Docs:** TP01 marked RESOLVED (commit 57236a0 + probe result) in MASTER-GAPS.md top-tier paragraph, Terminal section intro + TP01 row, and GROUP-TERMINAL.md TP01 row + TT02 — kept as a top-tier REMOTE SERVER COMPROMISE finding for the record. Standing caution: re-verify on any future backend dependency change that could restore the gateway.
+5. **CI:** backend-only change (2 deletions in app.module.ts); Android CI unaffected; no Kotlin change.
