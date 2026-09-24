@@ -1,6 +1,7 @@
 package com.codespace.ide.editor
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.MutableState
 import com.codespace.ide.editor.settings.JsonSettingsStore
@@ -10,6 +11,7 @@ import com.codespace.ide.editor.settings.JsonSettingsStore
  * Survives app restarts. Read from SettingsScreen and CodeEditor/EditorPane.
  */
 object FeatureToggleStore {
+    private const val TAG = "FeatureToggleStore"
     private const val PREFS = "feature_toggles"
     private lateinit var prefs: android.content.SharedPreferences
 
@@ -51,7 +53,14 @@ object FeatureToggleStore {
     fun set(key: String, value: Boolean) {
         states[key]?.value = value
         prefs.edit().putBoolean(key, value).apply()
-        try { JsonSettingsStore.setToggle(key, value) } catch (_: Exception) { }
+        // SK02 (P0): the old blanket swallow meant the JSON store could silently miss
+        // this toggle while both UIs showed success. Surface the failure honestly:
+        // JsonSettingsStore records it in its observable writeFailed state too.
+        try {
+            JsonSettingsStore.setToggle(key, value)
+        } catch (e: Exception) {
+            Log.e(TAG, "set('$key', $value): JSON-store sync failed: ${e.message}")
+        }
     }
 
     fun state(key: String): MutableState<Boolean> {

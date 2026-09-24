@@ -8,6 +8,7 @@ import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEvent
+import android.util.Log
 import com.codespace.ide.editor.settings.JsonSettingsStore
 
 /**
@@ -153,7 +154,8 @@ object KeyBindingRegistry {
         persistBinding(action)
         // Sync to unified JSON store
         val value = "${combination.key.keyCode}|${combination.ctrl}|${combination.shift}|${combination.alt}"
-        try { JsonSettingsStore.setKeybinding(action.name, value) } catch (_: Exception) { }
+        try { JsonSettingsStore.setKeybinding(action.name, value) }
+        catch (e: Exception) { Log.e(TAG, "setBinding(${action.name}): JSON-store sync failed: ${e.message}") }
     }
 
     /**
@@ -162,7 +164,8 @@ object KeyBindingRegistry {
     fun resetBinding(action: EditorAction) {
         defaults[action]?.let { bindings[action] = it }
         prefs?.edit()?.remove(action.name)?.apply()
-        try { JsonSettingsStore.removeKeybinding(action.name) } catch (_: Exception) { }
+        try { JsonSettingsStore.removeKeybinding(action.name) }
+        catch (e: Exception) { Log.e(TAG, "resetBinding(${action.name}): JSON-store sync failed: ${e.message}") }
     }
 
     /**
@@ -177,7 +180,8 @@ object KeyBindingRegistry {
         bindings.clear()
         bindings.putAll(defaults)
         prefs?.edit()?.clear()?.apply()
-        try { JsonSettingsStore.clearKeybindings() } catch (_: Exception) { }
+        try { JsonSettingsStore.clearKeybindings() }
+        catch (e: Exception) { Log.e(TAG, "resetAllBindings(): JSON-store sync failed: ${e.message}") }
     }
 
     /**
@@ -186,6 +190,7 @@ object KeyBindingRegistry {
     fun getDefaultBinding(action: EditorAction): KeyCombination? = defaults[action]
 
     // ── Persistence ─────────────────────────────────────────────────
+    private const val TAG = "KeyBindingRegistry"
     private const val PREFS_NAME = "keybindings"
     private var prefs: android.content.SharedPreferences? = null
 

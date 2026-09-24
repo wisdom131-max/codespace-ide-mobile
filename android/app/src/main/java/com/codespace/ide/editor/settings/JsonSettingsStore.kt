@@ -37,6 +37,12 @@ object JsonSettingsStore {
     private var initialized = false
     private var savePending = false
 
+    // SK02 surfacing (P0): Compose-observable write-health state so the UI can react to
+    // disk failures instead of assuming success. importJson's typed Boolean remains the
+    // in-codebase model; these two states extend the same honesty to load/save paths.
+    val writeFailed = mutableStateOf(false)
+    val lastLoadQuarantined = mutableStateOf(false)
+
     /**
      * Initialize the store. Reads the JSON file if it exists, or runs
      * migration from SharedPreferences on first launch.
@@ -106,9 +112,30 @@ object JsonSettingsStore {
                 saveToJson()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load settings JSON, falling back to defaults", e)
+            // SK01 (P0): the old behavior quarantined NOTHING — initDefaults + saveToJson
+            // OVERWROTE the corrupt file, silently and irrecoverably resetting ALL settings.
+            // Now: quarantine the corrupt file first so recovery is possible, record it in
+            // observable state, THEN fall back to defaults.
+            Log.e(TAG, "Failed to load settings JSON — quarantining corrupt file, falling back to defaults", e)
+            quarantineCorruptFile(file)
+            lastLoadQuarantined.value = true
             initDefaults()
             saveToJson()
+        }
+    }
+
+    /**
+     * SK01 (P0): copy the corrupt settings file aside before defaults overwrite it.
+     * Keeps exactly one quarantine (latest corrupt state) to avoid accumulation.
+     * The file at filesDir/settings.json.corrupt is the recovery point for the user.
+     */
+    private fun quarantineCorruptFile(file: File) {
+        try {
+            val quarantine = File(context.filesDir, "$FILE_NAME.corrupt")
+            file.copyTo(quarantine, overwrite = true)
+            Log.w(TAG, "Quarantined corrupt settings to ${quarantine.absolutePath}")
+        } catch (q: Exception) {
+            Log.e(TAG, "Failed to quarantine corrupt settings file (proceeding with defaults)", q)
         }
     }
 
@@ -144,10 +171,13 @@ object JsonSettingsStore {
 
     /**
      * Save all settings to the JSON file.
+     * SK01 (P0): atomic write (tmp + rename) — a truncated/partial write can no longer
+     * leave a corrupt settings.json behind. SK02 (P0): typed Boolean result instead of
+     * swallowing; failures also set the observable writeFailed state.
      */
     @Synchronized
-    fun saveToJson() {
-        try {
+    fun saveToJson(): Boolean {
+        return try {
             val json = JSONObject()
             json.put("version", SettingsSchema.CURRENT_VERSION)
 
@@ -170,9 +200,37 @@ object JsonSettingsStore {
             json.put("keybindings", kbObj)
 
             val file = File(context.filesDir, FILE_NAME)
-            file.writeText(json.toString(2))
+            val ok = atomicWrite(file, json.toString(2))
+            writeFailed.value = !ok
+            ok
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save settings JSON", e)
+            writeFailed.value = true
+            false
+        }
+    }
+
+    /**
+     * SK01 (P0): atomic write — write to a sibling .tmp file, then rename over the
+     * target. Rename within the same directory is atomic on POSIX, so settings.json is
+     * either the OLD complete file or the NEW complete file, never a truncated mix.
+     * Defensive copy+delete fallback for vendor-kernel rename quirks (this device
+     * family has a documented history of syscall surprises) — the fallback is NOT
+     * atomic, but the corrupt-parse quarantine in loadFromJson covers its failure mode.
+     */
+    private fun atomicWrite(file: File, content: String): Boolean {
+        // context.filesDir (non-null) instead of file.parentFile (File?) — same directory.
+        val tmp = File(context.filesDir, file.name + ".tmp")
+        tmp.writeText(content)
+        if (tmp.renameTo(file)) return true
+        return try {
+            Log.w(TAG, "Rename failed for ${file.name} — falling back to copy+delete")
+            tmp.copyTo(file, overwrite = true)
+            tmp.delete()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Copy fallback also failed for ${file.name}", e)
+            false
         }
     }
 
@@ -303,10 +361,10 @@ object JsonSettingsStore {
     /**
      * Force immediate save (e.g., on app exit).
      */
-    fun flush() {
+    fun flush(): Boolean {
         savePending = false
         handler.removeCallbacksAndMessages(null)
-        saveToJson()
+        return saveToJson()
     }
 
     /**
