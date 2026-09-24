@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P2a SHIPPED (CanonicalPaths utility consumed at all 10 sites — EX04/EX05/EX07/RG03/RG04/RG07/IG01/VG02/VG02-b/OG04; RG03/RG04 migrated to commons-compress); P1 CI #2907 GREEN; TP02 = shipped, device-unconfirmed; next: P2b host-facing after CI green; CI pending |
+| Latest commit | P2a SHIPPED + CI #2909 GREEN (commit e707ccc — CanonicalPaths utility at all 10 sites; RG03/RG04 commons-compress); P1 CI #2907 GREEN; TP02 = shipped, device-unconfirmed (verifies in P5); next: P2b host-facing (VG01 loopback bind + remaining IG01 surface) |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4784,7 +4784,7 @@ ROADMAP (all pending items): P0 SK01/SK02 (in progress) → P1 data-loss chain G
 
 ---
 
-**2026-09-24 19:35 — [P2a SHIPPED] Canonical-path containment utility (new `util/CanonicalPaths.kt`, spec = ProotInstaller.kt:107) consumed at ALL TEN mandatory call sites; EX04/EX05/EX07/RG03/RG04/RG07/IG01/VG02/VG02-b/OG04 closed at code level; own commit, revertable alone; CI pending at push**
+**2026-09-24 19:35 — [P2a SHIPPED, CI #2909 GREEN, commit e707ccc] Canonical-path containment utility (new `util/CanonicalPaths.kt`, spec = ProotInstaller.kt:107) consumed at ALL TEN mandatory call sites; EX04/EX05/EX07/RG03/RG04/RG07/IG01/VG02/VG02-b/OG04 closed at code level; own commit, revertable alone**
 
 1. **The utility (`util/CanonicalPaths.kt`):** `canonical()` (canonicalize-with-fallback), `isInside(root, child)` (TRUE containment: `child == root || child.startsWith(root.trimEnd('/') + "/")` — the ProotInstaller.kt:107 boundary form; sibling-prefix "out2 vs out" rejected), `safeEntryDestination(root, entryName)` (archive-entry dialect: rejects absolute/NUL/`..`, drops `.` segments, final canonical-containment authority; null = fail-closed reject), `safeNameSegment(name)` (single-segment dialect: no separators, not `.`/`..`, no NUL).
 2. **EX05 (zip extraction, ExplorerPane:1749):** `startsWith(dirPath)` without separator boundary → `safeEntryDestination`; absolute and `..` entry names now rejected BEFORE canonicalization.
