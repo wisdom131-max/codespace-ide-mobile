@@ -427,3 +427,21 @@ Source audit: [GROUP-APPSHELL.md](GROUP-APPSHELL.md). All OB01-OB24 checks pendi
 | **OG06** | LOW, doc-vs-code (IG07/VG01 family) | "Access tokens are kept in memory only" claimed in two places, but `lastAccessToken` is persisted in EncryptedSharedPreferences — storage is fine, comments are false and will mislead. | `data/SecureTokenStore.kt:105-108`; `ui/CodeSpaceApp.kt:106`. |
 
 **COMPOUND PAIR (owner note 2026-09-24): OG01 + OG02 act within one sync operation — a project you are actively using can vanish from the list (unpushed local dropped by replace-all) while a project you deliberately deleted resurrects (cloud delete's ignored Boolean). One fix pass must address both together: merge logic preserving unpushed locals AND a checked cloud-delete result feeding a re-sync.** **Strengths:** the auth chain (Credential Manager → Firebase → backend JWT exchange, EncryptedSharedPreferences/Keystore, typed failure surface) is architecturally at VS Code parity; ScaffoldResult is a typed result; ask-once battery prompt with OEM fallbacks; scaffold is pure in-process writes. **Cross-links:** OG01/OG02 → S01 (compound resurrection via replace-all); OG03 → TB01/P29; OG04 → cross-cutting containment item (row 10); OG05 → Integration ConnectorsApiClient; OG06 → IG07/VG01 doc-vs-code family.
+
+## Addenda (TextMate + ImageGen, 2026-09-24) — backfill so this ledger is the single source of truth
+
+Full detail in the addendum sections of GROUP-EDITOR.md (TextMate) and GROUP-CHAT.md (ImageGen).
+
+| Gap | Priority | One-line behavior / risk | Evidence |
+|---|---|---|---|
+| **TM01** | MEDIUM | Hand-rolled TM semantics can diverge from vscode-textmate (`while`, anchors, `$self`, injections) — wrong highlighting, not crashes. | `TmTokenizer.kt:65-270` |
+| **TM02** | MEDIUM-LOW | `loadGrammarFromPath` compiles arbitrary filesystem grammars (joni patterns) — LATENT untrusted-grammar API, zero callers today; flag before any wiring. | `TextMateEngine.kt:93-112` |
+| **TM03** | MEDIUM-LOW | Theme pipeline appears dead: initialize loads no theme, no loader caller outside textmate/. | `TextMateEngine.kt:60-90,116-140` |
+| **TM04** | LOW | Plain mutable maps behind the synchronized holder singleton. | `TextMateEngine.kt:42-48` |
+| **TM05** | LOW | Dual language registries (TmIntegration enum map vs grammar fileTypes) — drift family with VG12. | `TmIntegration.kt:182-193` |
+| **TM06** | LOW | ProjectSettingsStore doc claims a grammar toggle the engine never consults. | `ProjectSettingsStore.kt:157` |
+| **IM01** | LOW (BYOK, TLS) | Gemini API key travels as a URL query param (`?key=`) — can surface in HTTP logging layers. | `ImageGenService.kt:63` |
+| **IM02** | LOW | Uncapped Base64.decode → writeBytes (VG05 family; server-bounded in practice). | `ImageGenService.kt:92-95,151` |
+| **IM03** | LOW | Hardcoded model id with no Settings override ("bump this" comment in-file). | `ImageGenService.kt:22-27` |
+
+**Editor G-series note:** the Editor group's gaps G01-G10 predate the bold-row format; G01 is in the top tier (co-priority preamble above), G02-G10 are HIGH/MEDIUM per GROUP-EDITOR.md.

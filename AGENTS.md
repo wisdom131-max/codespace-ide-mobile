@@ -4701,3 +4701,12 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 4. **MASTER-CONNECTIONS.md created** — cross-group wiring ledger: 13 shared state stores with writer/reader/seam columns; the path identity & translation network (containment vs dialect-translation vs key-canonicalization as ONE root problem, PLAN A as the unifier); 10 systemic pattern families with member gap IDs; group-to-group edge index; 7 fix-sequencing implications the wiring forces (SK01/SK02 first, TP03 early in the S01 pass, containment utility before new file-flow features, delete-the-duplicates pass parallel).
 5. **Audit roadmap COMPLETE:** 18 groups + 2 addenda + 2 master ledgers (GAPS + CONNECTIONS). Remaining work is owner-side: ranking decisions are all recorded; device checks (BI/OB/TE/IMC + all prior groups') are pending; the fix plan is the next phase.
 6. **CI:** docs-only commits (194a5a9, TM addendum, IM addendum, this); no code change.
+
+---
+
+**2026-09-24 — [POST-AUDIT PLANNING] WHERE-TO-LOOK.md created (paste-ready symptom index); MASTER-GAPS backfilled with TM/IM addenda rows (ledger now 249 gaps incl. Editor G-series); tally + proposed tier-ranked fix plan delivered in chat for owner approval (docs-only, no fix plan committed yet)**
+
+1. **WHERE-TO-LOOK.md** — 30+ symptom → gap → group → shared-state → first-file rows distilled from MASTER-CONNECTIONS.md (12.3KB, stays the full-detail ledger).
+2. **MASTER-GAPS backfill:** TM01-TM06 + IM01-IM03 rows added so the master ledger is the single source of truth; Editor G-series (pre-standard format) noted — G01 top tier, G02-G10 per GROUP-EDITOR.md.
+3. **Tally (249 total):** 14 top tier (+TP02 pending ruling), 54 HIGH, 114 MEDIUM (incl. 6 med±), 62 LOW, 4 structural prerequisites (XG01-XG04).
+4. **Fix plan PROPOSED IN CHAT ONLY** — phases: P0 SK01/SK02 write-safety; P1 data-loss chain G01+TB03+TB01+SG02+CH01(+CH05 together); P2 security set via containment utility (2a zip/tar sites, 2b host-facing, 2c credential/consent SG04/SG16/IG02); P3 systemic (S01 typed results w/ TP03 first, PLAN A store, polling→flows, delete-duplicates); P4 remaining by group HIGH→LOW; P5 device-check verification. Awaiting owner approval before any commit of FIX-PLAN.md or code.
