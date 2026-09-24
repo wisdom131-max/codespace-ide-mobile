@@ -4610,3 +4610,7 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 3. **None joins the top tier** (SK01/SK02 feed the S01 typed-result pass; SK04 is contained to the device-holder threat model).
 4. **MASTER-GAPS.md:** Settings section added (intro + SK01-SK14 table + strengths/cross-links).
 5. **CI:** docs-only commit; no code change.
+
+---
+
+**2026-09-24 — [SETTINGS] OWNER PRIORITY RULING applied in MASTER-GAPS.md (docs-only): SK01/SK02 move EARLY relative to the rest of the S01 family.** Rationale: any fix that persists its own config/preferences (including a future S01 typed-result design itself) writes through/alongside this settings store and stays exposed to SK01's non-atomic-write corruption; settings write-safety must land FIRST so every other fix's persistence is trustworthy.
