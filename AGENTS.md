@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P0 SHIPPED (SK01+SK02): atomic settings writes + corrupt quarantine + facade surfacing; TP02 = shipped, device-unconfirmed (verifies in P5); next: P1 data-loss chain after CI green; CI pending |
+| Latest commit | P0 SHIPPED + CI #2905 GREEN (SK01+SK02 closed at code level, device checks in P5); TP02 = shipped, device-unconfirmed (verifies in P5); next: P1 data-loss chain (G01+TB03+TB01+SG02+CH01+CH05) |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4754,7 +4754,7 @@ ROADMAP (all pending items): P0 SK01/SK02 (in progress) → P1 data-loss chain G
 
 ---
 
-**2026-09-24 17:05 — [P0 SHIPPED] Settings write-safety (closes SK01 + SK02): atomic writes + corrupt-parse quarantine + facade exception surfacing; own commit, revertable alone; CI pending at push; P1 (data-loss chain G01+TB03+TB01+SG02+CH01+CH05) starts after CI green**
+**2026-09-24 17:05 — [P0 SHIPPED, CI #2905 GREEN, commit 29e80c8] Settings write-safety (closes SK01 + SK02): atomic writes + corrupt-parse quarantine + facade exception surfacing; own commit, revertable alone; P1 (data-loss chain G01+TB03+TB01+SG02+CH01+CH05) starts next**
 
 1. **JsonSettingsStore.kt (SK01):** `saveToJson` now writes `settings.json.tmp` then RENAMES over the target (POSIX-atomic within dir; copy+delete fallback for this device family's rename quirks, with the quarantine covering the fallback's non-atomic window). Corrupt-parse path QUARANTINES to `settings.json.corrupt` (single latest copy) BEFORE falling back to defaults — the old path silently and irrecoverably overwrote the corrupt file, resetting ALL settings.
 2. **SK02 surfacing:** `saveToJson()`/`flush()` return typed Boolean (importJson's model); `writeFailed` + `lastLoadQuarantined` are Compose-observable states so UI can react to disk failure instead of assuming success. Blanket `catch (_: Exception) {}` swallows REPLACED with logged catches (real error text) in `FeatureToggleStore.set` and `KeyBindingRegistry.setBinding/resetBinding/resetAllBindings`.
