@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | Recovery group audited (GROUP-RECOVERY.md, RG01-RG12; RG01 crash telemetry VERIFIED dead via backend CrashLog read = 0 records); 16 groups done; next: 18a Viewers & Binary Inspection; CI pending, docs-only |
+| Latest commit | Recovery rulings applied: RG03/RG04 top tier (shared-fix with EX05 confirmed), RG01 crash-cause ground-truth standing note, RG05 rebuild-cycle loss flag; 16 groups done; next: 18a Viewers & Binary Inspection; CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4647,3 +4647,13 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 5. **RG05 (MEDIUM-HIGH — highest-impact MEDIUM in the audit for THIS device):** the uninstall-survival backup is MANUAL-ONLY (one Settings button, never prompted) and prefs-backup covers only 3 XMLs + memory.json — settings, keybindings, SSH profiles, session state, scheduler tasks are all excluded. This user's device forces an uninstall on every CI rebuild.
 6. **MASTER-GAPS.md:** Recovery section added (18 sections); RG02 linked to TB03, RG03 to EX05/IG01/RG07, RG06 to IG03/SK01.
 7. **CI:** docs-only commit; no code change.
+
+---
+
+**2026-09-24 — [RECOVERY] OWNER RULINGS 2: RG03/RG04 to top tier with SHARED-FIX confirmed against EX05; RG01 standing note (crash-cause ground truth unverified audit-wide); RG05 explicit current-loss flag (docs-only)**
+
+1. **RG03/RG04 join the top tier** alongside EX04/EX05/EX07/IG02 — tar-entry path traversal on cloud restore is the same zip-slip family as EX05 (different archive format + entry point).
+2. **SHARED-FIX CONFIRMED in MASTER-GAPS.md:** EX05 (Explorer zip, `startsWith` boundary defect) and RG03/RG04 (cloud tar, raw `File(destDir, name)`) share ONE root cause in two dialects → one canonical-path containment utility at FOUR call sites: Explorer zip extraction, CloudBackupManager tar extraction (move to commons-compress), BackupManager rootfs restore sink (RG07), and New File/Folder/Rename (EX04).
+3. **RG01 STANDING NOTE:** zero crash records for months → ANY earlier "confirmed device crash cause" claim anywhere in this audit or prior work (signal-31, proot extraction, Compose concurrent-change, IME/emoji) is UNVERIFIED until RG01 is fixed and a real crash produces a record. The audit has been missing ground truth on crash causes the whole time.
+4. **RG05 explicit flag:** the user's CI workflow forces a full uninstall on every rebuild — editor settings, keybindings (JsonSettingsStore), SSH profiles, session state, and scheduler tasks may be lost on EVERY rebuild cycle (none in the prefs-backup list), not hypothetically.
+5. **CI:** docs-only commit; no code change.
