@@ -4710,3 +4710,13 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 2. **MASTER-GAPS backfill:** TM01-TM06 + IM01-IM03 rows added so the master ledger is the single source of truth; Editor G-series (pre-standard format) noted — G01 top tier, G02-G10 per GROUP-EDITOR.md.
 3. **Tally (249 total):** 14 top tier (+TP02 pending ruling), 54 HIGH, 114 MEDIUM (incl. 6 med±), 62 LOW, 4 structural prerequisites (XG01-XG04).
 4. **Fix plan PROPOSED IN CHAT ONLY** — phases: P0 SK01/SK02 write-safety; P1 data-loss chain G01+TB03+TB01+SG02+CH01(+CH05 together); P2 security set via containment utility (2a zip/tar sites, 2b host-facing, 2c credential/consent SG04/SG16/IG02); P3 systemic (S01 typed results w/ TP03 first, PLAN A store, polling→flows, delete-duplicates); P4 remaining by group HIGH→LOW; P5 device-check verification. Awaiting owner approval before any commit of FIX-PLAN.md or code.
+
+---
+
+**2026-09-24 — [FORWARD COVERAGE CHECK] FORWARD-COVERAGE-CHECK.md created (docs-only): reverse pass from the VS Code clone — 111 contrib dirs + services cross-checked against the audit corpus; 16 flags F01-F16, NOTHING ranked or fixed (decision menu for owner)**
+
+1. **Why:** the 18 groups were app-first; VS Code features with zero app trace could never be prompted for comparison. This is the audit-of-the-audit, the forward analog of COVERAGE-CHECK.md.
+2. **Major flags (B1):** F01 Notebooks (zero mentions — largest surfaced gap), F02 remote-development model, F03 Workspace Trust (relevant: VS Code analog of our FlowGate story), F04 Profiles, F05 Accessibility-as-area, F06 Emmet, F07 Speech/voice (already in the 2026-09-13 integration-map queue), F08 Localization, F09 Tree-sitter (the TM addendum compared only the LEGACY vscode-textmate path; VS Code's newer token backend was never mentioned).
+3. **Minor flags (B2):** Edit Sessions, Untitled/scratch model, code-review comments, 3-way merge editor, update/relauncher/splash, chrome misc (zen/watermark/carousel/surveys/share/customEditor/opener), palette-full-range (already covered by the action-registry gap).
+4. **Ruled elsewhere (B3):** sash/movable views/extension host/multi-window = FINAL-REVIEW DO-NOT-BUILD (2026-09-15); enterprise items N/A.
+5. Fix plan phases (P0-P5) unchanged — awaiting owner ruling on B1 before deciding whether any flag needs its own audit pass first.
