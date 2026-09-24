@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | Recovery rulings applied: RG03/RG04 top tier (shared-fix with EX05 confirmed), RG01 crash-cause ground-truth standing note, RG05 rebuild-cycle loss flag; 16 groups done; next: 18a Viewers & Binary Inspection; CI pending, docs-only |
+| Latest commit | 18a Viewers & Binary Inspection audited (GROUP-VIEWERS.md, VG01-VG12; VG01 wildcard-bind LAN exposure, VG03/VG04 AXML OOM); 17 groups done; next: 18b App Shell & Onboarding; CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4657,3 +4657,15 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 3. **RG01 STANDING NOTE:** zero crash records for months → ANY earlier "confirmed device crash cause" claim anywhere in this audit or prior work (signal-31, proot extraction, Compose concurrent-change, IME/emoji) is UNVERIFIED until RG01 is fixed and a real crash produces a record. The audit has been missing ground truth on crash causes the whole time.
 4. **RG05 explicit flag:** the user's CI workflow forces a full uninstall on every rebuild — editor settings, keybindings (JsonSettingsStore), SSH profiles, session state, and scheduler tasks may be lost on EVERY rebuild cycle (none in the prefs-backup list), not hypothetically.
 5. **CI:** docs-only commit; no code change.
+
+---
+
+**2026-09-24 — [18a VIEWERS] GROUP-VIEWERS.md CREATED: live-preview server binds ALL interfaces contradicting its own localhost-only doc, AXML decoders OOM on malformed APKs, four uncapped whole-file reads (docs-only)**
+
+1. **Group 18a audited** (~9.4k lines, EX05-depth scrutiny per owner ruling): 22 features (BV01-BV22), 10 edges, 8 VS Code comparisons (anchors verified in clone: binaryEditor.ts:25, markdownDocumentRenderer.ts, OverlayWebview:28, outputServices.ts:36; hexEditor/mediaPreview/simpleBrowser confirmed ABSENT from core), 36 pending device checks (BI01-BI36), 12 gaps (VG01-VG12).
+2. **VG01 (HIGH, candidate for elevation):** `ServerSocket(5500)` with no bind address = 0.0.0.0, while the class doc says "Binds to localhost only" — on shared Wi-Fi the entire active project is readable by any network device; COMPOUND: the in-app browser can fetch localhost:5500 from a malicious page in the app's own process. One-line fix (explicit 127.0.0.1 bind).
+3. **VG03/VG04 (HIGH, EX05-depth crash class):** BOTH AXML decoders allocate from file-controlled header fields before bounds validation (IntArray(stringCount), CharArray(len)) → OutOfMemoryError escapes the Exception catch → hard crash from opening a malformed downloaded APK; the APK analyzer additionally carries a DUPLICATE inline decoder whose manifest readBytes() has no cap. Delete the duplicate (IG06 ruling class).
+4. **VG05 (systemic):** Smali/Disassembly/Network/AndroidRuntime viewers readBytes() uncapped while Elf (128MB) and Dex (64MB) cap the same formats — one shared capped-read helper closes all.
+5. **VG02:** LivePreviewServer's traversal guard is the THIRD independent startsWith-without-separator implementation found — 5th call site for the EX05/RG03 shared containment utility.
+6. **Strengths recorded:** windowed readers (Hex/Inspector/Strings/Diff/AiModel), system codecs for PDF/media, basename-contained archive extract with typed result.
+7. **CI:** docs-only commit; no code change.
