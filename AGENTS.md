@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | Extensions group audited (GROUP-EXTENSIONS.md, XG01-XG16 + recommendation); Terminal doc verified complete; CI pending, docs-only |
+| Latest commit | Performance group audited (GROUP-PERFORMANCE.md, PG01-PG14 measure-first); Audit groups now complete through Performance; CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4579,3 +4579,14 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 5. **GROUP-TERMINAL.md verified COMPLETE on the user's question:** 20 features (TF01-TF20), 10 edges, 8 comparisons, 36 checks (TT01-TT36; TT01/TT02 EXECUTED + TP01 post-fix probe), 16 gaps (TP01-TP16), no placeholders — written in commit 1697be9 and updated since for TP01's resolution; nothing to finish.
 6. **MASTER-GAPS.md:** Extensions / Packages section added (intro + XG01-XG16 table + strengths/cross-links/recommendation note).
 7. **CI:** docs-only commit; no code change.
+
+---
+
+**2026-09-24 23:30 WAT — [PERFORMANCE] GROUP-PERFORMANCE.md CREATED: mechanisms audit, VS Code perf architecture comparison, measure-first gap ranking (docs-only)**
+
+1. **Performance group audited** in the standard format: 20 features (PF01-PF20: PerfProbe instrumentation incl. STALL + idle quieting, MemoryMonitor + status-bar 5 s poll, LSP per-server RSS watchdog 10 s, startup crash-log main-thread fix with ANR history, gutter virtualization OOM lesson, syntax precompute offload ≥200 lines, C-5 O(log n) offsets, debounce family 300/150/800 ms, execOnce MAX_LINES + 64 KB drain, notification burst protection, image-attach 5 MB streamed cap), 10 cross-group edges, 8 VS Code comparisons (performance marks, PieceTree buffer, ViewLayerRenderer/FastDomNode, runWhenIdle, ripgrep out-of-process search, extensionHostProfiler, xterm renderers, ListView virtualization), 36 device checks (PM01-PM36, none run), 14 gaps (PG01-PG14). All citations revalidated (A/T/V bounds clean).
+2. **Ranking (measure-first rule, per the approved 2026-09-06 PERF-PROBE pass):** no gap joins the top tier; every HIGH-in-group gap is bounded by a PM measurement row first. PG01 (blink-tick whole-scope recomposition + 70/56 LaunchedEffect surface) and PG02 (per-editor-instance 2 s LSP recovery poll, should be a StateFlow) are HIGH in group; PG03 (20 s snapshot loop = full walkTopDown stat-storm before filter, no change gate) MEDIUM-HIGH; PG04/PG05/PG06 are other groups' costs (TP08, McpPanel 5 s triple-I/O poll, CH13) ranked here.
+3. **One-pattern note:** PG02/PG04/PG05 share one fix shape — fixed-cadence polling where an event/flow subscription + change gate would do; a single design pass covers all three.
+4. **Cross-group inputs consumed:** TP08, CH13, XG11/XG14, SG07, DG05, TB02 ranked not re-audited; C-PG07 adds the `truncated` flag requirement to TP03's typed ProotResult design.
+5. **MASTER-GAPS.md:** Performance section added (intro + PG01-PG14 table + strengths/pattern/cross-links note).
+6. **CI:** docs-only commit; no code change.
