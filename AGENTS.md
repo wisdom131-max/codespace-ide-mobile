@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | Settings group audited (GROUP-SETTINGS.md, SK01-SK14); 13 groups done; next: Testing; CI pending, docs-only |
+| Latest commit | Testing group audited (GROUP-TESTING.md, TG01-TG10; TG01 lens execution log-only dead); 14 groups done; next: Integration; CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4614,3 +4614,13 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 ---
 
 **2026-09-24 — [SETTINGS] OWNER PRIORITY RULING applied in MASTER-GAPS.md (docs-only): SK01/SK02 move EARLY relative to the rest of the S01 family.** Rationale: any fix that persists its own config/preferences (including a future S01 typed-result design itself) writes through/alongside this settings store and stays exposed to SK01's non-atomic-write corruption; settings write-safety must land FIRST so every other fix's persistence is trustworthy.
+
+---
+
+**2026-09-24 — [TESTING] GROUP-TESTING.md CREATED: smallest group audited, TG01 lens execution is log-only dead (docs-only)**
+
+1. **Testing group audited**: 10 features (TS01-TS10: TestLensDetector 5-family line-scan, synthetic run+debug lens JSON, 1200ms-debounce render-merge with two-level stale checks, click interception, log-only "execution", per-language command templates, gradle task row, jest-seeded templates, E18 rendering boundary, no testing settings exist), 10 edges, 8 VS Code comparisons (testing view container, mainThreadTestCollection, testProfileService, testResultService, testingDecorations, testingOutputPeek, testCoverageService, testing configuration), 24 device checks (TC01-TC24, none run), 10 gaps (TG01-TG10). All citations revalidated.
+2. **Headline (TG01, TOP of group):** "▶ Run Test" / "Debug Test" lenses are DECORATIVE — the click handler builds the command, writes ONE `[TestLens]` line to the Output log, and returns. No terminal, no process, no debugger; Debug is byte-identical to Run. First-wave on-device check: one tap proves it (TC08/TC09). Ranks below the data-loss/security tiers (feature-dead, not destructive) but leads the group.
+3. **Shape of the absence:** no discovery service, no results surface (no JUnit XML/pytest/jest parsing, failures past PR03's 2000-line cap never reach Problems), no test explorer, no coverage, no debug-test DAP flow, gradle-only run-all for Android projects in a multi-language IDE. These are additive-feature gaps (TG02-TG04, TG07-TG08), documented as the requirements for a real testing surface.
+4. **MASTER-GAPS.md:** Testing section added (TG01-TG10 + strengths/cross-links); TG01 noted as feature-dead below-top-tier but first-wave device check.
+5. **CI:** docs-only commit; no code change.
