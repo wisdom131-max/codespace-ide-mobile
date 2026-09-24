@@ -8,7 +8,6 @@ import { UsersModule } from './users/users.module';
 import { ReposModule } from './repos/repos.module';
 import { AiModule } from './ai/ai.module';
 import { SyncModule } from './sync/sync.module';
-import { TerminalModule } from './terminal/terminal.module';
 import { ProjectsModule } from './projects/projects.module';
 import { ConnectorsModule } from './connectors/connectors.module';
 import { HealthController } from './common/health.controller';
@@ -23,7 +22,6 @@ import { HealthController } from './common/health.controller';
     ReposModule,
     AiModule,
     SyncModule,
-    TerminalModule,
     ProjectsModule,
     ConnectorsModule,
   ],
