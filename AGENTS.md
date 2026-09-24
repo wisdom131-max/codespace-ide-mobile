@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | 18a rulings applied: VG01 TOP SECURITY TIER (no device-check gate), cross-cutting containment item created (9 mandatory call sites, ProotInstaller.kt:107 = reference form); next: 18b App Shell & Onboarding; CI pending, docs-only |
+| Latest commit | 18b App Shell & Onboarding audited (GROUP-APPSHELL.md, OG01-OG06; OG01 replace-all sync drops local projects; containment item now 10 call sites); 18 groups done; next: TextMate addendum (Editor), ImageGen addendum (Chat), then MASTER-CONNECTIONS.md; CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4677,3 +4677,16 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 1. **VG01 → top tier NOW:** owner ruling — `ServerSocket(5500)` with no bound address is unconditionally all-interfaces in Java; ranking needs documentation, not empirical confirmation. BI06 stays as the confirming check. Exposure reasoning recorded: Wi-Fi proximity alone suffices, or none at all via the in-app-browser compound path.
 2. **CROSS-CUTTING CONTAINMENT ITEM added to MASTER-GAPS.md:** all canonical-path/boundary call sites listed in ONE table — EX05 (Explorer zip :1749), EX04 (New File/Folder/Rename), RG03 (cloud tar extraction), RG04 (tar writer truncation), RG07 (rootfs restore sink), IG01 (agent-data entity store), VG02 (LivePreviewServer resolveSafeFile :329), VG02-b (LivePreviewServer getPreviewUrl :155), plus WorkspaceContextProvider.kt:281 (pattern-attached, no prior gap ID). Display-only startsWith uses (SkillsCatalog, ChatAttachPicker) noted as cosmetic, no containment authority. Reference implementation: ProotInstaller.kt:107 — the only in-tree site with the correct separator-boundary form; it becomes the shared utility's specification.
 3. **CI:** docs-only commit; no code change.
+
+---
+
+**2026-09-24 — [18b APP SHELL] GROUP-APPSHELL.md CREATED: cloud replace-all sync silently drops offline-created local projects from the index; auth stack at VS Code parity; wizard name joins containment pattern as call site #10 (docs-only)**
+
+1. **Group 18b audited** (~3.0k lines, normal depth): 18 features (AS01-AS18), 10 edges, 8 VS Code comparisons (anchors verified: gettingStarted.ts:123, authenticationService.ts:93, stateService.ts:185, storage.ts:61, welcomeOnboarding/welcomeWalkthrough/welcomeBanner/welcomeAgentSessions present), 24 pending device checks (OB01-OB24), 6 gaps (OG01-OG06).
+2. **OG01 (HIGH in group, S01 family):** HomeScreen auto-sync is cloud-authoritative REPLACE-ALL (`clear + addAll(cloud) + saveProjectsLocal(cloud)`) — an offline-created, unpushed project vanishes from list AND persisted index on the next successful sync, silently; a fresh/emptied cloud account wipes the visible list. OB06 is the key device check.
+3. **OG02:** deleteProjectFromCloud Boolean ignored — "deleted" project can resurrect via OG01's replace-all.
+4. **OG04 (containment pattern):** wizard name regex `[a-zA-Z0-9_\-. ]+` allows `..` — added as MANDATORY CALL SITE #10 in the cross-cutting containment table (ProjectWizard.kt:173,336 + ProjectTemplates.kt:43).
+5. **OG03:** template name-reuse destroys the soft-deleted predecessor's .ide-trash without warning (TB01 family).
+6. **OG06:** "access tokens kept in memory only" claimed in two docs but lastAccessToken IS persisted (EncryptedSharedPreferences — right storage, false comments; IG07/VG01 doc-vs-code family).
+7. **Strengths:** auth chain (Credential Manager → Firebase → backend JWT exchange, Keystore-backed EncryptedSharedPreferences, typed failure surface) is the strongest VS Code parity in the audit; ScaffoldResult typed; ask-once battery prompt with OEM fallbacks.
+8. **CI:** docs-only commit; no code change.
