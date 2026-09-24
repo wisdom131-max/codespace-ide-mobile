@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | Performance group audited (GROUP-PERFORMANCE.md, PG01-PG14 measure-first); Audit groups now complete through Performance; CI pending, docs-only |
+| Latest commit | Coverage self-check complete (COVERAGE-CHECK.md): ~22.9k unclaimed lines mapped to Settings/Testing/Integration/Recovery + ~13.9k orphans flagged for ruling; CI pending, docs-only |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4590,3 +4590,13 @@ RULES REMINDER: TWO-REPO (ubuntu-proot-test untouched) | NO SUB-AGENTS | changel
 4. **Cross-group inputs consumed:** TP08, CH13, XG11/XG14, SG07, DG05, TB02 ranked not re-audited; C-PG07 adds the `truncated` flag requirement to TP03's typed ProotResult design.
 5. **MASTER-GAPS.md:** Performance section added (intro + PG01-PG14 table + strengths/pattern/cross-links note).
 6. **CI:** docs-only commit; no code change.
+
+---
+
+**2026-09-24 — [COVERAGE] COVERAGE-CHECK.md CREATED: full package-vs-group cross-reference before the final four groups (docs-only)**
+
+1. **Method:** every top-level package under com/codespace/ide enumerated (21 packages, ~99.6k Kotlin lines), every file name-grepped against all 12 GROUP-*.md docs; "claimed" = feature-inventory row or explicit boundary sentence.
+2. **Result: ~22,900 lines unclaimed, in 5 clusters.** Items 1-4 of the remaining plan cover ~9k (Settings cluster 3,930: SettingsScreen non-AI parts, Theme, KeybindingSettingsPanel, editor/settings, InProjectSettingsDialog wide, PinLockScreen; Testing cluster small: TestLensDetector + test task + debug-test; Integration cluster 4,456: SSH stack, Connectors hub, AgentConnectorManager/EntityManager/Memory/Scheduler, ApiService, DownloadCenter/Toolchain/EnvironmentProfiles/BuildArtifacts, PortsScanner, ProjectServicesPanel, WorkspaceContextProvider; Recovery cluster 1,174 + boundaries: CloudBackupManager/Panel, workspace-level SessionHandoff/SessionState, LegacySnapshotPreview, CodeSpaceApplication + MainActivity startup/crash path, NotificationDrawerOverlay).
+3. **ORPHANS fitting none of the four (~13,900 lines) — flagged for owner ruling:** O1 preview/media (LivePreviewServer, PreviewPane, MarkdownPreviewRouter, MediaViewers, PdfViewer ~3k), O2 power-user binary inspection suite (PowerUserPanels/Analyzer, AxmlDecoder, 15 viewer dialogs, LogcatPanel, FileDetector, FileInfoDialog ~6.4k), O3 app shell/onboarding (HomeScreen, AuthScreen, ProjectWizard/Templates, CodeSpaceApplication, CodeSpaceApp, WorkspaceShapes, AppModule, Language.kt, ShellHistorySearchOverlay, TextExpansionSheet, ImageGen ~4k), O4 TextMate tokenization engine (editor/textmate, 9 files, 1,768 — never claimed by Editor/IntelliSense).
+4. **Recommendation:** run Settings → Testing → Integration → Recovery, then a proposed group 18 "Viewers, Preview & App Shell" for O1-O3 (shared read-only-inspection/app-shell pattern), TextMate as an Editor addendum, ImageGen as a Chat addendum; then MASTER-CONNECTIONS.md covering 18 groups.
+5. **CI:** docs-only commit; no code change.
