@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P2b SHIPPED (VG01 loopback-only bind; VG02/VG02-b/IG01 verified closed by P2a); P2a CI #2909 GREEN; TP02 = shipped, device-unconfirmed (verifies in P5); next: P2c credential/consent + TrustState after CI green; CI pending |
+| Latest commit | P2b SHIPPED + CI #2911 GREEN (commit 988b4a0 — VG01 loopback-only bind; VG02/VG02-b/IG01 verified closed by P2a); TP02 = shipped, device-unconfirmed (verifies in P5); next: P2c credential/consent + TrustState (SG04/SG16/IG02/IG15/CH03) |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4812,7 +4812,7 @@ ROADMAP (all pending items): P0 SK01/SK02 (in progress) → P1 data-loss chain G
 
 ---
 
-**2026-09-24 20:05 — [P2b SHIPPED] VG01 closed: LivePreviewServer binds LOOPBACK-ONLY; VG02/VG02-b/IG01 verified already closed by P2a's utility consumption (same scope, no re-work); own commit, revertable alone; CI pending at push**
+**2026-09-24 20:05 — [P2b SHIPPED, CI #2911 GREEN, commit 988b4a0] VG01 closed: LivePreviewServer binds LOOPBACK-ONLY; VG02/VG02-b/IG01 verified already closed by P2a's utility consumption (same scope, no re-work); own commit, revertable alone**
 
 1. **VG01 (preview/LivePreviewServer.kt:113):** `ServerSocket(PORT)` with no bound address is UNCONDITIONALLY all-interfaces (0.0.0.0) in Java — contradicting the file's own "Binds to localhost only — never exposed beyond the device" KDoc. Now `ServerSocket(PORT, 50, InetAddress.getLoopbackAddress())`: the preview stays reachable from the app's own WebViews on this device and refuses external connections outright. Log line now states the loopback-only bind.
 2. **VG02 + VG02-b (getPreviewUrl/resolveSafeFile) and IG01 (agent_data entity-name sanitization):** already consumed the CanonicalPaths utility in P2a (commit e707ccc) — getPreviewUrl canonical boundary + sibling-prefix rejection; entityDir single-segment names with typed refusal at all four CRUD paths. Listed here because the P2b scope named them; no code change needed.
