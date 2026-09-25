@@ -1909,7 +1909,8 @@ fun EditorPane(
             if (active != null) {
                 // P41-T: Generate synthetic test lenses (works even without LSP server)
                 val testLenses = withContext(Dispatchers.IO) {
-                    com.codespace.ide.editor.TestLensDetector.detectTestLenses(active.content, active.language)
+                    // F1 (TG05 v2): annotation/framework-driven detection + TestId path strings.
+                    com.codespace.ide.editor.TestLensDetector.detectTestLenses(active.content, active.language, active.path)
                 }
                 if (LspManager.isServerRunning(active.language)) {
                     // PHASE-B/B2 (2026-09-06): background-only feature — debounce raised
@@ -2788,17 +2789,22 @@ fun EditorPane(
                             // P41-T: Handle synthetic test lens commands
                             if (cmdStr == "codespace.runTest" || cmdStr == "codespace.debugTest") {
                                 val testArgs = cmd?.opt("arguments") as? org.json.JSONArray
-                                val testLine = testArgs?.optInt(0, -1) ?: -1
+                                // F1: arguments carry TestId first, line index second.
+                                val testId = testArgs?.optString(0, "") ?: ""
+                                val testLine = testArgs?.optInt(1, -1) ?: -1
                                 val filePath = active.path
                                 val lang = active.language
+                                // TG06 (F1): templates are honest commands — stderr suppression
+                                // (2>/dev/null) and the gradle "|| echo" no-op fallback are DELETED;
+                                // failures must be visible. Per-test routing lands in F2 (TG02).
                                 val testCmd = when (lang) {
-                                    com.codespace.ide.domain.Language.PYTHON -> "python3 -m pytest \"$filePath\" 2>/dev/null || python3 \"$filePath\""
-                                    com.codespace.ide.domain.Language.JAVASCRIPT, com.codespace.ide.domain.Language.TYPESCRIPT -> "npx jest \"$filePath\" 2>/dev/null || node \"$filePath\""
-                                    com.codespace.ide.domain.Language.KOTLIN, com.codespace.ide.domain.Language.JAVA -> "./gradlew test 2>/dev/null || echo 'Run via IDE build task'"
+                                    com.codespace.ide.domain.Language.PYTHON -> "python3 -m pytest \"$filePath\" || python3 \"$filePath\""
+                                    com.codespace.ide.domain.Language.JAVASCRIPT, com.codespace.ide.domain.Language.TYPESCRIPT -> "npx jest \"$filePath\" || node \"$filePath\""
+                                    com.codespace.ide.domain.Language.KOTLIN, com.codespace.ide.domain.Language.JAVA -> "./gradlew test"
                                     else -> null
                                 }
                                 if (testCmd != null) {
-                                    AppOutputLog.log("[TestLens] Running test at line ${testLine + 1}: $testCmd", "test")
+                                    AppOutputLog.log("[TestLens] ${if (testId.isNotEmpty()) testId else "line " + (testLine + 1)}: $testCmd", "test")
                                 }
                             } else if (cmdStr != null && LspManager.isServerRunning(active.language)) {
                                 kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
