@@ -2807,7 +2807,7 @@ fun EditorPane(
                                 // without executing anything.
                                 val testArgs = cmd?.opt("arguments") as? org.json.JSONArray
                                 val testId = testArgs?.optString(0, "") ?: ""
-                                val suite = cmd?.optString("title", "").contains("Run Tests")
+                                val suite = (cmd?.optString("title", "") ?: "").contains("Run Tests")
                                 val filePath = active.path
                                 val lang = active.language
                                 kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
