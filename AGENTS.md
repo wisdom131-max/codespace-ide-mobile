@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | F-TRACK CLOSED AT F5 (owner ruling 2026-09-26, docs 8cf7f57): F1-F5 shipped + TG01-TG07 closed in MASTER-GAPS; F6/JVM-debug PARKED as standalone future decision gated on Option-B spike (never Option A; supportsDebug stays honestly false for JVM). Verified tally: 60/249 closed, 189 remain. P4 GO (owner-ruled): remaining tiers by group — P4a = Problems group (PR02, PR04-PR14, split into two revertable batches) |
+| Latest commit | P4a-1 SHIPPED (ef1b1b0, CI #2946 GREEN): PR14 panel/squiggle shift lockstep + panel/badge liveness fix (remember(list) never re-keyed); PR02 RUN badge reads central store; PR05 related-info rendered; PR07 real menu filters; PR04 dead QuickFix model removed; PR10 dead ProblemsPanel.kt deleted. Tally: 66/249 closed. Next: P4a-2 (PR06, PR08, PR09, PR11, PR12, PR13) |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -5065,6 +5065,33 @@ Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — 
 - **P4:** remaining ~187 rows by group (53 of 249 closed).
 - **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1/F2 checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+## [2026-09-26 01:05 WAT] — AI Agent: Claude Sonnet 5.6 (P4a-1 SHIPPED: Problems panel/store truth — PR02, PR04, PR05, PR07, PR10, PR14; code ef1b1b0, CI #2946 GREEN, first-push clean)
+
+**[2026-09-26 — P4a-1: the Problems group, batch 1 (panel/store truth).]**
+
+- **PR14 — squiggle and panel row now move together.** DecorationStore.shiftOnEdit (the ONE existing mid-edit shift choke point) now fires a line-shift report (firstChangedLine0, lastChangedLine0, lineDelta — only when the edit adds/removes lines); CodeEditor forwards it via new `onDiagnosticsLineShift` param (rememberUpdatedState keeps the handler fresh across tab switches); EditorPane routes it to `DiagnosticManager.shiftRowsBelow`, which shifts the file's LSP/LINTER rows strictly below the changed region (canonical-path identity, P3b utility, main-thread posted). Rows inside the changed region are left for the next publish (ambiguous, honest). **Liveness bug found and fixed while shipping (PR14-adjacent):** the panel's counts/filters and the RUN badge keyed `remember()` on the constant `SnapshotStateList` object — AbstractList.equals has an identity fast-path, so the key NEVER re-keys and both surfaces were frozen at first composition. Both now use `derivedStateOf` (content-tracked; NotificationDrawerOverlay precedent); groupedByFile keys on the derived VALUE.
+- **PR02 — RUN badge reads the central store:** count of non-stale ERROR rows matching the active file (canonical identity), live via the derived read. Deleted the private 3 s LintChecker disk poll.
+- **PR05 — relatedInformation finally renders:** dim tappable "↳ message file:line" lines under each row (no-location entries render as plain text); jumps through the P1-normalized path.
+- **PR07 — PROBLEMS menu commands are REAL:** "Focus Search" (opens panel + focuses search field; unattached-FocusRequester guarded), "Show Errors Only" / new "Show All Problems" drive the SAME filter state the panel chips use via a one-shot consumed signal (CW5 preset precedent). Deleted the placebo notifications.
+- **PR04 — QuickFix model REMOVED** (dead: never populated, never rendered). Real quick fixes = future feature, honestly absent.
+- **PR10 — ui/panes/ProblemsPanel.kt DELETED** (399 dead lines, zero callers); stale GradleErrorParser comment updated to point at DiagnosticManager.
+
+**REMOVED (this batch):** 3 s RUN-badge disk poll + its LintChecker re-lint; placebo "Filter"/"Show Errors Only" notifications + "Filter" menu label; quickFixes field + QuickFix data class; dead ProblemsPanel.kt; the never-rekeying `remember(list)` pattern in panel + badge.
+
+### P5 device checks (per gap ID)
+- **PR14 (owner's acceptance):** open a file with an LSP error → squiggle in editor AND matching row in Problems, same source, no disagreement. Then with the panel open, insert lines ABOVE the error without saving → row's line number shifts WITH the squiggle (PT35). Also: introduce a new error while the panel is open → it appears live (derivedStateOf liveness).
+- **PR02:** with an LSP error present, compare RUN badge / Explorer badge / panel header counts (PT19) — now all read one store; badge updates immediately on publish, no 3 s lag (PT20).
+- **PR07:** bottom-tab ⋯ menu → "Show Errors Only" filters for real; "Show All Problems" restores; "Focus Search" focuses the box; reopening the panel does NOT re-apply a stale command.
+- **PR05:** open a Kotlin file with an unused-import chain (duplicate import) → related "↳ first usage" lines appear under the row; tapping one jumps to that file:line.
+- **PR04/PR10:** build opens fine (model compile); Problems tab unchanged (dead panel gone, no visual difference).
+
+### Roadmap
+- **P4a-2 (next):** PR06 (matcher ingestion on non-compiler output), PR08 (empty-path build rows), PR09 (preset bare-filename substring), PR11 (triple lint cost), PR12 (task catalogue drift), PR13 (durable run state).
+- **P4:** 189 rows by group after Problems (batch 1 of 2 done): DG → SR → LS → G(Editor) → TB → CH → SG → rest by tier.
+- **P5:** full device round — TP02 batch checks, P2a-e checks, F1-F5 checks, P4 checks as each batch ships.
+
+---
 
 ## [2026-09-26 00:20 WAT] — AI Agent: Claude Sonnet 5.6 (F-TRACK CLOSED AT F5 — owner ruling; F6 parked; P4 GO; docs 8cf7f57)
 

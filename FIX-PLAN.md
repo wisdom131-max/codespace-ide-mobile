@@ -17,7 +17,7 @@ push and revertable as one commit:**
 | P3c — Polling → flows | fdb660d | #2924 | PG02, PG04, TP08, PG05 |
 | P3d — Delete-the-duplicates | d6669fc | #2926 | VG04, VG10, IG06, IG03, IG04 |
 
-**Tally (verified scan of MASTER-GAPS.md, 249 gap rows): 60 closed, 189 remain for P4.**
+**Tally (verified scan of MASTER-GAPS.md, 249 gap rows): 66 closed, 183 remain for P4 (P4a-1 shipped 2026-09-26, ef1b1b0, CI #2946: PR02/PR04/PR05/PR07/PR10/PR14).**
 TP01 resolved pre-plan (kept for audit trail); TP02 hotfix shipped 9d4923b, device-verification
 batched into P5. PR14 PANEL side (Problems rows from the store) remains open for P4.
 
