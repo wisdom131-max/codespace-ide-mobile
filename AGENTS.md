@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P3d SHIPPED + CI #2926 GREEN (code d6669fc — delete-the-duplicates COMPLETE, P-series P0→P3d all shipped: 52 of 249 audited gap rows closed); next: P4 (remaining ~190 by group) or F-TRACK F1, awaiting owner go |
+| Latest commit | P3e (DG04 pulled forward) SHIPPED + CI #2928 GREEN (code a6efe97 — fabricated debug session deleted: TerminalDebugProvider + resolveAdapter last-resort removed, honest no-debugger reporting; 53 of 249 rows closed); next: F1 (TestLensDetector v2) IN PROGRESS |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4988,4 +4988,26 @@ Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — 
 - **P4:** remaining ~190 rows by group, each batch revertable. Includes PR14 PANEL side (Problems rows from the store), OG01 project re-registration/recovery, TB02 ShellState dual-writer race (needs repeated rapid-action device testing).
 - **F-TRACK (owner ruling: BUILD full testing surface TG01-TG07, series F1-F6):** DRAFTED, awaiting owner approval to start — now unblocked, P-series complete.
 - **P5:** full device verification round — batched TP02 verification lands here; includes P2a zip-slip/traversal recipes, P2b LAN loopback test, P2c trust/consent checks, P3a/P3b/P3c checks, and the P3d checks above.
+- **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+## [2026-09-25 12:10 WAT] — AI Agent: Claude Sonnet 5.6 (P3e: DG04 pulled forward — fabricated debug session deleted, CI #2928 GREEN)
+
+**2026-09-25 — [P3e SHIPPED, CI #2928 GREEN, code commit a6efe97, first-push clean] DG04 (top-tier-adjacent, false-session defect) pulled forward from P4's batch as its own small phase ahead of F1, per owner ruling: it fabricated a live status a person can burn real debugging time trusting — not a missing feature, so it does not wait behind the F-TRACK. Revertable as a6efe97.**
+
+### What shipped (code a6efe97)
+- **TerminalDebugProvider DELETED** (debug/UniversalDebugManager.kt): its launch() returned true having executed nothing — one "Ready to run" console line while the session went RUNNING with live-looking pause/step controls over zero real execution. It fabricated sessions for Kotlin/Go/Rust/C/C++/Java (no real adapter exists for any of them), and on the legacy path it also SHADOWED the real Python/NodeJs/Shell/Php providers because it was registered first and claimed their languages.
+- **resolveAdapter's last resort DELETED**: the old fallback wrapped providers.first() in a LegacyDebugAdapter for languages nothing supports — a second fabrication site (after the deletion it would have wrapped the Python provider for a Kotlin file: worse). resolveAdapter now returns null, fail closed; its single caller (startDebug) already handles null.
+- **ExplorerPane debug button honest on null**: previously started nothing silently; now appends "[debug] No debugger available for <language> — use Run instead." to the debug console. PSS call sites already reported null honestly ("No debugger available" notification + console line) — unchanged.
+- **Ruling trail (real-launch alternative rejected for now):** real debug for Kotlin (JDWP/jdb + classpath), C/C++ (gdb/lldb in the rootfs + a compile step), Go (delve) are multi-day toolchain projects — feature work for the F5 adapter-extension slot or a future proposal, not a defect fix. This is the honest-placebo-removal shape, same family as IG04/IG03.
+- **What was removed this phase:** the TerminalDebugProvider class (~50 lines), the resolveAdapter last-resort fallback, the silent-null ExplorerPane branch. No file F1 touches (F1 = editor/TestLensDetector.kt + EditorPane lens wiring; this commit = debug/UniversalDebugManager.kt + ExplorerPane debug button) — verified isolated before starting.
+- **F1 overlap check (owner question):** NONE. F-TRACK F1 touches TestLensDetector.kt + EditorPane lens lines; F5 later extends DAP adapter launch args (additive, "existing debug flows untouched" per F-TRACK-PLAN). DG04's files are disjoint from both.
+
+### P5 device checks (add to the round)
+- **DG04:** open a Kotlin or C or Go file, set a breakpoint, tap Debug → NO session starts; console shows "[debug] No debugger available for <language> — use Run instead." (ExplorerPane) or "No debugger available" toast (PSS Run/Debug); the debug controls do NOT appear (no fake RUNNING state with pause/step buttons). Python file → real pdb/DAP session as before; JS/TS → Node session as before; shell file → real bash -x session; HTML/JSON → the existing non-debuggable alternatives message. Verify the multi-session switcher lists no session after a refused launch.
+
+### ROADMAP (all pending)
+- **F1 — Detector v2 (TG05) + command templates (TG06) — IN PROGRESS (next):** annotation/framework-driven JVM lens detection (@Test family; delete the class-name heuristic), JS/TS test/it/describe, pytest unchanged, strip 2>/dev/null + gradle || echo fallback, TestId path strings. ~250 lines, pure functions.
+- **F-TRACK remaining:** F2 Honest Run (TG01+TG02), F3 results (TG03), F4 discovery/explorer (TG04), F5 debug-lens routing + adapter args, F6 decision.
+- **P4:** remaining ~187 rows by group (now 53 closed of 249: +1 with DG04; TG01-TG07 remain F-TRACK).
+- **P5:** full device verification round — TP02 batched device test, P2a/b/c checks, P3a-d checks, P3e DG04 check above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
