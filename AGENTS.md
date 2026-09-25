@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | F3 SHIPPED + CI #2937 GREEN (code bab66ca + fixes f5edd39/74991d3 — results: 7-state TestResultStore keyed by TestId, pytest/jest/gradle report parsers, Problems TEST-source bridge with file:line jumps, gutter pass/fail glyphs; exit-code-only inference replaced by parsed per-test truth); next: F4 discovery/explorer (TG04), awaiting owner go |
+| Latest commit | F4 SHIPPED + CI #2940 GREEN (code 983c481 incl. d910165 — Testing pane: project-wide discovery via F1 detector as shared core, flat TestStore keyed by TestId, tree projection with live F3 states, capability-gated per-row Run, header Run All / Run Failed / Stop sequential batch; P41-P fake TestExplorerPanel + dead Run All/Filter menu labels DELETED); next: F5 debug-lens routing + adapter args (TG07p1), awaiting owner go |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -5065,6 +5065,40 @@ Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — 
 - **P4:** remaining ~187 rows by group (53 of 249 closed).
 - **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1/F2 checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+## [2026-09-25 14:35 WAT] — AI Agent: Claude Sonnet 5.6 (F4 SHIPPED: discovery/explorer — Testing pane, flat TestStore, tree projection, batch runner, CI #2940 GREEN)
+
+**2026-09-25 — [F4 SHIPPED, CI #2940 GREEN, code d910165 + fix 983c481 (return@for is not a valid Kotlin label in a plain for loop)] F-TRACK sub-phase 4: TG04 (discovery & explorer). One red, self-caught from CI logs. Revertable as d910165+983c481.**
+
+### What shipped (code d910165 + 983c481)
+- **testing/TestStore.kt (new):** flat discovered-test store keyed by F1 TestId (VS Code testExplorerView shape — ONE flat map, the tree is a PROJECTION over TestId prefixes, no nested object model). DiscoveredTest {testId, filePath, lineIndex, suite, language}; replaceFile/removeFile swap one file's items atomically; TestIds match the F1 lenses and F3 results exactly, so pane rows, gutter glyphs and Problems rows stay consistent.
+- **testing/TestDiscoveryService.kt (new):** project-wide scan reusing the F1 TestLensDetector as the shared core (the pane's tree shows EXACTLY what the editor lenses would run, same rules, same TestId strings). Candidates: JVM under src/test or Test/Tests-suffixed, Python test_*.py / *_test.py, JS/TS *.test.* / *.spec.* / __tests__, Dart *_test.dart / test/. Excluded dirs pruned from the walk itself (onEnter — node_modules/ and build/ are never traversed); files over 1 MB and unreadable files skipped honestly; a fresh scan replaces the store whole so a project switch never leaves the old project's tree visible.
+- **testing/TestRunManager.kt (batch runner added):** runBatch runs targets SEQUENTIALLY through runTest — one runner at a time, progress visible live via the F3 result store (RUNNING recorded per test). Stops on caller cancel (pane Stop button), sticky CANCELLED (PR01 pattern), or exhaustion. Individual UNTRUSTED/UNSUPPORTED results are recorded and the batch continues — one unreachable file must not hide the others.
+- **ui/panes/TestingPane.kt (new, BottomTab.TESTS):** header = Refresh / Run All / Run Failed (count) / Stop, counts summary with failed total; tree = file rows (rollup glyph + test count) then per-file test/suite rows sorted by line, indented by TestId chain depth; suite rows collapse their descendants; per-row inline Run gated by the capability bitset (supportsRun — a row never promises a run it cannot execute; Debug joins in F5 when supportsDebug flips true); row tap opens the file at the test line (1-based, through the P1-normalized onJumpToSourceWithPath); live states straight from the F3 store (RUNNING blue, PASSED check, FAILED/ERRORED red, retired dimmed); Run Failed re-runs ONLY live FAILED/ERRORED (non-retired) results intersected with current discovery — never a full re-run; empty and scanning states honest. UI rule kept: rounded 8-10dp surfaces, 12/10dp padding.
+
+### What I removed (F4)
+- **PowerUserPanels.kt — TestExplorerPanel + TestFileInfo + discoverTestFiles (128 lines) DELETED:** the P41-P file-list "explorer" showed no per-test granularity and its Run button ONLY called onActiveBottomTabChange(TERMINAL) without executing anything — a decorative control (DG04 shape). Framework labels were filename-regex guesses (incl. "Go Test"/"Rust Test" frameworks with no runner wired anywhere).
+- **ProjectShellScreen TESTS overflow menu — "Run All" and "Filter" labels DELETED:** never wired (no handlePanelMenuAction branches); the "Refresh" label string-collided with the Toolchain branch and would have run a toolchain scan. All Testing actions now live as real buttons in the pane header; the TESTS menu is empty.
+
+### CI
+- #2939 red: `return@for` — "Label must be named" / "Expecting '(' to open a loop range" (TestDiscoveryService.kt:61). Plain Kotlin for loops are not valid return@ label targets; replaced with a null-skip guard (oversized file → null → continue). New pitfall class logged.
+- #2940 GREEN on 983c481. APK artifact: codespace-ide-arm64-v8a.
+
+### P5 device checks (owner)
+- Multi-file/multi-language tree: open a project with JVM + Python + JS/TS tests across several files → Testing tab shows file rows grouped per file with correct per-test counts, chain indentation for @Nested/describe suites, and the same leaf names the editor lenses show.
+- Per-row Run: tap a leaf Run → Output "test" channel streams that single test; the row goes blue RUNNING then check/cross; the gutter glyph on the same line agrees.
+- Run All: runs every leaf sequentially (Stop kills the current runner and ends the batch honestly — CANCELLED sticky on the interrupted test only).
+- Run Failed: after a mixed pass/fail run, Run Failed re-runs ONLY the failed rows (watch the Output channel — no passing test re-executes, no suite re-runs).
+- Discovery honesty: a file with tests NOT matching candidate patterns (e.g. tests/test_helper.py) is absent from the tree; switching projects clears the previous tree.
+
+### Roadmap
+- **F5 — Debug Test (TG07 part 1):** PythonDAPAdapter module+args launch variant; NodeDAPAdapter jest --inspect-brk attach; flip supportsDebug + route lens/tree Debug through UniversalDebugManager. Owner go required.
+- **F6 — Debug Test JVM (TG07 part 2):** JDWP attach adapter decision after P5 validates F5.
+- **P4:** remaining ~187 rows by group (53 of 249 closed).
+- **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1-F4 checks above.
+- **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+---
 
 ## [2026-09-25 14:05 WAT] — AI Agent: Claude Sonnet 5.6 (F3 SHIPPED: results — parsers, 7-state store, Problems bridge, gutter glyphs, CI #2937 GREEN)
 
