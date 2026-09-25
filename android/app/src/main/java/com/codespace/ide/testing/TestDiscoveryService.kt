@@ -58,12 +58,14 @@ object TestDiscoveryService {
             // Honest read: an unreadable file contributes no tests, never
             // fabricated ones.
             val content = try {
-                if (file.length() > MAX_SCAN_BYTES) return@for
-                file.readText()
+                // Oversized files are skipped entirely (never fed to the
+                // lens scanner on-device) — null means "skip to the next".
+                if (file.length() > MAX_SCAN_BYTES) null else file.readText()
             } catch (_: Exception) {
                 TestStore.removeFile(file.absolutePath)
                 continue
             }
+            if (content == null) continue
             val language = Language.fromPath(file.absolutePath)
             if (!TestRunManager.supportsRun(language)) {
                 TestStore.removeFile(file.absolutePath)
