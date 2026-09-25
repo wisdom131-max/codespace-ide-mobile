@@ -139,6 +139,17 @@ internal fun ExtensionsPanel() {
     var isSearching     by remember { mutableStateOf(false) }
 
     // ── apt runner ────────────────────────────────────────────────────────────
+    // ── load installed via dpkg ───────────────────────────────────────────────
+    fun loadInstalled() {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val out = ProotInstaller.execOnce(context, "dpkg --list 2>/dev/null | awk '/^ii/{print \$2}'")
+                val pkgs = out.lines().filter { it.isNotBlank() }.toSet()
+                withContext(Dispatchers.Main) { installedPkgs = pkgs }
+            } catch (_: Exception) {}
+        }
+    }
+
     fun runPkg(pkg: String, action: String) {
         if (activeOperation?.done == false) return
         val op = PkgOperation(pkg, action)
@@ -188,16 +199,6 @@ internal fun ExtensionsPanel() {
     // ── upgrade-all ───────────────────────────────────────────────────────────
     fun upgradeAll() { runPkg("(all)", "upgrade-all") }
 
-    // ── load installed via dpkg ───────────────────────────────────────────────
-    fun loadInstalled() {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val out = ProotInstaller.execOnce(context, "dpkg --list 2>/dev/null | awk '/^ii/{print \$2}'")
-                val pkgs = out.lines().filter { it.isNotBlank() }.toSet()
-                withContext(Dispatchers.Main) { installedPkgs = pkgs }
-            } catch (_: Exception) {}
-        }
-    }
 
     // ── apt-cache search ──────────────────────────────────────────────────────
     fun doSearch(q: String) {

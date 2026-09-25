@@ -239,7 +239,10 @@ class GitService(private val context: Context) {
             args,
             workdir,
             timeoutSeconds = 120,
-            token = token,
+            // SG05: caller-supplied token wins (URL may embed its own — SG16 path);
+            // otherwise fall back to the stored GitHub token so CloneDialog
+            // private clones get auth injection.
+            token = token ?: this.token,
         )
     }
 
