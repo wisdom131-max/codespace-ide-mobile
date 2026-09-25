@@ -290,16 +290,39 @@ class PythonDAPAdapter : DebugAdapter {
 
         // 6. Launch (BEFORE setBreakpoints — debugpy needs the debuggee running
         // before it can accept breakpoint configuration)
-        val launchArgs = JSONObject().apply {
-            put("request", "launch")
-            put("type", "python")
-            put("name", "Debug Python")
-            put("program", guestPath)
-            put("python", "python3")  // tell adapter which interpreter to use in proot
-            put("stopOnEntry", false)
-            put("justMyCode", false)
-            put("noDebug", false)
-            put("console", "internalConsole")
+        // F5 (TG07p1): a test-debug session carries a TestDebugSpec — launch
+        // the RUNNER as a module with args (debugpy launching pytest) instead
+        // of "program": the debuggee is pytest running exactly the tapped test.
+        // Capture once — a class property cannot be smart-cast after the null
+        // check (documented pitfall class: delegated/custom-getter properties).
+        val debugSpec = session.testDebug
+        val launchArgs = if (debugSpec != null) {
+            val spec = debugSpec
+            JSONObject().apply {
+                put("request", "launch")
+                put("type", "python")
+                put("name", "Debug Test (" + spec.runner + ")")
+                put("module", spec.runner)
+                put("args", JSONArray(spec.guestArgs))
+                if (spec.guestWorkdir != null) put("cwd", spec.guestWorkdir)
+                put("python", "python3")
+                put("stopOnEntry", false)
+                put("justMyCode", false)
+                put("noDebug", false)
+                put("console", "internalConsole")
+            }
+        } else {
+            JSONObject().apply {
+                put("request", "launch")
+                put("type", "python")
+                put("name", "Debug Python")
+                put("program", guestPath)
+                put("python", "python3")  // tell adapter which interpreter to use in proot
+                put("stopOnEntry", false)
+                put("justMyCode", false)
+                put("noDebug", false)
+                put("console", "internalConsole")
+            }
         }
         Log.d(TAG, "Sending DAP launch...")
         dapClient.sendRequest("launch", launchArgs)

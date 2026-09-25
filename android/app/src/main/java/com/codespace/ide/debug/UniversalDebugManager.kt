@@ -28,6 +28,24 @@ import java.util.concurrent.atomic.AtomicInteger
  * Debug Button -> UniversalDebugManager -> Provider Selection -> Launch Correct Debug Provider
  */
 
+/**
+ * F5 (F-TRACK TG07p1): per-session test-debug spec — a debug launch for ONE
+ * test (or suite). Adapters read it from the session and build their test
+ * launch variant: PythonDAPAdapter switches from "program" to module+args
+ * (debugpy launching pytest), NodeDAPAdapter spawns the runner under
+ * node --inspect-brk and attaches to it.
+ */
+data class TestDebugSpec(
+    /** Runner module/binary: "pytest" or "jest". */
+    val runner: String,
+    /** Runner arguments in GUEST terms (guest file paths, -t names). */
+    val guestArgs: List<String>,
+    /** Runner working directory in GUEST terms (project root). */
+    val guestWorkdir: String?,
+    /** Same working directory in HOST terms (for honest pre-flight checks). */
+    val hostWorkdir: String?,
+)
+
 /** A debug session — one active debugging instance. */
 data class DebugSession(
     val id: String,
@@ -36,6 +54,8 @@ data class DebugSession(
     val providerId: String,
     var state: DebugState = DebugState.IDLE,
     var pid: Int? = null,
+    /** F5: non-null when this session debugs a single test via its runner. */
+    var testDebug: TestDebugSpec? = null,
 )
 
 enum class DebugState {
@@ -361,6 +381,7 @@ object UniversalDebugManager {
         filePath: String,
         projectRoot: String? = null,
         context: Context? = null,
+        testDebug: TestDebugSpec? = null,
         onResult: (String?) -> Unit,
     ) {
         CoroutineScope(Dispatchers.IO).launch {
@@ -372,7 +393,7 @@ object UniversalDebugManager {
                 Handler(Looper.getMainLooper()).post { onResult(null) }
                 return@launch
             }
-            val sessionId = startDebug(language, filePath, projectRoot, context)
+            val sessionId = startDebug(language, filePath, projectRoot, context, testDebug)
             Handler(Looper.getMainLooper()).post { onResult(sessionId) }
         }
     }
@@ -386,6 +407,7 @@ object UniversalDebugManager {
         filePath: String,
         projectRoot: String? = null,
         context: Context? = null,
+        testDebug: TestDebugSpec? = null,
     ): String? {
         // P27-1: Route through DAP adapters when context is available.
         // When context is null (legacy callers), fall back to direct provider.launch().
@@ -399,6 +421,7 @@ object UniversalDebugManager {
                 filePath = filePath,
                 providerId = "",
                 state = DebugState.STARTING,
+                testDebug = testDebug,
             )
             resolveAdapter(context, tempSession)
         } else {
@@ -420,6 +443,7 @@ object UniversalDebugManager {
             filePath = filePath,
             providerId = adapter?.id ?: provider!!.id,
             state = DebugState.STARTING,
+            testDebug = testDebug,
         )
         sessions[session.id] = session
         if (adapter != null) {

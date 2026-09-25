@@ -25,6 +25,15 @@ object TestResultStore {
         _items.update { it + (item.testId to item) }
     }
 
+    /**
+     * F5: drops one item entirely (not retired — gone). Used when a debug
+     * launch fails after a RUNNING marker was written: no session, no
+     * outcome, no stale "running" row left behind.
+     */
+    fun remove(testId: String) {
+        _items.update { it - testId }
+    }
+
     /** Records a run summary (F4's tree header rollup consumes it). */
     fun recordRun(run: TestRun) {
         _latestRun.value = run

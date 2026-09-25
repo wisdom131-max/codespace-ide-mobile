@@ -57,6 +57,11 @@ class NodeDAPAdapter : DebugAdapter {
     // P27-10: Track process exit code for crash detection
     @Volatile private var lastExitCode: Int = 0
 
+    // F5 (TG07p1): the jest test-debuggee spawned under node --inspect-brk —
+    // the DAP session ATTACHES to it; stop() must kill it too.
+    private var testProcess: Process? = null
+    private var testInspectPort: Int = 9229
+
     @Volatile private var threadId: Int = 1
     // P2-PAGING: totalFrames from last stackTrace response (-1 = unknown); frames loaded so far
     @Volatile private var lastTotalFrames: Int = -1
@@ -160,10 +165,95 @@ class NodeDAPAdapter : DebugAdapter {
         onStopped: (exitCode: Int) -> Unit,
     ): Boolean {
         Log.d(TAG, "launch: ${session.filePath}")
+        // F5 (TG07p1): a test-debug session spawns the runner under
+        // node --inspect-brk and ATTACHES to it — the existing attach path
+        // (P26-3b) then carries breakpoints, pause, step and variables.
+        val debugSpec = session.testDebug
+        if (debugSpec != null) {
+            val proc = spawnJestTest(context, debugSpec, onOutput) ?: return false
+            testProcess = proc
+            return launchInternal(
+                context, session, breakpoints, onOutput, onPaused, onStopped,
+                attachParams = JSONObject()
+                    .put("port", testInspectPort)
+                    .put("address", "127.0.0.1"),
+            )
+        }
         return launchInternal(
             context, session, breakpoints, onOutput, onPaused, onStopped,
             attachParams = null
         )
+    }
+
+    /**
+     * F5 (TG07p1): spawns jest for ONE test under node --inspect-brk in the
+     * proot environment. The process waits for the inspector attach before
+     * running anything, so the DAP handshake + setBreakpoints complete first.
+     * Output is drained (a full pipe would deadlock the runner) and streamed
+     * to the Debug Console.
+     */
+    private fun spawnJestTest(
+        context: Context,
+        spec: TestDebugSpec,
+        onOutput: (String) -> Unit,
+    ): Process? {
+        // Honest pre-flight: debugging requires jest installed LOCALLY — the
+        // npx-fetched fallback of the Run path cannot be debugged.
+        val hostWorkdir = spec.hostWorkdir
+        if (hostWorkdir == null || !java.io.File(hostWorkdir, "node_modules/.bin/jest").exists()) {
+            onOutput("[js-debug] jest is not installed under node_modules in this project - install it locally (npm install) to debug. Run still works via npx.\n")
+            return null
+        }
+        val guestWorkdir = spec.guestWorkdir
+        if (guestWorkdir == null) {
+            onOutput("[js-debug] No project root to run jest from - debug refused.\n")
+            return null
+        }
+
+        // Free-port probe on the shared loopback (proot shares the Android
+        // network namespace, so the inspector port is device-loopback too).
+        val port = try {
+            java.net.ServerSocket(0).use { it.localPort }
+        } catch (e: Exception) {
+            onOutput("[js-debug] Cannot allocate an inspector port: ${e.message}\n")
+            return null
+        }
+        testInspectPort = port
+
+        val prootEnv = IdeEnvironment.forSubprocess(context)
+        val proot = prootEnv.proot
+        val headArgs = prootEnv.args.dropLast(2).toTypedArray()
+        val jestArgs = spec.guestArgs.joinToString(" ") { "'" + it.replace("'", "'\''") + "'" }
+        val shellCommand = "cd '" + guestWorkdir.replace("'", "'\''") + "' && " +
+            "node --inspect-brk=127.0.0.1:" + port + " node_modules/.bin/jest " + jestArgs +
+            " 2>&1"
+        val fullArgs = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
+        val pb = ProcessBuilder(proot, *fullArgs.drop(1).toTypedArray())
+        pb.redirectErrorStream(true)
+        IdeEnvironment.applyToProcessBuilder(pb, prootEnv.envVars)
+
+        val proc = try {
+            pb.start()
+        } catch (e: Exception) {
+            onOutput("[js-debug] Failed to spawn jest under the debugger: ${e.message}\n")
+            return null
+        }
+        onOutput("[js-debug] jest starting under node --inspect-brk (port $port) - attaching debugger...\n")
+        onOutput("[js-debug] After attach, tap Continue in the Debug Console to run the test.\n")
+
+        // Drain the debuggee's output so a full pipe never blocks the runner.
+        Thread {
+            try {
+                java.io.BufferedReader(java.io.InputStreamReader(proc.inputStream)).use { reader ->
+                    while (true) {
+                        val line = reader.readLine() ?: break
+                        if (line.isNotBlank()) onOutput(line + "\n")
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }.also { it.isDaemon = true }.start()
+        return proc
     }
 
     /**
@@ -549,6 +639,10 @@ class NodeDAPAdapter : DebugAdapter {
 
     override fun stop(session: DebugSession) {
         try { client?.request("terminate", timeoutSeconds = 3) } catch (_: Exception) {}
+        // F5: the jest test-debuggee is a separate spawned process — the DAP
+        // terminate does not cover it. Kill it or the runner keeps running.
+        testProcess?.destroyForcibly()
+        testProcess = null
         stopProcess()
     }
 

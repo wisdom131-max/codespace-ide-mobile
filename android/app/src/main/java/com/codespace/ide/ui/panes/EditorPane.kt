@@ -1917,8 +1917,9 @@ fun EditorPane(
                     com.codespace.ide.editor.TestLensDetector.detectTestLenses(active.content, active.language, active.path)
                 }
                 // TG01 (F2): a lens must never promise what its tap cannot do.
-                // Debug-test lenses stay hidden until F5 routes them through
-                // UniversalDebugManager — the debug capability bit is the truth.
+                // F5 (TG07p1): the capability bit is now honest per language —
+                // Python/JS/TS debug lenses route through UniversalDebugManager;
+                // every unsupported language keeps its debug lenses filtered out.
                 if (!com.codespace.ide.testing.TestRunManager.supportsDebug(active.language)) {
                     val honest = org.json.JSONArray()
                     for (i in 0 until testLenses.length()) {
@@ -2818,9 +2819,19 @@ fun EditorPane(
                                 val suite = (cmd?.optString("title", "") ?: "").contains("Run Tests")
                                 val filePath = active.path
                                 val lang = active.language
+                                // F5 (TG07p1): Debug Test starts a REAL debug session through
+                                // UniversalDebugManager (debugpy module+args / jest inspect-brk
+                                // attach) — breakpoints, pause, step and the Debug Console all
+                                // work through the existing debug UI. Run stays the F2 path.
+                                val isDebug = cmdStr == "codespace.debugTest"
                                 kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
-                                    com.codespace.ide.testing.TestRunManager.runTest(
-                                        context, projectRootPath, filePath, lang, testId, suite, testLine)
+                                    if (isDebug) {
+                                        com.codespace.ide.testing.TestRunManager.debugTest(
+                                            context, projectRootPath, filePath, lang, testId, suite, testLine)
+                                    } else {
+                                        com.codespace.ide.testing.TestRunManager.runTest(
+                                            context, projectRootPath, filePath, lang, testId, suite, testLine)
+                                    }
                                 }
                             } else if (cmdStr != null && LspManager.isServerRunning(active.language)) {
                                 kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {

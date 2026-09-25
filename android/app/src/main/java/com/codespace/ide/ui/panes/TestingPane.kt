@@ -50,8 +50,8 @@ import kotlinx.coroutines.launch
  * tab without running anything.
  *
  * Header: Refresh / Run All / Run Failed / Stop (while a batch runs).
- * Per-row: inline Run gated by the capability bitset (TestRunManager.
- * supportsRun); Debug appears only when supportsDebug flips true in F5.
+ * Per-row: inline Run AND Debug gated by the capability bitset (supportsRun /
+ * supportsDebug) — Debug (F5) starts a real UniversalDebugManager session.
  * Suite rows collapse their descendants; retired results dim.
  */
 @Composable
@@ -172,6 +172,15 @@ fun TestingPane(
                                 onRun = {
                                     scope.launch {
                                         TestRunManager.runTest(
+                                            context, projectRootPath, row.filePath,
+                                            row.language, row.testId, row.suite, row.lineIndex,
+                                        )
+                                    }
+                                },
+                                onDebug = {
+                                    // F5 (TG07p1): real debug session via UniversalDebugManager.
+                                    scope.launch {
+                                        TestRunManager.debugTest(
                                             context, projectRootPath, row.filePath,
                                             row.language, row.testId, row.suite, row.lineIndex,
                                         )
@@ -400,6 +409,7 @@ private fun TestingFileRow(row: TestRow.FileRow) {
 private fun TestingTestRow(
     row: TestRow.TestLeafRow,
     onRun: () -> Unit,
+    onDebug: () -> Unit,
     onOpen: () -> Unit,
     onToggle: () -> Unit,
 ) {
@@ -446,7 +456,8 @@ private fun TestingTestRow(
             modifier = Modifier.weight(1f),
         )
         // Inline Run — capability-gated (a row must never promise a run it
-        // cannot execute). Debug joins in F5 when supportsDebug flips true.
+        // cannot execute). Debug (F5) is gated the same way: only languages
+        // whose test debugger is really wired through UniversalDebugManager.
         if (runSupported) {
             Text(
                 "Run",
@@ -457,6 +468,19 @@ private fun TestingTestRow(
                 modifier = Modifier
                     .background(Color(0xFF2A2D2E), RoundedCornerShape(8.dp))
                     .clickable { onRun() }
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
+        if (TestRunManager.supportsDebug(row.language)) {
+            Text(
+                "Debug",
+                color = Color(0xFF61AFEF),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .background(Color(0xFF2A2D2E), RoundedCornerShape(8.dp))
+                    .clickable { onDebug() }
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }

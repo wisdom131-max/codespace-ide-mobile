@@ -60,11 +60,17 @@ object TestRunManager {
     }
 
     /**
-     * Debug capability for TEST lenses. False for every language until F5 wires
-     * lens-debug routing through UniversalDebugManager (DG04 honesty rule: no
-     * control may present a debug session that does not exist).
+     * Debug capability for TEST lenses (F5, TG07p1): Python via debugpy
+     * module+args launch, JS/TS via node --inspect-brk + js-debug attach —
+     * both through UniversalDebugManager, so breakpoints/pause/step work in
+     * the existing Debug Console. JVM is F6 (JDWP decision pending); Dart and
+     * everything else stays honestly false (DG04: a control may never promise
+     * a debug session that does not exist).
      */
-    fun supportsDebug(language: Language): Boolean = false
+    fun supportsDebug(language: Language): Boolean = when (language) {
+        Language.PYTHON, Language.JAVASCRIPT, Language.TYPESCRIPT -> true
+        else -> false
+    }
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Cancellation (consumed by the F4 Test pane stop control)
@@ -210,6 +216,187 @@ object TestRunManager {
             currentProcess = null
             active = false
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // F5 (TG07p1): Debug Test — routed through UniversalDebugManager
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Starts a REAL debug session for ONE test (or suite) through
+     * UniversalDebugManager — the same adapters, breakpoints, pause/step and
+     * Debug Console as the file-debug path. The typed return reflects the
+     * LAUNCH only (the session runs on after it); the terminal outcome is
+     * recorded in TestResultStore from the session's exit truth (STOPPED =
+     * exit 0 = PASSED, CRASHED = non-zero = FAILED).
+     *
+     * Python: debugpy launches pytest as module+args with the tapped node id.
+     * JS/TS: jest is spawned under node --inspect-brk and js-debug ATTACHES;
+     * debugging requires jest installed locally (npx-fetch cannot be attached).
+     * JVM is F6 — UNSUPPORTED here, honestly.
+     */
+    suspend fun debugTest(
+        context: Context,
+        projectRoot: String?,
+        hostFilePath: String,
+        language: Language,
+        testId: String,
+        suite: Boolean,
+        lineIndex: Int = -1,
+    ): TestRunResult = withContext(Dispatchers.IO) {
+        val leaf = leafName(testId, hostFilePath)
+
+        if (!supportsDebug(language)) {
+            log("[TestDebug] No test debugger wired for ${language.displayName} yet - nothing was started.")
+            return@withContext TestRunResult(testId, TestRunStatus.UNSUPPORTED, null, 0)
+        }
+        if (active) {
+            log("[TestDebug] A test run is already active - cancel it before debugging.")
+            return@withContext TestRunResult(testId, TestRunStatus.BUSY, null, 0)
+        }
+        active = true
+        try {
+            // Trust gate first (same choke point as Run).
+            val trustPath = projectRoot ?: File(hostFilePath).parent
+            if (!TrustState.awaitTrusted(context, trustPath)) {
+                log("[TestDebug] Project not trusted - debug session refused.")
+                return@withContext TestRunResult(testId, TestRunStatus.UNTRUSTED, null, 0)
+            }
+
+            val guestFile = ProotInstaller.hostToGuestPath(context, hostFilePath)
+            if (guestFile == null) {
+                log("[TestDebug] Cannot reach this file inside the Ubuntu sandbox - debug refused.")
+                return@withContext TestRunResult(testId, TestRunStatus.UNSUPPORTED, null, 0)
+            }
+            val guestRoot = (projectRoot?.let { ProotInstaller.hostToGuestPath(context, it) })
+                ?: File(guestFile).parent
+
+            val spec = buildDebugSpec(guestRoot, guestFile, hostFilePath, projectRoot, language, testId)
+            if (spec == null) {
+                return@withContext TestRunResult(testId, TestRunStatus.UNSUPPORTED, null, 0)
+            }
+
+            log("[TestDebug] \u25b6 Debugging " + (if (suite) "suite " else "test ") + leaf + "\u2026")
+            val started = System.currentTimeMillis()
+
+            // Live RUNNING marker on the test line, same as Run (F3).
+            if (lineIndex >= 0) {
+                TestResultStore.record(
+                    TestResultItem(
+                        testId = testId, lineIndex = lineIndex,
+                        ownState = TestResultState.RUNNING,
+                        computedState = TestResultState.RUNNING,
+                        ownDurationMs = 0, message = null, retired = false,
+                        runId = started,
+                    )
+                )
+            }
+
+            val sessionId = com.codespace.ide.debug.UniversalDebugManager.startDebug(
+                language, hostFilePath, projectRoot, context,
+                testDebug = spec,
+            )
+            if (sessionId == null) {
+                // Honest cleanup: no session was created — drop the RUNNING
+                // marker we wrote instead of leaving a stuck "running" row.
+                if (lineIndex >= 0) TestResultStore.remove(testId)
+                log("[TestDebug] The debugger failed to start - see the Debug Console output for the reason.")
+                return@withContext TestRunResult(testId, TestRunStatus.LAUNCH_FAILED, null, 0)
+            }
+
+            // Terminal outcome from the session's exit truth: STOPPED means
+            // exit 0 (P27-10 crash detection in UDM), CRASHED means non-zero.
+            recordDebugOutcomeWhenDone(sessionId, testId, lineIndex, language)
+            logResult(TestRunStatus.RUNNING, leaf, null, System.currentTimeMillis() - started, null)
+            TestRunResult(testId, TestRunStatus.RUNNING, null, 0)
+        } finally {
+            active = false
+        }
+    }
+
+    /** Per-runner launch spec for the adapters (F5): pytest node id or jest -t. */
+    private fun buildDebugSpec(
+        guestRoot: String,
+        guestFile: String,
+        hostFilePath: String,
+        projectRoot: String?,
+        language: Language,
+        testId: String,
+    ): com.codespace.ide.debug.TestDebugSpec? {
+        val chain = chainOf(testId, hostFilePath)
+        if (chain.isEmpty()) return null
+        val leaf = chain.lastOrNull() ?: return null
+        return when (language) {
+            Language.PYTHON -> {
+                // Same node id shape as the Run path: file::Class::method.
+                val node = (listOf(guestFile) + chain).joinToString("::")
+                com.codespace.ide.debug.TestDebugSpec(
+                    runner = "pytest",
+                    guestArgs = listOf(node, "-v"),
+                    guestWorkdir = guestRoot,
+                    hostWorkdir = projectRoot,
+                )
+            }
+            Language.JAVASCRIPT, Language.TYPESCRIPT -> {
+                // Requires jest installed locally — checked host-side by the
+                // adapter before spawning (honest refusal, no npx fallback).
+                com.codespace.ide.debug.TestDebugSpec(
+                    runner = "jest",
+                    guestArgs = listOf(guestFile, "-t", leaf),
+                    guestWorkdir = guestRoot,
+                    hostWorkdir = projectRoot,
+                )
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * Records the terminal outcome when this debug session ends. The listener
+     * self-removes on the first terminal state of THIS session id.
+     */
+    private fun recordDebugOutcomeWhenDone(
+        sessionId: String,
+        testId: String,
+        lineIndex: Int,
+        language: Language,
+    ) {
+        lateinit var listener: (com.codespace.ide.debug.DebugSession) -> Unit
+        listener = { s ->
+            if (s.id == sessionId) {
+                val terminal = s.state == com.codespace.ide.debug.DebugState.STOPPED ||
+                    s.state == com.codespace.ide.debug.DebugState.CRASHED ||
+                    s.state == com.codespace.ide.debug.DebugState.FAILED ||
+                    s.state == com.codespace.ide.debug.DebugState.ERROR
+                if (terminal) {
+                    com.codespace.ide.debug.UniversalDebugManager.removeOnSessionStateChangedListener(listener)
+                    // A failed LAUNCH never reached the runner — drop the
+                    // marker rather than claiming a test outcome.
+                    val launchFailed = s.state == com.codespace.ide.debug.DebugState.FAILED ||
+                        s.state == com.codespace.ide.debug.DebugState.ERROR
+                    if (launchFailed) {
+                        TestResultStore.remove(testId)
+                    } else {
+                        // STOPPED = exit 0 = PASSED; CRASHED = non-zero (P27-10).
+                        val passed = s.state == com.codespace.ide.debug.DebugState.STOPPED
+                        val st = if (passed) TestResultState.PASSED else TestResultState.FAILED
+                        if (lineIndex >= 0) {
+                            TestResultStore.record(
+                                TestResultItem(
+                                    testId = testId, lineIndex = lineIndex,
+                                    ownState = st, computedState = st,
+                                    ownDurationMs = 0,
+                                    message = if (passed) null else "debug session ended abnormally (" + s.state + ")",
+                                    retired = false,
+                                    runId = System.currentTimeMillis(),
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        com.codespace.ide.debug.UniversalDebugManager.addOnSessionStateChangedListener(listener)
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
