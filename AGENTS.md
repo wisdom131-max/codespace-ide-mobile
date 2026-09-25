@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P3a SHIPPED + CI #2918/#2919 GREEN (fix commit 1802702, code 5ddb03b — TP03 ProotResult seam + 13 gap surfaces: PR01/PR03/XG05/EX01/EX02/EX06/SR03/SR04/SG05/IG05/RG02/OG02/IC04; 1 red fixed: local-fun order + token fallback location); TG01 = recommendation only, pending owner fix-or-delete ruling; next: P3b PLAN A per-file canonical store + CH02 boundary |
+| Latest commit | P3b SHIPPED + CI #2922 GREEN (code ae5633a — PLAN A canonical per-file store + CH02 tool-boundary choke point + DG02 DAP path parity: G03/LS06/DG11/DG08/CH02/DG02 closed, PR14 partial at editor side); next: P3c polling→flows (S02 family), F-TRACK F1 awaiting owner approval |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4900,3 +4900,38 @@ Two reds before green (both in NEW P2c files, zero regressions to existing code)
 - **P4:** remaining tiers by group HIGH (54) → MEDIUM (114) → LOW (62); TG01 fix-or-delete ruling needed inside P4-Testing.
 - **P5:** full device verification round — batched TP02 verification lands here; includes P2a zip-slip/traversal recipes, P2b LAN loopback test, P2c trust/consent checks, and the P3a checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer.
+
+## [2026-09-25 09:15 WAT] — AI Agent: Claude Sonnet 5.6 (P3b SHIPPED: PLAN A canonical per-file store + CH02 boundary + DG02 DAP parity, CI #2922 GREEN)
+
+**2026-09-25 — [P3b SHIPPED, CI #2922 GREEN, code commit ae5633a, first-push clean] PLAN A store + G03 + LS06 + DG11 + DG08 + CH02 + DG02 closed at code level; PR14 partial (editor side); revertable as ae5633a**
+
+### What shipped (code ae5633a)
+- **PLAN A (the store):** `util/CanonicalPaths.kt` gains the IDENTITY layer — `canonicalKey` (memoized, bounded 1024), `sameFileIdentity` (equal string / equal canonical file / boundary suffix), `resolveAgainstRoot`, `resolveTabMatch` (exact -> canonical -> suffix), `canonicalHostKey` (host file wins, else guest->host translation). New `editor/PerFileStateStore.kt`: squiggles + line-highlight + bookmarks keyed by canonical path, backed by a `mutableStateMapOf` so Compose reacts to store writes.
+- **G03:** `EditorBufferStore` + `FileCache` now key by canonical path — a file opened under one spelling and written/invalidated under another (proot prefix, relative form) no longer splits buffer identity or serves stale cache content.
+- **BUG-B formalized:** the EditorPane tab-change effect now RESTORES the incoming tab's persisted state from the store instead of clearing — ranges keyed to the resolved file are by construction not another file's stale squiggles, and they survive round-trip tab switches. Squiggles are persisted at both publish points (handler match + tab-change refresh).
+- **LS06:** the squiggle matcher's BASENAME fallback (`diagFile == ourFile`) REPLACED by canonical host-path identity — two open tabs named `test.js` no longer receive each other's diagnostics; unmappable server URIs drop cleanly with the translated host path in the DROPPED log.
+- **DG11:** the paused-band guard's basename compare REPLACED by canonical identity with guest->host frame translation — the debug band no longer paints on a same-named file in a different folder. [BAND-DIAG] log now carries frameKey + tabPath.
+- **DG08:** EditorPane's local `fileBreakpoints` mutableStateMapOf REMOVED — UDM is the single breakpoint representation for both gutter render and toggle (the old parallel map made a gutter tap resurrect a breakpoint UDM had just removed, and gutter dots ignored Explorer removals).
+- **CH02:** `AgentTools` gains `resolveToolPath` — the ONE guest->host choke point above read_file/write_file/list_files/search_files. Host file at the raw path wins (old behavior); otherwise ProotInstaller.guestToHostPath when the translated target EXISTS — translation SHARED with ScmState/git (audit option b), not duplicated. Staged-overlay lookup covers both dialects; write_file new-file targets translate when the translated PARENT exists (no more /root/... directories created on Android storage roots). Translations logged as `[CH02]` lines.
+- **DG02:** new `debug/DapPathMapper` — the ONE host->guest conversion for DAP source.path. Both Python and Node adapters now use it in launch AND live `sendBreakpoints` (the old code sent raw HOST paths on live sends — UDM's store is host-keyed — while Node's live path carried the FALSE "already a guest path" comment; both adapters also gained the missing hitCondition on launch sends).
+- **BUG-A dedupe:** onOpenFileAtLine's inline `bugaResolve`/`isSuffixOf` resolution REMOVED — the jump now uses the shared `CanonicalPaths.resolveTabMatch`; the highlight persists through the store so it survives the tab-switch race.
+- **PR14 (partial):** squiggle ranges now have ONE store, and the editor consumes it — but the Problems PANEL rows still read the last-published LspManager cache; panel rewiring stays for P3c/P4.
+- **What was removed this phase:** the local fileBreakpoints map; the LS06 basename fallback; the DG11 basename compare; the inline BUG-A jump resolver; the Python/Node inline host->guest translations; Node's false "already a guest path" comment; the raw-string keys in EditorBufferStore/FileCache; the clear-on-tab-switch behavior.
+
+### P5 device checks (add to the round)
+- **PLAN A store:** open file A, wait for squiggles, switch to tab B, switch back → squiggle ranges reappear WITHOUT the editor re-linting (store restore, not a clear). Add a gutter bookmark in A, leave the pane (project shell), return → bookmark survives pane recreation.
+- **LS06:** open two files named `MainActivity.kt` in DIFFERENT folders, provoke diagnostics in one → the OTHER tab does NOT get its squiggles (previously both matched by basename).
+- **DG11:** debug with a paused frame in file X; open a DIFFERENT file also named X in another folder → no band rendered on the wrong file; [BAND-DIAG] shows frameKey vs tabPath.
+- **DG08:** remove a breakpoint from the Explorer list while the file is open → the gutter dot disappears immediately (no resurrection on tap); add via gutter → Explorer list shows it.
+- **CH02:** in a chat session, ask the agent to read a file using its GUEST path (e.g. /root/project/Main.kt copied from terminal output) → the read succeeds and the Output tab shows a `[CH02] file-tool path translated guest->host` line; write_file to a new guest path whose parent exists → file lands inside the rootfs, not on Android storage root.
+- **DG02:** start a Python debug session, ADD a breakpoint while paused-at-launch via the gutter → debugpy binds it (setBreakpoints with translated path; previously raw host path silently failed); same for Node; hitCondition-typed breakpoints bind on launch.
+- **G03:** open a file, then via terminal write the same file via a different spelling (e.g. relative path) → the editor buffer store treats it as the same buffer (no dirty-state confusion after external writes).
+
+### ROADMAP (all pending)
+- **P3b REMAINder:** PR14 panel-side (Problems rows from the store) — folded into P3c/P4.
+- **P3c:** polling→flows (S02 family).
+- **P3d:** delete-duplicate-implementations pass.
+- **P4:** remaining tiers by group HIGH (54) → MEDIUM (114) → LOW (62); TG01 fix-or-delete ruling needed inside P4-Testing.
+- **F-TRACK (owner ruling: BUILD full testing surface TG01-TG07, series F1-F6):** F1 Honest Run + remaining sub-phases — DRAFTED, awaiting owner approval to start.
+- **P5:** full device verification round — batched TP02 verification lands here; includes P2a zip-slip/traversal recipes, P2b LAN loopback test, P2c trust/consent checks, the P3a checks above, and the P3b checks above.
+- **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
