@@ -335,7 +335,7 @@ object TestRunManager {
                 // from THIS run are parsed (older runs would replay stale ids).
                 val dir = File(hostRoot, "build/test-results/test")
                 val xmls = dir.listFiles()
-                    ?.filter { it.name.startsWith("TEST-") && it.lastModified >= runStart }
+                    ?.filter { it.name.startsWith("TEST-") && it.lastModified() >= runStart }
                     ?: return emptyList()
                 xmls.flatMap { TestOutputParsers.parseJunitXml(it.readText(), File(hostFilePath).name) }
             }
