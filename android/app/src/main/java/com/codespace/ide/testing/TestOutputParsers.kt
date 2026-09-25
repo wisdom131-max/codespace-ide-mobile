@@ -7,7 +7,7 @@ import org.xmlpull.v1.XmlPullParser
 /**
  * F3 (F-TRACK TG03): machine-readable runner output parsers.
  *
- * pytest (via --junitxml) and Gradle (build/test-results/*.xml) share the
+ * pytest (via --junitxml) and Gradle (build test-results XML files) share the
  * JUnit XML shape; jest is parsed from its --json --outputFile payload.
  * These parsers replace exit-code-only inference: per-test states and real
  * failure messages come from the runner's own report, not from guessing.
