@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P2c SHIPPED + CI #2915 GREEN (commit 5551a5d, code 0342c96 — TrustState foundation + SG04/SG16 credential-helper + IG02/IG15 consent + CH03 card; 2 reds fixed: nested-KDoc comment, LocalContext-in-onClick); TP02 = shipped, device-unconfirmed (verifies in P5); next: P3a S01 typed results w/ TP03 first |
+| Latest commit | P3a SHIPPED + CI #2918/#2919 GREEN (fix commit 1802702, code 5ddb03b — TP03 ProotResult seam + 13 gap surfaces: PR01/PR03/XG05/EX01/EX02/EX06/SR03/SR04/SG05/IG05/RG02/OG02/IC04; 1 red fixed: local-fun order + token fallback location); TG01 = recommendation only, pending owner fix-or-delete ruling; next: P3b PLAN A per-file canonical store + CH02 boundary |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4850,3 +4850,53 @@ Two reds before green (both in NEW P2c files, zero regressions to existing code)
     - **AgentApiServer route:** with an untrusted project active, terminal AI tool calls (/tool/ paths) return 403 "project not trusted yet" JSON; after trusting, they run again.
     - **Debugger/tasks/MCP:** untrusted project → Run Task / Start Debugging / MCP server spawn each surface the trust prompt; Cancel = typed cancellation, Trust = proceeds and never asks again.
 10. ROADMAP (all pending): P3a S01 typed results w/ TP03 first → P3b PLAN A + CH02 boundary fix → P3c polling→flows → P3d delete-duplicates → P4 remaining tiers → P5 full verification round (TP02 batched verification lands here; VG01's LAN test included; P2c checks above included). Backlog: F01/F02/F09 owner decisions; stdio-vs-TCP question.
+
+
+## [2026-09-25 06:35 WAT] — AI Agent: Claude Sonnet 5.6 (P3a SHIPPED: TP03 typed-result seam + 13 gap surfaces, CI #2919 GREEN)
+
+**2026-09-25 — [P3a SHIPPED, CI #2918/#2919 GREEN, code commit 5ddb03b + fix 1802702] TP03 + PR01 + PR03 + XG05 + EX01 + EX02 + EX06 + SR03 + SR04 + SG05 + IG05 + RG02 + OG02 + IC04 closed at code level; revertable as the 5ddb03b..1802702 range**
+
+### What shipped (code 5ddb03b)
+- **TP03 (the seam):** new `terminal/ProotResult.kt` — `ProotResult(stdout, exitCode, timedOut, truncated, launchError)` with `succeeded` = exitCode==0 && !timedOut && launchError==null. `ProotInstaller.execTyped(...)` added as the ONE real executor; `execOnce`/`execOnceWithProcess` are now byte-identical legacy wrappers — all 44 un-migrated callers keep exact behavior. Any later S01 member migrates by swapping one call.
+- **PR01:** `BuildRunner.currentProcess` assigned via `execTyped`'s `onProcess` — cancelBuild() now destroys the LIVE gradle, not the last-completed one; CANCELLED is sticky (a completing coroutine can no longer relabel it SUCCESS/FAILED); cancel refuses to overwrite terminal states.
+- **PR03:** build status from the EXIT CODE (no more `BUILD SUCCESSFUL` prose-marker grep); output streams per-line to the build panel while gradle runs; maxLines 10000 with a surfaced truncation header and a timeout header.
+- **XG05:** apt install/remove success by typed exit code; the installed list is RE-READ from dpkg (`loadInstalled()`) after the op — no optimistic set mutation.
+- **EX01:** `moveToTrash` returns null on failed `renameTo`; single + bulk delete counts VERIFIED moves only (no more "Moved N items" over failures); restore button surfaces a failed restore instead of "Restored".
+- **EX02:** trash `index.json` now persists the FULL original relative path — nested files restore into their original folder instead of the trash dir root; `_restored` fallback stays in the original parent dir and iterates; `emptyTrash` cleans the index.
+- **EX06:** New Folder checks `mkdirs()` before reporting success (was: success text over a failed mkdir).
+- **SR03:** modal Replace All honors the Aa case toggle — was ALWAYS case-sensitive even when the search was case-insensitive, so visible hits stayed unchanged while the count claimed success; count is now the matches the actual replace pattern applies.
+- **SR04:** sidebar (SearchPanel) + modal (ProjectFileSearchPanel) Replace All: per-file typed write results, failures surfaced (red indicator line / snackbar), `FileCache.invalidate()` after every disk write (open tab no longer shows stale content).
+- **SG05:** `GitService.clone` falls back to its own stored GitHub token (caller-supplied token wins — SG16's URL-embed path unchanged) — CloneDialog private-repo clones now get auth injection.
+- **IG05:** DownloadCenter cancel checked in the transfer loop (partial file deleted), completion can only transition out of DOWNLOADING (late cancel can't be overwritten), retry RE-RUNS the transfer. download() still has zero callers — IG04 orphan ruling stays separate.
+- **RG02:** rootfs restore extracts to a SIBLING temp dir and swaps ATOMICALLY (old container staged as `rootfs.restore.old`, rolled back if the swap fails); hard file-copy failure aborts with the LIVE container untouched (old code wiped rootfs FIRST and reported success over a half-extracted container); symlink failures counted as visible warnings (device kernels block the syscall — logged, non-fatal, same tolerance as before but now counted); `TerminalPane` reads the typed `RestoreResult` and falls back to a fresh install on failure — no more unconditional "Restored from backup!".
+- **OG02:** HomeScreen checks `deleteProjectFromCloud`'s Boolean — failure raises a WARNING notification telling the user the cloud copy survived (resurrection risk on next sync).
+- **IC04:** auto-import cursor shift computed from additional edits ABOVE the completion only (an edit below it no longer mislocates the insertion); auto-import failures logged to the Output tab instead of silently falling back; duplicated `Pair(finalText, finalCursor)` line removed.
+- **TG01:** intentionally NOT touched — fix-or-delete recommendation (decorative Run/Debug Test lenses) pending owner ruling.
+
+### Build red + fix (CI #2917 → #2918/#2919)
+- `ScmState.kt:449 Unresolved reference: token` — SG05's fallback belongs INSIDE GitService (ScmState has no token property). Fix in 1802702.
+- `PackageManagerPane.kt:175 Unresolved reference: loadInstalled` — XG05's re-read call sat ABOVE loadInstalled()'s declaration (local-fun order rule). Fix: moved `loadInstalled()` above `runPkg` in 1802702. Both known pitfall classes.
+
+### P5 device checks (add to the round)
+- **TP03 seam:** any package-manager install/remove still streams output and reports success/failure correctly (wrapper behavior unchanged).
+- **PR01:** start a gradle build → Cancel → terminal shows the process actually dying (no continued output lines after cancel); status stays CANCELLED and is not later overwritten.
+- **PR03:** run a failing build (bad code) → status FAILED even if a warning line contains "BUILD SUCCESSFUL" somewhere; long output keeps the FIRST 10000 lines with a truncation header visible.
+- **XG05:** remove a package → installed list no longer shows it even if dpkg lags; install → it appears without manual refresh.
+- **EX01:** delete a file when storage is the culprit → failure text, file still present in tree; bulk delete shows the real moved count.
+- **EX02:** delete a nested file (e.g. `src/sub/Util.kt`) → Trash → restore → returns to `src/sub/`, not to the trash root or project root.
+- **EX06:** (hard to trigger failure — verify normal path) New Folder shows the new folder in the tree.
+- **SR03:** search `hello` with Aa OFF, hits visible → Replace All `goodbye` → the lowercase hits ARE replaced (previously untouched).
+- **SR04:** Replace All with one unreadable file → red failure line appears in the search panel; an OPEN tab of a replaced file shows the new content without reopening.
+- **SG05:** sign in with the GitHub token stored → CloneDialog clone of a PRIVATE repo succeeds (previously raw auth error).
+- **IG05:** start a big toolchain download → Cancel → partial file gone from disk, entry stays CANCELLED (not COMPLETED); Retry on a FAILED entry → transfer actually restarts and completes.
+- **RG02:** Settings → Backup & Restore → Restore while the backup tarball is CORRUPTED (truncate it first) → terminal shows the typed failure + falls back to a fresh install; the EXISTING container still boots afterwards (the old code would have destroyed it).
+- **OG02:** (needs a cloud-hiccup or offline state) delete a project while the backend is unreachable → warning notification appears; on next online sync the cloud copy may reappear (now expected + documented).
+- **IC04:** accept a completion whose auto-import inserts a line ABOVE the cursor (Kotlin import) → inserted text lands at the right offset; check the Output tab if an auto-import fails — a `[AutoImport]` lsp line explains it.
+
+### ROADMAP (all pending)
+- **P3b:** PLAN A per-file canonical store (line-highlights, squiggles, markers keyed by canonical path) + CH02 boundary fix.
+- **P3c:** polling→flows (S02 family).
+- **P3d:** delete-duplicate-implementations pass.
+- **P4:** remaining tiers by group HIGH (54) → MEDIUM (114) → LOW (62); TG01 fix-or-delete ruling needed inside P4-Testing.
+- **P5:** full device verification round — batched TP02 verification lands here; includes P2a zip-slip/traversal recipes, P2b LAN loopback test, P2c trust/consent checks, and the P3a checks above.
+- **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer.
