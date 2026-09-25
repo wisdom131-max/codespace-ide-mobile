@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P3e (DG04 pulled forward) SHIPPED + CI #2928 GREEN (code a6efe97 — fabricated debug session deleted: TerminalDebugProvider + resolveAdapter last-resort removed, honest no-debugger reporting; 53 of 249 rows closed); next: F1 (TestLensDetector v2) IN PROGRESS |
+| Latest commit | F1 SHIPPED + CI #2930 GREEN (code c1f4baf — TestLensDetector v2: annotation-driven JVM lenses, class-name heuristic deleted, JS/TS each/skip/only variants, TestId path strings, honest templates); next: F2 Honest Run (TG01+TG02), awaiting owner go |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -5010,4 +5010,28 @@ Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — 
 - **F-TRACK remaining:** F2 Honest Run (TG01+TG02), F3 results (TG03), F4 discovery/explorer (TG04), F5 debug-lens routing + adapter args, F6 decision.
 - **P4:** remaining ~187 rows by group (now 53 closed of 249: +1 with DG04; TG01-TG07 remain F-TRACK).
 - **P5:** full device verification round — TP02 batched device test, P2a/b/c checks, P3a-d checks, P3e DG04 check above.
+- **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+## [2026-09-25 12:40 WAT] — AI Agent: Claude Sonnet 5.6 (F1 SHIPPED: TestLensDetector v2 + TestIds + honest templates, CI #2930 GREEN)
+
+**2026-09-25 — [F1 SHIPPED, CI #2930 GREEN, code commit c1f4baf, first-push clean] F-TRACK sub-phase 1: detector v2 (TG05) + honest command templates (TG06) + TestId path strings. Revertable as c1f4baf.**
+
+### What shipped (code c1f4baf)
+- **JVM detection is annotation-driven now:** lenses only on functions carrying @Test, @ParameterizedTest, @TestFactory, @RepeatedTest (including same-line "@Test fun x()") and on @Nested classes as runnable suite nodes. DELETED the "class name contains Test/Spec, therefore any fun with test in its name" heuristic (the audit's fun testing() false-positive class). Backtick test names recognized.
+- **JS/TS detection extended:** test/it plus .skip/.only/.each/.concurrent variants, describe (incl. describe.each); suite nodes get "Run Tests" title. Python detection unchanged (already prefix-driven). Dart retained with group chains.
+- **TestId path strings (VS Code testId.ts shape, simplified):** every lens carries a slash-joined identity "<filePath>/<class or describe chain>/<name>"; line numbers live in lens data only (identity survives edits); arguments = [TestId, lineIndex] so the current click handler keeps working until F2 routes through TestRunManager.
+- **Scope chains brace-depth-tracked:** declaration depth = pre-open depth; scope alive while content depth exceeds entry depth. Two self-caught bugs before push: chain duplicated into its own id, and scope dying on the line after its class.
+- **TG06 honest templates:** DELETED "2>/dev/null" stderr suppression from all three templates (failing pytest/jest/gradle must show stderr, not vanish) and DELETED the gradle "|| echo Run via IDE build task" no-op placebo fallback. Per-test routing (gradle --tests, pytest path::test, jest -t) is F2/TG02, intentionally not built here.
+- **What was removed this phase:** the class-name heuristic, the bare-line-number-only lens arguments, the stderr-suppressed templates, the gradle || echo fallback.
+- **Verified by line-level simulation** of the new rules before push (annotated fun testing() lenses; unannotated helper does NOT; @Nested chains Corner/Deep; JS describe nesting and skip variants; plain code no lens).
+
+### P5 device checks (add to the round)
+- **TG05 v2:** open a Kotlin file with a class named SomethingTest containing an UNANNOTATED fun testing() — NO Run Test lens on it (v1 showed one). Annotated @Test funs (incl. backtick names) DO get Run Test/Debug Test lenses; @Nested classes get "Run Tests". JS test file: test/it/describe/skip variants all lens.
+- **TG06:** tap Run Test on a JVM file — the logged command in the test output tab is plain "./gradlew test" (no 2>/dev/null, no "|| echo"); on a Python file "python3 -m pytest ..." with stderr visible on failure.
+
+### ROADMAP (all pending)
+- **F2 — Honest Run (TG01 + TG02):** testing/TestRunManager.kt — per-test command builders (pytest path::test, jest -t, gradle test --tests), execution via ProotInstaller.execTyped (TP03 seam), TrustState gate first (IG02/P2c pattern), capability bitset Run/Debug so lenses render honestly; EditorPane lens handler routes through it and the log line becomes progress + typed result. Awaiting owner go.
+- **F-TRACK remaining:** F3 results (TG03), F4 discovery/explorer (TG04), F5 debug-lens routing + adapter args, F6 decision.
+- **P4:** remaining ~187 rows by group (53 of 249 closed; DG04 pulled forward and closed in P3e).
+- **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1 checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
