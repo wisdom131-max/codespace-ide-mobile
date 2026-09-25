@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | F5 SHIPPED + CI #2942 GREEN (code 54f5127, first-push clean — Debug Test: TestDebugSpec on DebugSession, debugpy module+args pytest launch, jest via node --inspect-brk + js-debug attach, TestRunManager.debugTest router with trust gate + exit-truth outcomes, supportsDebug honest per language, lens + pane Debug wired through UDM); next: F6 Debug Test JVM (TG07p2) decision, awaiting owner go |
+| Latest commit | F-TRACK CLOSED AT F5 (owner ruling 2026-09-26, docs 8cf7f57): F1-F5 shipped + TG01-TG07 closed in MASTER-GAPS; F6/JVM-debug PARKED as standalone future decision gated on Option-B spike (never Option A; supportsDebug stays honestly false for JVM). Verified tally: 60/249 closed, 189 remain. P4 GO (owner-ruled): remaining tiers by group — P4a = Problems group (PR02, PR04-PR14, split into two revertable batches) |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -5065,6 +5065,22 @@ Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — 
 - **P4:** remaining ~187 rows by group (53 of 249 closed).
 - **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1/F2 checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+## [2026-09-26 00:20 WAT] — AI Agent: Claude Sonnet 5.6 (F-TRACK CLOSED AT F5 — owner ruling; F6 parked; P4 GO; docs 8cf7f57)
+
+**2026-09-26 — [F-TRACK COMPLETION + F6 PARKING (owner ruling, docs-only 8cf7f57).]**
+
+- **F-TRACK CLOSED at F5** (owner ruling 2026-09-26). F1-F5 shipped: F1 c1f4baf (#2930, TG05+TG06), F2 7dbab1e/8b6ec22 (#2933, TG01+TG02), F3 bab66ca/f5edd39/74991d3 (#2937, TG03), F4 d910165/983c481 (#2940, TG04), F5 54f5127 (#2942, TG07). MASTER-GAPS TG rows carry per-phase closure notes; FIX-PLAN carries the F-track completion table.
+- **F6 / JVM Debug Test PARKED** as a standalone future decision, NOT part of the track: design check ruled gradle `--debug-jvm --tests` covers the debuggee side (JDWP:5005, suspend-wait) but the wire is JDWP not DAP; Option A (hand-written Kotlin JDWP client, XL) ruled out PERMANENTLY; Option B (Microsoft java-debug core as rootfs DAP server in attach mode) gated on a cheap spike first (java-debug-core headless under rootfs JDK, attach, breakpoint stop). supportsDebug() stays false for JVM — documented known gap, not a stub.
+- **Verified tally (249 rows): 60 closed** (53 P-series incl. P3e DG04, 7 F-TRACK), **189 remain for P4** — HIGH 22, MEDIUM 63, MED-LOW 35, LOW 60, top/critical-class 4 (TP01 audit-trail, TP02 pending-P5, TB02+DG13 prose matches), enablers 4. By group: XG 15, TP 14, LS 13, IC 13, SK 12, SG 12, PR 12, PG 11, CH 10, DG 10, SR 10, RG 8, VG 8, G 8, IG 9, TB 6, TM 6, OG 4, IM 3, TG 3 (TG08-10), EX 2.
+- **P4 GO (owner-ruled 2026-09-26): remaining tiers by group, same batching + revert rules.** P4a = Problems group first (PR14 panel side is the explicit P3b open item; PR02 badge divergence shares the central-store seam): batch P4a-1 = panel/store truth (PR14, PR02, PR07, PR10, PR04, PR05), batch P4a-2 = matcher/task-runner integrity (PR06, PR08, PR09, PR11, PR12, PR13). Proposed group order after P4a: DG → SR → LS → G(Editor) → TB → CH → SG → the rest by tier within group.
+
+### Roadmap
+- **P4:** 189 rows by group; P4a-1 scope locked above, executing next.
+- **P5:** full device verification round — TP02 batched checks, P2a-e checks, F1-F5 checks (breakpoint-stops in Py+JS debug), P4 checks as each batch ships.
+- **Parked future decisions (owner-gated):** F6 JVM debug (Option-B spike gate), F01 Notebooks, F02 remote-dev, F09 tree-sitter, stdio-vs-TCP AgentApiServer, MK re-test after MK restructure ships.
+
+---
 
 ## [2026-09-25 18:15 WAT] — AI Agent: Claude Sonnet 5.6 (F5 SHIPPED: Debug Test — pytest module launch, jest inspect-brk attach, UDM routing, CI #2942 GREEN)
 
