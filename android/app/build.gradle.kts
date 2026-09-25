@@ -235,8 +235,9 @@ dependencies {
     implementation("org.jruby.jcodings:jcodings:1.0.61")
     implementation("com.google.code.gson:gson:2.11.0")
 
-    // SSH / SFTP
-    implementation("com.hierynomus:sshj:0.38.0")
+    // IG06 (P3d): the orphaned SSHJ+TOFU stack was deleted along with this dependency —
+    // the live ssh-CLI path (rootfs openssh, accept-new) is the app's only SSH transport,
+    // and its trust store is the rootfs known_hosts, now visible in SshManagerSheet.
 
     // Tests
     testImplementation("junit:junit:4.13.2")

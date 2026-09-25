@@ -74,158 +74,26 @@ data class ApkAnalysis(
 // ─────────────────────────────────────────────────────────────────────────────
 // Binary XML (AXML) decoder — parses Android's compiled binary XML format
 // ─────────────────────────────────────────────────────────────────────────────
+// VG04 (P3d): the second, inline AXML decoder that used to live here is DELETED.
+// ONE decoder owns the binary-XML format: util/AxmlDecoder, with its 8MB read cap
+// and chunk validation. This dialog keeps only manifest-value extraction (regex
+// over the decoded XML text), which is presentation, not parsing.
+// ─────────────────────────────────────────────────────────────────────────────
 
-private object AxmlDecoder {
-    // Chunk types
-    private const val CHUNK_AXML      = 0x00080003
-    private const val CHUNK_STRINGS   = 0x001C0001
-    private const val CHUNK_XML_START = 0x00100102
-    private const val CHUNK_XML_END   = 0x00100103
-    private const val CHUNK_XML_ATTR  = 0x00100104
-    private const val CHUNK_NS_START  = 0x00100100
-    private const val CHUNK_NS_END    = 0x00100101
-    private const val CHUNK_RES_IDS   = 0x00080180
-
-    fun decode(bytes: ByteArray): String = try {
-        val buf = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        if (buf.remaining() < 8) {
-            "(binary XML — too small)"
-        } else {
-        val fileType = buf.int
-        val _fileSize = buf.int
-        if (fileType != CHUNK_AXML) {
-            "(not binary XML: type=0x${fileType.toString(16)})"
-        } else {
-        val sb = StringBuilder()
-
-        // String pool
-        var strings = listOf<String>()
-        val savedPos = buf.position()
-        if (buf.remaining() >= 8) {
-            val chunkType = buf.int
-            if (chunkType == CHUNK_STRINGS) {
-                val chunkSize = buf.int
-                val strCount  = buf.int
-                val _styleCount= buf.int
-                val flags     = buf.int
-                val _strStart  = buf.int
-                val _styStart  = buf.int
-                val offsets = IntArray(strCount) { buf.int }
-                val poolStart = buf.position()
-                val poolData  = ByteArray(chunkSize - (poolStart - savedPos))
-                    .also { buf.get(it) }
-                val isUtf8 = (flags and 0x100) != 0
-                strings = offsets.map { off ->
-                    try {
-                        if (isUtf8) {
-                            val lenBytes = poolData[off].toInt() and 0xFF
-                            val start = off + if (lenBytes < 0x80) 2 else 4
-                            String(poolData, start, poolData.drop(start).takeWhile { it != 0.toByte() }.size, Charsets.UTF_8)
-                        } else {
-                            val lenChars = (poolData[off].toInt() and 0xFF) or ((poolData[off + 1].toInt() and 0xFF) shl 8)
-                            val start = off + 2
-                            String(poolData, start, lenChars * 2, Charsets.UTF_16LE)
-                        }
-                    } catch (_: Exception) { "" }
-                }
-            }
-        }
-
-        // Second pass — parse XML events
-        fun str(idx: Int) = if (idx >= 0 && idx < strings.size) strings[idx] else ""
-
-        // Reset to after the file header and re-scan all chunks
-        buf.position(8)
-        var depth = 0
-        val indent = "  "
-
-        while (buf.remaining() >= 8) {
-            val chunkType = buf.int
-            val chunkSize = buf.int
-            if (chunkSize < 8) break
-
-            when (chunkType) {
-                CHUNK_STRINGS, CHUNK_RES_IDS -> {
-                    val skip = (chunkSize - 8).coerceAtLeast(0)
-                    if (buf.remaining() >= skip) buf.position(buf.position() + skip)
-                }
-                CHUNK_NS_START, CHUNK_NS_END -> {
-                    if (buf.remaining() >= chunkSize - 8)
-                        buf.position(buf.position() + chunkSize - 8)
-                }
-                CHUNK_XML_START -> {
-                    if (buf.remaining() < chunkSize - 8) break
-                    buf.int  // lineNumber
-                    buf.int  // 0xFFFFFFFF
-                    val _nsIdx  = buf.int
-                    val nameIdx= buf.int
-                    val _attrStart = buf.short.toInt() and 0xFFFF
-                    val _attrSize  = buf.short.toInt() and 0xFFFF
-                    val attrCount = buf.short.toInt() and 0xFFFF
-                    buf.short  // idIndex
-                    buf.short  // classIndex
-                    buf.short  // styleIndex
-
-                    val elemName = str(nameIdx)
-                    sb.append(indent.repeat(depth))
-                    sb.append("<$elemName")
-                    repeat(attrCount) {
-                        if (buf.remaining() < 20) return@repeat
-                        val _attrNsIdx   = buf.int
-                        val attrNameIdx = buf.int
-                        val attrRawIdx  = buf.int
-                        val attrValueType = buf.int ushr 24
-                        val attrValueData = buf.int
-                        val attrName = str(attrNameIdx)
-                        val attrVal  = when (attrValueType) {
-                            0x03 -> str(attrRawIdx)          // string ref
-                            0x10 -> attrValueData.toString() // integer
-                            0x12 -> if (attrValueData != 0) "true" else "false" // bool
-                            else -> "0x${attrValueData.toString(16)}"
-                        }
-                        sb.append("\n${indent.repeat(depth + 1)}$attrName=\"$attrVal\"")
-                    }
-                    sb.append(">\n")
-                    depth++
-                }
-                CHUNK_XML_END -> {
-                    if (buf.remaining() < chunkSize - 8) break
-                    buf.int  // lineNumber
-                    buf.int  // 0xFFFFFFFF
-                    val _nsIdx  = buf.int
-                    val nameIdx= buf.int
-                    depth = (depth - 1).coerceAtLeast(0)
-                    sb.append("${indent.repeat(depth)}</${str(nameIdx)}>\n")
-                }
-                else -> {
-                    val skip = (chunkSize - 8).coerceAtLeast(0)
-                    if (buf.remaining() >= skip) buf.position(buf.position() + skip)
-                    else break
-                }
-            }
-        }
-        sb.toString().ifBlank { "(empty XML)" }
-        } // else fileType ok
-        } // else remaining >= 8
-    } catch (e: Exception) {
-        "(AXML decode error: ${e.message})"
+private fun extractManifestValues(xml: String): Map<String, String> {
+    val map = mutableMapOf<String, String>()
+    fun attr(name: String): String? {
+        val re = Regex("""${Regex.escape(name)}="([^"]*)"""")
+        return re.find(xml)?.groupValues?.get(1)
     }
-
-    fun extractManifestValues(xml: String): Map<String, String> {
-        val map = mutableMapOf<String, String>()
-        fun attr(name: String): String? {
-            val re = Regex("""${Regex.escape(name)}="([^"]*)"""")
-            return re.find(xml)?.groupValues?.get(1)
-        }
-        map["package"]        = attr("package") ?: ""
-        map["versionName"]    = attr("versionName") ?: attr("android:versionName") ?: ""
-        map["versionCode"]    = attr("versionCode") ?: attr("android:versionCode") ?: ""
-        map["minSdkVersion"]  = attr("minSdkVersion") ?: attr("android:minSdkVersion") ?: ""
-        map["targetSdkVersion"] = attr("targetSdkVersion") ?: attr("android:targetSdkVersion") ?: ""
-        map["compileSdkVersion"] = attr("compileSdkVersion") ?: ""
-        map["label"]          = attr("label") ?: attr("android:label") ?: ""
-        return map
-    }
+    map["package"]        = attr("package") ?: ""
+    map["versionName"]    = attr("versionName") ?: attr("android:versionName") ?: ""
+    map["versionCode"]    = attr("versionCode") ?: attr("android:versionCode") ?: ""
+    map["minSdkVersion"]  = attr("minSdkVersion") ?: attr("android:minSdkVersion") ?: ""
+    map["targetSdkVersion"] = attr("targetSdkVersion") ?: attr("android:targetSdkVersion") ?: ""
+    map["compileSdkVersion"] = attr("compileSdkVersion") ?: ""
+    map["label"]          = attr("label") ?: attr("android:label") ?: ""
+    return map
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -261,9 +129,10 @@ private fun analyzeApk(file: File): ApkAnalysis {
         // Parse AndroidManifest.xml (binary AXML)
         val manifestEntry = zip.getEntry("AndroidManifest.xml")
         val manifest = if (manifestEntry != null) {
-            val bytes = zip.getInputStream(manifestEntry).readBytes()
-            val xml = AxmlDecoder.decode(bytes)
-            val vals = AxmlDecoder.extractManifestValues(xml)
+            // VG04: shared decoder — the uncapped readBytes() on the manifest entry is
+            // gone; decodeToXmlString caps the read at 8MB internally.
+            val xml = com.codespace.ide.util.AxmlDecoder.decodeToXmlString(zip.getInputStream(manifestEntry))
+            val vals = extractManifestValues(xml)
 
             // Extract permissions, activities, services, receivers, providers, features
             val permRegex = Regex("""<uses-permission[^>]*name="([^"]+)"""")

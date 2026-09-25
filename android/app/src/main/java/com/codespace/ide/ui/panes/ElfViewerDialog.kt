@@ -45,6 +45,9 @@ data class ElfHeader(
     val sectionCount: Int,
     val programHeaderCount: Int,
     val shStrNdx: Int,
+    // VG10: raw numeric machine code (EM_ARM=0x28, EM_AARCH64=0xB7, …) so the
+    // disassembler doesn't have to parse the display string back into a number.
+    val machineCode: Int = 0,
 )
 
 data class ElfSection(
@@ -58,6 +61,8 @@ data class ElfSection(
     val info: Int,
     val alignment: Long,
     val entSize: Long,
+    // VG10: raw numeric section address (the address field above is display hex).
+    val addressLong: Long = 0,
 )
 
 data class ElfSegment(
@@ -80,6 +85,10 @@ data class ElfSymbol(
     val visibility: String,
     val sectionIndex: String,
     val isDynamic: Boolean,
+    // VG10: raw numeric symbol type (STT_FUNC=2) and address so the disassembler
+    // filters on numbers, not on display strings.
+    val typeCode: Int = 0,
+    val valueLong: Long = 0L,
 )
 
 data class ElfDynEntry(
@@ -97,13 +106,18 @@ data class ElfParseResult(
     val soName: String,
     val rpath: String,
     val error: String? = null,
+    // VG10: bounded section-bytes accessor (8MB cap + bounds checks) — lets the
+    // disassembler extract .text without re-reading or re-walking the file.
+    val sectionData: (String) -> ByteArray? = { null },
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ELF Binary Parser — supports ELF32 and ELF64, little-endian and big-endian
 // ─────────────────────────────────────────────────────────────────────────────
 
-private object ElfParser {
+// VG10 (P3d): internal — DisassemblyViewerDialog consumes the same parser instead
+// of its own drifted ELF walk (uncapped read, ELF32-only).
+internal object ElfParser {
 
     private fun machineStr(m: Int) = when (m) {
         0x00 -> "None"; 0x02 -> "SPARC"; 0x03 -> "x86"
@@ -298,6 +312,7 @@ private object ElfParser {
             sectionCount   = eShNum.toInt(),
             programHeaderCount = ePhNum.toInt(),
             shStrNdx       = eShStrNdx.toInt(),
+            machineCode    = eMach.toInt(),
         )
 
         // ── Section headers ──
@@ -343,6 +358,7 @@ private object ElfParser {
                     info = inf,
                     alignment = align,
                     entSize = entSz,
+                    addressLong = secAddr,
                 )
             }
         } catch (_: Exception) {}
@@ -432,6 +448,8 @@ private object ElfParser {
                     visibility = symVisStr(other),
                     sectionIndex = symSectionStr(shndx),
                     isDynamic  = isDynamic,
+                    typeCode   = info,
+                    valueLong  = value,
                 )
             }
         }
@@ -487,6 +505,7 @@ private object ElfParser {
             neededLibs = neededLibs,
             soName = soName,
             rpath = rpath,
+            sectionData = ::sectionData,
         )
     }
 }

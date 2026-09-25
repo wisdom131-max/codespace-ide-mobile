@@ -14,9 +14,9 @@ import java.io.OutputStreamWriter
  *
  * On-device it spawns a real OS process (Bash where available, plus optional bundled
  * Node/Python runtimes that are downloaded on first use to keep the APK lean). The same
- * interface backs remote sessions, where [start] is replaced by a WebSocket PTY or SSHJ
- * shell — see [com.codespace.ide.ssh.SshManager.openShell] and the backend
- * TerminalGateway.
+ * interface backs remote sessions, where [start] is replaced by a WebSocket PTY or an
+ * ssh-CLI shell in the rootfs (accept-new TOFU; known_hosts is managed from
+ * SshManagerSheet) — or the backend TerminalGateway.
  *
  * Supported out of the box: bash, sh, git, node, npm, pnpm, yarn, python/pip, and common
  * Linux utilities present on the device or remote host.

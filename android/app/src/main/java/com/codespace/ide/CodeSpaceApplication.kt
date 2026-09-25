@@ -72,6 +72,13 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         // is green from startup, not just when a terminal session is created.
         // start() no-ops if already running, so this is safe to call here.
         com.codespace.ide.agent.AgentApiServer.start(this)
+        // IG03 (P3d): tasks.json was written but NEVER restored — "re-scheduled on
+        // app restart" existed only in KDoc while restoreAll() had zero callers, so
+        // schedule() reported success for a persistence that did not exist beyond
+        // process lifetime. One call at startup makes the claim true. Failures are
+        // swallowed here the same way surrounding init is: startup must not die on
+        // a corrupt tasks.json (readTasks already degrades bad JSON to an empty task set).
+        try { com.codespace.ide.agent.AgentScheduler.restoreAll(this) } catch (_: Exception) { }
         // CRITICAL: Do NOT acquire WakeLocks or start foreground service here.
         //
         // TECNO HiOS power management kills apps that acquire WakeLocks + start FGS

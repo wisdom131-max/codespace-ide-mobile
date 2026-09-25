@@ -13,7 +13,6 @@ import com.codespace.ide.ui.screens.NotificationToastBanner
 import com.codespace.ide.ui.panels.TaskRunnerPanel
 import com.codespace.ide.ui.panels.BuildHistoryPanel
 import com.codespace.ide.ui.panels.ArtifactPanel
-import com.codespace.ide.ui.panels.DownloadCenterPanel
 import com.codespace.ide.ui.panels.CloudBackupPanel
 
 import com.codespace.ide.util.WorkspaceManager
@@ -399,7 +398,7 @@ private class AdaptiveSubmenuPositionProvider(private val marginPx: Int) : Popup
 
 
 // NotifItem moved to NotificationDrawerOverlay.kt
-private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES, BUILD, TOOLCHAIN, TASKS, HISTORY, ARTIFACTS, DOWNLOADS, BACKUP, TODO, TESTS, ANALYSIS }
+private enum class BottomTab  { PROBLEMS, OUTPUT, TERMINAL, DEBUG, PORTS, SPLIT, PREVIEW, LOGCAT, VARIABLES, BUILD, TOOLCHAIN, TASKS, HISTORY, ARTIFACTS, BACKUP, TODO, TESTS, ANALYSIS }
 
 private data class MenuBarItem(val label: String, val items: List<MenuAction>)
 private data class MenuAction(val label: String, val shortcut: String = "", val divider: Boolean = false)
@@ -3659,7 +3658,6 @@ private fun PssBottomPanelContent(
                 } else "",
                 modifier = Modifier.fillMaxSize(),
             )
-            BottomTab.DOWNLOADS -> DownloadCenterPanel(modifier = Modifier.fillMaxSize())
             BottomTab.BACKUP -> {
                 CloudBackupPanel(
                     projectId  = projectId,
@@ -4951,7 +4949,6 @@ private fun PanelOverflowMenu(
         BottomTab.TASKS -> listOf("Run Task", "Cancel Task", "Clear Log")
         BottomTab.HISTORY -> listOf("Clear History", "Export Log")
         BottomTab.ARTIFACTS -> listOf("Refresh", "Open Folder", "Delete All")
-        BottomTab.DOWNLOADS -> listOf("Clear Completed", "Retry Failed")
         BottomTab.BACKUP -> listOf("Backup Now", "Restore")
         BottomTab.TODO -> listOf("Refresh", "Filter by Tag")
         BottomTab.TESTS -> listOf("Refresh", "Run All", "Filter")
@@ -5165,13 +5162,6 @@ private fun handlePanelMenuAction(
                 onShowNotification("${artifacts.size} artifacts deleted", "info")
             }
         }
-
-        // ── DOWNLOADS ──
-        "Clear Completed" -> {
-            com.codespace.ide.project.DownloadCenter.clearFinished()
-            onShowNotification("Completed downloads cleared", "info")
-        }
-        "Retry Failed" -> { onShowNotification("Retrying failed downloads...", "info") }
 
         // ── BACKUP ──
         "Backup Now" -> {

@@ -227,122 +227,62 @@ private object ArmThumbDecoder {
 // ─────────────────────────────────────────────────────────────────────────────
 // ELF → extract .text section → decode
 // ─────────────────────────────────────────────────────────────────────────────
-
+// VG10 (P3d): the duplicate hand-rolled ELF walk that used to live here is DELETED.
+// ONE parser owns the format — ElfParser, shared with ElfViewerDialog — with the
+// 128MB file cap, ELF32/64 + LE/BE support, and bounded section/symbol counts the
+// old inline walk lacked (it was ELF32-LE only with an uncapped readBytes()).
+// This file now does only disassembly-specific work: .text extraction and decoding.
 private suspend fun disassembleElfFile(file: File): DisasmResult = withContext(Dispatchers.IO) {
     try {
-        val bytes = file.readBytes()
-        if (bytes.size < 52) return@withContext DisasmResult("?", emptyList(), emptyList(), "File too small")
-        val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-
-        // ELF ident
-        val magic = bytes.slice(0..3).map { it.toInt() and 0xFF }
-        if (magic != listOf(0x7F, 0x45, 0x4C, 0x46))
-            return@withContext DisasmResult("?", emptyList(), emptyList(), "Not an ELF file")
-
-        val elfClass = bytes[4].toInt()
-        val is64 = elfClass == 2
-        val arch = when (val em = buf.also { it.position(18) }.short.toInt() and 0xFFFF) {
-            0x28  -> "ARM Thumb-2"
-            0xB7  -> "AArch64"
-            0x03  -> "x86"
-            0x3E  -> "x86_64"
-            0xF3  -> "RISC-V"
-            else  -> "arch 0x${em.toString(16)}"
+        val parsed = ElfParser.parse(file)
+        if (parsed.error != null) return@withContext DisasmResult("?", emptyList(), emptyList(), parsed.error)
+        val header = parsed.header
+        val is64 = header.elfClass == "ELF64"
+        val arch = when (header.machineCode) {
+            0x28 -> "ARM Thumb-2"
+            0xB7 -> "AArch64"
+            0x03 -> "x86"
+            0x3E -> "x86_64"
+            0xF3 -> "RISC-V"
+            else -> header.machine
         }
-        val isArm = arch == "ARM Thumb-2"
-
-        // ELF32 section header table
         if (is64) return@withContext DisasmResult(arch, emptyList(), emptyList(), "ELF64 disassembly not yet supported (use ELF Viewer for headers/symbols)")
+        val isArm = header.machineCode == 0x28 // EM_ARM — only the Thumb-2 decoder exists
 
-        buf.position(32); val shoff  = buf.int.toLong()
-        buf.position(46); val shentsize = buf.short.toInt() and 0xFFFF
-        buf.position(48); val shnum  = buf.short.toInt() and 0xFFFF
-        buf.position(50); val shstrndx = buf.short.toInt() and 0xFFFF
-
-        if (shoff == 0L || shnum == 0) return@withContext DisasmResult(arch, emptyList(), emptyList(), "No section headers")
-
-        // Read shstrtab
-        val shstrOff = (shoff + shstrndx.toLong() * shentsize).toInt()
-        if (shstrOff + 40 > bytes.size) return@withContext DisasmResult(arch, emptyList(), emptyList(), "shstrtab out of range")
-        val shstrSecOff = ByteBuffer.wrap(bytes, shstrOff + 16, 4).order(ByteOrder.LITTLE_ENDIAN).int
-        val _shstrSecSize= ByteBuffer.wrap(bytes, shstrOff + 20, 4).order(ByteOrder.LITTLE_ENDIAN).int
-
-        fun secName(nameOff: Int): String {
-            val abs = shstrSecOff + nameOff
-            if (abs < 0 || abs >= bytes.size) return ""
-            val end = bytes.indexOf(0, abs).let { if (it < 0) bytes.size else it }
-            return String(bytes, abs, (end - abs).coerceAtLeast(0))
-        }
-
-        // Find .text and symbol sections
-        data class SecInfo(val name: String, val off: Int, val size: Int, val addr: Long)
-        val sections = (0 until shnum).mapNotNull { idx ->
-            val secOff = (shoff + idx.toLong() * shentsize).toInt()
-            if (secOff + 40 > bytes.size) return@mapNotNull null
-            val nameOff = ByteBuffer.wrap(bytes, secOff, 4).order(ByteOrder.LITTLE_ENDIAN).int
-            val _secType = ByteBuffer.wrap(bytes, secOff + 4, 4).order(ByteOrder.LITTLE_ENDIAN).int
-            val secAddr = ByteBuffer.wrap(bytes, secOff + 12, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
-            val secFileOff = ByteBuffer.wrap(bytes, secOff + 16, 4).order(ByteOrder.LITTLE_ENDIAN).int
-            val secSize = ByteBuffer.wrap(bytes, secOff + 20, 4).order(ByteOrder.LITTLE_ENDIAN).int
-            SecInfo(secName(nameOff), secFileOff, secSize, secAddr)
-        }
-
-        val textSec = sections.firstOrNull { it.name == ".text" }
-            ?: sections.firstOrNull { it.name.startsWith(".text") }
+        val textSec = parsed.sections.firstOrNull { it.name == ".text" }
+            ?: parsed.sections.firstOrNull { it.name.startsWith(".text") }
             ?: return@withContext DisasmResult(arch, emptyList(), emptyList(), "No .text section found")
+        // Shared bounded accessor: null when missing, out of bounds, or over the 8MB cap.
+        val textBytes = parsed.sectionData(textSec.name)
+            ?: return@withContext DisasmResult(arch, emptyList(), emptyList(), ".text unreadable (out of bounds or over the 8MB cap)")
+        val textAddr = textSec.addressLong
 
-        val textBytes = bytes.copyOfRange(
-            textSec.off.coerceIn(0, bytes.size),
-            (textSec.off + textSec.size).coerceIn(0, bytes.size)
-        )
-
-        // Decode instructions
+        // Decode instructions (unchanged behavior)
         val limit = 2000
         val instructions = if (isArm) {
-            ArmThumbDecoder.decode(textBytes, textSec.addr, limit)
+            ArmThumbDecoder.decode(textBytes, textAddr, limit)
         } else {
             // For non-ARM: raw byte groups of 4 with ".word" labels
             (0 until textBytes.size / 4).take(limit).map { idx ->
                 val off = idx * 4
                 val raw = textBytes.copyOfRange(off, off + 4)
                 val w = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN).int
-                DisasmInstruction(textSec.addr + off, raw, ".word", "0x${w.toString(16).padStart(8,'0')}", "($arch — ARM decoder only)")
+                DisasmInstruction(textAddr + off, raw, ".word", "0x${w.toString(16).padStart(8,'0')}", "($arch — ARM decoder only)")
             }
         }
 
-        // Build function list from .symtab
-        val symtabSec = sections.firstOrNull { it.name == ".symtab" }
-        val strtabSec = sections.firstOrNull { it.name == ".strtab" }
-        val functions = if (symtabSec != null && strtabSec != null) {
-            (0 until symtabSec.size / 16).mapNotNull { i ->
-                val off = symtabSec.off + i * 16
-                if (off + 16 > bytes.size) return@mapNotNull null
-                val nameOff  = ByteBuffer.wrap(bytes, off, 4).order(ByteOrder.LITTLE_ENDIAN).int
-                val addr     = ByteBuffer.wrap(bytes, off + 4, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
-                val size     = ByteBuffer.wrap(bytes, off + 8, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong()
-                val info     = bytes[off + 12].toInt() and 0xFF
-                val symType  = info and 0xF
-                val _symBind  = info ushr 4
-                if (symType != 2 /* STT_FUNC */) return@mapNotNull null
-                val nameAbs  = strtabSec.off + nameOff
-                if (nameAbs < 0 || nameAbs >= bytes.size) return@mapNotNull null
-                val nameEnd  = bytes.indexOf(0, nameAbs).let { if (it < 0) bytes.size else it }
-                val symName  = String(bytes, nameAbs, (nameEnd - nameAbs).coerceAtLeast(0))
-                if (symName.isBlank()) return@mapNotNull null
-                DisasmFunction(symName, addr, size, arch)
-            }.sortedBy { it.address }
-        } else emptyList()
+        // Function list from the shared symbol walk — .symtab + .dynsym, STT_FUNC.
+        // (The old walk read .symtab only; stripped binaries now get their exported
+        // functions too, via the same parser the ELF Viewer uses.)
+        val functions = parsed.symbols
+            .filter { (it.typeCode and 0xF) == 2 && it.name.isNotEmpty() }
+            .map { DisasmFunction(it.name, it.valueLong, it.size, arch) }
+            .sortedBy { it.address }
 
         DisasmResult(arch, functions, instructions)
     } catch (e: Exception) {
         DisasmResult("?", emptyList(), emptyList(), "Parse error: ${e.message}")
     }
-}
-
-// Helper: ByteArray.indexOf(byte, start)
-private fun ByteArray.indexOf(b: Byte, start: Int): Int {
-    for (i in start until size) if (this[i] == b) return i
-    return -1
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

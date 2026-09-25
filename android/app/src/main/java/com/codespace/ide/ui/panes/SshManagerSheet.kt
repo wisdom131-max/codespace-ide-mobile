@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -35,6 +36,26 @@ import kotlinx.coroutines.withContext
  *  - SshProfileStore.save() result checked; snackbar shown on write failure
  *  - orientation var scoped only where needed (AlertDialogs)
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// IG06 (P3d): known-hosts surface on the ONE live trust store
+//
+// The orphaned SSHJ+TOFU app-side stack (ssh/SshManager.kt + SshFingerprintStore,
+// 264 zero-caller lines) is deleted. Trust in the live ssh-CLI path lives in the
+// Ubuntu rootfs known_hosts: StrictHostKeyChecking=accept-new auto-trusts the
+// FIRST connect and hard-refuses any later fingerprint MISMATCH — genuine openssh
+// TOFU. What was missing was visibility: this section reads/clears that store via
+// ssh-keygen (-F lookup, -R forget) in the rootfs, so one trust store has one
+// visible surface.
+// ─────────────────────────────────────────────────────────────────────────────
+
+private data class KnownHostInfo(val trusted: Boolean, val note: String? = null)
+
+private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
+
+/** known_hosts entry key: host for port 22, [host]:port otherwise (openssh format). */
+private fun knownHostsKey(host: String, port: Int): String =
+    if (port == 22) host else "[$host]:$port"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SshManagerSheet(
@@ -69,6 +90,65 @@ fun SshManagerSheet(
             }
         }
         refreshKey++
+    }
+
+    // ── IG06: known-hosts (TOFU) state, on the live rootfs store ──
+    var knownHosts by remember { mutableStateOf<Map<String, KnownHostInfo>>(emptyMap()) }
+    var hostsBusy by remember { mutableStateOf(false) }
+
+    fun refreshKnownHosts(list: List<SshProfile>) {
+        if (list.isEmpty()) return
+        hostsBusy = true
+        scope.launch(Dispatchers.IO) {
+            val out = mutableMapOf<String, KnownHostInfo>()
+            for (p in list) {
+                val key = shellQuote(knownHostsKey(p.host, p.port))
+                val r = com.codespace.ide.terminal.ProotInstaller.execTyped(
+                    ctx, "ssh-keygen -F $key", timeoutSeconds = 20,
+                )
+                out[p.id] = when {
+                    r.launchError != null -> KnownHostInfo(false, "Ubuntu rootfs not installed")
+                    r.timedOut -> KnownHostInfo(false, "check timed out")
+                    r.exitCode == 0 -> KnownHostInfo(true)
+                    else -> KnownHostInfo(false) // exit 1 = no entry recorded yet
+                }
+            }
+            knownHosts = out
+            hostsBusy = false
+        }
+    }
+
+    fun forgetHostKey(profile: SshProfile) {
+        hostsBusy = true
+        scope.launch(Dispatchers.IO) {
+            val key = shellQuote(knownHostsKey(profile.host, profile.port))
+            val r = com.codespace.ide.terminal.ProotInstaller.execTyped(
+                ctx, "ssh-keygen -R $key", timeoutSeconds = 20,
+            )
+            knownHosts = knownHosts + (profile.id to when {
+                r.launchError != null -> KnownHostInfo(false, "Ubuntu rootfs not installed")
+                r.timedOut -> KnownHostInfo(false, "forget timed out")
+                else -> KnownHostInfo(false) // removed — next connect re-trusts (TOFU)
+            })
+            hostsBusy = false
+        }
+    }
+
+    fun clearAllKnownHosts() {
+        hostsBusy = true
+        scope.launch(Dispatchers.IO) {
+            // -R leaves .old backups; clear both so the store is truly empty.
+            val r = com.codespace.ide.terminal.ProotInstaller.execTyped(
+                ctx, "rm -f /root/.ssh/known_hosts /root/.ssh/known_hosts.old", timeoutSeconds = 20,
+            )
+            val note = when {
+                r.launchError != null -> "Ubuntu rootfs not installed"
+                r.timedOut -> "clear timed out"
+                else -> null
+            }
+            knownHosts = knownHosts.mapValues { KnownHostInfo(false, note) }
+            hostsBusy = false
+        }
     }
 
     ModalBottomSheet(
@@ -137,6 +217,17 @@ fun SshManagerSheet(
                         }
                     }
                 }
+
+                // ── IG06: Known hosts (TOFU) — the live rootfs trust store, made visible ──
+                Spacer(Modifier.height(16.dp))
+                KnownHostsSection(
+                    profiles = profiles,
+                    status = knownHosts,
+                    busy = hostsBusy,
+                    onCheck = { refreshKnownHosts(profiles) },
+                    onForget = { forgetHostKey(it) },
+                    onClearAll = { clearAllKnownHosts() },
+                )
             }
         }
     }
@@ -258,5 +349,78 @@ private fun SshProfileDialog(
             },
             dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun KnownHostsSection(
+    profiles: List<SshProfile>,
+    status: Map<String, KnownHostInfo>,
+    busy: Boolean,
+    onCheck: () -> Unit,
+    onForget: (SshProfile) -> Unit,
+    onClearAll: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Known hosts (TOFU)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Row {
+                TextButton(onClick = onCheck, enabled = !busy) {
+                    Text(if (busy) "Working…" else "Check", color = Color(0xFF89B4FA), fontSize = 12.sp)
+                }
+                TextButton(onClick = onClearAll, enabled = !busy) {
+                    Text("Clear all", color = Color(0xFFFF6B6B), fontSize = 12.sp)
+                }
+            }
+        }
+        Text(
+            "Trust lives in the Ubuntu rootfs known_hosts: first connect auto-trusts (openssh accept-new), a changed fingerprint is refused. Check reads the store; Forget forces a fresh trust on next connect.",
+            color = Color(0xFF888888), fontSize = 11.sp,
+        )
+        Spacer(Modifier.height(6.dp))
+        if (status.isEmpty()) {
+            Text(
+                "Tap Check to read the known_hosts store.",
+                color = Color(0xFF888888), fontSize = 12.sp,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+        } else {
+            profiles.forEach { profile ->
+                val info = status[profile.id] ?: return@forEach
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A)),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(knownHostsKey(profile.host, profile.port), color = Color.White, fontSize = 13.sp)
+                            Text(
+                                when {
+                                    info.note != null -> info.note
+                                    info.trusted -> "Host key trusted (first connect recorded)"
+                                    else -> "No host key recorded yet"
+                                },
+                                color = if (info.trusted && info.note == null) Color(0xFF4EC9B0) else Color(0xFF888888),
+                                fontSize = 11.sp,
+                            )
+                        }
+                        if (info.trusted && info.note == null) {
+                            TextButton(onClick = { onForget(profile) }, enabled = !busy) {
+                                Text("Forget", color = Color(0xFFFF6B6B), fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
