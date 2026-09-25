@@ -17,12 +17,37 @@ push and revertable as one commit:**
 | P3c — Polling → flows | fdb660d | #2924 | PG02, PG04, TP08, PG05 |
 | P3d — Delete-the-duplicates | d6669fc | #2926 | VG04, VG10, IG06, IG03, IG04 |
 
-**Tally (verified scan of MASTER-GAPS.md, 249 gap rows): 52 closed, 7 moved to
-F-TRACK (TG01-TG07, owner-ruled feature-build), ~190 remain for P4.** TP01 resolved
-pre-plan (kept for audit trail); TP02 hotfix shipped 9d4923b, device-verification
+**Tally (verified scan of MASTER-GAPS.md, 249 gap rows): 60 closed, 189 remain for P4.**
+TP01 resolved pre-plan (kept for audit trail); TP02 hotfix shipped 9d4923b, device-verification
 batched into P5. PR14 PANEL side (Problems rows from the store) remains open for P4.
 
-**Next: P4 by group, or F-TRACK F1 — awaiting owner go.**
+**Next: P4 by group — owner-ruled go 2026-09-26.**
+
+## F-TRACK COMPLETION (2026-09-25/26, owner ruling 2026-09-26: track CLOSED at F5)
+
+**F1-F5 SHIPPED. The testing surface is complete and honest: annotation-driven lenses,
+real per-test runs (pytest/jest/gradle/flutter), parsed results with Problems bridging,
+project-wide discovery + Testing pane + batch runner, and real Debug Test for Python and
+JS/TS through UniversalDebugManager.**
+
+| Phase | Commit(s) | CI | Gap IDs |
+|---|---|---|---|
+| F1 — TestLensDetector v2 + TestId + honest templates | c1f4baf (docs 86e15b0) | #2930/#2931 GREEN | TG05, TG06 |
+| F2 — Honest Run (per-test commands) | 7dbab1e + fix 8b6ec22 (docs 71d6bd8) | #2933 GREEN | TG01, TG02 |
+| F3 — Results (parsers, store, Problems bridge, gutter) | bab66ca + fixes f5edd39/74991d3 (docs 5421142) | #2937 GREEN | TG03 |
+| F4 — Discovery + Testing pane + batch runner | d910165 + fix 983c481 (docs bd2d0b1) | #2940 GREEN | TG04 |
+| F5 — Debug Test Py+JS (UDM routing) | 54f5127 (docs a1dbe8d) | #2942 GREEN | TG07 |
+
+**F6 / JVM Debug Test — PARKED as a standalone future decision (owner ruling
+2026-09-26), NOT part of this track's completion.** Design check ruled: gradle
+`test --debug-jvm --tests` does the debuggee side (JDWP socket, suspend-wait), but
+the socket speaks JDWP (binary protocol), not DAP. Option A (hand-written JDWP client
+in Kotlin, ~2.5-4k lines, XL) is RULED OUT permanently. Option B (vendor Microsoft
+java-debug core as a rootfs DAP server in attach mode, MEDIUM if its spike passes) is
+the only sanctioned path; it is GATED on a cheap spike first (java-debug-core runs
+headless under the rootfs JDK and attaches to port 5005). `supportsDebug() == false`
+for JVM/Java/Kotlin stays honest as-is — a documented known gap, not a stub.
+TG08/TG09/TG10 were never in F-track scope and remain open for P4.
 
 
 Owner-approved sequence. Each phase is its own commit(s), revertable alone: reverting a phase re-opens exactly the gap IDs it closed and nothing else. Every phase lists "what did I remove" in its commit message. CI must be green before the next phase starts. Full audit context: MASTER-GAPS.md (249 gaps), MASTER-CONNECTIONS.md (cross-group ledger), WHERE-TO-LOOK.md (symptom index), the 18 GROUP docs + 2 addenda.
@@ -48,7 +73,7 @@ Owner-approved sequence. Each phase is its own commit(s), revertable alone: reve
 | **P3b — PLAN A canonical store** | Per-file canonical store keyed by canonical path for line-highlights, squiggles, markers; collapses the path-dialect family (CH02, DG02, problems-jump, tab identity). NOTE: CH02's host↔guest boundary translation is its own fix (recommended option (b): one AgentTools translation choke point shared with ScmState), NOT covered by PLAN A as scoped. | G03, CH02, DG02 + path-identity family | MASTER-CONNECTIONS.md §2: containment + dialect translation + key canonicalization = one root problem, PLAN A the unifier. |
 | **P3c — Polling → StateFlow** | One pass over fixed-cadence polls. | PG02, PG04/TP08, PG05 | |
 | **P3d — Delete-the-duplicates** | Remove duplicate/orphaned implementations (parallel-safe anytime; shrinks what P4 must reason about). | VG04, VG10, IG06, IG03, IG04 | **SHIPPED 2026-09-25 (d6669fc, CI #2926 GREEN, first-push clean).** IG06 ruling: orphaned SSHJ+TOFU stack deleted; the live trust store (rootfs known_hosts) gained its missing visible surface in SshManagerSheet (ssh-keygen -F / -R). IG04 ruling: removal, not routing — the only real downloader (rootfs fetch) needs Range-resume, richer than the engine. **P-SERIES P0→P3d NOW COMPLETE.** |
-| **P4 — Everything else by group** | Remaining rows batched per group, each batch revertable. Verified scan 2026-09-25 (supersedes plan-time 54/114/62 estimate): ~190 rows — HIGH 22 (+ TB02, OG01 high-tier), MEDIUM 98, LOW 61, CRITICAL/TOP-class 4 (TP01 resolved-trail, TP02 shipped-pending-P5, +2 prose matches), enablers 2, unclassified 3. | remaining gaps Includes SK04 (PIN lock) batching with any future app-level security work. |
+| **P4 — Everything else by group** | Remaining rows batched per group, each batch revertable. Verified scan 2026-09-26 (post-P3e, post-F-TRACK; supersedes the 2026-09-25 estimate): 189 rows — HIGH 22, MEDIUM 63, MED-LOW 35, LOW 60, top/critical-class 4 (TP01 resolved-trail, TP02 shipped-pending-P5, TB02 + DG13 prose-tier matches), structural-enabler rows 4. By group (remaining): XG 15, TP 14, LS 13, IC 13, SK 12, SG 12, PR 12, PG 11, CH 10, DG 10, SR 10, RG 8, VG 8, G(Editor) 8, IG 9, TB 6, TM 6, OG 4, IM 3, TG 3 (TG08/09/10), EX 2. | remaining gaps Includes SK04 (PIN lock) batching with any future app-level security work. |
 | **P5 — Verification round** | All pending device checks per group (BI/OB/TE/IMC/TT/TC/SN/PM + prior batches), CI green per commit, same rules as the audit. **TP02's batched device verification lands HERE (owner's full test pass).** | verifies all | TP02 only reaches "closed" after this pass. |
 
 ## Standing decisions recorded before this plan
