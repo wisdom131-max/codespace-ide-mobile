@@ -78,6 +78,43 @@ object TestRunManager {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // F4 batch runner (Testing pane run-all / re-run-failed)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /** One batch target — TestStore items mapped 1:1 onto runTest arguments. */
+    data class BatchTarget(
+        val testId: String,
+        val hostFilePath: String,
+        val language: Language,
+        val suite: Boolean,
+        val lineIndex: Int,
+    )
+
+    /**
+     * Runs targets SEQUENTIALLY through runTest — one runner at a time, the
+     * pane observes progress live via the F3 result store (RUNNING recorded
+     * per test). Stops when the caller cancels (stop button), when the
+     * current run ends CANCELLED (sticky, PR01 pattern), or when the list is
+     * exhausted. Individual UNTRUSTED/UNSUPPORTED results are recorded and
+     * the batch continues — one unreachable file must not hide the others.
+     */
+    suspend fun runBatch(
+        context: Context,
+        projectRoot: String?,
+        targets: List<BatchTarget>,
+        isCancelled: () -> Boolean,
+    ): List<TestRunResult> {
+        val results = mutableListOf<TestRunResult>()
+        for (t in targets) {
+            if (isCancelled()) break
+            val r = runTest(context, projectRoot, t.hostFilePath, t.language, t.testId, t.suite, t.lineIndex)
+            results.add(r)
+            if (r.status == TestRunStatus.CANCELLED) break
+        }
+        return results
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // Execution
     // ─────────────────────────────────────────────────────────────────────────────
 

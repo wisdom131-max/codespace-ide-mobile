@@ -3720,37 +3720,20 @@ private fun PssBottomPanelContent(
                     )
                 }
             }
-            // P41-P: Test Explorer
+            // F4 (TG04): Testing pane — tree projection over the flat TestId
+            // store, live states from F3, real per-row Run and batch controls.
+            // Replaces the P41-P file-list explorer whose Run button only
+            // switched to the Terminal tab without running anything.
             BottomTab.TESTS -> {
-                val projectRoot = com.codespace.ide.util.ProjectPathResolver.resolveProjectRootFile(context, projectId)
-                var testFiles by remember { mutableStateOf<List<com.codespace.ide.ui.panes.TestFileInfo>>(emptyList()) }
-                var scanning by remember { mutableStateOf(true) }
-                LaunchedEffect(projectId) {
-                    scanning = true
-                    testFiles = if (projectRoot != null && projectRoot.exists()) {
-                        com.codespace.ide.ui.panes.discoverTestFiles(projectRoot)
-                    } else emptyList()
-                    scanning = false
-                }
-                if (scanning) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color(0xFF569CD6))
-                    }
-                } else {
-                    com.codespace.ide.ui.panes.TestExplorerPanel(
-                        testFiles = testFiles,
-                        onRunTest = { relPath ->
-                            val fullPath = projectRoot?.let { java.io.File(it, relPath).absolutePath }
-                            if (fullPath != null) {
-                                onActiveBottomTabChange(BottomTab.TERMINAL)
-                            }
-                        },
-                        onOpenFile = { relPath ->
-                            val fullPath = projectRoot?.let { java.io.File(it, relPath).absolutePath }
-                            if (fullPath != null) onOpenFile(fullPath)
-                        },
-                    )
-                }
+                val projectRootFile = com.codespace.ide.util.ProjectPathResolver.resolveProjectRootFile(context, projectId)
+                com.codespace.ide.ui.panes.TestingPane(
+                    context = context,
+                    projectId = projectId,
+                    projectRootPath = projectRootFile?.absolutePath,
+                    onOpenFileAtLine = { path, lineOneBased ->
+                        onJumpToSourceWithPath(path, lineOneBased)
+                    },
+                )
             }
             // P41-P: Code Analysis (dead code, duplicates, complexity)
             BottomTab.ANALYSIS -> {
@@ -4951,7 +4934,7 @@ private fun PanelOverflowMenu(
         BottomTab.ARTIFACTS -> listOf("Refresh", "Open Folder", "Delete All")
         BottomTab.BACKUP -> listOf("Backup Now", "Restore")
         BottomTab.TODO -> listOf("Refresh", "Filter by Tag")
-        BottomTab.TESTS -> listOf("Refresh", "Run All", "Filter")
+        BottomTab.TESTS -> listOf()
         BottomTab.ANALYSIS -> listOf("Refresh", "Export Report")
     }
 
