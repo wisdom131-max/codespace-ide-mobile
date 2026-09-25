@@ -29,6 +29,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,6 +49,15 @@ import com.codespace.ide.diagnostics.DiagnosticManager
 /** CW5: preset applied to the search box when an explorer problem badge opens the panel. */
 internal var ProblemsPreset by mutableStateOf("")
 
+/** PR07 (P4a-1): the bottom-tab PROBLEMS menu commands, made REAL — the old
+ *  "Filter"/"Show Errors Only" entries fired notifications and changed nothing
+ *  (placebo family, PR07). The menu writes a command + monotonic token here;
+ *  the panel consumes it in composition and applies the SAME filter state the
+ *  panel's own chips drive. Show-all restores every severity.
+ *  FOCUS_SEARCH opens the panel's search box (requestFocus). */
+enum class ProblemsMenuCommand { FOCUS_SEARCH, ERRORS_ONLY, SHOW_ALL }
+internal var ProblemsMenuSignal by mutableStateOf<Pair<ProblemsMenuCommand, Long>?>(null)
+
 @Composable
 fun AdvancedProblemsPanel(
     onJumpToSource: (filePath: String, line: Int, column: Int) -> Unit,
@@ -55,8 +66,13 @@ fun AdvancedProblemsPanel(
     tabTextInactive: Color = Color(0xFF858585),
     tabTextActive: Color = Color(0xFFCCCCCC),
 ) {
-    val allDiagnostics = DiagnosticManager.diagnostics
-    val counts = remember(allDiagnostics) { DiagnosticManager.countBySeverity() }
+    // PR14 (P4a-1): the list-derived reads below use derivedStateOf, NOT
+    // remember(list) — a SnapshotStateList keyed into remember is ALWAYS the
+    // same object (AbstractList.equals identity fast-path), so it never
+    // re-keys and the panel would freeze at its first composition. derived
+    // tracks the CONTENT reads and re-evaluates on every mutation (the
+    // NotificationDrawerOverlay precedent).
+    val counts by remember { derivedStateOf { DiagnosticManager.countBySeverity() } }
 
     var showErrors by remember { mutableStateOf(true) }
     var showWarnings by remember { mutableStateOf(true) }
@@ -77,11 +93,32 @@ fun AdvancedProblemsPanel(
         }
     }
 
+    // PR07 (P4a-1): consume bottom-tab menu commands — REAL filter changes,
+    // the same state the severity chips drive (not a notification placebo).
+    val searchFocus = androidx.compose.runtime.remember { FocusRequester() }
+    LaunchedEffect(ProblemsMenuSignal) {
+        val sig = ProblemsMenuSignal
+        when (sig?.first) {
+            ProblemsMenuCommand.ERRORS_ONLY -> { showErrors = true; showWarnings = false; showInfo = false; showHints = false }
+            ProblemsMenuCommand.SHOW_ALL -> { showErrors = true; showWarnings = true; showInfo = true; showHints = true }
+            ProblemsMenuCommand.FOCUS_SEARCH -> {
+                // Not-yet-attached FocusRequester throws IllegalStateException
+                // (panel just composed) — swallow; the user can tap the field.
+                try { searchFocus.requestFocus() } catch (_: IllegalStateException) {}
+            }
+            null -> {}
+        }
+        // One-shot (CW5 preset precedent): consume so a later panel reopen
+        // never re-applies a stale menu command over the user's own filters.
+        if (sig != null) ProblemsMenuSignal = null
+    }
+
     // Apply filters
-    val filteredDiagnostics = remember(
-        allDiagnostics, showErrors, showWarnings, showInfo, showHints, showStale, searchQuery, sourceFilter
-    ) {
-        allDiagnostics.filter { d ->
+    // PR14: derived keys on the CONTENT (see above); severity/search/source
+    // keys keep the derived lambda recreated when THOSE change.
+    val filteredDiagnostics by remember(
+        showErrors, showWarnings, showInfo, showHints, showStale, searchQuery, sourceFilter
+    ) { derivedStateOf { DiagnosticManager.diagnostics.filter { d ->
             // Stale filter
             if (!showStale && d.isStale) return@filter false
 
@@ -109,10 +146,10 @@ fun AdvancedProblemsPanel(
             }
 
             true
-        }
-    }
+        } } }
 
-    // Group by file
+    // Group by file — remember keyed on the derived VALUE (a fresh list each
+    // evaluation; structural equals re-keys correctly, unlike the raw list object).
     val groupedByFile = remember(filteredDiagnostics) {
         filteredDiagnostics.groupBy { it.filePath }
             .toSortedMap()
@@ -172,13 +209,17 @@ fun AdvancedProblemsPanel(
         }
 
         // ── Search bar ────────────────────────────────────────────────────
+        // PR07: FOCUS_SEARCH from the bottom-tab menu lands here.
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             placeholder = { Text("Search problems...", fontSize = 11.sp, color = tabTextInactive) },
             leadingIcon = { Icon(Icons.Default.Search, null, tint = tabTextInactive, modifier = Modifier.size(14.dp)) },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+                .focusRequester(searchFocus),
             textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 11.sp, color = tabTextActive),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = dividerColor,
@@ -242,6 +283,11 @@ fun AdvancedProblemsPanel(
                             DiagnosticRow(
                                 diagnostic = diag,
                                 onClick = { onJumpToSource(diag.filePath, diag.range.startLine, diag.range.startColumn) },
+                                // PR05 (P4a-1): related locations finally render —
+                                // each taps through to its own file:line.
+                                onJumpRelated = { rel ->
+                                    onJumpToSource(rel.filePath, rel.line, rel.column)
+                                },
                             )
                         }
                     }
@@ -255,6 +301,10 @@ fun AdvancedProblemsPanel(
 private fun DiagnosticRow(
     diagnostic: DiagnosticManager.Diagnostic,
     onClick: () -> Unit,
+    // PR05 (P4a-1): relatedInformation was parsed into every LSP row but never
+    // rendered — the actionable context for duplicate-class/unused-import
+    // chains existed in the model and was invisible.
+    onJumpRelated: (DiagnosticManager.RelatedInfo) -> Unit,
 ) {
     val (icon, color) = when (diagnostic.severity) {
         DiagnosticManager.Severity.ERROR -> Icons.Default.Cancel to Color(0xFFE51400)
@@ -263,41 +313,64 @@ private fun DiagnosticRow(
         DiagnosticManager.Severity.HINT -> Icons.Default.Lightbulb to Color(0xFF6A9955)
     }
 
-    Row(
+    Column(
         Modifier.fillMaxWidth()
             .clickable { onClick() }
             .padding(start = 28.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, tint = if (diagnostic.isStale) color.copy(alpha = 0.4f) else color, modifier = Modifier.size(12.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(
-            diagnostic.message,
-            fontSize = 11.sp,
-            color = if (diagnostic.isStale) Color(0xFF666666) else Color(0xFFCCCCCC),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        // Source badge
-        val sourceLabel = diagnostic.sourceName ?: diagnostic.sourceId
-        if (sourceLabel.isNotEmpty()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = if (diagnostic.isStale) color.copy(alpha = 0.4f) else color, modifier = Modifier.size(12.dp))
+            Spacer(Modifier.width(6.dp))
             Text(
-                " $sourceLabel",
+                diagnostic.message,
+                fontSize = 11.sp,
+                color = if (diagnostic.isStale) Color(0xFF666666) else Color(0xFFCCCCCC),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            // Source badge
+            val sourceLabel = diagnostic.sourceName ?: diagnostic.sourceId
+            if (sourceLabel.isNotEmpty()) {
+                Text(
+                    " $sourceLabel",
+                    fontSize = 9.sp,
+                    color = Color(0xFF6A6A6A),
+                    maxLines = 1,
+                )
+            }
+            // Line:col
+            Text(
+                " ${diagnostic.range.startLine}:${diagnostic.range.startColumn}",
                 fontSize = 9.sp,
                 color = Color(0xFF6A6A6A),
-                maxLines = 1,
             )
+            // Code
+            diagnostic.code?.let {
+                Text(" [$it]", fontSize = 9.sp, color = Color(0xFF6A6A6A), maxLines = 1)
+            }
         }
-        // Line:col
-        Text(
-            " ${diagnostic.range.startLine}:${diagnostic.range.startColumn}",
-            fontSize = 9.sp,
-            color = Color(0xFF6A6A6A),
-        )
-        // Code
-        diagnostic.code?.let {
-            Text(" [$it]", fontSize = 9.sp, color = Color(0xFF6A6A6A), maxLines = 1)
+        // PR05 (P4a-1): related locations (VS Code markers-view parity) — the
+        // "related information" LSP servers send for duplicate-import chains,
+        // includes-with-usage, etc. Tappable lines, dimmed like the parent's
+        // meta; a related entry without a usable location renders as plain text.
+        diagnostic.relatedInformation.takeIf { it.isNotEmpty() }?.let { related ->
+            related.forEach { rel ->
+                val location = if (rel.filePath.isNotEmpty()) " " + rel.filePath.substringAfterLast('/') + ":" + rel.line else ""
+                val dim = if (diagnostic.isStale) Color(0xFF4A4A4A) else Color(0xFF8A8A8A)
+                Text(
+                    "↳ " + rel.message + location,
+                    fontSize = 10.sp,
+                    color = dim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .padding(start = 18.dp, top = 1.dp)
+                        .let { m ->
+                            if (rel.filePath.isNotEmpty()) m.clickable { onJumpRelated(rel) } else m
+                        },
+                )
+            }
         }
     }
 }

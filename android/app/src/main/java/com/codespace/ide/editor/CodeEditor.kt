@@ -516,6 +516,14 @@ fun CodeEditor(
     fontSize: Int = 13,
     onContentChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * PR14 (P4a-1): fired when an edit ADDS/REMOVES lines — (firstChangedLine0,
+     * lastChangedLine0, lineDelta), 0-based old-text coordinates. The consumer
+     * shifts line-numbered surfaces (DiagnosticManager Problems rows) in
+     * lockstep with the in-editor squiggle offset shift, closing the mid-edit
+     * panel-vs-squiggle disagreement. In-line edits never fire it.
+     */
+    onDiagnosticsLineShift: ((firstChangedLine0: Int, lastChangedLine0: Int, lineDelta: Int) -> Unit)? = null,
     savedContent: String = "",
     /** I1: AI staged-edit review marks — buffer line numbers inside the pending region. */
     reviewMarkLines: Set<Int> = emptySet(),
@@ -915,6 +923,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
 
     // Phase F+G: Extracted to EditorDecorations.kt to stay under 64KB bytecode limit
+    // PR14 (P4a-1): rememberUpdatedState keeps the handler fresh across
+    // recompositions (tab switches swap EditorPane's captured active path —
+    // a stale handler would shift the PREVIOUS file's panel rows).
+    val lineShiftHandler by androidx.compose.runtime.rememberUpdatedState(onDiagnosticsLineShift)
     val (decorationStore, visualLineMapper) = rememberDecorationSetup(
         text = value.text,
         foldedLineIndices = foldedLineIndices,
@@ -943,6 +955,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         value = value.copy(selection = TextRange(safe))
         editorEvent = EditorEvent.ProgrammaticCursorMove(safe, reason)
         AppOutputLog.log("PROGRAMMATIC_CURSOR_MOVE: $reason -> offset $safe", "lsp")
+    }
+    // PR14 (P4a-1): route the store's line-shift report out to the host pane.
+    // Declared AFTER decorationStore (local order rule — locals are only
+    // visible to code textually below their declaration).
+    LaunchedEffect(Unit) {
+        decorationStore.onLineShift = { first, last, delta ->
+            lineShiftHandler?.invoke(first, last, delta)
+        }
     }
     fun programmaticTextChange(newText: String, selection: TextRange, reason: String) {
         decorationStore.shiftOnEdit(value.text, newText)

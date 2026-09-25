@@ -104,7 +104,6 @@ import com.codespace.ide.diagnostics.MemoryMonitor
 import com.codespace.ide.diagnostics.SyncState
 import com.codespace.ide.diagnostics.SyncStatusMonitor
 import com.codespace.ide.diagnostics.CodeMetrics
-import com.codespace.ide.diagnostics.LintChecker
 import com.codespace.ide.diagnostics.DiagnosticPublisher
 import com.codespace.ide.diagnostics.Problem
 import com.codespace.ide.build.GradleErrorParser
@@ -3171,19 +3170,27 @@ private fun PssActivityBar(
                 } catch (_: Exception) {}
             }
         }
-        // P22-A: poll error badge every 3 s
-        val runBadgeCount by produceState(0, activeEditorTab) {
-            while (true) {
-                withContext(Dispatchers.IO) {
-                    try {
-                        val path = activeEditorTab
-                        if (path != null) {
-                            val src = java.io.File(path).takeIf { it.exists() }?.readText() ?: ""
-                            value = LintChecker.check(path, src).count { it.severity == Problem.Severity.ERROR }
-                        }
-                    } catch (_: Exception) {}
+        // PR02 (P4a-1): the RUN badge now reads the CENTRAL DiagnosticManager —
+        // the same single source of truth the Explorer badge (CW5) and the
+        // Problems panel read. DELETED: the private 3 s disk poll that re-linted
+        // the file with LintChecker only (ignoring LSP/build/test rows), agreed
+        // with nothing, and lagged 3 s behind every other surface.
+        // Reading the SnapshotStateList here subscribes this composition to
+        // every diagnostic change — live, zero polling, zero double-lint.
+        // PR14 liveness note: derivedStateOf (NOT remember(list) — the list
+        // object is constant, AbstractList.equals identity fast-path means it
+        // never re-keys). The derived body READS the list content, so every
+        // publish/clear/shift invalidates it and the badge recounts live —
+        // the same fix the Problems panel itself gets in this batch.
+        val runBadgeCount by remember(activeEditorTab) {
+            derivedStateOf {
+                val path = activeEditorTab
+                if (path == null) 0
+                else com.codespace.ide.diagnostics.DiagnosticManager.diagnostics.count { d ->
+                    !d.isStale &&
+                        d.severity == com.codespace.ide.diagnostics.DiagnosticManager.Severity.ERROR &&
+                        com.codespace.ide.util.CanonicalPaths.sameFileIdentity(d.filePath, path)
                 }
-                kotlinx.coroutines.delay(3_000)
             }
         }
 
@@ -4920,7 +4927,7 @@ private fun PanelOverflowMenu(
     val menuItems = when (activeBottomTab) {
         BottomTab.TERMINAL -> listOf("New Terminal", "Split Terminal", "Kill Terminal", "Clear")
         BottomTab.OUTPUT -> listOf("Clear Output", "Copy All")
-        BottomTab.PROBLEMS -> listOf("Filter", "Show Errors Only")
+        BottomTab.PROBLEMS -> listOf("Focus Search", "Show Errors Only", "Show All Problems")
         BottomTab.DEBUG -> listOf("Clear Console", "Copy All")
         BottomTab.PORTS -> listOf("Forward Port", "Stop Forwarding")
         BottomTab.SPLIT -> listOf("New Terminal", "Pin Split", "Swap Panels", "Kill Split")
@@ -5021,8 +5028,25 @@ private fun handlePanelMenuAction(
         }
 
         // ── PROBLEMS ──
-        "Filter" -> { onShowNotification("Filter: tap a problem to jump to source", "info") }
-        "Show Errors Only" -> { onShowNotification("Error-only filter toggled", "info") }
+        // PR07 (P4a-1): these commands are REAL now — each opens the Problems
+        // panel and drives the SAME filter state the panel's own chips use.
+        // DELETED: the placebo notifications ("filter toggled") that changed
+        // nothing — a control may never claim an effect it did not have.
+        "Focus Search" -> {
+            onShowBottomPanel(); onSetActiveTab(BottomTab.PROBLEMS)
+            com.codespace.ide.ui.panes.ProblemsMenuSignal =
+                com.codespace.ide.ui.panes.ProblemsMenuCommand.FOCUS_SEARCH to System.nanoTime()
+        }
+        "Show Errors Only" -> {
+            onShowBottomPanel(); onSetActiveTab(BottomTab.PROBLEMS)
+            com.codespace.ide.ui.panes.ProblemsMenuSignal =
+                com.codespace.ide.ui.panes.ProblemsMenuCommand.ERRORS_ONLY to System.nanoTime()
+        }
+        "Show All Problems" -> {
+            onShowBottomPanel(); onSetActiveTab(BottomTab.PROBLEMS)
+            com.codespace.ide.ui.panes.ProblemsMenuSignal =
+                com.codespace.ide.ui.panes.ProblemsMenuCommand.SHOW_ALL to System.nanoTime()
+        }
 
         // ── DEBUG ──
         "Clear Console" -> {

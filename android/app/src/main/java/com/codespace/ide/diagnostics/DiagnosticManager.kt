@@ -53,7 +53,6 @@ object DiagnosticManager {
         val sourceName: String? = null,        // display name from LSP "source" field
         val relatedInformation: List<RelatedInfo> = emptyList(),
         val tags: List<String> = emptyList(),
-        val quickFixes: List<QuickFix> = emptyList(),
         val timestamp: Long = System.currentTimeMillis(),
         val documentVersion: Int? = null,
         var isStale: Boolean = false,
@@ -76,14 +75,6 @@ object DiagnosticManager {
         val filePath: String,
         val line: Int,     // 1-based
         val column: Int,   // 1-based
-    )
-
-    data class QuickFix(
-        val title: String,
-        val kind: String? = null,
-        val isPreferred: Boolean = false,
-        val editJson: String? = null,
-        val commandJson: String? = null,
     )
 
     /**
@@ -217,6 +208,40 @@ object DiagnosticManager {
         mainHandler.post {
             _diagnostics.clear()
             sourceHealth.clear()
+        }
+    }
+
+    /**
+     * PR14 (P4a-1): shift line-numbered LSP/LINTER rows for ONE file when the
+     * editor adds/removes lines — fired from the editor's single shift choke
+     * point (DecorationStore.shiftOnEdit), so panel rows move in lockstep
+     * with the in-editor squiggles and the two surfaces cannot disagree
+     * mid-edit. Rows strictly BELOW the changed region shift by [lineDelta];
+     * rows inside the region are left for the next publish (ambiguous).
+     * TEST/BUILD rows are run artifacts, not live-editor-correlated — untouched.
+     */
+    fun shiftRowsBelow(
+        filePath: String,
+        firstChangedLine0: Int,
+        lastChangedLine0: Int,
+        lineDelta: Int,
+    ) {
+        if (lineDelta == 0) return
+        mainHandler.post {
+            _diagnostics.forEachIndexed { i, d ->
+                if (d.isStale) return@forEachIndexed
+                if (d.source != DiagnosticSource.LSP && d.source != DiagnosticSource.LINTER) return@forEachIndexed
+                if (!com.codespace.ide.util.CanonicalPaths.sameFileIdentity(d.filePath, filePath)) return@forEachIndexed
+                val rowLine0 = d.range.startLine - 1  // rows are 1-based
+                if (rowLine0 > lastChangedLine0) {
+                    _diagnostics[i] = d.copy(
+                        range = d.range.copy(
+                            startLine = (d.range.startLine + lineDelta).coerceAtLeast(1),
+                            endLine = (d.range.endLine + lineDelta).coerceAtLeast(1),
+                        )
+                    )
+                }
+            }
         }
     }
 

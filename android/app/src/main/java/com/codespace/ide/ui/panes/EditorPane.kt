@@ -2562,6 +2562,18 @@ fun EditorPane(
                         } else null,
                         // P24-1: Pass LSP diagnostic squiggles to editor
                         lspDiagnosticErrors = lspSquiggles,
+                        // PR14 (P4a-1): when an edit adds/removes lines, the
+                        // Problems panel's LSP/lint rows for THIS file shift by
+                        // the same line delta the editor's squiggles get — one
+                        // choke point, so a squiggle and its matching panel row
+                        // can never disagree mid-edit (PT35).
+                        onDiagnosticsLineShift = { firstChangedLine0, lastChangedLine0, lineDelta ->
+                            if (lineDelta != 0) {
+                                com.codespace.ide.diagnostics.DiagnosticManager.shiftRowsBelow(
+                                    active.path, firstChangedLine0, lastChangedLine0, lineDelta,
+                                )
+                            }
+                        },
                         // P24-3: Find References via LSP
                         onFindReferences = if (LspManager.isServerRunning(active.language)) {
                             { word, refLine, refCol ->

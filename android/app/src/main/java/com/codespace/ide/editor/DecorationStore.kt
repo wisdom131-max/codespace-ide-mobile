@@ -190,6 +190,38 @@ class DecorationStore {
     }
 
     /**
+     * PR14 (P4a-1): line-shift report listener. Fired from shiftOnEdit ONLY
+     * when the edit changed the document's line count — the consumer shifts
+     * line-numbered consumers (DiagnosticManager panel rows) in lockstep with
+     * the offset shift below, so the Problems panel and the editor squiggles
+     * can never disagree mid-edit. Args: (firstChangedLine0, lastChangedLine0,
+     * lineDelta) — all 0-based line coordinates in the OLD text.
+     */
+    var onLineShift: ((firstChangedLine0: Int, lastChangedLine0: Int, lineDelta: Int) -> Unit)? = null
+
+    /** PR14: newline count — cheap single pass. */
+    private fun countNewlines(t: String): Int {
+        var n = 0
+        for (i in t.indices) if (t[i] == '\n') n++
+        return n
+    }
+
+    /** PR14: 0-based line containing [offset]. */
+    private fun lineOfOffset(t: String, offset: Int): Int {
+        val safe = offset.coerceIn(0, t.length)
+        var n = 0
+        for (i in 0 until safe) if (t[i] == '\n') n++
+        return n
+    }
+
+    /** PR14: length of the common suffix of the two texts (scanned from the ends). */
+    private fun commonSuffixLen(a: String, b: String, minLen: Int): Int {
+        var suffix = 0
+        while (suffix < minLen && a[a.length - 1 - suffix] == b[b.length - 1 - suffix]) suffix++
+        return suffix
+    }
+
+    /**
      * R1-3: Shift offset-based decoration positions when text changes.
      * Prevents stale diagnostics and selection highlights after typing.
      * InlayHint is line-based (not offset) so it is NOT shifted here —
@@ -202,6 +234,19 @@ class DecorationStore {
         while (changeStart < minLen && oldText[changeStart] == newText[changeStart]) changeStart++
         val delta = newText.length - oldText.length
         if (delta == 0) return
+
+        // PR14 (P4a-1): if the edit added/removed LINES, report the line shift
+        // so panel rows move with the squiggles (same choke point = same truth).
+        // In-line edits (lineDelta == 0) never fire this — no line moves.
+        val oldLines = countNewlines(oldText)
+        val newLines = countNewlines(newText)
+        val lineDelta = newLines - oldLines
+        if (lineDelta != 0 && onLineShift != null) {
+            // Changed region in the OLD text: [changeStart, oldText.length - suffixLen).
+            val suffixLen = commonSuffixLen(oldText, newText, minLen)
+            val lastChangedLine0 = lineOfOffset(oldText, oldText.length - suffixLen)
+            onLineShift?.invoke(lineOfOffset(oldText, changeStart), lastChangedLine0, lineDelta)
+        }
 
         if (_diagnostics.data.isNotEmpty()) {
             // Change 1: Preserve per-line fields through offset shifts.

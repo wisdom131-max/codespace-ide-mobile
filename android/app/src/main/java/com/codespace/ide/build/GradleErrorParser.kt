@@ -4,7 +4,7 @@ package com.codespace.ide.build
  * Phase 11-F: Parse Gradle build output into structured diagnostics.
  *
  * Extracts errors and warnings from Gradle stdout/stderr and converts them
- * into clickable BuildProblem entries that can feed into the ProblemsPanel.
+ * into clickable BuildProblem entries that publish into the central DiagnosticManager (Problems panel).
  *
  * Handles common Gradle error formats:
  * - e: /path/file.kt:(line, col): error: message
