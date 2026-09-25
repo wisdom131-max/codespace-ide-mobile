@@ -2,6 +2,10 @@
 
 Owner-approved sequence. Each phase is its own commit(s), revertable alone: reverting a phase re-opens exactly the gap IDs it closed and nothing else. Every phase lists "what did I remove" in its commit message. CI must be green before the next phase starts. Full audit context: MASTER-GAPS.md (249 gaps), MASTER-CONNECTIONS.md (cross-group ledger), WHERE-TO-LOOK.md (symptom index), the 18 GROUP docs + 2 addenda.
 
+## PR14 STATUS (explicit, per owner 2026-09-25)
+
+**Partial — explicit open item.** P3b (code `ae5633a`, CI #2922 green) shipped PR14's EDITOR side: squiggle ranges now live in one canonical store (`editor/PerFileStateStore.kt`) and the editor consumes it. The Problems PANEL rows still read the last-published `LspManager` cache — the mid-edit shift mismatch (rows stale between publishes while squiggles shift through EditShiftHelper) is NOT closed. Panel rewiring to consume the same store is an explicit open item for P3c/P4. Do not record PR14 closed until the panel reads the store.
+
 ## TP02 STATUS (explicit, per owner 2026-09-24)
 
 **Fix shipped, DEVICE-UNCONFIRMED — not "closed."** Hotfix `9d4923b` (CI #2903 green) shipped loopback-only bind + per-process bearer token on AgentApiServer, with the token exported to the guest shell profile. The owner batches TP02's device verification (no-token→401, token→tools, LAN refused) into the FULL TEST PASS at the end (P5), not in isolation. Until that pass confirms, TP02 stays flagged "fix shipped, device-unconfirmed" in this file and in MASTER-GAPS.md — never recorded as closed.

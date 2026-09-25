@@ -14,6 +14,8 @@ import com.codespace.ide.terminal.ProotInstaller
 import com.codespace.ide.environment.IdeEnvironment
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -710,6 +712,16 @@ object LspManager {
     var lspRecoveryCounter: Int = 0
         private set
 
+    // PG02 (P3c): the recovery signal as a FLOW — every editor instance used to run
+    // its OWN while(true) 2s poll on the counter above (the poll multiplied per
+    // split-editor instance and never paused). Editors now SUBSCRIBE to this
+    // StateFlow; the per-instance polls are gone. Emits the counter value on every
+    // READY transition; StateFlow replays the current value to new subscribers, so
+    // a fresh editor still sees a recovery that predates it (the poll's lastSeen=0
+    // first-pass behavior, preserved).
+    private val _recoverySignal = MutableStateFlow(0)
+    val recoverySignal: StateFlow<Int> get() = _recoverySignal
+
     // Phase V-M: Generation counter per language — incremented on every server start
     private val generationCounters = ConcurrentHashMap<Language, Int>()
 
@@ -749,6 +761,7 @@ object LspManager {
         // reset its completion fallback flag so the next request tries LSP first again.
         if (oldState != LspState.READY && newState == LspState.READY) {
             lspRecoveryCounter++
+            _recoverySignal.value = lspRecoveryCounter
             AppOutputLog.log("$LSP_LOG_TAG ${language.displayName} reconnected, recovery counter: $lspRecoveryCounter", "lsp")
         }
         if (oldState != newState) {

@@ -1179,10 +1179,21 @@ internal fun TerminalPane(
         Regex("""https?://[\w\-._~:/?#\[\]@!$&'()*+,;=%]+""")
     }
     LaunchedEffect(active?.id) {
+        // PG04/TP08 (P3c): the 2s loop now GATES on the emulator's revision counter
+        // (one volatile int read per pass, bumped per processed output batch). The
+        // full-transcript rebuild + regex runs ONLY when output actually arrived —
+        // was: a full String allocation + regex over the entire 4000-row transcript
+        // every 2s forever, idle or not. lastRev is effect-local and keyed to this
+        // tab by LaunchedEffect(active?.id): a tab switch restarts the effect and
+        // forces exactly one fresh scan.
+        var lastRev = -1
         while (true) {
             kotlinx.coroutines.delay(2000L)
-            val screen = active?.session?.getEmulator()?.screen
-            val text = screen?.getTranscriptText() ?: ""
+            val em = active?.session?.getEmulator()
+            val rev = em?.revision ?: 0
+            if (rev == lastRev) continue
+            lastRev = rev
+            val text = em?.screen?.getTranscriptText() ?: ""
             val urls = urlRegex.findAll(text)
                 .map { it.value.trimEnd('.', ',', ')', ']') }
                 .distinct()

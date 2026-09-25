@@ -1319,20 +1319,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // next completion request tries LSP first again. The 5-second timeout still applies
     // as the guard — this just prevents the fallback from being permanent for the session.
     LaunchedEffect(language) {
-        var lastSeen = 0
-        while (true) {
-            kotlinx.coroutines.delay(2000) // poll every 2s
-            val current = com.codespace.ide.lsp.LspManager.lspRecoveryCounter
-            if (current > lastSeen) {
-                lastSeen = current
-                // LSP server recovered — reset fallback so next request tries LSP first
-                if (lspTimedOut || !lspHasResponded) {
-                    lspTimedOut = false
-                    lspHasResponded = false
-                    lspCompletions = emptyList()
-                    workspaceCompletions = emptyList()
-                    com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] recovery triggered, resetting fallback flags (counter=$current)", "lsp")
-                }
+        // PG02 (P3c): the per-editor while(true) 2s poll REPLACED by a subscription
+        // to LspManager.recoverySignal — the manager emits on every READY transition
+        // and the subscription disposes with this composable (was: one polling loop
+        // per editor instance, multiplied by split editors, running forever).
+        com.codespace.ide.lsp.LspManager.recoverySignal.collect { current ->
+            // LSP server recovered — reset fallback so next request tries LSP first
+            if (lspTimedOut || !lspHasResponded) {
+                lspTimedOut = false
+                lspHasResponded = false
+                lspCompletions = emptyList()
+                workspaceCompletions = emptyList()
+                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] recovery triggered, resetting fallback flags (counter=$current)", "lsp")
             }
         }
     }

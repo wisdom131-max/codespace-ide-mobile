@@ -348,6 +348,16 @@ public final class TerminalEmulator {
         return mScreen;
     }
 
+    // PG04/TP08 (P3c): cheap transcript revision — bumped once per append() batch
+    // (processed output), on resize, and on reset. Readers use getRevision() to
+    // detect change with one volatile int read instead of materializing the full
+    // transcript string (the URL-chip scanner rebuilt a 4000-row string every 2s).
+    private volatile int mRevision = 0;
+
+    public int getRevision() {
+        return mRevision;
+    }
+
     public boolean isAlternateBufferActive() {
         return mScreen == mAltBuffer;
     }
@@ -392,6 +402,7 @@ public final class TerminalEmulator {
         } else if (columns < 2 || rows < 2) {
             throw new IllegalArgumentException("rows=" + rows + ", columns=" + columns);
         }
+        mRevision++;
 
         if (mRows != rows) {
             mRows = rows;
@@ -500,6 +511,7 @@ public final class TerminalEmulator {
     public void append(byte[] buffer, int length) {
         for (int i = 0; i < length; i++)
             processByte(buffer[i]);
+        mRevision++;
     }
 
     private void processByte(byte byteToProcess) {
@@ -2578,6 +2590,7 @@ public final class TerminalEmulator {
 
     /** Reset terminal state so user can interact with it regardless of present state. */
     public void reset() {
+        mRevision++;
         setCursorStyle();
         mArgIndex = 0;
         mContinueSequence = false;

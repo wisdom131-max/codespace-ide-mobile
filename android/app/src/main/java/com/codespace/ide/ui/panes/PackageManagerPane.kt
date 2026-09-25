@@ -477,27 +477,37 @@ internal fun McpPanel() {
     val agentApiUrl     = "http://localhost:8765"
 
     LaunchedEffect(Unit) {
+        // PG05 (P3c): the 5s poll's THREE I/O ops per pass are gone:
+        //  - health: AgentApiServer runs IN THIS PROCESS on port 8765 — reading its
+        //    @Volatile isRunning() flag replaces the loopback HTTP connect every pass.
+        //    (Trade-off, documented: the probe could also sense a hung accept loop;
+        //    that failure mode moves to the P5 device checks.)
+        //  - .agent.json tool count + .bashrc check: stat-gated on lastModified —
+        //    readText only when the stamp CHANGES, not every 5s forever.
+        var lastAgentJsonStamp = -1L
+        var lastBashrcStamp = -1L
         while (true) {
             withContext(Dispatchers.IO) {
-                // health check
-                serverRunning = try {
-                    val conn = java.net.URL("$agentApiUrl/health")
-                        .openConnection() as java.net.HttpURLConnection
-                    conn.connectTimeout = 1000; conn.readTimeout = 1000
-                    val ok = conn.responseCode == 200
-                    conn.disconnect(); ok
-                } catch (_: Exception) { false }
-                // tool count
+                serverRunning = com.codespace.ide.agent.AgentApiServer.isRunning()
+                // tool count (stat-gated)
                 try {
                     val agentJson = File(context.filesDir, "termux-prefix/root/.agent.json")
-                    if (agentJson.exists())
-                        toolCount = agentJson.readText().split("\"name\"").size - 1
+                    val stamp = if (agentJson.exists()) agentJson.lastModified() else 0L
+                    if (stamp != lastAgentJsonStamp) {
+                        lastAgentJsonStamp = stamp
+                        if (stamp != 0L)
+                            toolCount = agentJson.readText().split("\"name\"").size - 1
+                    }
                 } catch (_: Exception) {}
-                // bashrc check
-                bashrcInstalled = try {
-                    val bashrc = File(context.filesDir, "termux-prefix/root/.bashrc")
-                    bashrc.exists() && bashrc.readText().contains("AGENT_API_URL")
-                } catch (_: Exception) { false }
+                // bashrc check (stat-gated; stamp 0L = file absent -> not installed)
+                val bashrc = File(context.filesDir, "termux-prefix/root/.bashrc")
+                val bStamp = if (bashrc.exists()) bashrc.lastModified() else 0L
+                if (bStamp != lastBashrcStamp) {
+                    lastBashrcStamp = bStamp
+                    bashrcInstalled = if (bStamp == 0L) false else try {
+                        bashrc.readText().contains("AGENT_API_URL")
+                    } catch (_: Exception) { false }
+                }
             }
             delay(5000)
         }
