@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | F2 SHIPPED + CI #2933 GREEN (code 7dbab1e + fix 8b6ec22 — Honest Run: new testing/TestRunManager, per-test pytest/jest/gradle/flutter commands, TrustState gate, streaming + typed results to the Output 'test' channel; decorative lens behavior and file-wide fallbacks DELETED); next: F3 results (TG03), awaiting owner go |
+| Latest commit | F3 SHIPPED + CI #2937 GREEN (code bab66ca + fixes f5edd39/74991d3 — results: 7-state TestResultStore keyed by TestId, pytest/jest/gradle report parsers, Problems TEST-source bridge with file:line jumps, gutter pass/fail glyphs; exit-code-only inference replaced by parsed per-test truth); next: F4 discovery/explorer (TG04), awaiting owner go |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -5064,4 +5064,33 @@ Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — 
 - **F-TRACK remaining:** F4 discovery/explorer (TG04), F5 debug-lens routing + adapter args (flips supportsDebug + wires UDM), F6 decision.
 - **P4:** remaining ~187 rows by group (53 of 249 closed).
 - **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1/F2 checks above.
+- **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+## [2026-09-25 14:05 WAT] — AI Agent: Claude Sonnet 5.6 (F3 SHIPPED: results — parsers, 7-state store, Problems bridge, gutter glyphs, CI #2937 GREEN)
+
+**2026-09-25 — [F3 SHIPPED, CI #2937 GREEN, code bab66ca + fixes f5edd39 (KDoc glob opened nested comment) + 74991d3 (File.lastModified() is a Java method, parens required)] F-TRACK sub-phase 3: TG03 (results). Two reds, both the documented pitfall classes, both self-caught from CI logs. Revertable as bab66ca+f5edd39+74991d3.**
+
+### What shipped (code bab66ca + f5edd39 + 74991d3)
+- **testing/TestModels.kt (new):** the 7-state result model (QUEUED, RUNNING, PASSED, FAILED, ERRORED, SKIPPED, RETIRED — VS Code shape minus Unset) with statePriority merge semantics (Errored > Failed > Running > Queued > Passed > Retired > Skipped); TestResultItem {testId, lineIndex, ownState, computedState, ownDurationMs, message, retired, runId}; TestRun {id, name, completedAt, counts}.
+- **testing/TestResultStore.kt (new):** flat StateFlow store keyed by F1 TestId — latest outcome per test wins; a newer run RETIRES same-file items it did not cover (VS Code retired semantics); statesForFile() projects line-to-state for the active file's gutter.
+- **testing/TestOutputParsers.kt (new):** JUnit XML parser shared by pytest (--junitxml) and Gradle (build test-results XML), plus jest JSON parser (assertionResults with ancestorTitles for exact F1 TestId reconstruction, location.line). Real failure messages (message attr, traceback first-line fallback); pytest file.py:NN traceback lines extracted only when they belong to the run's own file. Malformed reports fall back to the typed status and never throw into the run pipeline.
+- **Problems bridge (TG03):** failures publish under DiagnosticSource.TEST / sourceId 'testrun' at the failure line (traceback line when the report carries one, lens line otherwise); a passing run CLEARS the file's stale failure rows. The user-visible effect: a failing test's real message appears in Problems with a working file:line jump (P1-normalized onOpenFileAtLine).
+- **Gutter decoration:** live RUNNING dot while the run executes, then green check (PASSED) / red cross (FAILED/ERRORED) / gray circle (SKIPPED) on the test line; suite lines show the merged rollup of everything the run covered. Extracted EditorGutterTestGlyph composable (JVM 64KB rule), fixed-width column so gutter geometry is unchanged without results.
+- **TestRunManager integration:** runTest carries lineIndex (F1 lens arg); RUNNING recorded at start; PASSED/FAILED parse the runner's machine-readable report and record per-case outcomes remapped to the F1 TestId shape (pytest flat name, jest ancestor chain, gradle Outer$Nested chain with package stripped); container rollup uses priority merge from the first child (all-skipped stays SKIPPED); TIMED_OUT maps to ERRORED with an honest timeout message, CANCELLED to RETIRED; BUSY/UNTRUSTED/UNSUPPORTED/LAUNCH_FAILED record no outcome claim at all. Report files land in the project root (guest bind = host dir) and are deleted after parsing.
+
+### What was REMOVED this phase
+1. Exit-code-only result inference: a non-zero exit used to be the only signal (FAILED, no per-test truth). Per-test states, failure messages and locations now come from the runner's own report; exit-code inference remains only as the documented fallback when no report was produced.
+2. The KDoc glob 'test-results/*.xml' (f5edd39): Kotlin nests block comments — the glob opened an unclosed nested comment and killed the whole file (the documented pitfall; now swept by a comment-scanner check before push).
+
+### P5 device checks (add to the round)
+- **Failing test in Problems (the core F3 check):** in a TRUSTED project, tap Run Test on a deliberately failing test — after the run, the Problems panel shows a TEST-source row with the test's real failure message; tap it and the editor jumps to the failing line in the right file. Fix the test, run again — the stale row disappears.
+- **Gutter states:** while a test runs, its line shows a blue RUNNING dot; on pass a green check replaces it; on failure a red cross. A suite tap (@Nested/describe) shows the merged state on the suite line.
+- **Suite coverage:** run a suite, then check the gutter of its file — tests the run did NOT cover are dimmed/retired (no glyph), covered ones show their states.
+- **Report hygiene:** after a pytest or jest run, no .codespace-test-result.xml/json remains in the project root.
+
+### ROADMAP (all pending)
+- **F4 — discovery/explorer (TG04):** workspace-wide TestStore (TestId-keyed, composes with the F3 result store), explorer Test pane with per-file tree, run/retry/cancel, sticky CANCELLED (PR01). Owner go required.
+- **F-TRACK remaining:** F5 debug-lens routing + adapter args (flips supportsDebug + wires UDM), F6 decision.
+- **P4:** remaining rows by group (~50 closed of 229 ledger rows + 7 F-TRACK; HIGH 21 open, MED 87 open, LOW 55 open, CRITICAL/TOP 4 open, ENABLER 2).
+- **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1/F2/F3 checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
