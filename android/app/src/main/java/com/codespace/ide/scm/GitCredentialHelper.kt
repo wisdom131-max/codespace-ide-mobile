@@ -9,7 +9,7 @@ import java.security.SecureRandom
  *
  * The old dialect put the GitHub token in the git COMMAND STRING as
  * `-c http.extraheader='Authorization: Basic <base64-of-token>'` — it rode the
- * argv of the proot process, so any AI-executed `ps` / /proc/*/cmdline read
+ * argv of the proot process, so any AI-executed ps or /proc cmdline read
  * inside the guest saw it, and any command log/notification carrying the
  * command leaked it too.
  *
