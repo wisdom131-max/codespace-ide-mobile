@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | F1 SHIPPED + CI #2930 GREEN (code c1f4baf — TestLensDetector v2: annotation-driven JVM lenses, class-name heuristic deleted, JS/TS each/skip/only variants, TestId path strings, honest templates); next: F2 Honest Run (TG01+TG02), awaiting owner go |
+| Latest commit | F2 SHIPPED + CI #2933 GREEN (code 7dbab1e + fix 8b6ec22 — Honest Run: new testing/TestRunManager, per-test pytest/jest/gradle/flutter commands, TrustState gate, streaming + typed results to the Output 'test' channel; decorative lens behavior and file-wide fallbacks DELETED); next: F3 results (TG03), awaiting owner go |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -5034,4 +5034,34 @@ Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — 
 - **F-TRACK remaining:** F3 results (TG03), F4 discovery/explorer (TG04), F5 debug-lens routing + adapter args, F6 decision.
 - **P4:** remaining ~187 rows by group (53 of 249 closed; DG04 pulled forward and closed in P3e).
 - **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1 checks above.
+- **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+## [2026-09-25 12:35 WAT] — AI Agent: Claude Sonnet 5.6 (F2 SHIPPED: Honest Run — TestRunManager + per-test execution, CI #2933 GREEN)
+
+**2026-09-25 — [F2 SHIPPED, CI #2933 GREEN, code 7dbab1e + fix 8b6ec22 (nullable lens title), first red was one error, fixed same session] F-TRACK sub-phase 2: TG01 (decorative lens) + TG02 (per-test commands). Revertable as 7dbab1e+8b6ec22.**
+
+### What shipped (code 7dbab1e + 8b6ec22)
+- **testing/TestRunManager.kt (new, 265 lines):** a tapped Run Test now RUNS. Execution via ProotInstaller.execTyped (TP03 seam) with live output streamed to the Output tab "test" channel, per-language timeouts (600s JVM, 240s jest, 180s pytest, 300s flutter), 10k-line cap, and onProcess captured for cancellation.
+- **Per-test command builders (TG02) — runs ONLY the tapped test:** pytest node id `path::Class::method` / `path::method`; jest `-t` scoped to the single file; gradle `--tests 'pkg.Outer$Nested.method'` with the FQCN derived from the src/test/java|kotlin layout (any-package `*.` wildcard when the file sits outside a test source set); flutter `--plain-name`. Suite taps (Run Tests on @Nested class / describe / pytest class) target the CONTAINER, not the file. Verified by simulation against the F1 TestId examples before push.
+- **Trust gate first (IG02/P2c pattern):** TrustState.awaitTrusted prompts once for untrusted projects; refusal = UNTRUSTED, run refused. Guest translation required: an unreachable file is an honest UNSUPPORTED, never a fabricated run.
+- **Typed results (S01 family):** PASSED only on exit 0. FAILED / TIMED_OUT / CANCELLED / LAUNCH_FAILED / UNTRUSTED / UNSUPPORTED / BUSY each logged to the test channel with exit code and duration. One run at a time — a second concurrent tap returns BUSY instead of interleaving runners. cancelRun() is the F4 Test pane stop API (sticky CANCELLED, PR01 pattern; no UI hook until F4, by design).
+- **TG01 capability honesty:** supportsDebug is false for every language until F5 routes lens-debug through UniversalDebugManager, so Debug Test lenses are filtered out at the EditorPane detection site (a lens must never promise what its tap cannot do — DG04 rule). They return with F5, backed by real routing. Run lenses render only for languages with a wired runner.
+
+### What was REMOVED this phase
+1. The decorative Run Test behavior: one tap used to build a file-wide command string and only LOG it — nothing executed, and the log line looked like a run.
+2. The file-wide fallback commands: pytest `|| python3 file` and jest `|| node file` silently turned a one-test run into a whole-file run (or plain script execution) when the runner was missing. A missing runner is now an honest visible failure.
+3. The Debug Test lens promise (until F5): visible-but-inert controls are the DG04 fabrication shape.
+
+### P5 device checks (add to the round)
+- **Per-test isolation (the core F2 check):** open a real multi-test file (e.g. a pytest file with 3 test functions, or a Kotlin class with 3 @Test funs) in a TRUSTED project, tap Run Test on exactly ONE — the Output tab "test" channel shows the runner running ONLY that test (pytest node id line, jest "1 total", gradle filter), NOT the whole file or project. Tap a suite lens (@Nested class / describe / pytest class) — the container runs, the file does not.
+- **Typed results:** a passing test logs "PASSED — <name> (exit 0, Ns)"; a deliberately failing test logs "FAILED — <name> (exit N)" with the runner's real stderr visible above it (no suppression); a missing runner (e.g. jest absent) fails visibly, no whole-file fallback fires.
+- **Trust gate:** in a project opened for the first time (untrusted), tap Run Test — the Trust prompt appears once; Trust it and the test runs, refuse and the channel shows the honest "not trusted — run refused" line. Repeated taps in a trusted project never re-prompt.
+- **BUSY:** tap Run Test twice quickly — the second is refused with "already active" instead of interleaving two runners in the channel.
+- **Lens honesty:** Debug Test lenses are absent in this build (return in F5); Run lenses absent for languages without a runner.
+
+### ROADMAP (all pending)
+- **F3 — results (TG03):** consume TestRunResult records into a persistent TestResult store keyed by TestId; per-test pass/fail decorations in the editor gutter; results view. Owner go required.
+- **F-TRACK remaining:** F4 discovery/explorer (TG04), F5 debug-lens routing + adapter args (flips supportsDebug + wires UDM), F6 decision.
+- **P4:** remaining ~187 rows by group (53 of 249 closed).
+- **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1/F2 checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
