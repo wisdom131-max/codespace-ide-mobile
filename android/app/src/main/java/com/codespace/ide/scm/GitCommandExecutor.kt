@@ -41,16 +41,17 @@ object GitCommandExecutor {
         val safeDir = "-c"
         val safeArg = "safe.directory=*"
 
-        // Build auth header for remote operations if token is provided
+        // SG04 (P2c): the token used to ride the COMMAND STRING as a base64
+        // http.extraheader — readable in the argv of the proot process by any
+        // AI-executed ps//proc read inside the guest, and in any command log or
+        // notification carrying the command. Now a transient credential-helper
+        // script inside the guest /tmp carries the token (GitCredentialHelper);
+        // the command line carries only its random path, and the script is
+        // deleted right after the command completes.
+        var credHelper: com.codespace.ide.scm.GitCredentialHelper.Helper? = null
         val authArgs = if (token != null && needsAuth(args)) {
-            val basic = android.util.Base64.encodeToString(
-                "x-access-token:$token".toByteArray(),
-                android.util.Base64.NO_WRAP
-            )
-            listOf(
-                "-c",
-                "http.extraheader=Authorization: Basic $basic"
-            )
+            credHelper = com.codespace.ide.scm.GitCredentialHelper.write(context, token)
+            listOf("-c", "credential.helper=${credHelper.guestPath}")
         } else {
             emptyList()
         }
@@ -61,13 +62,17 @@ object GitCommandExecutor {
         }
         val command = "git $quotedArgs"
 
-        val raw = ProotInstaller.execOnce(
-            context = context,
-            command = command,
-            workdir = workdir,
-            timeoutSeconds = timeoutSeconds,
-            logToOutput = false,
-        )
+        val raw = try {
+            ProotInstaller.execOnce(
+                context = context,
+                command = command,
+                workdir = workdir,
+                timeoutSeconds = timeoutSeconds,
+                logToOutput = false,
+            )
+        } finally {
+            com.codespace.ide.scm.GitCredentialHelper.delete(credHelper)
+        }
 
         return classify(raw, args, workdir)
     }

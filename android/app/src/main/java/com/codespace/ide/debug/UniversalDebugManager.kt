@@ -361,6 +361,14 @@ object UniversalDebugManager {
         onResult: (String?) -> Unit,
     ) {
         CoroutineScope(Dispatchers.IO).launch {
+            // P2c TrustState choke point: launching the debugger is a gated
+            // action — prompt once via the global trust dialog. Legacy callers
+            // with context == null skip the gate (no context to prompt under).
+            if (context != null && !com.codespace.ide.security.TrustState.awaitTrusted(
+                    context, projectRoot ?: com.codespace.ide.security.TrustState.activeProjectRoot(context))) {
+                Handler(Looper.getMainLooper()).post { onResult(null) }
+                return@launch
+            }
             val sessionId = startDebug(language, filePath, projectRoot, context)
             Handler(Looper.getMainLooper()).post { onResult(sessionId) }
         }

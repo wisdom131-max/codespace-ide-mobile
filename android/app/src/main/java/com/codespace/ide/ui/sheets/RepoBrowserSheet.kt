@@ -1,6 +1,5 @@
 package com.codespace.ide.ui.sheets
 
-import android.util.Base64
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -164,25 +163,32 @@ fun RepoBrowserSheet(
                         repoToClone   = null
                         cloneProgress = "Cloning ${repo.name}…"
                         scope.launch {
+                            // SG16 (P2c): the clone used to build the token into the git
+                            // COMMAND STRING (http.extraheader base64) — argv exposure, same
+                            // family as SG04. Routed through GitCommandExecutor now: ONE auth
+                            // dialect (transient credential helper, token never in argv),
+                            // one quoting path, one classifier for errors.
                             val result = withContext(Dispatchers.IO) {
                                 try {
-                                    val basic = Base64.encodeToString(
-                                        "x-access-token:$token".toByteArray(),
-                                        Base64.NO_WRAP,
+                                    com.codespace.ide.scm.GitCommandExecutor.run(
+                                        context = context,
+                                        args = listOf("clone", repo.cloneUrl, dest),
+                                        workdir = null,
+                                        timeoutSeconds = 180L,
+                                        token = token,
                                     )
-                                    // Same auth-header pattern as SourceControlPane.runGit()
-                                    // safe.directory=* avoids "detected dubious ownership" on
-                                    // /sdcard-hosted repos once opened (UID mismatch with proot root).
-                                    val cmd = "git -c safe.directory='*' -c http.extraheader=\"Authorization: Basic $basic\" " +
-                                              "clone '${repo.cloneUrl.replace("'", "'\\''")}' '$dest'"
-                                    ProotInstaller.execOnce(context, cmd, null, 180L)
                                 } catch (e: Exception) {
-                                    "ERROR: ${e.localizedMessage}"
+                                    com.codespace.ide.scm.GitResult.Err(
+                                        com.codespace.ide.scm.GitError.NetworkFailed(e.localizedMessage ?: "clone failed"))
                                 }
                             }
                             cloneProgress = null
-                            if (result.startsWith("ERROR:") || result.contains("fatal:")) {
-                                errorMsg = result.take(200)
+                            val resultText = when (result) {
+                                is com.codespace.ide.scm.GitResult.Ok -> result.output
+                                is com.codespace.ide.scm.GitResult.Err -> result.error.message
+                            }
+                            if (result is com.codespace.ide.scm.GitResult.Err) {
+                                errorMsg = resultText.take(200)
                             } else {
                                 // Build host-side absolute path (rootfs + guest path)
                                 val hostPath = ProotInstaller.rootfsDir(context).absolutePath +

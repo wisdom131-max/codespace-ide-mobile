@@ -39,13 +39,23 @@ object AgentScheduler {
     //  - every N minutes (cron starts with star-slash-N)
     //  - daily at H:00 (cron: 0 H star star star)
     //  - one-time (cron: @once, runs immediately with 5s delay)
-    fun schedule(name: String, cron: String, command: String, context: Context): String {
+    fun schedule(name: String, cron: String, command: String, context: Context): String =
+        schedule(name, cron, command, projectPath = null, context)
+
+    /**
+     * P2c (IG02): schedule() now records the project the task was created under.
+     * The unattended run gates on that project's TrustState entry. Tasks persisted
+     * BEFORE P2c carry no projectPath and are GRANDFATHERED (they run, matching the
+     * one-time migration ruling that pre-update state is not disrupted).
+     */
+    fun schedule(name: String, cron: String, command: String, projectPath: String?, context: Context): String {
         val tasks = readTasks(context)
         val task = JSONObject()
             .put("name", name)
             .put("cron", cron)
             .put("command", command)
             .put("created", System.currentTimeMillis())
+        if (projectPath != null) task.put("projectPath", projectPath)
         tasks.put(name, task)
         writeTasks(tasks, context)
 
@@ -53,14 +63,14 @@ object AgentScheduler {
         when {
             cron == "@once" -> {
                 val future = executor.schedule({
-                    runCommand(command, context)
+                    runCommand(command, projectPath, context)
                 }, 5, TimeUnit.SECONDS)
                 scheduledFutures[name] = future
             }
             cron.startsWith("*/") && cron.contains("* * * *") -> {
                 val minutes = cron.substringAfter("*/").substringBefore(" ").toIntOrNull() ?: 5
                 val future = executor.scheduleAtFixedRate({
-                    runCommand(command, context)
+                    runCommand(command, projectPath, context)
                 }, minutes.toLong(), minutes.toLong(), TimeUnit.MINUTES)
                 scheduledFutures[name] = future
             }
@@ -76,14 +86,14 @@ object AgentScheduler {
                 }
                 val delay = (target.timeInMillis - now.timeInMillis) / 1000
                 val future = executor.scheduleAtFixedRate({
-                    runCommand(command, context)
+                    runCommand(command, projectPath, context)
                 }, delay, TimeUnit.DAYS.toSeconds(1), TimeUnit.SECONDS)
                 scheduledFutures[name] = future
             }
             else -> {
                 // Default: treat as every-N-minutes
                 val future = executor.scheduleAtFixedRate({
-                    runCommand(command, context)
+                    runCommand(command, projectPath, context)
                 }, 60, 60, TimeUnit.SECONDS)
                 scheduledFutures[name] = future
             }
@@ -122,15 +132,37 @@ object AgentScheduler {
                 task.getString("name"),
                 task.getString("cron"),
                 task.getString("command"),
+                projectPath = task.optString("projectPath", "").ifBlank { null },
                 context
             )
         }
     }
 
-    private fun runCommand(command: String, ctx: android.content.Context? = null) {
+    private fun runCommand(command: String, ctx: android.content.Context? = null) =
+        runCommand(command, projectPath = null, ctx)
+
+    /**
+     * IG02 (P2c): the unattended run rides PROJECT TRUST — creation was already
+     * gated by the chat tool loop (FlowGate); the run cannot prompt (headless),
+     * so an untrusted project blocks the run with a typed notification instead of
+     * failing silently. The task is NOT deleted — trusting the project lets it
+     * fire again on the next occurrence.
+     */
+    private fun runCommand(command: String, projectPath: String?, ctx: android.content.Context?) {
         try {
-            if (ctx != null)
-                com.codespace.ide.terminal.ProotInstaller.execOnce(ctx, command, timeoutSeconds = 60L)
+            if (ctx == null) return
+            if (projectPath != null &&
+                !com.codespace.ide.security.TrustState.isTrusted(ctx, projectPath)) {
+                com.codespace.ide.data.NotificationStore.add(
+                    title = "Scheduled task blocked",
+                    body = "Task not run: its project is not trusted yet. Open the project and " +
+                        "trust it at the prompt (or run any gated action in chat) to re-enable.",
+                    severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
+                    source = com.codespace.ide.data.NotificationStore.Source.AI,
+                )
+                return
+            }
+            com.codespace.ide.terminal.ProotInstaller.execOnce(ctx, command, timeoutSeconds = 60L)
         } catch (_: Exception) {}
     }
 }

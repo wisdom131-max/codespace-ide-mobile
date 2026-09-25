@@ -25,17 +25,35 @@ object AgentFlowGate {
         val deferred: CompletableDeferred<Boolean>,
         /** ROUND 5: lets the card offer "Always allow <tool>" — may be null in headless calls. */
         val onAlwaysAllow: (() -> Unit)? = null,
+        /**
+         * P2c (CH03): "Trust this project" quick-action — non-null when this call
+         * was gated by PROJECT TRUST (untrusted project, first gated action).
+         * The card calls it (persist trust) and then approves this call.
+         */
+        val onTrust: (() -> Unit)? = null,
     )
 
     val pending: MutableState<PendingApproval?> = mutableStateOf(null)
 
-    suspend fun awaitApproval(context: android.content.Context, toolName: String, argsSummary: String): Boolean {
-        if (ChatPermissionStore.isAutoApproved(context, toolName)) return true
+    /**
+     * P2c: forceApproval bypasses isAutoApproved ENTIRELY — the card shows even in
+     * AUTO levels. Used for (a) use_connector (IG15: per-call consent, every call,
+     * token-bearing network egress) and (b) the first gated action in an untrusted
+     * project (prompt-once trust card).
+     */
+    suspend fun awaitApproval(
+        context: android.content.Context,
+        toolName: String,
+        argsSummary: String,
+        forceApproval: Boolean = false,
+        onTrust: (() -> Unit)? = null,
+    ): Boolean {
+        if (!forceApproval && ChatPermissionStore.isAutoApproved(context, toolName)) return true
         val deferred = CompletableDeferred<Boolean>()
         pending.value = PendingApproval(toolName, argsSummary, deferred, onAlwaysAllow = {
             ChatPermissionStore.allowTool(context, toolName)
             deferred.complete(true)
-        })
+        }, onTrust = onTrust)
         val result = deferred.await()
         pending.value = null
         return result

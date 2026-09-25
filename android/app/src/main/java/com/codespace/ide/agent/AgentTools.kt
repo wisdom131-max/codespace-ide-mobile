@@ -198,7 +198,11 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "read_entities" -> AgentEntityManager.read(args.getString("entity"), args.optString("filter").ifBlank { null }, context)
                 "update_entity" -> AgentEntityManager.update(args.getString("entity"), args.getString("filter"), args.getString("data"), context)
                 "delete_entity" -> AgentEntityManager.delete(args.getString("entity"), args.getString("filter"), context)
-                "schedule_task" -> AgentScheduler.schedule(args.getString("name"), args.getString("cron"), args.getString("command"), context)
+                // IG02 (P2c): persist the project the task belongs to — the unattended run
+                // gates on that project's TrustState entry (headless, fail closed).
+                "schedule_task" -> AgentScheduler.schedule(
+                    args.getString("name"), args.getString("cron"), args.getString("command"),
+                    com.codespace.ide.security.TrustState.activeProjectRoot(context), context)
                 "list_tasks" -> AgentScheduler.listTasks(context)
                 "cancel_task" -> AgentScheduler.cancel(args.getString("name"), context)
                 "upload_file" -> uploadFile(args.getString("path"), args.getString("url"))

@@ -642,9 +642,28 @@ private suspend fun chat(
                 // Approve/Reject on the floating card before running this tool call.
                 // In Auto mode (default), awaitApproval() returns true immediately.
                 // Staged writes skip the gate entirely (decision #1).
-                val argsSummary = toolArgs.toString().take(160)
+                // CH03 (P2c): the card sees the FULL arguments — the old take(160)
+                // hid the tail of long commands; the card now clamps display with
+                // an expandable toggle instead of truncating the data.
+                val argsSummary = toolArgs.toString()
+                // P2c (TrustState): prompt once on the first gated action for an
+                // untrusted project (read-only tools never prompt; source-agnostic,
+                // VS Code's model). The card's "Trust this project" quick-action
+                // persists the choice — this prompt never fires again for the folder.
+                // Headless surfaces (scheduler, AgentApiServer) fail closed instead.
+                val trustRoot = projectRootPath
+                val trustAction: (() -> Unit)? =
+                    if (trustRoot != null && toolName !in com.codespace.ide.agent.ChatPermissionStore.SAFE_TOOLS &&
+                        !com.codespace.ide.security.TrustState.isTrusted(context, trustRoot)) {
+                        { com.codespace.ide.security.TrustState.setTrusted(context, trustRoot, true) }
+                    } else null
+                // IG15 (P2c): use_connector is token-bearing network egress —
+                // PER-CALL consent at every permission level, allowlist included.
                 val approved = stagedMsg != null ||
-                    com.codespace.ide.agent.AgentFlowGate.awaitApproval(context, toolName, argsSummary)
+                    com.codespace.ide.agent.AgentFlowGate.awaitApproval(
+                        context, toolName, argsSummary,
+                        forceApproval = toolName == "use_connector" || trustAction != null,
+                        onTrust = trustAction)
                 if (toolName == "plan" && approved) planStaged =
                     com.codespace.ide.chat.ChatPlanStore.planFor(
                         com.codespace.ide.chat.ChatPlanStore.activeSessionId ?: "default") != null

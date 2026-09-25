@@ -257,7 +257,9 @@ object McpClientManager {
     /** First-chat lazy discovery: spawn each enabled server once, tools/list, cache docs. */
     suspend fun ensureDiscovered(context: Context) {
         if (discoveryStarted) return
-        discoveryStarted = true
+        // P2c: do NOT latch discoveryStarted up front — refreshServerTools sets it
+        // only after a server actually handshakes. A REFUSED trust prompt leaves
+        // it unset, so the next chat retries discovery once trust is granted.
         refreshTools(context)
     }
 
@@ -276,6 +278,14 @@ object McpClientManager {
     }
 
     private suspend fun refreshServerTools(context: Context, cfg: McpServerConfig) {
+        // P2c: spawning an MCP server process is a gated action — prompt once via
+        // the global trust dialog (interactive: the chat path calls this). Refused
+        // → this server's tools are simply absent; discovery is NOT marked done
+        // (refreshTools can retry once the project is trusted).
+        if (!com.codespace.ide.security.TrustState.awaitTrusted(
+                context, com.codespace.ide.security.TrustState.activeProjectRoot(context))) {
+            return
+        }
         val s = session(context, cfg)
         if (!s.initialized) s.initialize()
         val result = s.request(
@@ -443,6 +453,14 @@ object McpClientManager {
             if (runtime != null && !runtimePresent(context, runtime)) {
                 AppOutputLog.log("mcp server '${cfg.name}' blocked: $runtime missing in Ubuntu session", CHANNEL)
                 return@withContext "MCP server '${cfg.name}' needs $runtime inside the Ubuntu session, but it is not installed. Open Packages > MCP, tap Install $runtime, then retry."
+            }
+            // P2c headless-safe gate (defense in depth: the chat path already
+            // prompted at the tool loop, and the AgentApiServer route checks the
+            // active project's trust before dispatching any tool). Fail closed
+            // with a typed message — never spawn a server process untrusted.
+            if (!com.codespace.ide.security.TrustState.isTrusted(
+                    context, com.codespace.ide.security.TrustState.activeProjectRoot(context))) {
+                return@withContext "Project not trusted yet - trust it at the prompt in the chat panel, then retry."
             }
             try {
                 val s = session(context, cfg)

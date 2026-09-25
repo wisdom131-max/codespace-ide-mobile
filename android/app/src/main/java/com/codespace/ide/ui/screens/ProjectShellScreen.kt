@@ -694,6 +694,10 @@ fun ProjectShellScreen(
     val projectPathUrl = remember(projectId) {
         com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
     }
+    // P2c: the ONE global render site for the workspace-trust prompt — every
+    // interactive choke point (chat tool loop, task launch, debugger, MCP spawn)
+    // publishes through TrustState.prompt; headless surfaces never prompt.
+    com.codespace.ide.ui.panes.TrustPromptDialog()
     // One-time log: show all crash-context.log paths so Wisdom knows where to check
     LaunchedEffect(Unit) {
         com.codespace.ide.util.ProjectContextLogger.getAllLogPaths(context).forEachIndexed { idx, logPath ->

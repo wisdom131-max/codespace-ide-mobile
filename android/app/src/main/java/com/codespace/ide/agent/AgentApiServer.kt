@@ -208,8 +208,22 @@ object AgentApiServer {
                         .put("name", toolName)
                         .put("arguments", args)
 
-                    val result = AgentTools.executeTool(toolName, args, ctx)
-                    httpJson(200, """{"tool":"$toolName","result":${JSONObject.quote(result)}}""")
+                    // P2c TrustState choke point (headless, fail closed — an HTTP
+                    // caller cannot be shown the interactive prompt). Unattended
+                    // tool execution rides PROJECT TRUST of the active project:
+                    // migrated (pre-P2c) projects are grandfathered trusted, so
+                    // existing terminal-AI workflows continue unchanged; new
+                    // projects run only after the user trusts them once.
+                    // use_connector additionally requires PER-CALL consent (IG15),
+                    // which no headless route can collect — refused outright.
+                    if (toolName == "use_connector") {
+                        httpJson(403, """{"error":"use_connector requires per-call consent - run it from the chat panel"}""")
+                    } else if (!com.codespace.ide.security.TrustState.isActiveProjectTrusted(ctx)) {
+                        httpJson(403, """{"error":"project not trusted yet - open the project and approve the trust prompt (any gated action in the chat panel), then retry"}""")
+                    } else {
+                        val result = AgentTools.executeTool(toolName, args, ctx)
+                        httpJson(200, """{"tool":"$toolName","result":${JSONObject.quote(result)}}""")
+                    }
                 }
 
                 // System prompt for CLI AI tools

@@ -75,6 +75,18 @@ object TaskRunner {
         onProblemsUpdate: ((List<GradleErrorParser.BuildProblem>) -> Unit)? = null,
     ): BuildRunner.BuildResult {
         val task = CATALOGUE.first { it.id == taskId }
+        // P2c TrustState choke point: launching a build/task is a gated action —
+        // prompt once via the global trust dialog for untrusted projects.
+        if (!com.codespace.ide.security.TrustState.awaitTrusted(context, projectPath)) {
+            val refused = BuildRunner.BuildResult(
+                status = BuildRunner.BuildStatus.FAILED,
+                output = "Project not trusted yet - task launch was cancelled at the trust prompt. Trust the project and run again.",
+                durationMs = 0,
+                errorCount = 1,
+            )
+            markDone(taskId, refused)
+            return refused
+        }
         markRunning(taskId)
         return try {
             val result = BuildRunner.runBuild(
