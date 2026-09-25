@@ -59,6 +59,43 @@ object DiagnosticPublisher {
     }
 
     /**
+     * F3 (TG03): bridge test failures into the Problems panel under the TEST
+     * source (own sourceId "testrun" — never mixed into BUILD/gradle rows).
+     * Publish pattern: a passing run clears this file's stale failure rows.
+     */
+    fun publishTestFailures(
+        filePath: String,
+        failures: List<Pair<Int, String>>,
+    ) {
+        val uri = "file://$filePath"
+        if (failures.isEmpty()) {
+            DiagnosticManager.clearDiagnostics(DiagnosticManager.DiagnosticSource.TEST, "testrun", uri)
+            return
+        }
+        val diagnostics = failures.map { (lineIndex, message) ->
+            val line = (lineIndex + 1).coerceAtLeast(1)
+            val range = DiagnosticManager.DiagnosticRange(line, 1, line, 1)
+            DiagnosticManager.Diagnostic(
+                id = DiagnosticManager.computeId(
+                    DiagnosticManager.DiagnosticSource.TEST, "testrun", uri,
+                    range, DiagnosticManager.Severity.ERROR, null, message
+                ),
+                source = DiagnosticManager.DiagnosticSource.TEST,
+                sourceId = "testrun",
+                uri = uri,
+                filePath = filePath,
+                range = range,
+                severity = DiagnosticManager.Severity.ERROR,
+                message = message,
+                sourceName = "Tests",
+            )
+        }
+        DiagnosticManager.publishDiagnostics(
+            DiagnosticManager.DiagnosticSource.TEST, "testrun", uri, filePath, diagnostics
+        )
+    }
+
+    /**
      * Clear all build diagnostics (e.g. when starting a new build).
      */
     fun clearBuildDiagnostics() {

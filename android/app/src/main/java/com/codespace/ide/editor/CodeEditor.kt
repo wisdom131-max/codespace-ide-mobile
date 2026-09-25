@@ -582,6 +582,8 @@ fun CodeEditor(
     onBreakpointLongPress: (Int) -> Unit = {},
     /** P54: Current debug line (1-based) for yellow arrow indicator in gutter. 0 = none. */
     debugCurrentLine: Int = 0,
+    /** F3 (TG03): per-line test result states for this file (0-based line to state) — gutter pass/fail glyphs. */
+    testLineStates: Map<Int, com.codespace.ide.testing.TestResultState> = emptyMap(),
     /** P41-W: LSP semantic token ranges — overlaid on regex highlighting */
     semanticTokens: List<com.codespace.ide.lsp.SemanticTokensApplier.SemanticRange> = emptyList(),
     /** P26-1: LSP document highlight — lines to highlight (0-based startLine, endLine pairs). */
@@ -2239,6 +2241,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     else
                                         bookmarkedLines + lineNum
                                 },
+                            )
+                            Spacer(Modifier.width(2.dp))
+                            // F3 (TG03): test pass/fail glyph on the test line
+                            // (extracted composable: JVM 64KB rule).
+                            EditorGutterTestGlyph(
+                                state = testLineStates[lineNum],
+                                fontSize = fontSize,
                             )
                             Spacer(Modifier.width(2.dp))
                             // P8-1 Breakpoint dot + tappable line number (extracted: 64KB limit)

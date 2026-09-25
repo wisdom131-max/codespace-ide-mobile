@@ -567,6 +567,10 @@ fun EditorPane(
     var lspFoldingRanges by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
     // P26-1: LSP Code Lens — inline annotations (ref count, run/test)
     var lspCodeLenses by remember { mutableStateOf<JSONArray?>(null) }
+    // F3 (TG03): test results for the gutter — collected here so the store's
+    // updates recompose the editor; the active-file projection happens at the
+    // CodeEditor call site where the active tab is in scope.
+    val testResultItems by com.codespace.ide.testing.TestResultStore.items.collectAsState()
     var lspDocumentColors by remember { mutableStateOf<JSONArray?>(null) } // P41-K: Color swatches
     // P26-1: LSP Inlay Hints — inline type/parameter hints
     var lspInlayHints by remember { mutableStateOf<JSONArray?>(null) }
@@ -2194,6 +2198,9 @@ fun EditorPane(
                         language = active.language,
                         fontSize = fontSize,
                         savedContent = active.savedContent,
+                        testLineStates = remember(active.path, testResultItems) {
+                            com.codespace.ide.testing.TestResultStore.statesForFile(active.path)
+                        },
                         reviewMarkLines = aiReviewMarks,
                         onContentChange = { newText ->
                             val idx = tabs.indexOfFirst { it.id == active.id }
@@ -2807,12 +2814,13 @@ fun EditorPane(
                                 // without executing anything.
                                 val testArgs = cmd?.opt("arguments") as? org.json.JSONArray
                                 val testId = testArgs?.optString(0, "") ?: ""
+                                val testLine = (testArgs?.optInt(1, -1) ?: -1).coerceAtLeast(-1)
                                 val suite = (cmd?.optString("title", "") ?: "").contains("Run Tests")
                                 val filePath = active.path
                                 val lang = active.language
                                 kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
                                     com.codespace.ide.testing.TestRunManager.runTest(
-                                        context, projectRootPath, filePath, lang, testId, suite)
+                                        context, projectRootPath, filePath, lang, testId, suite, testLine)
                                 }
                             } else if (cmdStr != null && LspManager.isServerRunning(active.language)) {
                                 kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {

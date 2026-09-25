@@ -94,6 +94,7 @@ object TestRunManager {
         language: Language,
         testId: String,
         suite: Boolean,
+        lineIndex: Int = -1,
     ): TestRunResult = withContext(Dispatchers.IO) {
         val leaf = leafName(testId, hostFilePath)
 
@@ -132,6 +133,20 @@ object TestRunManager {
             log("[TestRun] \u25b6 Running " + (if (suite) "suite " else "test ") + leaf + "\u2026")
             val started = System.currentTimeMillis()
 
+            // F3 (TG03): live RUNNING state on the test line so the gutter
+            // shows the run in progress; replaced by the terminal outcome.
+            if (lineIndex >= 0) {
+                TestResultStore.record(
+                    TestResultItem(
+                        testId = testId, lineIndex = lineIndex,
+                        ownState = TestResultState.RUNNING,
+                        computedState = TestResultState.RUNNING,
+                        ownDurationMs = 0, message = null, retired = false,
+                        runId = started,
+                    )
+                )
+            }
+
             val result = ProotInstaller.execTyped(
                 context, cmd, workdir = guestRoot,
                 timeoutSeconds = timeoutSeconds,
@@ -147,11 +162,202 @@ object TestRunManager {
                 result.exitCode == 0 -> TestRunStatus.PASSED
                 else -> TestRunStatus.FAILED
             }
+            // ── F3 (TG03): parse per-test outcomes, record them, bridge failures ──
+            recordOutcomes(
+                status, testId, lineIndex, hostFilePath, projectRoot, language,
+                result, started, durationMs, timeoutSeconds,
+            )
             logResult(status, leaf, result.exitCode, durationMs, result.launchError)
             TestRunResult(testId, status, result.exitCode, durationMs)
         } finally {
             currentProcess = null
             active = false
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // F3 (TG03): result recording + Problems bridging
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Maps the run to per-test result items, records them in TestResultStore
+     * (retiring same-file items this run did not cover), records the run
+     * summary, and bridges failures to Problems under the TEST source.
+     * No outcome is recorded for BUSY/UNTRUSTED/UNSUPPORTED/LAUNCH_FAILED —
+     * those runs claim no result (honesty rule).
+     */
+    private fun recordOutcomes(
+        status: TestRunStatus,
+        testId: String,
+        lineIndex: Int,
+        hostFilePath: String,
+        projectRoot: String?,
+        language: Language,
+        result: com.codespace.ide.terminal.ProotResult,
+        runId: Long,
+        durationMs: Long,
+        timeoutSeconds: Long,
+    ) {
+        when (status) {
+            TestRunStatus.PASSED, TestRunStatus.FAILED -> {
+                val cases = parseOutcomes(hostFilePath, projectRoot, language, runId)
+                var passed = 0
+                var failedCount = 0
+                var erroredCount = 0
+                var skipped = 0
+                val failures = mutableListOf<Pair<Int, String>>()
+                val liveIds = mutableSetOf<String>()
+
+                if (cases.isEmpty()) {
+                    // No machine-readable report — record the tapped node from
+                    // the raw typed status (exit code is still verified truth).
+                    val st = if (status == TestRunStatus.PASSED) {
+                        TestResultState.PASSED
+                    } else {
+                        TestResultState.FAILED
+                    }
+                    val msg = if (st == TestResultState.FAILED) {
+                        "exit " + (result.exitCode ?: -1)
+                    } else {
+                        null
+                    }
+                    TestResultStore.record(
+                        TestResultItem(testId, lineIndex, st, st, durationMs, msg, false, runId)
+                    )
+                    liveIds.add(testId)
+                    if (st == TestResultState.PASSED) passed += 1 else erroredCount += 1
+                    // Clear stale failure rows for this file when passing.
+                    if (st == TestResultState.PASSED) {
+                        com.codespace.ide.diagnostics.DiagnosticPublisher
+                            .publishTestFailures(hostFilePath, emptyList())
+                    }
+                } else {
+                    for (case in cases) {
+                        val id = mapTestId(hostFilePath, language, case)
+                        val line = case.fileLine ?: (if (id == testId) lineIndex else -1)
+                        TestResultStore.record(
+                            TestResultItem(id, line, case.state, case.state, case.durationMs, case.message, false, runId)
+                        )
+                        liveIds.add(id)
+                        when (case.state) {
+                            TestResultState.PASSED -> passed += 1
+                            TestResultState.FAILED -> {
+                                failedCount += 1
+                                if (line >= 0 && case.message != null) failures.add(line to case.message)
+                            }
+                            TestResultState.ERRORED -> {
+                                erroredCount += 1
+                                if (line >= 0 && case.message != null) failures.add(line to case.message)
+                            }
+                            TestResultState.SKIPPED -> skipped += 1
+                            else -> {}
+                        }
+                    }
+                    // Container rollup: the tapped suite (or test) line shows
+                    // the merged state of everything this run covered.
+                    var merged = cases.first().state
+                    for (c in cases) {
+                        merged = TestResultStates.merge(merged, c.state)
+                    }
+                    val containerMsg = cases.firstOrNull { it.message != null }?.message
+                    TestResultStore.record(
+                        TestResultItem(testId, lineIndex, merged, merged, durationMs, containerMsg, false, runId)
+                    )
+                    liveIds.add(testId)
+                    com.codespace.ide.diagnostics.DiagnosticPublisher
+                        .publishTestFailures(hostFilePath, failures)
+                }
+
+                TestResultStore.retireMissing(hostFilePath, liveIds)
+                TestResultStore.recordRun(
+                    TestRun(
+                        id = runId,
+                        name = testId.substringAfterLast('/'),
+                        completedAt = System.currentTimeMillis(),
+                        passed = passed,
+                        failed = failedCount,
+                        errored = erroredCount,
+                        skipped = skipped,
+                    )
+                )
+            }
+            TestRunStatus.TIMED_OUT -> {
+                TestResultStore.record(
+                    TestResultItem(
+                        testId, lineIndex, TestResultState.ERRORED, TestResultState.ERRORED,
+                        durationMs, "Runner timed out after " + timeoutSeconds + "s", false, runId,
+                    )
+                )
+                TestResultStore.retireMissing(hostFilePath, setOf(testId))
+            }
+            TestRunStatus.CANCELLED -> {
+                TestResultStore.record(
+                    TestResultItem(
+                        testId, lineIndex, TestResultState.RETIRED, TestResultState.RETIRED,
+                        durationMs, null, true, runId,
+                    )
+                )
+                TestResultStore.retireMissing(hostFilePath, setOf(testId))
+            }
+            else -> {} // BUSY / UNTRUSTED / UNSUPPORTED / LAUNCH_FAILED: no outcome claim
+        }
+    }
+
+    /**
+     * Reads the runner's machine-readable report for this run. Report files
+     * land in the project root (guest bind = the same host directory), so
+     * parsing is host-side with no path translation.
+     */
+    private fun parseOutcomes(
+        hostFilePath: String,
+        projectRoot: String?,
+        language: Language,
+        runStart: Long,
+    ): List<TestOutputParsers.ParsedCase> {
+        val hostRoot = projectRoot ?: File(hostFilePath).parent ?: return emptyList()
+        return when (language) {
+            Language.PYTHON -> {
+                val f = File(hostRoot, ".codespace-test-result.xml")
+                if (!f.exists()) return emptyList()
+                val parsed = TestOutputParsers.parseJunitXml(f.readText(), File(hostFilePath).name)
+                f.delete()
+                parsed
+            }
+            Language.JAVASCRIPT, Language.TYPESCRIPT -> {
+                val f = File(hostRoot, ".codespace-test-result.json")
+                if (!f.exists()) return emptyList()
+                val parsed = TestOutputParsers.parseJestJson(f.readText())
+                f.delete()
+                parsed
+            }
+            Language.KOTLIN, Language.JAVA -> {
+                // Gradle writes build/test-results/test/TEST-*.xml; only files
+                // from THIS run are parsed (older runs would replay stale ids).
+                val dir = File(hostRoot, "build/test-results/test")
+                val xmls = dir.listFiles()
+                    ?.filter { it.name.startsWith("TEST-") && it.lastModified >= runStart }
+                    ?: return emptyList()
+                xmls.flatMap { TestOutputParsers.parseJunitXml(it.readText(), File(hostFilePath).name) }
+            }
+            else -> emptyList()
+        }
+    }
+
+    /** Maps a parsed case back to the F1 TestId shape for this file. */
+    private fun mapTestId(hostFilePath: String, language: Language, case: TestOutputParsers.ParsedCase): String {
+        return when (language) {
+            Language.PYTHON -> hostFilePath + "/" + case.key
+            Language.JAVASCRIPT, Language.TYPESCRIPT ->
+                hostFilePath + "/" + (case.ancestors + case.key).joinToString("/")
+            else -> {
+                // JVM: "com.example.Outer$Corner" -> [Outer, Corner]; method "()"-stripped.
+                val method = case.key.removeSuffix("()")
+                val chain = case.className
+                    ?.split('$')
+                    ?.map { seg -> seg.substringAfterLast('.', seg) }
+                    ?: emptyList()
+                hostFilePath + "/" + (chain + method).joinToString("/")
+            }
         }
     }
 
@@ -178,12 +384,23 @@ object TestRunManager {
         return when (language) {
             Language.PYTHON -> {
                 // pytest node id: file::Class::method (suite) or file::method.
+                // --junitxml into the project root (guest bind = host file) so
+                // F3 parses per-test outcomes and failure locations.
                 val node = (listOf(guestFile) + chain).joinToString("::")
-                Pair("python3 -m pytest " + q(node) + " -v", 180L)
+                Pair(
+                    "python3 -m pytest " + q(node) +
+                        " -v --junitxml .codespace-test-result.xml",
+                    180L,
+                )
             }
             Language.JAVASCRIPT, Language.TYPESCRIPT -> {
-                // jest -t matches the leaf name within THIS file's tests.
-                Pair("npx jest " + q(guestFile) + " -t " + q(leaf), 240L)
+                // jest -t matches the leaf name within THIS file's tests;
+                // --json --outputFile lands in the project root for F3 parsing.
+                Pair(
+                    "npx jest " + q(guestFile) + " -t " + q(leaf) +
+                        " --json --outputFile .codespace-test-result.json",
+                    240L,
+                )
             }
             Language.KOTLIN, Language.JAVA -> {
                 val pattern = gradleTestPattern(hostFilePath, chain, suite) ?: return null
