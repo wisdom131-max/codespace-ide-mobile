@@ -2315,9 +2315,16 @@ fun ExplorerSidePanel(
                                 onShowNotification?.invoke("Cannot write to this folder. Grant 'All files access' in Settings.", "error")
                                 showNewFolder = false; nameInput = "" 
                             }
-                            File(dir, nameInput).mkdirs()
-                            refresh++
-                            onShowNotification?.invoke("Created folder: ${nameInput}/", "success")
+                            // EX06 (P3a): mkdirs() returns false when the folder was NOT
+                            // created (read-only parent, name collision with a FILE). The
+                            // old code reported success unconditionally.
+                            val newDir = File(dir, nameInput)
+                            if (!newDir.mkdirs() && !newDir.isDirectory) {
+                                onShowNotification?.invoke("Failed to create folder '${nameInput}' — the directory was not created", "error")
+                            } else {
+                                refresh++
+                                onShowNotification?.invoke("Created folder: ${nameInput}/", "success")
+                            }
                         } catch (e: Exception) {
                             onShowNotification?.invoke("Failed to create folder: ${e.message}. Grant 'All files access' in Settings.", "error")
                         }
@@ -2458,9 +2465,11 @@ fun ExplorerSidePanel(
                                 TextButton(onClick = {
                                     scope.launch {
                                         trashProjectDir?.let { pd ->
-                                            withContext(Dispatchers.IO) { WorkspaceManager.restoreFromTrash(pd, entry) }
+                                            // EX01 family (P3a): surface a FAILED restore instead of silently
+                                            // closing the dialog on a Boolean nobody read.
+                                            val ok = withContext(Dispatchers.IO) { WorkspaceManager.restoreFromTrash(pd, entry) }
                                             withContext(Dispatchers.IO) { trashEntries = WorkspaceManager.listTrash(pd) }
-                                            refresh++
+                                            if (ok) refresh++ else onShowNotification?.invoke("Restore failed — the item stays in trash", "error")
                                         }
                                     }
                                 }) { Text("Restore", fontSize = 11.sp, color = IconColor) }
@@ -2499,6 +2508,7 @@ fun ExplorerSidePanel(
                     onClick = {
                         var moved = 0
                         var skipped = 0
+                        var failed = 0
                         selectedFiles.forEach { path ->
                             val f = File(path)
                             if (!f.exists()) { skipped++; return@forEach }
@@ -2506,16 +2516,22 @@ fun ExplorerSidePanel(
                             // (multi-root aware, fail closed — never a wrong-root trash dir).
                             val proj = com.codespace.ide.util.ProjectPathResolver.containingRoot(context, projectId, path)
                             if (proj == null) { skipped++; return@forEach }
-                            WorkspaceManager.moveToTrash(proj, f)
-                            moved++
+                            // EX01 (P3a): count VERIFIED moves only — a null result
+                            // means renameTo failed and the file is still in place.
+                            if (WorkspaceManager.moveToTrash(proj, f) != null) moved++ else failed++
                         }
                         selectedFiles.clear()
                         multiSelectMode = false
                         refresh++
                         showMultiDeleteConfirm = false
                         onShowNotification?.invoke(
-                            if (skipped > 0) "Moved $moved to trash, skipped $skipped" else "Moved $moved item(s) to trash",
-                            if (moved > 0) "success" else "info",
+                            when {
+                                failed > 0 && moved > 0 -> "Moved $moved to trash; $failed FAILED (still in place); skipped $skipped"
+                                failed > 0 -> "Trash move FAILED for $failed item(s) — nothing moved"
+                                skipped > 0 -> "Moved $moved to trash, skipped $skipped"
+                                else -> "Moved $moved item(s) to trash"
+                            },
+                            if (failed > 0) "error" else if (moved > 0) "success" else "info",
                         )
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
@@ -2545,9 +2561,13 @@ fun ExplorerSidePanel(
                             }
                             p ?: f.parentFile!!
                         }
-                        WorkspaceManager.moveToTrash(proj, contextFile!!)
-                        refresh++
-                        showDelete = false
+                        // EX01 (P3a): only report success on a VERIFIED move.
+                        if (WorkspaceManager.moveToTrash(proj, contextFile!!) != null) {
+                            refresh++
+                            showDelete = false
+                        } else {
+                            onShowNotification?.invoke("Failed to move to trash — the file was NOT deleted", "error")
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
                 ) { Text("Delete") }
@@ -2962,6 +2982,7 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     var matchWholeWord by remember { mutableStateOf(false) }
     var results       by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searching     by remember { mutableStateOf(false) }
+    var replaceFailures by remember { mutableStateOf(0) }  // SR04: files whose Replace-All write failed
     var expandedFiles by remember { mutableStateOf(setOf<String>()) }
     var includePattern by remember { mutableStateOf("") }
     var excludePattern by remember { mutableStateOf("") }
@@ -3125,27 +3146,42 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                             val wsPath = loadWorkspacePath(context, projectId)
                             val wsRoot = wsPath?.let { File(it) }
                             if (wsRoot != null) {
-                                var count = 0
-                                results.groupBy { it.file }.forEach { (filePath, fileResults) ->
+                                // SR04 (P3a): typed per-file replace results.
+                                // The old loop swallowed per-file failures
+                                // (catch {}), counted the SEARCH's hit lines as
+                                // replacements even when the regex failed to
+                                // build (content kept but still counted), and
+                                // wrote the disk copy WITHOUT invalidating the
+                                // editor cache — an open tab kept showing the
+                                // pre-replace content (G01 family).
+                                var replaced = 0
+                                var failedFiles = 0
+                                results.groupBy { it.file }.forEach { (filePath, _) ->
                                     try {
                                         val f = File(filePath)
                                         val content = f.readText()
-                                        val newContent = if (useRegex) {
-                                            try {
-                                                val regex = if (caseSensitive) Regex(searchQuery) else Regex(searchQuery, RegexOption.IGNORE_CASE)
-                                                regex.replace(content, replaceQuery).also { count += fileResults.size }
-                                            } catch (_: Exception) { content }
-                                        } else if (matchWholeWord) {
-                                            val regex = if (caseSensitive) Regex("\\b" + Regex.escape(searchQuery) + "\\b")
-                                                       else Regex("\\b" + Regex.escape(searchQuery) + "\\b", RegexOption.IGNORE_CASE)
-                                            regex.replace(content, replaceQuery).also { count += fileResults.size }
+                                        val regex = try {
+                                            if (useRegex) {
+                                                if (caseSensitive) Regex(searchQuery) else Regex(searchQuery, RegexOption.IGNORE_CASE)
+                                            } else if (matchWholeWord) {
+                                                if (caseSensitive) Regex("\\b" + Regex.escape(searchQuery) + "\\b")
+                                                else Regex("\\b" + Regex.escape(searchQuery) + "\\b", RegexOption.IGNORE_CASE)
+                                            } else null
+                                        } catch (_: Exception) { failedFiles++; return@forEach }
+                                        // SR03 family: count the matches the ACTUAL replace
+                                        // pattern will apply, not the search's hit count.
+                                        if (regex != null) {
+                                            replaced += regex.findAll(content).count()
+                                            f.writeText(regex.replace(content, replaceQuery))
                                         } else {
-                                            content.replace(searchQuery, replaceQuery, !caseSensitive).also { count += fileResults.size }
+                                            replaced += content.split(searchQuery, ignoreCase = !caseSensitive).size - 1
+                                            f.writeText(content.replace(searchQuery, replaceQuery, !caseSensitive))
                                         }
-                                        f.writeText(newContent)
-                                    } catch (_: Exception) {}
+                                        com.codespace.ide.editor.FileCache.invalidate(filePath)
+                                    } catch (_: Exception) { failedFiles++ }
                                 }
-                                totalReplaced = count
+                                totalReplaced = replaced
+                                replaceFailures = failedFiles
                                 performSearch(searchQuery)
                             }
                         }
@@ -3171,10 +3207,14 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             }
         }
 
-        // Replace result indicator
+        // Replace result indicator (SR04: failures shown, not swallowed)
         if (totalReplaced > 0) {
             Text("Replaced " + totalReplaced + " occurrences", fontSize = 11.sp, color = Color(0xFF73C991),
                 modifier = Modifier.padding(top = 4.dp))
+        }
+        if (replaceFailures > 0) {
+            Text("$replaceFailures file(s) FAILED to write — not replaced", fontSize = 11.sp, color = Color(0xFFE53935),
+                modifier = Modifier.padding(top = 2.dp))
         }
 
         // Results count

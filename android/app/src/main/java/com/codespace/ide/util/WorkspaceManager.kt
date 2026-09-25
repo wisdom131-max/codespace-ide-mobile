@@ -199,11 +199,19 @@ object WorkspaceManager {
      * Moves [target] into `.ide-trash/<timestamp>-<name>` inside [projectDir].
      * Returns the trash entry on success.
      */
-    fun moveToTrash(projectDir: File, target: File): TrashEntry {
+    fun moveToTrash(projectDir: File, target: File): TrashEntry? {
         val stamp      = System.currentTimeMillis()
         val trashedName = "${stamp}-${target.name}"
         val dest       = File(trashDir(projectDir), trashedName)
-        target.renameTo(dest)
+        // EX01 (P3a): the old code returned a TrashEntry without checking
+        // renameTo — a failed move (cross-filesystem, read-only parent,
+        // EBUSY) still counted as trashed and the caller reported success.
+        // null = the item was NOT moved; the caller must say so.
+        if (!target.renameTo(dest)) return null
+        // EX02: persist the FULL original relative path in a trash index so
+        // nested files restore into their original folder, not the project
+        // root. (listTrash reconstructs this when the entry is re-listed.)
+        writeTrashIndexEntry(projectDir, trashedName, target.relativeTo(projectDir).path)
         return TrashEntry(
             originalPath = target.relativeTo(projectDir).path,
             trashedName  = trashedName,
@@ -214,14 +222,17 @@ object WorkspaceManager {
     /** Lists all items currently in the trash for [projectDir]. */
     fun listTrash(projectDir: File): List<TrashEntry> {
         val td = trashDir(projectDir)
+        // EX02: prefer the persisted full-path index; entries trashed before
+        // the index existed fall back to the basename.
+        val index = readTrashIndex(projectDir)
         return td.listFiles()
-            ?.filter { it.exists() }
+            ?.filter { it.exists() && it.name != "index.json" }
             ?.map { f ->
                 val dashIdx = f.name.indexOf('-')
                 val stamp   = if (dashIdx > 0) f.name.substring(0, dashIdx).toLongOrNull() ?: 0L else 0L
-                val origName = if (dashIdx > 0) f.name.substring(dashIdx + 1) else f.name
+                val basename = if (dashIdx > 0) f.name.substring(dashIdx + 1) else f.name
                 TrashEntry(
-                    originalPath = origName,   // best-effort; original dir is lost if not a top-level file
+                    originalPath = index[f.name] ?: basename,
                     trashedName  = f.name,
                     deletedAtMs  = stamp,
                 )
@@ -237,14 +248,70 @@ object WorkspaceManager {
     fun restoreFromTrash(projectDir: File, entry: TrashEntry): Boolean {
         val src  = File(trashDir(projectDir), entry.trashedName)
         if (!src.exists()) return false
+        // EX02 (P3a): entry.originalPath is the FULL relative path (the trash
+        // index supplies it for nested items); restore INTO the original
+        // folder, creating it if the trash browser lists a path with dirs.
+        // The old `_restored` fallback landed in the project ROOT because it
+        // rebuilt the destination from dest.nameWithoutExtension relative to
+        // projectDir — and only tried ONE collision suffix before giving up.
         var dest = File(projectDir, entry.originalPath)
-        if (dest.exists()) dest = File(projectDir, "${dest.nameWithoutExtension}_restored.${dest.extension}")
-        return src.renameTo(dest)
+        if (dest.exists()) {
+            val parent = dest.parentFile ?: projectDir
+            var candidate = File(parent, "${dest.nameWithoutExtension}_restored${if (dest.extension.isNotEmpty()) "." + dest.extension else ""}")
+            var n = 2
+            while (candidate.exists() && n < 100) {
+                candidate = File(parent, "${dest.nameWithoutExtension}_restored${n}${if (dest.extension.isNotEmpty()) "." + dest.extension else ""}")
+                n++
+            }
+            dest = candidate
+        }
+        dest.parentFile?.mkdirs()
+        val moved = src.renameTo(dest)
+        if (moved) removeTrashIndexEntry(projectDir, entry.trashedName)
+        return moved
+    }
+
+    /**
+     * EX02: the trash index maps trashedName -> full original relative path.
+     * A single JSON file (index.json) inside .ide-trash/ — corrupt or missing
+     * entries fall back to the legacy basename behavior, never crash.
+     */
+    private fun trashIndexFile(projectDir: File) = File(trashDir(projectDir), "index.json")
+
+    private fun readTrashIndex(projectDir: File): MutableMap<String, String> {
+        val map = mutableMapOf<String, String>()
+        val f = trashIndexFile(projectDir)
+        if (!f.exists()) return map
+        try {
+            val obj = org.json.JSONObject(f.readText())
+            obj.keys().forEach { k -> map[k] = obj.optString(k, "") }
+        } catch (_: Exception) { /* corrupt index — fall back to basename */ }
+        return map
+    }
+
+    private fun writeTrashIndexEntry(projectDir: File, trashedName: String, originalPath: String) {
+        try {
+            val f = trashIndexFile(projectDir)
+            val map = readTrashIndex(projectDir)
+            map[trashedName] = originalPath
+            f.writeText(org.json.JSONObject(map as Map<*, *>).toString())
+        } catch (_: Exception) { /* best-effort — restore falls back to basename */ }
+    }
+
+    private fun removeTrashIndexEntry(projectDir: File, trashedName: String) {
+        try {
+            val f = trashIndexFile(projectDir)
+            if (!f.exists()) return
+            val map = readTrashIndex(projectDir)
+            map.remove(trashedName)
+            f.writeText(org.json.JSONObject(map as Map<*, *>).toString())
+        } catch (_: Exception) { /* best-effort */ }
     }
 
     /** Permanently deletes a single trash entry. */
     fun purgeTrashEntry(projectDir: File, entry: TrashEntry) {
         File(trashDir(projectDir), entry.trashedName).deleteRecursively()
+        removeTrashIndexEntry(projectDir, entry.trashedName)
     }
 
     /** Empties the entire trash for [projectDir]. */

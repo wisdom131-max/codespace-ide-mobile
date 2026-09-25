@@ -678,12 +678,18 @@ class GitService(private val context: Context) {
      * @param destDir destination directory (guest-side path)
      * @param workdir working directory for running the command (parent of dest)
      */
-    fun clone(url: String, destDir: String, workdir: String): GitResult {
+    fun clone(url: String, destDir: String, workdir: String, token: String? = null): GitResult {
+        // SG05 (P3a): the executor's auth injection (needsAuth includes clone)
+        // only fires when a token is passed — this call never sent one, so a
+        // private repo URL typed into CloneDialog failed with git's raw auth
+        // error even while signed in (RepoBrowserSheet worked because it
+        // embeds the token itself — SG16's separate path).
         return GitCommandExecutor.run(
             context,
             listOf("clone", url, destDir),
             workdir,
-            timeoutSeconds = 120
+            timeoutSeconds = 120,
+            token = token,
         )
     }
 

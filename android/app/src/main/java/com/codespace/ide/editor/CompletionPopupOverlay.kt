@@ -325,13 +325,30 @@ internal fun CompletionPopupOverlay(
                                     val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
                                             val editsArray = org.json.JSONArray(comp.additionalTextEditsJson)
+                                            // IC04 (P3a): compute the cursor shift from edits that
+                                            // start ABOVE the completion position only. The old
+                                            // code applied the TOTAL length delta (correct only
+                                            // when every edit is above the cursor — the auto-import
+                                            // case); any additional edit BELOW it mislocated the
+                                            // insertion into the wrong offset.
+                                            var cursorShift = 0
+                                            for (ei in 0 until editsArray.length()) {
+                                                val te = editsArray.optJSONObject(ei) ?: continue
+                                                val rng = te.optJSONObject("range") ?: continue
+                                                val esLine = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
+                                                val esChar = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
+                                                val eeLine = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
+                                                val eeChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
+                                                val editStart = positionMapper.lspToOffset(esLine, esChar)
+                                                val editEnd = positionMapper.lspToOffset(eeLine, eeChar)
+                                                if (editEnd > start) continue  // edit is below/at the cursor — no shift
+                                                cursorShift += te.optString("newText", "").length - (editEnd - editStart)
+                                            }
                                             // Apply additional edits to the full text first
                                             val textWithImports = applyLspTextEdits(text, editsArray)
                                             // Then insert completion text at cursor position
-                                            // (adjust cursor position if edits were above it)
-                                            val cursorOffset = textWithImports.length - text.length
-                                            val adjustedStart = start + cursorOffset
-                                            val adjustedEnd = end + cursorOffset
+                                            val adjustedStart = start + cursorShift
+                                            val adjustedEnd = end + cursorShift
                                             // P41-I: If snippet, parse and replace insertText with cleaned version
                                             val (textToInsert, snippetParsed) = if (comp.insertTextFormat == 2) {
                                                 val parsed = parseSnippet(comp.insertText, SnippetContext(
@@ -359,9 +376,15 @@ internal fun CompletionPopupOverlay(
                                                 adjustedStart + textToInsert.length
                                             }
                                             Pair(finalText, finalCursor)
-                                            Pair(finalText, finalCursor)
-                                        } catch (_: Exception) {
-                                            // Fallback: plain insert without auto-import
+                                        } catch (e: Exception) {
+                                            // IC04 (P3a): the auto-import path failed silently — log
+                                            // it so the Output tab shows WHY the import is missing,
+                                            // then fall back to a plain insert (still honest: the
+                                            // completion itself inserts).
+                                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                                "[AutoImport] additional edits failed, inserting plain completion: " +
+                                                (e.message ?: e.javaClass.simpleName), "lsp"
+                                            )
                                             val newText = text.substring(0, start) + comp.insertText + text.substring(end)
                                             Pair(newText, start + comp.insertText.length)
                                         }

@@ -134,10 +134,39 @@ object BuildRunner {
                 "cd \"$guestPath\" && gradle $task --no-daemon --console=plain 2>&1"
             }
 
-            // Run via execOnce (captures all output)
-            val output = ProotInstaller.execOnce(context, cmd, workdir = guestPath, timeoutSeconds = 600)
+            // PR01+PR03 (P3a): run via the TYPED executor.
+            // - onProcess stores the live Process so cancelBuild() actually
+            //   destroys the running gradle (the old code never assigned
+            //   currentProcess — cancelBuild() destroyed null while the build
+            //   kept running in proot).
+            // - onLine streams output LIVE to the build panel (the old code
+            //   wrote _buildOutput only at start and completion, so a
+            //   multi-minute build showed nothing while running).
+            // - Status comes from the EXIT CODE, not from grepping
+            //   "BUILD SUCCESSFUL"/"BUILD FAILED" markers which the old
+            //   2000-line capture cap could swallow (PR03: a truncated failed
+            //   build fell into the else-FAILED branch and a truncated
+            //   successful one lost its marker).
+            // - maxLines raised to 10000 so late compile errors survive;
+            //   truncation is surfaced with a header line, not hidden.
+            val outBuf = StringBuilder("Building: $task\n")
+            var streamed = 0
+            val result = ProotInstaller.execTyped(
+                context, cmd, workdir = guestPath, timeoutSeconds = 600,
+                maxLines = 10000,
+                onLine = { line ->
+                    synchronized(outBuf) { outBuf.append(line).append('\n') }
+                    streamed++
+                    if (streamed % 25 == 0) _buildOutput.value = outBuf.toString()
+                },
+                onProcess = { proc -> currentProcess = proc },
+            )
             val duration = System.currentTimeMillis() - startTime
-
+            val output = buildString {
+                if (result.timedOut) append("[Timed out after 600s]\n")
+                if (result.truncated) append("[output truncated at 10000 lines — status is by exit code]\n")
+                append(result.stdout)
+            }
             _buildOutput.value = output
             _buildProgress.value = 1f
 
@@ -145,9 +174,16 @@ object BuildRunner {
             val errors = GradleErrorParser.extractErrors(output)
             val warnings = GradleErrorParser.extractWarnings(output)
 
-            // Check for success/failure
-            val isSuccess = output.contains("BUILD SUCCESSFUL", ignoreCase = true)
-            val isFailure = output.contains("BUILD FAILED", ignoreCase = true)
+            // PR01: CANCELLED is sticky — cancelBuild() destroys the process,
+            // the executor then returns a failed result, and this completing
+            // coroutine must NOT re-label the user's cancel as SUCCESS/FAILED.
+            val wasCancelled = _buildStatus.value == BuildStatus.CANCELLED
+            val status = when {
+                wasCancelled -> BuildStatus.CANCELLED
+                result.succeeded -> BuildStatus.SUCCESS
+                else -> BuildStatus.FAILED
+            }
+            val isSuccess = status == BuildStatus.SUCCESS
 
             // Find APK if successful
             var apkPath: String? = null
@@ -158,17 +194,11 @@ object BuildRunner {
                 }
             }
 
-            val status = when {
-                isSuccess -> BuildStatus.SUCCESS
-                isFailure -> BuildStatus.FAILED
-                else -> BuildStatus.FAILED
-            }
-
             _buildStatus.value = status
-            AppOutputLog.log("Build ${if (isSuccess) "SUCCESSFUL" else "FAILED"} (${duration}ms, ${errors.size} errors, ${warnings.size} warnings)", "build")
+            AppOutputLog.log("Build ${status} (${duration}ms, ${errors.size} errors, ${warnings.size} warnings)", "build")
             // Phase N: Notify build completion
             NotificationStore.notifyBuildEvent(
-                title = if (isSuccess) "Build successful" else "Build failed",
+                title = when (status) { BuildStatus.SUCCESS -> "Build successful"; BuildStatus.CANCELLED -> "Build cancelled"; else -> "Build failed" },
                 body = "${errors.size} errors, ${warnings.size} warnings (${duration}ms)" +
                     if (apkPath != null) " — APK ready" else "",
                 isError = !isSuccess,
@@ -188,7 +218,9 @@ object BuildRunner {
         } catch (e: Exception) {
             Log.e(TAG, "Build failed", e)
             val duration = System.currentTimeMillis() - startTime
-            _buildStatus.value = BuildStatus.FAILED
+            // PR01: a cancellation that surfaces as an exception must not be
+            // re-labeled FAILED either — CANCELLED stays sticky.
+            if (_buildStatus.value != BuildStatus.CANCELLED) _buildStatus.value = BuildStatus.FAILED
             _buildOutput.value = "Build error: ${e.message ?: "Unknown error"}"
             AppOutputLog.log("Build error: ${e.message ?: "Unknown"}", "build")
             // Phase N: Notify build error
@@ -198,7 +230,7 @@ object BuildRunner {
                 isError = true,
             )
             BuildResult(
-                status = BuildStatus.FAILED,
+                status = _buildStatus.value,
                 output = "Build error: ${e.message ?: "Unknown error"}",
                 durationMs = duration,
                 errorCount = 1,
@@ -212,7 +244,11 @@ object BuildRunner {
     fun cancelBuild() {
         currentProcess?.destroyForcibly()
         currentProcess = null
-        _buildStatus.value = BuildStatus.CANCELLED
+        // PR01: only a RUNNING build can be cancelled — never overwrite a
+        // terminal SUCCESS/FAILED from a build that already completed.
+        if (_buildStatus.value == BuildStatus.BUILDING || _buildStatus.value == BuildStatus.VALIDATING) {
+            _buildStatus.value = BuildStatus.CANCELLED
+        }
         // Phase N: Notify build cancelled
         NotificationStore.notifyBuildEvent(
             title = "Build cancelled",

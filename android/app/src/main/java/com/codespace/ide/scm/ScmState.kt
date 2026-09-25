@@ -446,7 +446,7 @@ class ScmState(private val context: Context) {
                     return@withContext false to "Could not delete the existing destination '" + destDir + "'. Remove it manually and retry."
                 }
             }
-            when (val r = service.clone(url, destDir, workdir)) {
+            when (val r = service.clone(url, destDir, workdir, token = token)) {
                 is GitResult.Ok -> true to "Cloned $url"
                 is GitResult.Err -> false to r.error.message
             }

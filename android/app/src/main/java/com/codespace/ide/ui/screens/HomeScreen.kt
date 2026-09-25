@@ -335,7 +335,19 @@ fun HomeScreen(
                                         if (projectDir.exists()) {
                                             com.codespace.ide.util.WorkspaceManager.moveProjectToTrash(context, projectDir)
                                         }
-                                        deleteProjectFromCloud(accessToken, toRemove.id)
+                                        // OG02 (P3a): the cloud delete's Boolean was never
+                                        // checked — a failed cloud delete was silent, and with
+                                        // OG01's replace-all sync the project RESURRECTED on the
+                                        // next sync. Surface the failure so the user knows the
+                                        // cloud copy is still there.
+                                        val cloudDeleted = deleteProjectFromCloud(accessToken, toRemove.id)
+                                        if (!cloudDeleted) {
+                                            com.codespace.ide.data.NotificationStore.add(
+                                                "Cloud delete failed",
+                                                "'${toRemove.name}' was removed on this device but could not be deleted from the cloud — it may reappear on the next sync.",
+                                                severity = com.codespace.ide.data.NotificationStore.Severity.WARNING
+                                            )
+                                        }
                                     }
                                 }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete")

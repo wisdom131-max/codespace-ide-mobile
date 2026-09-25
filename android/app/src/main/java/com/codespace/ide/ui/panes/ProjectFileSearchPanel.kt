@@ -372,20 +372,40 @@ fun ProjectFileSearchPanel(
                             scope.launch {
                                 replacing = true
                                 replaceCount = 0
+                                var failedFiles = 0
                                 val grouped = textResults.groupBy { it.file.path }
                                 withContext(Dispatchers.IO) {
-                                    grouped.forEach { (path, results) ->
+                                    grouped.forEach { (path, _) ->
                                         val file = File(path)
-                                        if (!file.exists() || !file.canWrite()) return@forEach
-                                        var fileContent = file.readText()
-                                        val pattern = try { Regex(Regex.escape(query)) } catch (_: Exception) { return@forEach }
-                                        fileContent = pattern.replace(fileContent, replaceQuery)
-                                        file.writeText(fileContent)
-                                        replaceCount += results.size
+                                        if (!file.exists() || !file.canWrite()) { failedFiles++; return@forEach }
+                                        val fileContent = try { file.readText() } catch (_: Exception) { failedFiles++; return@forEach }
+                                        // SR03 (P3a): the search honors the Aa toggle (case-INsensitive
+                                        // by default) but the old Replace All ALWAYS used a
+                                        // case-sensitive pattern — a visible lower-case hit stayed
+                                        // unchanged while the count claimed it was replaced.
+                                        val pattern = try {
+                                            if (useCaseSensitive) Regex(Regex.escape(query))
+                                            else Regex(Regex.escape(query), RegexOption.IGNORE_CASE)
+                                        } catch (_: Exception) { failedFiles++; return@forEach }
+                                        // SR03/SR04: count the matches THIS pattern will actually
+                                        // apply — the search's hit count was reported even when
+                                        // the replace pattern matched nothing.
+                                        val applied = pattern.findAll(fileContent).count()
+                                        if (applied == 0) return@forEach
+                                        try {
+                                            file.writeText(pattern.replace(fileContent, replaceQuery))
+                                            // SR04: a disk write under an open editor tab must
+                                            // invalidate the cache or the tab shows stale content.
+                                            com.codespace.ide.editor.FileCache.invalidate(path)
+                                            replaceCount += applied
+                                        } catch (_: Exception) { failedFiles++ }
                                     }
                                 }
                                 replacing = false
-                                snackState.showSnackbar("Replaced $replaceCount occurrence(s) in ${grouped.size} file(s)")
+                                snackState.showSnackbar(
+                                    if (failedFiles > 0) "Replaced $replaceCount occurrence(s); $failedFiles file(s) failed"
+                                    else "Replaced $replaceCount occurrence(s) in ${grouped.size} file(s)"
+                                )
                             }
                         },
                         enabled = canReplace,

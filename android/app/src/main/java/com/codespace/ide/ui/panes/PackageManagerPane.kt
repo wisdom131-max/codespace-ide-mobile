@@ -154,15 +154,25 @@ internal fun ExtensionsPanel() {
                 }
                 val cancelRef = java.util.concurrent.atomic.AtomicReference<Process?>(null)
                 op.cancelRef = cancelRef  // P25-3: expose to Cancel button
-                val result = ProotInstaller.execOnceWithProcess(
-                    context, cmdStr, timeoutSeconds = 120L, logToOutput = true
-                ) { proc -> cancelRef.set(proc) }
-                op.output.addAll(result.lines())
-                op.success = !result.startsWith("Exit code") && !result.startsWith("Error") && !result.startsWith("Timed out")
+                // XG05 (P3a): typed ProotResult instead of prose-prefix matching
+                // on a String — the old `!startsWith("Exit code"/"Error"/"Timed out")`
+                // heuristic could mark a failed install green (and an apt
+                // exit-0-with-warnings failed). Success is now exit code 0 by
+                // type, and the installed list is RE-READ from dpkg instead of
+                // being mutated optimistically.
+                val result = ProotInstaller.execTyped(
+                    context, cmdStr, timeoutSeconds = 120L, logToOutput = true,
+                    logTag = "pkg-install", onProcess = { proc -> cancelRef.set(proc) }
+                )
+                op.output.addAll(result.stdout.lines())
+                if (result.launchError != null) op.output.add("Error: ${result.launchError}")
+                if (result.truncated) op.output.add("(output truncated)")
+                if (result.timedOut) op.output.add("Timed out after 120s")
+                op.success = result.succeeded
                 op.done    = true
                 appendHistory(context, action, pkg, op.success)
-                if (op.success && action == "install") installedPkgs = installedPkgs + pkg
-                if (op.success && action == "remove")  installedPkgs = installedPkgs - pkg
+                // XG05: verify the real dpkg state instead of assuming the op worked.
+                if (op.success && (action == "install" || action == "remove")) loadInstalled()
                 scope.launch(Dispatchers.Main) {
                     activeOperation = op.copy(cancelRef = op.cancelRef) // P25-3: preserve cancelRef through copy
                     installHistory  = loadHistory(context)

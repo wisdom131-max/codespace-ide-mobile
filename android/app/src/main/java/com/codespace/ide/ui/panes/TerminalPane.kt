@@ -899,11 +899,26 @@ internal fun TerminalPane(
                     // Node/ffmpeg/Piper/Claude Code/projects every single time.
                     writeToDisplay(progressSession, "[Ubuntu] Found a container backup — restoring instead of a fresh install...\r\n\r\n")
                     BackupManager.restorePrefs(ctx)
-                    BackupManager.restoreBackup(ctx) { msg ->
+                    // RG02/RG08 (P3a): restoreBackup now returns a TYPED result —
+                    // the old code printed "Restored from backup!" without reading
+                    // the Boolean. On failure the live container is untouched, so
+                    // we fall back to a fresh install instead of "launching" a
+                    // rootfs that was never restored.
+                    val restoreResult = BackupManager.restoreBackup(ctx) { msg ->
                         TerminalService.updateProgress(ctx, msg.take(60))
                         writeToDisplay(progressSession, "  $msg\r\n")
                     }
-                    writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Restored from backup! Launching...\r\n\r\n")
+                    if (restoreResult.ok) {
+                        writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Restored from backup! Launching...\r\n\r\n")
+                    } else {
+                        writeToDisplay(progressSession, "\r\n[Ubuntu] \u2717 Backup restore FAILED (${restoreResult.message}).\r\n[Ubuntu] Falling back to a fresh install...\r\n\r\n")
+                        writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
+                        ProotInstaller.install(ctx) { msg ->
+                            TerminalService.updateProgress(ctx, msg.take(60))
+                            writeToDisplay(progressSession, "  $msg\r\n")
+                        }
+                        writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Installation complete! Launching...\r\n\r\n")
+                    }
                 } else if (isFirstTimeInstall) {
                     // P24: explicitly tell user no backup was found — so a ~250MB download
                     // is expected and not mistaken for a bug or unnecessary reinstall.

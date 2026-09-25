@@ -111,22 +111,49 @@ object BackupManager {
     }
 
     /**
-     * Extracts the shared-storage backup back into the rootfs dir. Wipes any existing rootfs
-     * first — meant to be called either on a fresh install (rootfs doesn't exist yet) or an
-     * explicit user-triggered restore they've already confirmed will overwrite the container.
+     * RG02 (P3a): typed rootfs-restore result. ok=false means the LIVE
+     * container was NOT touched (extraction failed into the temp dir first
+     * and was discarded) or the backup file was missing/unreadable.
+     * symlinkWarnings counts best-effort symlink entries that could not be
+     * created (device kernels block symlink syscalls — logged, not fatal,
+     * same tolerance as the pre-P3a code but now VISIBLE in the report).
      */
-    fun restoreBackup(context: Context, onProgress: (String) -> Unit): Boolean {
+    data class RestoreResult(
+        val filesWritten: Int,
+        val fileFailures: Int,
+        val symlinkWarnings: Int,
+        val ok: Boolean,
+        val message: String,
+    )
+
+    /**
+     * Extracts the shared-storage backup back into the rootfs dir.
+     * RG02 (P3a): the old implementation WIPED the live rootfs FIRST
+     * (deleteRecursively before extraction), swallowed per-file failures
+     * (Log.w + continue), and returned true unless the file was missing —
+     * a mid-restore failure left a DESTROYED container + half-extracted
+     * rootfs + a success message. Now the archive is extracted into a temp
+     * dir and swapped ATOMICALLY on success; any hard file-write failure
+     * aborts with the live rootfs untouched.
+     */
+    fun restoreBackup(context: Context, onProgress: (String) -> Unit): RestoreResult {
         val f = backupFile()
         if (!f.exists()) {
             onProgress("No backup found at ${f.path}")
-            return false
+            return RestoreResult(0, 0, 0, false, "No backup found at ${f.path}")
         }
         val rootfs = ProotInstaller.rootfsDir(context)
         onProgress("Restoring container from backup (${f.length() / (1024 * 1024)} MB)...")
-        rootfs.deleteRecursively()
-        rootfs.mkdirs()
+        // RG02: extract to a SIBLING temp dir (same filesystem → atomic renames).
+        val tmp = File(rootfs.parentFile, "rootfs.restore.tmp")
+        tmp.deleteRecursively()
+        if (!tmp.mkdirs()) {
+            return RestoreResult(0, 0, 0, false, "Could not create restore temp dir ${tmp.path}")
+        }
 
         var filesWritten = 0
+        var fileFailures = 0
+        var symlinkWarnings = 0
         GzipCompressorInputStream(f.inputStream()).use { gz ->
             TarArchiveInputStream(gz).use { tar ->
                 var entry = tar.nextEntry
@@ -142,9 +169,13 @@ object BackupManager {
                         entry = tar.nextEntry
                         continue
                     }
+                    var entryFailed = false
                     when {
-                        entry.isDirectory -> outFile.mkdirs()
+                        entry.isDirectory -> if (!outFile.exists() && !outFile.mkdirs()) entryFailed = true
                         entry.isSymbolicLink -> {
+                            // RG02: symlink creation is best-effort (kernels block the
+                            // syscall on some devices) — counted as a WARNING, not a
+                            // hard failure, but no longer invisible.
                             runCatching {
                                 val link = outFile.toPath()
                                 val target = java.nio.file.Paths.get(entry.linkName)
@@ -152,26 +183,71 @@ object BackupManager {
                                 if (java.nio.file.Files.exists(link) || java.nio.file.Files.isSymbolicLink(link))
                                     java.nio.file.Files.delete(link)
                                 java.nio.file.Files.createSymbolicLink(link, target)
-                            }.onFailure { Log.w(TAG, "Symlink restore failed ${entry.name}: ${it.message}") }
+                            }.onFailure { symlinkWarnings++; Log.w(TAG, "Symlink restore failed ${entry.name}: ${it.message}") }
                         }
                         else -> {
                             outFile.parentFile?.mkdirs()
-                            runCatching {
+                            val fileOk = runCatching {
                                 outFile.outputStream().use { out -> tar.copyTo(out) }
                                 if ((entry.mode and 0b001_001_001) != 0) outFile.setExecutable(true, false)
                                 outFile.setReadable(true, false)
-                            }.onFailure { Log.w(TAG, "Restore failed ${entry.name}: ${it.message}") }
+                            }.isSuccess
+                            // RG02: a failed FILE copy is a HARD failure — the old code
+                            // logged and continued, producing a broken container.
+                            if (!fileOk) { fileFailures++; Log.e(TAG, "Restore failed ${entry.name}"); entryFailed = true }
                         }
                     }
+                    if (entryFailed) return@use
                     filesWritten++
                     if (filesWritten % 500 == 0) onProgress("Restored $filesWritten files...")
                     entry = tar.nextEntry
                 }
             }
         }
-        onProgress("\u2713 Restore complete: $filesWritten files.")
-        NotificationStore.add("Restore complete", "$filesWritten files restored from backup", NotificationStore.Type.BACKUP)
-        return true
+
+        // RG02: any hard file failure ABORTS — the temp extraction is discarded
+        // and the LIVE container is untouched (the old code destroyed the live
+        // rootfs first and reported success over a half-extracted container).
+        if (fileFailures > 0) {
+            tmp.deleteRecursively()
+            val msg = "Restore FAILED: $fileFailures of ${filesWritten + fileFailures} entries could not be written. The current container was NOT modified; the backup file is untouched."
+            onProgress("\u2717 $msg")
+            return RestoreResult(filesWritten, fileFailures, symlinkWarnings, false, msg)
+        }
+
+        // RG02: atomic swap — live rootfs only disappears once the full
+        // replacement exists. If any rename fails, roll back so the live
+        // container is not left deleted.
+        if (rootfs.exists()) {
+            val oldDir = File(rootfs.parentFile, "rootfs.restore.old")
+            oldDir.deleteRecursively()
+            if (!rootfs.renameTo(oldDir)) {
+                tmp.deleteRecursively()
+                val msg = "Restore FAILED: could not stage the old container for replacement. Nothing was modified."
+                onProgress("\u2717 $msg")
+                return RestoreResult(filesWritten, 0, symlinkWarnings, false, msg)
+            }
+            if (!tmp.renameTo(rootfs)) {
+                oldDir.renameTo(rootfs)  // roll back
+                tmp.deleteRecursively()
+                val msg = "Restore FAILED: could not swap in the restored container. The original container was kept."
+                onProgress("\u2717 $msg")
+                return RestoreResult(filesWritten, 0, symlinkWarnings, false, msg)
+            }
+            oldDir.deleteRecursively()
+        } else {
+            if (!tmp.renameTo(rootfs)) {
+                tmp.deleteRecursively()
+                val msg = "Restore FAILED: could not place the restored container at ${rootfs.path}"
+                onProgress("\u2717 $msg")
+                return RestoreResult(filesWritten, 0, symlinkWarnings, false, msg)
+            }
+        }
+
+        val warnNote = if (symlinkWarnings > 0) " ($symlinkWarnings symlinks skipped — see logcat)" else ""
+        onProgress("\u2713 Restore complete: $filesWritten files.$warnNote")
+        NotificationStore.add("Restore complete", "$filesWritten files restored from backup$warnNote", NotificationStore.Type.BACKUP)
+        return RestoreResult(filesWritten, 0, symlinkWarnings, true, "Restored $filesWritten files$warnNote")
     }
 
     /**

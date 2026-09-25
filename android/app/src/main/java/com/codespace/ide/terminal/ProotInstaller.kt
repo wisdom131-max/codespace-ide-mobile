@@ -1353,36 +1353,48 @@ exit 0
         return cleanLines.dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }.joinToString("\n")
     }
 
-    fun execOnce(context: Context, command: String, workdir: String? = null, timeoutSeconds: Long = 60, logToOutput: Boolean = false): String {
+    /**
+     * TP03 (P3a): the ONE real executor — returns a typed ProotResult.
+     * execOnce/execOnceWithProcess are thin legacy wrappers over this.
+     *
+     * @param maxLines output capture cap; when hit, [ProotResult.truncated] is
+     *        true (the legacy executors keep the old 2000 default; typed
+     *        callers like BuildRunner raise it so status markers survive).
+     * @param onLine optional live per-line callback — fires for EVERY line
+     *        (even past the capture cap) so a UI can stream while running.
+     * @param onProcess fires right after Process.start(), before output is
+     *        read — lets the caller store the Process for cancellation.
+     */
+    fun execTyped(
+        context: Context,
+        command: String,
+        workdir: String? = null,
+        timeoutSeconds: Long = 60,
+        logToOutput: Boolean = false,
+        maxLines: Int = 2000,
+        logTag: String = "proot",
+        onLine: ((String) -> Unit)? = null,
+        onProcess: ((Process) -> Unit)? = null,
+    ): ProotResult {
         val (proot, baseArgs, envVars) = launchArgs(context)
-        // Drop the trailing "/bin/bash", "--login" (last 2 entries) and replace with -c <command>.
-        // Also strip --bind=/proc/self/fd/1 and --bind=/proc/self/fd/2 from baseArgs:
-        // these bind the guest /dev/stdout and /dev/stderr to proot's own fd/1 and fd/2,
-        // which are pipes that proot cannot sanitize when launched from a JVM subprocess
-        // that has not explicitly redirected its stdio. This causes the harmless but
-        // confusing "can't sanitize binding /proc/self/fd/1" warnings AND causes any
-        // check command that uses "2>/dev/null" to fail (fd/2 is broken in proot context).
-        // The interactive terminal binds /dev/pts directly so it does not use these.
+        // Drop fd/1 and fd/2 binds (same fix as the interactive terminal):
+        // binding guest /dev/stdout|stderr to the JVM's unredirected pipes
+        // produces "can't sanitize binding" warnings and breaks 2>/dev/null.
         val filteredArgs = baseArgs.filter {
             it != "--bind=/proc/self/fd/1:/dev/stdout" &&
             it != "--bind=/proc/self/fd/2:/dev/stderr"
         }
         val headArgs = filteredArgs.dropLast(2).toTypedArray()
         val cd = if (workdir != null) "[ -d \"$workdir\" ] && cd \"$workdir\"; " else ""
-        // P32: Use bash -c (non-login) with profile sourcing redirected to /dev/null.
-        // Same fix as startServer — prevents [Agent] banner text from polluting stdout.
-        // Source profiles for env vars (PATH, LD_PRELOAD, LANG) but discard their output.
+        // P32: bash -c (non-login) with profile sourcing redirected to /dev/null —
+        // prevents [Agent] banner text from polluting stdout.
         val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; $cd$command"
         val fullCommand = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
         return try {
             val pb = ProcessBuilder(proot, *fullCommand.drop(1).toTypedArray())
             pb.redirectErrorStream(true)
-            // Redirect stdin to /dev/null — proot must not inherit the JVM's live stdin.
-            // With a live stdin fd the --bind=/proc/self/fd/0:/dev/stdin mount targets a
-            // pipe that proot can't sanitize, producing the "can't sanitize binding
-            // '/proc/self/fd/0': No such file" warning. More critically, some guest
-            // processes (bash readline, apt progress UIs) may attempt to read stdin and
-            // stall if it stays open. /dev/null gives instant EOF.
+            // /dev/null stdin: proot must not inherit the JVM's live stdin —
+            // it produces sanitize warnings and lets guest processes stall.
             pb.redirectInput(java.io.File("/dev/null"))
             val envMap = pb.environment()
             envVars.forEach { kv ->
@@ -1390,23 +1402,23 @@ exit 0
                 if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
             }
             val process = pb.start()
+            onProcess?.invoke(process)
 
             // ── Concurrent stdout drain (CRITICAL — fixes pipe-buffer deadlock) ──────
-            // ProcessBuilder gives us a synchronous pipe for stdout. If we call
-            // process.waitFor() BEFORE draining the pipe and the child writes more output
-            // than the OS pipe buffer (~64 KB on Android), the child blocks on write(),
-            // waitFor() blocks waiting for child exit — permanent deadlock that looks
-            // exactly like a timeout even though the command finishes in seconds manually.
-            // Fix: drain stdout on a background thread concurrently with waitFor().
+            // waitFor() before draining deadlocks once the child exceeds the OS pipe
+            // buffer (~64 KB): child blocks on write, we block on waitFor. Drain on a
+            // background thread concurrently with waitFor().
             val outputLines = java.util.Collections.synchronizedList(mutableListOf<String>())
-            val MAX_LINES = 2000  // cap memory; installs can emit thousands of lines
+            var truncated = false
             val readerThread = Thread {
                 try {
                     process.inputStream.bufferedReader().forEachLine { line ->
-                        if (outputLines.size < MAX_LINES) outputLines.add(line)
-                        // Stream to Output tab ONLY for explicit install calls (logToOutput=true).
-                        // Git/blame/check/status calls must NOT write to Output — they flood it with noise.
-                        if (logToOutput) com.codespace.ide.diagnostics.AppOutputLog.log(line, "lsp-install")
+                        if (outputLines.size < maxLines) outputLines.add(line) else truncated = true
+                        // Live stream to typed callers (BuildRunner's output panel).
+                        onLine?.invoke(line)
+                        // Stream to Output tab ONLY for explicit calls (logToOutput=true);
+                        // git/blame/check/status calls must NOT flood the Output tab.
+                        if (logToOutput) com.codespace.ide.diagnostics.AppOutputLog.log(line, logTag)
                     }
                 } catch (_: Exception) { /* stream closed on process exit */ }
             }
@@ -1417,23 +1429,38 @@ exit 0
             readerThread.join(2000)  // let reader flush last lines (max 2s)
             if (!finished) {
                 process.destroyForcibly()
-                return "Timed out after ${timeoutSeconds}s running: $command"
+                return ProotResult(stdout = "", exitCode = null, timedOut = true,
+                    truncated = truncated, launchError = null)
             }
-            val rawOutput = outputLines.joinToString("\n")
-            val output = stripProotNoise(rawOutput)  // P25-1: remove proot/locale noise before returning
+            val output = stripProotNoise(outputLines.joinToString("\n"))
             val exit = process.exitValue()
-            if (exit == 0) output.trim().ifBlank { "(command completed, no output)" }
-            else "Exit code $exit\n${output.trim()}"
+            ProotResult(stdout = output, exitCode = exit, timedOut = false,
+                truncated = truncated, launchError = null)
         } catch (e: Exception) {
-            "Error running command in Ubuntu rootfs: ${e.message}"
+            ProotResult(stdout = "", exitCode = null, timedOut = false,
+                truncated = false, launchError = e.message)
         }
     }
 
     /**
-     * P25-3: Variant of execOnce that exposes the underlying Process so callers can cancel it.
-     * The [onProcess] callback fires immediately after Process.start() — before any output
-     * is read — giving the caller time to store the reference for cancellation.
-     * All other behaviour (noise stripping, logToOutput, timeout, drain thread) is identical.
+     * Legacy String executor — byte-identical rendering of the pre-TP03
+     * contract for the ~44 call sites that still expect a String.
+     * Delegates to [execTyped].
+     */
+    fun execOnce(context: Context, command: String, workdir: String? = null, timeoutSeconds: Long = 60, logToOutput: Boolean = false): String {
+        val r = execTyped(context, command, workdir, timeoutSeconds, logToOutput,
+            maxLines = 2000, logTag = "lsp-install")
+        return when {
+            r.launchError != null -> "Error running command in Ubuntu rootfs: ${r.launchError}"
+            r.timedOut -> "Timed out after ${timeoutSeconds}s running: $command"
+            r.exitCode == 0 -> r.stdout.trim().ifBlank { "(command completed, no output)" }
+            else -> "Exit code ${r.exitCode}\n${r.stdout.trim()}"
+        }
+    }
+
+    /**
+     * P25-3 legacy variant that exposes the underlying Process for cancellation.
+     * Same String contract as before; delegates to [execTyped].
      */
     fun execOnceWithProcess(
         context: Context,
@@ -1443,49 +1470,13 @@ exit 0
         logToOutput: Boolean = false,
         onProcess: (Process) -> Unit = {},
     ): String {
-        val (proot, baseArgs, envVars) = launchArgs(context)
-        // Strip fd/1 and fd/2 binds — same fix as execOnce (see comment there for rationale).
-        val filteredArgs = baseArgs.filter {
-            it != "--bind=/proc/self/fd/1:/dev/stdout" &&
-            it != "--bind=/proc/self/fd/2:/dev/stderr"
+        val r = execTyped(context, command, workdir, timeoutSeconds, logToOutput,
+            maxLines = 2000, logTag = "pkg-install", onProcess = onProcess)
+        return when {
+            r.launchError != null -> "Error: ${r.launchError}"
+            r.timedOut -> "Timed out after ${timeoutSeconds}s"
+            r.exitCode == 0 -> r.stdout.trim().ifBlank { "(done)" }
+            else -> "Exit code ${r.exitCode}\n${r.stdout.trim()}"
         }
-        val headArgs = filteredArgs.dropLast(2).toTypedArray()
-        val cd = if (workdir != null) "[ -d \"$workdir\" ] && cd \"$workdir\"; " else ""
-        // P32: Use bash -c (non-login) with profile sourcing redirected to /dev/null.
-        // Same fix as execOnce and startServer — prevents [Agent] banner text from polluting stdout.
-        val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; $cd$command"
-        val fullCommand = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
-        return try {
-            val pb = ProcessBuilder(proot, *fullCommand.drop(1).toTypedArray())
-            pb.redirectErrorStream(true)
-            pb.redirectInput(java.io.File("/dev/null"))
-            val envMap = pb.environment()
-            envVars.forEach { kv ->
-                val idx = kv.indexOf('=')
-                if (idx > 0) envMap[kv.substring(0, idx)] = kv.substring(idx + 1)
-            }
-            val process = pb.start()
-            onProcess(process)
-            val outputLines = java.util.Collections.synchronizedList(mutableListOf<String>())
-            val MAX_LINES = 2000
-            val readerThread = Thread {
-                try {
-                    process.inputStream.bufferedReader().forEachLine { line ->
-                        if (outputLines.size < MAX_LINES) outputLines.add(line)
-                        if (logToOutput) com.codespace.ide.diagnostics.AppOutputLog.log(line, "pkg-install")
-                    }
-                } catch (_: Exception) {}
-            }
-            readerThread.isDaemon = true
-            readerThread.start()
-            val finished = process.waitFor(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
-            readerThread.join(2000)
-            if (!finished) { process.destroyForcibly(); return "Timed out after ${timeoutSeconds}s" }
-            val rawOutput = outputLines.joinToString("\n")
-            val output = stripProotNoise(rawOutput)
-            val exit = process.exitValue()
-            if (exit == 0) output.trim().ifBlank { "(done)" } else "Exit code $exit\n${output.trim()}"
-        } catch (e: Exception) { "Error: ${e.message}" }
     }
-
 }
