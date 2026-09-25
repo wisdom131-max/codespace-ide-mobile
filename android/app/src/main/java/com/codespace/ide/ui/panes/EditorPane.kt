@@ -1908,9 +1908,21 @@ fun EditorPane(
         LaunchedEffect(active?.path, active?.content) {
             if (active != null) {
                 // P41-T: Generate synthetic test lenses (works even without LSP server)
-                val testLenses = withContext(Dispatchers.IO) {
+                var testLenses = withContext(Dispatchers.IO) {
                     // F1 (TG05 v2): annotation/framework-driven detection + TestId path strings.
                     com.codespace.ide.editor.TestLensDetector.detectTestLenses(active.content, active.language, active.path)
+                }
+                // TG01 (F2): a lens must never promise what its tap cannot do.
+                // Debug-test lenses stay hidden until F5 routes them through
+                // UniversalDebugManager — the debug capability bit is the truth.
+                if (!com.codespace.ide.testing.TestRunManager.supportsDebug(active.language)) {
+                    val honest = org.json.JSONArray()
+                    for (i in 0 until testLenses.length()) {
+                        val lens = testLenses.optJSONObject(i)
+                        val cmdName = lens?.optJSONObject("command")?.optString("command", "") ?: ""
+                        if (lens != null && cmdName != "codespace.debugTest") honest.put(lens)
+                    }
+                    testLenses = honest
                 }
                 if (LspManager.isServerRunning(active.language)) {
                     // PHASE-B/B2 (2026-09-06): background-only feature — debounce raised
@@ -2788,23 +2800,19 @@ fun EditorPane(
                             val cmdStr = cmd?.opt("command") as? String
                             // P41-T: Handle synthetic test lens commands
                             if (cmdStr == "codespace.runTest" || cmdStr == "codespace.debugTest") {
+                                // TG01/TG02 (F2): the run is REAL now — one tap runs exactly
+                                // this test through TestRunManager (per-test command builder,
+                                // TrustState gate, streaming to the test channel, typed result).
+                                // DELETED: the F1-era log line that printed a file-wide command
+                                // without executing anything.
                                 val testArgs = cmd?.opt("arguments") as? org.json.JSONArray
-                                // F1: arguments carry TestId first, line index second.
                                 val testId = testArgs?.optString(0, "") ?: ""
-                                val testLine = testArgs?.optInt(1, -1) ?: -1
+                                val suite = cmd?.optString("title", "").contains("Run Tests")
                                 val filePath = active.path
                                 val lang = active.language
-                                // TG06 (F1): templates are honest commands — stderr suppression
-                                // (2>/dev/null) and the gradle "|| echo" no-op fallback are DELETED;
-                                // failures must be visible. Per-test routing lands in F2 (TG02).
-                                val testCmd = when (lang) {
-                                    com.codespace.ide.domain.Language.PYTHON -> "python3 -m pytest \"$filePath\" || python3 \"$filePath\""
-                                    com.codespace.ide.domain.Language.JAVASCRIPT, com.codespace.ide.domain.Language.TYPESCRIPT -> "npx jest \"$filePath\" || node \"$filePath\""
-                                    com.codespace.ide.domain.Language.KOTLIN, com.codespace.ide.domain.Language.JAVA -> "./gradlew test"
-                                    else -> null
-                                }
-                                if (testCmd != null) {
-                                    AppOutputLog.log("[TestLens] ${if (testId.isNotEmpty()) testId else "line " + (testLine + 1)}: $testCmd", "test")
+                                kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    com.codespace.ide.testing.TestRunManager.runTest(
+                                        context, projectRootPath, filePath, lang, testId, suite)
                                 }
                             } else if (cmdStr != null && LspManager.isServerRunning(active.language)) {
                                 kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
