@@ -215,7 +215,7 @@ object UniversalDebugManager {
     }
 
     /** P26-2d: Resolve the best adapter for a session. DAP first, legacy fallback. */
-    fun resolveAdapter(context: Context, session: DebugSession): DebugAdapter {
+    fun resolveAdapter(context: Context, session: DebugSession): DebugAdapter? {
         // Try real DAP adapters first
         val dap = adapters.firstOrNull { it !is LegacyDebugAdapter && it.canDebug(session.language, session.filePath) }
         if (dap != null) {
@@ -228,9 +228,13 @@ object UniversalDebugManager {
             Log.d(TAG, "resolveAdapter: using legacy adapter '${provider.displayName}' for ${session.language}")
             return LegacyDebugAdapter(provider)
         }
-        // Last resort: return a no-op legacy adapter
-        Log.w(TAG, "resolveAdapter: no adapter found for ${session.language}")
-        return LegacyDebugAdapter(providers.first())
+        // DG04 (P3e): the old last resort wrapped providers.first() in a legacy
+        // adapter and let its do-nothing launch() report success — a session was
+        // fabricated in RUNNING state over zero real execution for languages no
+        // adapter supports. Fail closed instead: callers get null and report
+        // "no debugger available for this language" honestly.
+        Log.w(TAG, "resolveAdapter: no adapter or provider for ${session.language} — refusing to fabricate a session")
+        return null
     }
 
     /** Breakpoint persistence — stored per file path. */
@@ -315,7 +319,6 @@ object UniversalDebugManager {
         registerAdapter(NodeDAPAdapter())
         // Register built-in providers — P23-10: language providers registered eagerly
         // (lightweight objects, no processes started until launch() is called)
-        registerProvider(TerminalDebugProvider())
         registerProvider(PythonDebugProvider())
         registerProvider(NodeJsDebugProvider())
         registerProvider(ShellDebugProvider())
@@ -1017,48 +1020,14 @@ object UniversalDebugManager {
  * Runs the file in a terminal session and captures output.
  * This is the lightweight provider used by the Terminal Panel Debugger.
  */
-class TerminalDebugProvider : DebugProvider {
-    override val id = "terminal"
-    override val displayName = "Terminal Run"
-    override val supportedLanguages = Language.values().toSet()
-
-    override fun canDebug(language: Language, filePath: String): Boolean {
-        // Terminal provider can "debug" any runnable file by running it
-        return when (language) {
-            Language.PYTHON, Language.JAVASCRIPT, Language.TYPESCRIPT,
-            Language.SHELL, Language.GO, Language.RUST, Language.C, Language.CPP,
-            Language.JAVA, Language.KOTLIN, Language.PHP -> true
-            else -> false
-        }
-    }
-
-    override fun launch(
-        session: DebugSession,
-        breakpoints: List<DebugBreakpoint>,
-        onOutput: (String) -> Unit,
-        onPaused: (List<DebugStackFrame>, List<DebugVariable>) -> Unit,
-    ): Boolean {
-        // The actual execution is dispatched to the terminal pane
-        // This just signals that the provider is ready
-        onOutput("[terminal] Ready to run ${File(session.filePath).name}")
-        return true
-    }
-
-    override fun stop(session: DebugSession) {
-        // Terminal handles stop via its own process management
-    }
-
-    override fun pause(session: DebugSession) { /* Terminal: Ctrl+C */ }
-    override fun resume(session: DebugSession) { /* Terminal: re-run */ }
-    override fun stepOver(session: DebugSession) { /* Not supported in terminal mode */ }
-    override fun stepInto(session: DebugSession) { /* Not supported in terminal mode */ }
-    override fun stepOut(session: DebugSession) { /* Not supported in terminal mode */ }
-
-    override fun evaluate(session: DebugSession, expression: String): String? {
-        // Terminal mode: can't evaluate expressions mid-run
-        return null
-    }
-}
+// DG04 (P3e): TerminalDebugProvider is DELETED. Its launch() returned true having
+// executed nothing — the debug console got one "Ready to run" line while the session
+// went RUNNING with live-looking pause/step controls over zero real execution
+// (Kotlin/C/Go/Rust/Java/C++ had no real adapter, and on the legacy path it also
+// shadowed the real Python/NodeJs/Shell/Php providers because it was registered
+// first and claimed their languages). Real execution for runnable languages is the
+// RUN button and the terminal pane; the DEBUG surface now only offers what a real
+// adapter or provider can actually drive.
 
 
 // ─────────────────────────────────────────────────────────────────────────────

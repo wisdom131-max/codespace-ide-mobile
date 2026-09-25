@@ -3468,6 +3468,12 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                         if (sessionId != null) {
                             activeSessionId = sessionId
                             sessionState = DebugState.STARTING
+                        } else {
+                            // DG04 (P3e): honest refusal — no fake RUNNING session for
+                            // languages without a real debug adapter (Kotlin/C/Go...).
+                            consoleLines = (consoleLines + listOf(
+                                "[debug] No debugger available for " + dbgLang.displayName + " — use Run instead."
+                            )).takeLast(100)
                         }
                     },
                     modifier = Modifier.size(36.dp),
