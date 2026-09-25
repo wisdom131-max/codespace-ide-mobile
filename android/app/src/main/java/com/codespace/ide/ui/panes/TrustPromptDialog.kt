@@ -18,6 +18,9 @@ import androidx.compose.ui.unit.sp
 @Composable
 internal fun TrustPromptDialog() {
     val prompt = com.codespace.ide.security.TrustState.prompt.value ?: return
+    // Capture at composable level — LocalContext.current is a @Composable call
+    // and cannot be read inside the onClick lambda.
+    val context = androidx.compose.ui.platform.LocalContext.current
     androidx.compose.material3.AlertDialog(
         onDismissRequest = { com.codespace.ide.security.TrustState.deny(prompt) },
         title = { Text("Trust this project?", fontSize = 14.sp, color = Color(0xFFE0E0E0)) },
@@ -32,7 +35,7 @@ internal fun TrustPromptDialog() {
         },
         confirmButton = {
             Button(
-                onClick = { com.codespace.ide.security.TrustState.grant(prompt, context = androidx.compose.ui.platform.LocalContext.current) },
+                onClick = { com.codespace.ide.security.TrustState.grant(prompt, context) },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
             ) { Text("Trust this project", fontSize = 12.sp) }
         },
