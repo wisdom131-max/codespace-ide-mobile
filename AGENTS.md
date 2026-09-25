@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | F4 SHIPPED + CI #2940 GREEN (code 983c481 incl. d910165 — Testing pane: project-wide discovery via F1 detector as shared core, flat TestStore keyed by TestId, tree projection with live F3 states, capability-gated per-row Run, header Run All / Run Failed / Stop sequential batch; P41-P fake TestExplorerPanel + dead Run All/Filter menu labels DELETED); next: F5 debug-lens routing + adapter args (TG07p1), awaiting owner go |
+| Latest commit | F5 SHIPPED + CI #2942 GREEN (code 54f5127, first-push clean — Debug Test: TestDebugSpec on DebugSession, debugpy module+args pytest launch, jest via node --inspect-brk + js-debug attach, TestRunManager.debugTest router with trust gate + exit-truth outcomes, supportsDebug honest per language, lens + pane Debug wired through UDM); next: F6 Debug Test JVM (TG07p2) decision, awaiting owner go |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -5065,6 +5065,42 @@ Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — 
 - **P4:** remaining ~187 rows by group (53 of 249 closed).
 - **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1/F2 checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+## [2026-09-25 18:15 WAT] — AI Agent: Claude Sonnet 5.6 (F5 SHIPPED: Debug Test — pytest module launch, jest inspect-brk attach, UDM routing, CI #2942 GREEN)
+
+**2026-09-25 — [F5 SHIPPED, CI #2942 GREEN, code 54f5127 — first-push clean] F-TRACK sub-phase 5: TG07 part 1 (Debug Test for Python + JS/TS). Revertable as 54f5127.**
+
+### What shipped (code 54f5127)
+- **debug/UniversalDebugManager.kt:** TestDebugSpec {runner, guestArgs, guestWorkdir, hostWorkdir} — a per-session test-debug launch spec. DebugSession gains a testDebug field; startDebug/startDebugAsync carry it so the EXISTING session pipeline (breakpoints registry, pause/step/variables, Debug Console listeners, state machine) serves test sessions unchanged.
+- **debug/PythonDAPAdapter.kt (module+args launch variant):** when the session carries a testDebug spec, the DAP launch request switches from "program": script to "module": "pytest" + args (the tapped node id, same file::Class::method shape as the F2 Run path) + cwd — debugpy LAUNCHES pytest, so the debuggee is pytest running exactly the tapped test. Breakpoints flow through the unchanged setBreakpoints handshake after 'initialized'.
+- **debug/NodeDAPAdapter.kt (jest via --inspect-brk + attach):** a test-debug session spawns `node --inspect-brk=127.0.0.1:<free-port> node_modules/.bin/jest <file> -t <leaf>` in the proot project root, then js-debug ATTACHES to that port through the existing P26-3b attach path — breakpoints, pause, step, variables all work through the same DAP pipeline. Output drained continuously (a full pipe would deadlock the runner) and streamed to the Debug Console; stop() kills the spawned debuggee too (DAP terminate does not reach it). Honest pre-flight: jest must be installed under node_modules LOCALLY — the npx-fetched fallback of the Run path cannot be attached to; refusal says exactly that.
+- **testing/TestRunManager.kt — debugTest router (F5):** trust gate first (same TrustState choke point as Run); guest translation required; builds the runner spec (pytest node id / jest -t), records a live RUNNING marker, then starts the session via UniversalDebugManager. LAUNCH FAILURE honestly REMOVES the RUNNING marker (TestResultStore.remove — no stuck "running" row). The terminal outcome comes from the session's exit truth: UDM STOPPED means exit 0 (P27-10) → PASSED; CRASHED (non-zero) → FAILED; FAILED/ERROR launches record no test outcome. Session-state listener self-removes on the first terminal state of that session id.
+- **supportsDebug flipped honest:** Python / JavaScript / TypeScript → true; Kotlin/Java stay FALSE (F6 decision pending — no fake JVM debug promise); Dart and everything else false (DG04 rule).
+- **EditorPane:** the codespace.debugTest lens tap now routes through TestRunManager.debugTest (was: run alongside runTest). The TG01 honesty filter stays as the gate — languages without a wired test debugger keep their Debug lenses hidden.
+- **ui/panes/TestingPane.kt:** per-row Debug chip (blue) next to Run, gated by supportsDebug — taps route through debugTest. Same exclusivity gate as Run (BUSY while a run is active).
+- **testing/TestResultStore.kt:** remove(testId) — a targeted drop for the launch-failure cleanup (NOT retired — gone).
+
+### What I removed (F5)
+- **TestRunManager.supportsDebug() == false stub DELETED** (the "no language can debug a test" placeholder) — replaced by the honest per-language bit; the blanket filter that hid EVERY Debug lens is gone for the three wired languages and remains active only for the unwired ones.
+- **The F2 comment "Debug-test lenses are intentionally NOT supported here" DELETED** from TestRunManager/EditorPane — the routing now exists; comments that promise nothing shipped are updated, not left lying.
+- No new dead controls: the pane Debug chip and the lens both execute a real session or refuse honestly (UNSUPPORTED/BUSY/UNTRUSTED with a reason line in the Output test channel).
+
+### CI
+- #2942 GREEN on 54f5127, first push clean. APK artifact: codespace-ide-arm64-v8a.
+
+### P5 device checks (owner)
+- **Python breakpoint stop:** open a multi-test pytest file, set a breakpoint inside ONE test via the gutter/Debug panel, tap its Debug Test lens (or the pane's Debug chip) → Debug Console attaches via debugpy, tap Continue → execution STOPS at the breakpoint; variables/stack visible; step works; Continue → the test finishes, exit 0 → row/gutter flip to PASSED (not the whole file — ONLY the tapped test runs).
+- **JS breakpoint stop:** same in a jest project (npm install run first — Debug requires local jest): breakpoint inside the test, tap Debug → "jest starting under node --inspect-brk" in the Debug Console, attach completes, tap Continue → stops at the breakpoint; Continue → jest finishes with only that test run (-t).
+- **Honest refusals:** Debug Test on a Kotlin/Java test = no lens/chip (supportsDebug false); jest project without node_modules → Debug chip shows the "install locally" refusal line; untrusted project → UNTRUSTED refusal; a failed debugger launch leaves NO stuck "running" state on the line.
+- **Outcome honesty:** a test that fails under the debugger (assertion hit) ends CRASHED (non-zero exit) → FAILED row/glyph; a passing debug run ends STOPPED → PASSED.
+
+### Roadmap
+- **F6 — Debug Test JVM (TG07 part 2):** JDWP attach adapter decision (jdb-style or DAP java adapter in proot) after P5 validates F5. Owner decision + go required.
+- **P4:** remaining ~187 rows by group (53 of 249 closed).
+- **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1-F5 checks above.
+- **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+---
 
 ## [2026-09-25 14:35 WAT] — AI Agent: Claude Sonnet 5.6 (F4 SHIPPED: discovery/explorer — Testing pane, flat TestStore, tree projection, batch runner, CI #2940 GREEN)
 
