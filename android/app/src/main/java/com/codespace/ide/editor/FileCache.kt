@@ -32,11 +32,20 @@ object FileCache {
      * Get file content from cache, or read from disk if not cached or stale.
      * Returns content + metadata about whether it's a large file.
      */
+    /**
+     * G03 (P3b, PLAN A): the cache KEY is the canonical path — a file opened under
+     * one spelling and invalidated under another (proot prefix, relative form) used
+     * to serve stale content. Disk reads still use the caller's original path.
+     */
+    private fun key(path: String): String =
+        com.codespace.ide.util.CanonicalPaths.canonicalKey(path)
+
     fun get(path: String): CachedFile {
         synchronized(lock) {
+            val cacheKey = key(path)
             val file = File(path)
             val lastMod = file.lastModified()
-            cache[path]?.let { cached ->
+            cache[cacheKey]?.let { cached ->
                 if (cached.lastModified == lastMod) {
                     return cached  // cache hit
                 }
@@ -50,7 +59,7 @@ object FileCache {
                 "// Could not read file: ${e.message}"
             }
             val cached = CachedFile(content, size, lastMod, isLarge)
-            cache[path] = cached
+            cache[cacheKey] = cached
             return cached
         }
     }
@@ -58,7 +67,7 @@ object FileCache {
     /** Invalidate a single file's cache entry (call after writing). */
     fun invalidate(path: String) {
         synchronized(lock) {
-            cache.remove(path)
+            cache.remove(key(path))
         }
     }
 

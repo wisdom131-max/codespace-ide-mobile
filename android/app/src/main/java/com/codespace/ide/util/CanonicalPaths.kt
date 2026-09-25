@@ -1,6 +1,8 @@
 package com.codespace.ide.util
 
+import android.content.Context
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * P2a — the canonical-path containment utility (2026-09-24).
@@ -79,5 +81,88 @@ object CanonicalPaths {
         if (trimmed.contains('/') || trimmed.contains('\\')) return null
         if (trimmed.contains('\u0000')) return null
         return trimmed
+    }
+
+    // ── PLAN A (P3b, 2026-09-25): per-file IDENTITY canonicalization ──────────────
+    // The path-dialect family root cause (G03/LS06/DG11/TB08, MASTER-CONNECTIONS §2):
+    // one physical file reached as raw-string, relative, URL-encoded, host, or guest
+    // spellings became different identity keys. Every in-app identity decision now
+    // keys through canonicalKey / sameFileIdentity below — NOT raw string equality
+    // and NOT basename matching (LS06: two tabs named test.js got each other's
+    // squiggles; DG11: the paused band painted on a same-named file in another folder).
+
+    /** Bounded memo for canonicalKey — canonicalFile is a syscall; lookups are hot. */
+    private val keyCache = ConcurrentHashMap<String, String>(64)
+    private const val KEY_CACHE_MAX = 1024
+
+    /**
+     * Canonical identity key for a host-side file path: canonicalPath with
+     * absolute-path fallback. Memoized (bounded) — canonicalFile is IO.
+     */
+    fun canonicalKey(path: String): String {
+        keyCache[path]?.let { return it }
+        val key = canonical(File(path))
+        if (keyCache.size >= KEY_CACHE_MAX) keyCache.clear()
+        keyCache[path] = key
+        return key
+    }
+
+    /**
+     * TRUE file identity: same string, same canonical file, or a
+     * separator-boundary suffix of one another (relative-vs-absolute dialects).
+     * This replaces raw equality AND basename fallbacks in tab/diag/band matching.
+     */
+    fun sameFileIdentity(a: String, b: String): Boolean {
+        if (a == b) return true
+        if (a.isEmpty() || b.isEmpty()) return false
+        if (canonicalKey(a) == canonicalKey(b)) return true
+        return suffixBoundaryMatch(a, b)
+    }
+
+    /** Boundary-aware endsWith in EITHER direction: "x/y" matches "y" but not "xy". */
+    private fun suffixBoundaryMatch(a: String, b: String): Boolean {
+        val ca = canonicalKey(a).trimEnd('/')
+        val cb = canonicalKey(b).trimEnd('/')
+        fun endsOnBoundary(long: String, short: String): Boolean {
+            if (long.length <= short.length) return false
+            return long.endsWith(short) && long[long.length - short.length - 1] == '/'
+        }
+        return endsOnBoundary(ca, cb) || endsOnBoundary(cb, ca)
+    }
+
+    /**
+     * Resolve a raw path against a project root (relative matchers/LSP output),
+     * canonicalize when the target exists. PLAN A form of the BUG-A resolution.
+     */
+    fun resolveAgainstRoot(raw: String, root: String?): String {
+        return try {
+            var f = File(raw)
+            if (!f.isAbsolute && !root.isNullOrBlank()) f = File(root, raw)
+            val canon = f.canonicalFile
+            if (canon.exists()) canon.absolutePath else f.absolutePath
+        } catch (_: Exception) { raw }
+    }
+
+    /**
+     * Find which candidate path (open tab list) IS the target file:
+     * exact string, canonical identity, then boundary-suffix match.
+     * Returns the matched candidate, or null when genuinely not open.
+     */
+    fun resolveTabMatch(candidatePaths: List<String>, target: String, root: String?): String? {
+        val resolvedTarget = resolveAgainstRoot(target, root)
+        candidatePaths.firstOrNull { it == resolvedTarget }?.let { return it }
+        candidatePaths.firstOrNull { sameFileIdentity(it, resolvedTarget) }?.let { return it }
+        return candidatePaths.firstOrNull { suffixBoundaryMatch(it, resolvedTarget) }
+    }
+
+    /**
+     * Canonical identity for a path that may arrive in GUEST dialect (DAP stack
+     * frames, terminal output): use the host file when it exists, else translate
+     * guest->host and canonicalize that. Returns null when neither resolves.
+     */
+    fun canonicalHostKey(context: Context, path: String): String? {
+        val host = if (File(path).exists()) File(path)
+            else com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, path)
+        return if (host.exists()) canonical(host) else null
     }
 }

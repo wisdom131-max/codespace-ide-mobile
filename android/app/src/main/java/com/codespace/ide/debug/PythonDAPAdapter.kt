@@ -35,6 +35,10 @@ class PythonDAPAdapter : DebugAdapter {
 
     private var client: DAPClient? = null
 
+    // DG02 (P3b): the live sendBreakpoints path needs the SAME host->guest
+    // translation as launch — capture the launch context for it.
+    @Volatile private var appContext: android.content.Context? = null
+
     // P27-10: Track process exit code for crash detection
     @Volatile private var lastExitCode: Int = 0
     private var caps: DAPCapabilities? = null
@@ -57,10 +61,15 @@ class PythonDAPAdapter : DebugAdapter {
      */
     override fun sendBreakpoints(session: DebugSession, breakpoints: List<DebugBreakpoint>): Boolean {
         val c = client ?: return false
+        val ctx = appContext
+        // DG02 FIX: translate source.path host->guest exactly like launch. UDM's
+        // breakpoint store is HOST-keyed; the old code sent raw host paths here,
+        // so live-added/removed/edited breakpoints never bound in the debuggee.
+        val clearPath = if (ctx != null) DapPathMapper.toDapSourcePath(ctx, session.filePath) else session.filePath
         if (breakpoints.isEmpty()) {
             // Send empty setBreakpoints to clear all breakpoints for this file
             val bpArgs = JSONObject().apply {
-                put("source", JSONObject().put("path", session.filePath))
+                put("source", JSONObject().put("path", clearPath))
                 put("breakpoints", JSONArray())
             }
             val resp = c.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
@@ -73,8 +82,9 @@ class PythonDAPAdapter : DebugAdapter {
         val bpsByFile = breakpoints.groupBy { it.filePath }
         var allOk = true
         for ((filePath, bps) in bpsByFile) {
+            val dapPath = if (ctx != null) DapPathMapper.toDapSourcePath(ctx, filePath) else filePath
             val bpArgs = JSONObject().apply {
-                put("source", JSONObject().put("path", filePath))
+                put("source", JSONObject().put("path", dapPath))
                 put("breakpoints", JSONArray().also { arr ->
                     bps.forEach { bp ->
                         arr.put(JSONObject().apply {
@@ -305,10 +315,12 @@ class PythonDAPAdapter : DebugAdapter {
         }
 
         // 8. Set breakpoints (AFTER initialized event — this is the fix)
+        // DG02 (P3b): host->guest translation now shared with the LIVE send
+        // path via DapPathMapper — one identity conversion for launch and live.
+        appContext = context
         val bpsByFile = breakpoints.groupBy { it.filePath }
         for ((filePath, bps) in bpsByFile) {
-            val bpGuestPath = ProotInstaller.hostToGuestPath(context, filePath)
-                ?: "/host-files/" + filePath.removePrefix(context.filesDir.absolutePath + "/")
+            val bpGuestPath = DapPathMapper.toDapSourcePath(context, filePath)
             val bpArgs = JSONObject().apply {
                 put("source", JSONObject().put("path", bpGuestPath))
                 put("breakpoints", JSONArray().also { arr ->
@@ -317,6 +329,8 @@ class PythonDAPAdapter : DebugAdapter {
                             put("line", bp.line + 1) // DAP uses 1-based lines
                             if (bp.condition != null) put("condition", bp.condition)
                             if (bp.logMessage != null) put("logMessage", bp.logMessage)
+                            // DG02: hitCondition parity — the live path sent it, launch omitted it.
+                            if (bp.hitCondition != null) put("hitCondition", bp.hitCondition)
                         })
                     }
                 })

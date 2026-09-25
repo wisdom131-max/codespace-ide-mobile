@@ -48,6 +48,10 @@ class NodeDAPAdapter : DebugAdapter {
     private val TAG = "NodeDAPAdapter"
 
     private var client: DAPClient? = null
+
+    // DG02 (P3b): live sendBreakpoints needs the SAME host->guest translation
+    // as launchInternal — capture the launch/attach context for it.
+    @Volatile private var appContext: Context? = null
     private var caps: DAPCapabilities? = null
 
     // P27-10: Track process exit code for crash detection
@@ -73,16 +77,21 @@ class NodeDAPAdapter : DebugAdapter {
      */
     override fun sendBreakpoints(session: DebugSession, breakpoints: List<DebugBreakpoint>): Boolean {
         val c = client ?: return false
+        val ctx = appContext
         val bpsByFile = if (breakpoints.isEmpty()) {
-            mapOf(session.filePath to emptyList<DebugBreakpoint>())
+            // DG02: clear-all also goes through the shared host->guest mapper.
+            mapOf((if (ctx != null) DapPathMapper.toDapSourcePath(ctx, session.filePath) else session.filePath)
+                to emptyList<DebugBreakpoint>())
         } else {
             breakpoints.groupBy { it.filePath }
         }
 
         var allOk = true
         bpsByFile.forEach { (filePath, bps) ->
-            // For live updates, the filePath is already a guest path (mapped at launch time)
-            val guestPath = filePath
+            // DG02 FIX: the old "already a guest path" claim was FALSE — UDM's
+            // breakpoint store is HOST-keyed, so live sends used raw host paths
+            // while launch used guest paths. Translate with the shared mapper.
+            val guestPath = if (ctx != null) DapPathMapper.toDapSourcePath(ctx, filePath) else filePath
             val bpArgs = JSONObject().apply {
                 put("source", JSONObject().put("path", guestPath))
                 put("breakpoints", JSONArray().apply {
@@ -392,12 +401,13 @@ class NodeDAPAdapter : DebugAdapter {
         }
 
         // 9. setBreakpoints (AFTER initialized event — per DAP spec)
+        // DG02 (P3b): host->guest translation shared with the LIVE send path via
+        // DapPathMapper — one identity conversion for launch and live.
+        appContext = context
         if (breakpoints.isNotEmpty()) {
             val bpsByFile = breakpoints.groupBy { it.filePath }
             bpsByFile.forEach { (filePath, bps) ->
-                val guestPath = if (filePath.startsWith(context.filesDir.absolutePath + "/")) {
-                    "/host-files/" + filePath.removePrefix(context.filesDir.absolutePath + "/")
-                } else filePath
+                val guestPath = DapPathMapper.toDapSourcePath(context, filePath)
                 val bpArgs = JSONObject().apply {
                     put("source", JSONObject().put("path", guestPath))
                     put("breakpoints", JSONArray().apply {
@@ -406,6 +416,8 @@ class NodeDAPAdapter : DebugAdapter {
                                 put("line", bp.line + 1) // DAP is 1-based
                                 if (bp.condition != null) put("condition", bp.condition)
                                 if (bp.logMessage != null) put("logMessage", bp.logMessage)
+                                // DG02: hitCondition parity with the live send path.
+                                if (bp.hitCondition != null) put("hitCondition", bp.hitCondition)
                             })
                         }
                     })

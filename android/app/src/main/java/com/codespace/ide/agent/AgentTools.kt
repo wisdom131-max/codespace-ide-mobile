@@ -173,10 +173,14 @@ You can use multiple tools in sequence. When done, give a final summary.
                     com.codespace.ide.chat.ChatPlanStore.updateFromArgs(args.getJSONArray("steps"))
                     "Plan staged — awaiting user review. Stop and wait for approval in the chat panel."
                 }
-                "read_file" -> readFile(args.getString("path"))
-                "write_file" -> writeFile(args.getString("path"), args.getString("content"))
-                "list_files" -> listFiles(args.getString("path"))
-                "search_files" -> searchFiles(args.getString("path"), args.getString("pattern"))
+                // CH02 (P3b): the four file tools now resolve their path through the
+                // shared guest->host choke point below — the model was systematically
+                // exposed to GUEST paths (terminal output, run_command results) while
+                // these tools read the raw string as a HOST File.
+                "read_file" -> readFile(args.getString("path"), context)
+                "write_file" -> writeFile(args.getString("path"), args.getString("content"), context)
+                "list_files" -> listFiles(args.getString("path"), context)
+                "search_files" -> searchFiles(args.getString("path"), args.getString("pattern"), context)
                 "git_commit_push" -> gitCommitPush(args.getString("message"), args.optString("repo_dir").ifBlank { null }, context)
                 "git_pull_rebase" -> gitPullRebase(args.optString("repo_dir").ifBlank { null }, context)
                 "git_branch" -> gitBranch(args.getString("action"), args.optString("name", ""), args.optString("repo_dir").ifBlank { null }, context)
@@ -244,29 +248,67 @@ You can use multiple tools in sequence. When done, give a final summary.
         return out
     }
 
-    private fun readFile(path: String): String {
-        // R6-PENDING-EDITS: read-through overlay — when a chat edit for this path
-        // is staged pending review, the model sees its OWN staged version, not disk
-        // (VS Code parity: the agent reasons about the file as it believes it to be).
-        com.codespace.ide.chat.PendingChangesStore.overlayFor(path)?.let { staged ->
+    /**
+     * CH02 (P3b): the ONE guest->host translation choke point for the file tools.
+     * run_command already translated host->guest for its workdir (C-4); the file
+     * tools took the model's path string RAW. The model is exposed to guest paths
+     * (terminal output, run_command results, git repo_dir), so any path it sends
+     * may be either dialect. Rule: a host file at the raw path wins (old behavior
+     * unchanged); otherwise translate guest->host when the translated target EXISTS.
+     * The translation itself is ProotInstaller's — SHARED with ScmState/git (the
+     * audit's option (b)), not duplicated. Returns the path to operate on.
+     */
+    private fun resolveToolPath(context: android.content.Context, rawPath: String): String {
+        val trimmed = rawPath.trim()
+        if (trimmed.isEmpty()) return rawPath
+        if (File(trimmed).exists()) return trimmed
+        val translated = com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, trimmed)
+        if (translated.exists()) {
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[CH02] file-tool path translated guest->host: " + trimmed + " -> " + translated.absolutePath, "terminal")
+            return translated.absolutePath
+        }
+        return trimmed
+    }
+
+    private fun readFile(path: String, context: android.content.Context): String {
+        // CH02: resolve either dialect first, then look up the staged overlay under
+        // BOTH spellings (staging keys may predate this fix in either dialect).
+        val resolvedPath = resolveToolPath(context, path)
+        val staged = com.codespace.ide.chat.PendingChangesStore.overlayFor(path)
+            ?: com.codespace.ide.chat.PendingChangesStore.overlayFor(resolvedPath)
+        if (staged != null) {
             return "[staged pending version — not yet on disk]\n" + staged.take(8000)
         }
-        val file = File(path)
+        val file = File(resolvedPath)
         if (!file.exists()) return "File not found: $path"
         if (file.isDirectory) return "Path is a directory: $path"
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
         return file.readText().take(8000)
     }
 
-    private fun writeFile(path: String, content: String): String {
-        val file = File(path)
-        file.parentFile?.mkdirs()
-        file.writeText(content)
-        return "Wrote ${content.length} chars to $path"
+    private fun writeFile(path: String, content: String, context: android.content.Context): String {
+        // CH02: resolve either dialect. For NEW files (nothing exists yet) the
+        // guest translation is used when its PARENT directory exists — writing a
+        // guest path raw on the host would create /root/... on Android storage
+        // roots instead of inside the proot rootfs.
+        val trimmed = path.trim()
+        var target = File(resolveToolPath(context, trimmed))
+        if (!target.exists()) {
+            val translated = com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, trimmed)
+            if (translated.parentFile?.exists() == true) {
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[CH02] write_file target translated guest->host: " + trimmed + " -> " + translated.absolutePath, "terminal")
+                target = translated
+            }
+        }
+        target.parentFile?.mkdirs()
+        target.writeText(content)
+        return "Wrote ${content.length} chars to ${target.absolutePath}"
     }
 
-    private fun listFiles(path: String): String {
-        val dir = File(path)
+    private fun listFiles(path: String, context: android.content.Context): String {
+        val dir = File(resolveToolPath(context, path))
         if (!dir.exists()) return "Directory not found: $path"
         if (!dir.isDirectory) return "Not a directory: $path"
         val files = dir.listFiles()?.sortedBy { it.name } ?: return "Empty directory"
@@ -276,8 +318,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         }.take(4000)
     }
 
-    private fun searchFiles(path: String, pattern: String): String {
-        val dir = File(path)
+    private fun searchFiles(path: String, pattern: String, context: android.content.Context): String {
+        val dir = File(resolveToolPath(context, path))
         if (!dir.exists()) return "Directory not found: $path"
         val results = mutableListOf<String>()
         dir.walkTopDown().take(500).forEach { f ->

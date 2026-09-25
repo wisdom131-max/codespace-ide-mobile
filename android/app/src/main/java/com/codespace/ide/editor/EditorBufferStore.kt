@@ -16,19 +16,27 @@ object EditorBufferStore {
     @Volatile
     private var buffers: Map<String, String> = emptyMap()
 
+    /**
+     * G03 (P3b, PLAN A): keys are CANONICAL paths — one physical file reached as
+     * raw string, relative, or host/guest spelling used to split buffer identity.
+     * PendingChangesStore stages against the OPEN BUFFER; a mismatched spelling
+     * meant the staged edit silently fell back to disk content (C-CH09).
+     */
+    private fun key(path: String): String = com.codespace.ide.util.CanonicalPaths.canonicalKey(path)
+
     /** Publish the full open-tab set (path -> current buffer content). */
     fun sync(paths: List<String>, contents: List<String>) {
         val map = HashMap<String, String>(paths.size)
         paths.forEachIndexed { i, p ->
-            if (i < contents.size) map[p] = contents[i]
+            if (i < contents.size) map[key(p)] = contents[i]
         }
         buffers = map
     }
 
     /** Current buffer content of an open tab, or null when the file is not open. */
-    fun contentOf(path: String): String? = buffers[path]
+    fun contentOf(path: String): String? = buffers[key(path)]
 
-    fun isOpen(path: String): Boolean = buffers.containsKey(path)
+    fun isOpen(path: String): Boolean = buffers.containsKey(key(path))
 
     fun clear() { buffers = emptyMap() }
 }

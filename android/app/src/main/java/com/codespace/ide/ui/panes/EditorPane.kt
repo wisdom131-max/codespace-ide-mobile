@@ -495,10 +495,15 @@ fun EditorPane(
             onCloseRootHandled?.invoke()
         }
     }
-    // P2-9 Bookmarks: path → set of bookmarked line indices
+    // P2-9 Bookmarks + P8-1 Breakpoints — PLAN A (P3b): both now live in ONE
+    // canonical-path-keyed source of truth. Bookmarks persist in PerFileStateStore
+    // (surviving pane recreation and raw-spelling aliases); this map is only a
+    // composition mirror, synced from the store on tab change and written through
+    // on change. Breakpoints read DIRECTLY from UDM (DG08 — the old per-instance
+    // fileBreakpoints map was a SECOND writer that diverged from the Explorer
+    // list: a gutter tap where only UDM had the breakpoint toggled UDM OFF while
+    // the local map turned it back ON).
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
-    // P8-1 Breakpoints: path → set of breakpoint line indices (0-based)
-    val fileBreakpoints = remember { mutableStateMapOf<String, Set<Int>>() }
     // P26-1: Scroll to line (from debug call stack click)
     // BUG-FIX: External scrollToLineParam was being shadowed by this internal var.
     // Now we sync the external param into the internal state so tap-to-navigate from
@@ -507,8 +512,16 @@ fun EditorPane(
     LaunchedEffect(scrollToLineParam) {
         if (scrollToLineParam > 0) {
             scrollToLine = scrollToLineParam
+            // PLAN A (P3b): persist under the ACTIVE tab's canonical identity so the
+            // highlight survives a tab round-trip and never lands on the wrong file.
+            resolveActiveTab(activeId, tabs)?.let { ap ->
+                com.codespace.ide.editor.PerFileStateStore.setLineHighlight(ap.path, scrollToLineParam)
+            }
             kotlinx.coroutines.delay(1000)
             scrollToLine = 0
+            resolveActiveTab(activeId, tabs)?.let { ap ->
+                com.codespace.ide.editor.PerFileStateStore.clearLineHighlight(ap.path)
+            }
         }
     }
     // P54: Track current debug line for gutter indicator
@@ -524,10 +537,15 @@ fun EditorPane(
             // matches the file in THIS editor; otherwise hide it (0).
             val frameFile = activeFrame?.file ?: stack.firstOrNull()?.file ?: ""
             val frameLine = activeFrame?.line ?: stack.firstOrNull()?.line ?: -1
-            val frameName = frameFile.substringAfterLast('/')
             val activeTab = resolveActiveTab(activeId, tabs)
-            val editorName = activeTab?.path?.substringAfterLast('/') ?: ""
-            val matches = frameName.isNotEmpty() && editorName.isNotEmpty() && frameName == editorName
+            // DG11 (P3b, PLAN A): the old BASENAME compare painted the paused band
+            // on a same-named file in a DIFFERENT folder. Frames arrive in guest
+            // dialect (e.g. /root/...) — canonicalize via canonicalHostKey (host
+            // file wins, else guest->host translation) and compare identity.
+            val frameKey = if (frameFile.isNotEmpty())
+                com.codespace.ide.util.CanonicalPaths.canonicalHostKey(context, frameFile) else null
+            val matches = frameKey != null && activeTab != null &&
+                com.codespace.ide.util.CanonicalPaths.sameFileIdentity(frameKey, activeTab.path)
             debugCurrentLine = if (matches) frameLine + 1 else 0
             // [BAND-DIAG]: full off-by-one evidence chain — the tapped gutter line,
             // the DAP frame line (0-based, already converted by parseFrame), the
@@ -536,7 +554,7 @@ fun EditorPane(
             com.codespace.ide.diagnostics.AppOutputLog.log(
                 "[BAND-DIAG] paused: frameFile=" + frameFile.takeLast(60) +
                 " frameLine0=" + frameLine + " debugCurrentLine=" + debugCurrentLine +
-                " editorFile=" + editorName + " match=" + matches, "lsp")
+                " frameKey=" + frameKey + " tabPath=" + activeTab?.path + " match=" + matches, "lsp")
         }
     }
     // P26-1: LSP Document Highlight — auto-highlight all occurrences of symbol under cursor
@@ -1429,8 +1447,18 @@ fun EditorPane(
         // view owns its own EditorPane + its own handler registration), so this
         // effect only ever touches THIS pane's active tab.
         LaunchedEffect(active?.id, active?.language) {
-            lspSquiggles = emptyList()
-            val snap = active ?: return@LaunchedEffect
+            // PLAN A (P3b): restore THIS file's persisted state from the canonical
+            // store instead of clearing — ranges keyed to the resolved file are by
+            // construction not another file's stale squiggles (the BUG-B hazard),
+            // and they survive round-trip tab switches now.
+            val snap = active ?: run {
+                lspSquiggles = emptyList()
+                return@LaunchedEffect
+            }
+            val stored = com.codespace.ide.editor.PerFileStateStore.stateFor(snap.path)
+            lspSquiggles = stored.squiggles
+            if (stored.lineHighlight > 0) scrollToLine = stored.lineHighlight
+            fileBookmarks[snap.path] = stored.bookmarks
             val snapLang = snap.language ?: return@LaunchedEffect
             try {
                 if (com.codespace.ide.lsp.LspManager.isSupported(snapLang)) {
@@ -1438,7 +1466,9 @@ fun EditorPane(
                     val diags = if (uri != null) com.codespace.ide.lsp.LspManager.getDiagnostics(snapLang, uri) else null
                     if (uri != null && diags != null && diags.length() > 0 &&
                         com.codespace.ide.lsp.LspManager.getServerGeneration(snapLang) > 0) {
-                        lspSquiggles = lspDiagnosticsToLintErrors(diags, snap.content)
+                        val restored = lspDiagnosticsToLintErrors(diags, snap.content)
+                        lspSquiggles = restored
+                        com.codespace.ide.editor.PerFileStateStore.setSquiggles(snap.path, restored)
                     }
                 }
             } catch (_: Exception) { }
@@ -1613,16 +1643,24 @@ fun EditorPane(
                 // return %20 for spaces while our URI has raw spaces (or vice versa).
                 val normDiag = LspManager.normalizeFileUri(diagUri)
                 val normUri  = LspManager.normalizeFileUri(uri)
-                // TEST-63-FIX: Also match by filename as fallback — some servers return
-                // URIs with different path prefixes (e.g. /tmp vs /host-files)
-                val diagFile = diagUri.substringAfterLast("/")
-                val ourFile = uri.substringAfterLast("/")
-                if (normDiag == normUri || diagFile == ourFile) {
+                // LS06 (P3b, PLAN A): the old BASENAME fallback ("diagFile == ourFile")
+                // made two open tabs with the same filename receive each other's
+                // diagnostics. Replaced by canonical identity on the resolved HOST
+                // paths: URI -> host translation, then CanonicalPaths.sameFileIdentity
+                // (handles prefix dialects and relative forms without the same-name
+                // false match). Servers returning unmappable URIs now drop cleanly.
+                val diagHostPath = LspManager.hostPathFromFileUri(context, diagUri)
+                val canonicalMatch = diagHostPath != null &&
+                    com.codespace.ide.util.CanonicalPaths.sameFileIdentity(diagHostPath, live.path)
+                if (normDiag == normUri || canonicalMatch) {
                     val parsed = lspDiagnosticsToLintErrors(diags, live.content)
                     AppOutputLog.log("[SQUIGGLE-DIAG] MATCHED — parsed " + parsed.size + " lint error(s) from " + diags.length() + " raw diagnostic(s); raw=" + diags.toString().take(500), "lsp")
                     lspSquiggles = parsed
+                    // PLAN A: persist under the CANONICAL identity so the ranges
+                    // survive tab round-trips keyed to the right file.
+                    com.codespace.ide.editor.PerFileStateStore.setSquiggles(live.path, parsed)
                 } else {
-                    AppOutputLog.log("[SQUIGGLE-DIAG] DROPPED — URI mismatch: diagUri=" + normDiag + " ourUri=" + normUri + " diagFile=" + diagFile + " ourFile=" + ourFile, "lsp")
+                    AppOutputLog.log("[SQUIGGLE-DIAG] DROPPED — URI mismatch: diagUri=" + normDiag + " ourUri=" + normUri + " diagHost=" + diagHostPath + " tabPath=" + live.path, "lsp")
                 }
                 }
             }
@@ -2203,11 +2241,15 @@ fun EditorPane(
                         onSave = saveCurrentFile,
                         // P54-BREAKPOINTS: main editor instance was missing breakpoint
                         // wiring (only the split instance had it) - gutter taps were no-ops.
-                        breakpointLines = fileBreakpoints[active.path] ?: emptySet(),
+                        // DG08 (P3b): UDM's breakpoint store is the SINGLE representation
+                        // — the old local fileBreakpoints map was a parallel writer that
+                        // diverged (gutter dots ignored Explorer removals; a tap where
+                        // only UDM had the bp toggled UDM off while the local map turned
+                        // it back on). Both render and toggle go through UDM now.
+                        breakpointLines = udm?.getBreakpoints(active.path)
+                            ?.map { it.line }?.toSet() ?: emptySet(),
                         debugCurrentLine = debugCurrentLine,
                         onBreakpointToggle = { line ->
-                            val cur = fileBreakpoints[active.path] ?: emptySet()
-                            fileBreakpoints[active.path] = if (line in cur) cur - line else cur + line
                             udm?.toggleBreakpoint(active.path, line)
                             // [BAND-DIAG]: 0-based gutter line as tapped and stored.
                             com.codespace.ide.diagnostics.AppOutputLog.log(
@@ -2222,7 +2264,12 @@ fun EditorPane(
                             else udm?.toggleBreakpoint(active.path, line) // nothing to edit yet -> create one
                         },
                         initialBookmarks = fileBookmarks[active.path] ?: emptySet(),
-                        onBookmarksChange = { updated -> fileBookmarks[active.path] = updated },
+                        onBookmarksChange = { updated ->
+                            fileBookmarks[active.path] = updated
+                            // PLAN A: persist under the canonical identity so
+                            // bookmarks survive pane recreation and path aliases.
+                            com.codespace.ide.editor.PerFileStateStore.setBookmarks(active.path, updated)
+                        },
                         projectRoot = projectRootPath,
                         currentFilePath = active.path,
                         onOpenFileAtLine = { filePath, line ->
@@ -2233,26 +2280,16 @@ fun EditorPane(
                             // project root + canonicalize, resolve the EXISTING tab (exact,
                             // canonical, then path-suffix), and only create a new tab when the
                             // file is genuinely not open. Highlight lands on the resolved tab.
-                            val projRoot = projectRootPath
-                            fun bugaResolve(raw: String): String {
-                                return try {
-                                    var f = java.io.File(raw)
-                                    if (!f.isAbsolute && !projRoot.isNullOrBlank()) f = java.io.File(projRoot, raw)
-                                    val canon = f.canonicalFile
-                                    if (canon.exists()) canon.absolutePath else f.absolutePath
-                                } catch (_: Exception) { raw }
-                            }
-                            val resolved = bugaResolve(filePath)
-                            val isSuffixOf: (String, String) -> Boolean = { longRaw, shortRaw ->
-                                val long = bugaResolve(longRaw)
-                                val short = bugaResolve(shortRaw)
-                                (long.endsWith(short) && (long.length == short.length ||
-                                    long.get(long.length - short.length - 1) == '/')) ||
-                                (short.endsWith(long) && (short.length == long.length ||
-                                    short.get(short.length - long.length - 1) == '/'))
-                            }
-                            val matchTab = tabs.firstOrNull { bugaResolve(it.path) == resolved }
-                                ?: tabs.firstOrNull { isSuffixOf(it.path, resolved) }
+                            // P3b (PLAN A): the BUG-A resolution is now the SHARED
+                            // CanonicalPaths form (exact -> canonical identity ->
+                            // boundary-suffix) instead of an inline copy — the same
+                            // identity logic the squiggle match (LS06) and the paused
+                            // band (DG11) use.
+                            val resolved = com.codespace.ide.util.CanonicalPaths.resolveAgainstRoot(
+                                filePath, projectRootPath)
+                            val matchTab = com.codespace.ide.util.CanonicalPaths.resolveTabMatch(
+                                tabs.map { it.path }, resolved, projectRootPath)
+                                ?.let { mp -> tabs.firstOrNull { it.path == mp } }
                             if (matchTab != null) {
                                 activeId = matchTab.id
                             } else {
@@ -2275,9 +2312,14 @@ fun EditorPane(
                             // scrolling. scrollToLine is 1-BASED — this wrapper owns the single +1.
                             if (line >= 0) {
                                 scrollToLine = line + 1
+                                // PLAN A: persist the highlight under the RESOLVED tab's
+                                // canonical identity — if the tab switches before the
+                                // reveal, the target tab restores it on activation.
+                                com.codespace.ide.editor.PerFileStateStore.setLineHighlight(resolved, line + 1)
                                 kotlinx.coroutines.MainScope().launch {
                                     kotlinx.coroutines.delay(1000)
                                     scrollToLine = 0
+                                    com.codespace.ide.editor.PerFileStateStore.clearLineHighlight(resolved)
                                 }
                             }
                         },
