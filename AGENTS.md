@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P3b SHIPPED + CI #2922 GREEN (code ae5633a — PLAN A canonical per-file store + CH02 tool-boundary choke point + DG02 DAP path parity: G03/LS06/DG11/DG08/CH02/DG02 closed, PR14 partial at editor side); next: P3c polling→flows (S02 family), F-TRACK F1 awaiting owner approval |
+| Latest commit | P3c SHIPPED + CI #2924 GREEN (code fdb660d — polling→flows S02 family: PG02 LSP recovery StateFlow subscription, PG04/TP08 emulator revision gate on the URL-chip scan, PG05 McpPanel zero-I/O poll); next: P3d delete-the-duplicates (VG04/VG10/IG06/IG03/IG04), F-TRACK F1 awaiting owner approval |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -4935,3 +4935,27 @@ Two reds before green (both in NEW P2c files, zero regressions to existing code)
 - **F-TRACK (owner ruling: BUILD full testing surface TG01-TG07, series F1-F6):** F1 Honest Run + remaining sub-phases — DRAFTED, awaiting owner approval to start.
 - **P5:** full device verification round — batched TP02 verification lands here; includes P2a zip-slip/traversal recipes, P2b LAN loopback test, P2c trust/consent checks, the P3a checks above, and the P3b checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+## [2026-09-25 10:20 WAT] — AI Agent: Claude Sonnet 5.6 (P3c SHIPPED: polling→flows — PG02 + PG04/TP08 + PG05, CI #2924 GREEN)
+
+**2026-09-25 — [P3c SHIPPED, CI #2924 GREEN, code commit fdb660d, first-push clean] The S02 fixed-cadence polling family closed: every site now runs on a signal or a change gate, not a forever-loop. Revertable as fdb660d.**
+
+### What shipped (code fdb660d)
+- **PG02 — LSP recovery: poll → StateFlow.** `LspManager` gains `recoverySignal: StateFlow<Int>`, emitted at the exact site the recovery counter increments (the READY transition). `CodeEditor`'s per-editor-instance `while(true)` 2s poll on `lspRecoveryCounter` is DELETED and replaced by a `collect` subscription that disposes with the composable. The old poll multiplied per split-editor instance and never paused even when nothing changed. StateFlow replays the current value to new subscribers, preserving the poll's `lastSeen=0` first-pass semantics (a fresh editor still sees a recovery that predates it).
+- **PG04/TP08 — URL-chip scan: change gate.** The vendored `TerminalEmulator` gains a cheap `volatile int mRevision` bumped per processed output batch (`append`), on `resize`, and on `reset`. The TerminalPane 2s loop now reads that ONE int per pass; the full 4000-row transcript rebuild + regex runs ONLY when output actually arrived. Previously: full String allocation + regex every 2s forever, idle or not, cost growing linearly with the transcript. `LaunchedEffect(active?.id)` keys the cached revision to the tab — a tab switch restarts the effect and forces exactly one fresh scan.
+- **PG05 — McpPanel: three I/O ops per 5s pass → zero.** (1) The health check's per-pass loopback HTTP connect to `/health` is REPLACED by reading `AgentApiServer.isRunning()` — the server runs in this process on port 8765, and its `@Volatile` flag IS the bind state. Documented trade-off: a hung accept loop was previously detectable by the probe; that failure mode now lands in the P5 device checks. (2) The `.agent.json` tool count and (3) the `.bashrc` installed check are now stat-gated on `lastModified` — `readText` only fires when the stamp changes, not every 5s forever.
+- **What was removed this phase:** CodeEditor's while(true) lspRecoveryCounter poll; the counter's poll-only observation path (now flow-emitted); TerminalPane's unconditional per-pass `getTranscriptText()` + regex; McpPanel's per-pass `HttpURLConnection`; McpPanel's per-pass `readText` on both files.
+
+### P5 device checks (add to the round)
+- **PG02:** kill an LSP server mid-session (or wait for a memory-watchdog restart) → after recovery, a completion attempt retries LSP first (Output tab shows `[LSP] recovery triggered, resetting fallback flags`); with TWO editors open, only ONE subscription resets flags — no duplicate reset logs per recovery; idle editors with no LSP traffic produce NO recurring poll lines in Output.
+- **PG04/TP08:** open a terminal, echo a URL (`curl -s https://example.com >/dev/null; echo https://example.com/x`) → chip appears within ~2s of the output landing; then leave the terminal IDLE for a minute → NO new URL scan churn (a trace/log or breakpoint proves the scan is gated); switch tabs and back → one fresh scan per activation, chips restored.
+- **PG05:** open the MCP/Agent Tools panel → dot turns green when the Agent API server is running and red after Stop, WITHOUT the panel doing HTTP requests (verify via the server's own logs — no `/health` hits from the panel cadence); install the shell profile → tool count and `Shell profile: installed` update on the NEXT poll after the file stamp changes (not instantly — 5s cadence preserved); with files unchanged, two consecutive polls do NO file reads.
+
+### ROADMAP (all pending)
+- **P3d:** delete-duplicate-implementations pass (VG04 duplicate uncapped AXML decoder, VG10, IG06, IG03, IG04).
+- **P4:** remaining tiers by group HIGH (54) → MEDIUM (114) → LOW (62); TG01 fix-or-delete ruling superseded by owner ruling below; PR14 PANEL side (Problems rows from the store) folds in here if not picked up earlier.
+- **F-TRACK (owner ruling: BUILD full testing surface TG01-TG07, series F1-F6):** F1 Honest Run + remaining sub-phases — DRAFTED, awaiting owner approval to start (P3-series finishes first per approved sequencing; P3d remains).
+- **P5:** full device verification round — batched TP02 verification lands here; includes P2a zip-slip/traversal recipes, P2b LAN loopback test, P2c trust/consent checks, P3a/P3b checks above, and the P3c checks above.
+- **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — editor side shipped in P3b, Problems-panel rows still read the LspManager cache; open item for P3c/P4; do not record closed until the panel reads the store).
