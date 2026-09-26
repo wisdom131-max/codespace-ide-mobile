@@ -52,7 +52,8 @@ class IncrementalTmHighlighter {
     ): AnnotatedString? {
         if (!TextMateEngineHolder.isActive()) return null
         val engine = TextMateEngineHolder.getIfInitialized() ?: return null
-        val scopeName = TmIntegration.languageToScope(language) ?: return null
+        // TM05: single registry — the scope comes from the engine's grammar fileTypes.
+        val scopeName = TmIntegration.languageToScope(engine, language) ?: return null
         if (!engine.hasGrammar(scopeName)) return null
 
         // If language changed, clear cache

@@ -17,7 +17,7 @@ object SyntaxHighlighter {
         if (TextMateEngineHolder.isActive()) {
             val engine = TextMateEngineHolder.getIfInitialized()
             if (engine != null) {
-                val scopeName = TmIntegration.languageToScope(language)
+                val scopeName = TmIntegration.languageToScope(engine, language)
                 if (scopeName != null && engine.hasGrammar(scopeName)) {
                     val tmResult = TmIntegration.highlight(engine, scopeName, text, colors)
                     if (tmResult != null) return tmResult

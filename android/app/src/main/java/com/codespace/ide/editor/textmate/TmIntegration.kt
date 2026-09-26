@@ -179,40 +179,19 @@ object TmIntegration {
 
     /**
      * Map a Language enum to a TextMate scope name.
-     * Returns null if no grammar is expected for that language.
+     *
+     * TM05 (2026-09-26): the 25-branch Language→scope when-map is DELETED — it was
+     * a SECOND parallel registry (drift family with VG12) that named ~25 scopes
+     * while only 4 grammars ship (kotlin, python, javascript, json). The engine's
+     * grammar fileTypes are now the ONE registry: the language maps through its own
+     * extensions. No bundled grammar claims the extension → null → the caller falls
+     * back to the built-in highlighter, honestly.
      */
-    fun languageToScope(language: Language): String? {
-        return when (language) {
-            Language.KOTLIN -> "source.kotlin"
-            Language.PYTHON -> "source.python"
-            Language.JAVASCRIPT -> "source.js"
-            Language.TYPESCRIPT -> "source.ts"
-            Language.JAVA -> "source.java"
-            Language.HTML -> "text.html.basic"
-            Language.CSS -> "source.css"
-            Language.JSON -> "source.json"
-            Language.MARKDOWN -> "text.md"
-            Language.CPP -> "source.cpp"
-            Language.C -> "source.c"
-            Language.GO -> "source.go"
-            Language.RUST -> "source.rust"
-            Language.PHP -> "source.php"
-            Language.SHELL -> "source.shell"
-            Language.XML -> "text.xml"
-            Language.YAML -> "source.yaml"
-            Language.RUBY -> "source.ruby"
-            Language.SWIFT -> "source.swift"
-            Language.CSHARP -> "source.cs"
-            Language.DART -> "source.dart"
-            Language.SQL -> "source.sql"
-            Language.SCALA -> "source.scala"
-            Language.LUA -> "source.lua"
-            Language.POWERSHELL -> "source.powershell"
-            Language.R -> "source.r"
-            Language.VUE -> "source.vue"
-            Language.SVELTE -> "source.svelte"
-            Language.TOML -> "source.toml"
-            Language.PLAINTEXT, Language.PLAIN -> null
+    fun languageToScope(engine: TextMateEngine, language: Language): String? {
+        for (ext in language.extensions) {
+            val scope = engine.scopeForExtension(ext)
+            if (scope != null) return scope
         }
+        return null
     }
 }

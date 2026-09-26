@@ -26,6 +26,17 @@ import java.nio.charset.Charset
  *     5. If match is a begin rule → push onto stack, emit begin captures
  *     6. If match is a simple match → emit the matched text with its scope
  *     7. Advance position past the match
+ *
+ * TM01 divergence matrix (2026-09-26, stated honestly — this is a hand-rolled
+ * engine, and its limits are documented instead of silently diverging):
+ *   SUPPORTED: begin/end rules (incl. end back-refs + applyEndPatternLast), while
+ *   rules (with scan-position re-check termination; begin-capture back-refs inside
+ *   the while pattern are NOT resolved), match rules, captures, include resolution
+ *   (repository entries, $self, $base, foreign scopes), scope-path accumulation,
+ *   first-line/anchor positions, iteration caps against infinite loops.
+ *   NOT SUPPORTED: injection grammars, and any oniguruma feature beyond the
+ *   compiled pattern subset. The failure mode is bounded to wrong highlighting —
+ *   never a crash.
  */
 class TmTokenizer(
     private val grammar: TmGrammar,
@@ -35,7 +46,8 @@ class TmTokenizer(
 
     /** Sentinel rule IDs. */
     private val END_RULE_ID = 0
-    private val WHILE_RULE_ID = 1
+    // TM01: the unused WHILE_RULE_ID sentinel (declared, never consulted) is DELETED —
+    // the while pattern is checked directly at the top of the scan loop instead.
 
     /**
      * Result of tokenizing one line.
@@ -86,6 +98,26 @@ class TmTokenizer(
 
         while (!stop) {
             if (++iterations > maxIterations) break
+
+            // TM01 (2026-09-26): while-rule termination. vscode-textmate re-checks the
+            // while pattern at every scan position; when it stops matching, the block
+            // ENDS. This engine used to leave while frames on the stack forever
+            // (WHILE_RULE_ID existed but was never consulted). No bundled grammar
+            // uses while today — this closes the latent hole. Anchored at the scan
+            // position; back-references into the begin match are NOT resolved
+            // (documented divergence, bounded to wrong-highlighting, never a crash).
+            if (stack != null && stack !== TmStateStack.NULL) {
+                val topRule = grammar.rulesById[stack.ruleId]
+                if (topRule is TmRule.BeginWhileRule) {
+                    val whileMatch = OnigRegexFactory.search(compileOnig(topRule.whilePattern), lineText, linePos)
+                    if (whileMatch == null || whileMatch.matchStart != linePos) {
+                        if (topRule.contentName != null && scopePath.isNotEmpty()) scopePath.removeAt(scopePath.lastIndex)
+                        if (topRule.name != null && scopePath.isNotEmpty()) scopePath.removeAt(scopePath.lastIndex)
+                        stack = stack.pop()
+                        continue
+                    }
+                }
+            }
 
             // 1. Get the current rule's compiled patterns
             val compiled = compileRules(stack, lineText)

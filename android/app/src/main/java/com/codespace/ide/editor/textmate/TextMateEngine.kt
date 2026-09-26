@@ -3,7 +3,6 @@ package com.codespace.ide.editor.textmate
 import android.content.Context
 import android.util.Log
 import java.io.InputStreamReader
-import java.io.File
 
 /**
  * TextMate engine — the main entry point for TextMate-based syntax highlighting.
@@ -38,16 +37,19 @@ class TextMateEngine(private val context: Context) {
         private const val GRAMMARS_DIR = "grammars"
     }
 
-    /** Loaded grammars keyed by scope name (e.g., "source.kotlin"). */
-    private val grammars = mutableMapOf<String, TmGrammar>()
+    /** Loaded grammars keyed by scope name (e.g., "source.kotlin").
+     *  TM04 (2026-09-26): the singleton is read from tokenize threads while
+     *  initialize() may run on main — these are now ConcurrentHashMaps. */
+    private val grammars = java.util.concurrent.ConcurrentHashMap<String, TmGrammar>()
 
     /** Tokenizers keyed by scope name. */
-    private val tokenizers = mutableMapOf<String, TmTokenizer>()
+    private val tokenizers = java.util.concurrent.ConcurrentHashMap<String, TmTokenizer>()
 
     /** Mapping from file extension to scope name. */
-    private val extensionToScope = mutableMapOf<String, String>()
+    private val extensionToScope = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    /** Current theme (for color mapping). */
+    /** Current theme (for color mapping). TM04: volatile — set once at initialize. */
+    @kotlin.jvm.Volatile
     private var theme: TmTheme? = null
 
     /** Whether the engine has been initialized. */
@@ -57,6 +59,7 @@ class TextMateEngine(private val context: Context) {
      * Initialize the engine by loading bundled grammars from assets.
      * Safe to call multiple times — only loads once.
      */
+    @kotlin.jvm.Synchronized
     fun initialize() {
         if (initialized) return
         initialized = true
@@ -85,55 +88,30 @@ class TextMateEngine(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "No bundled grammars directory found", e)
         }
-    }
 
-    /**
-     * Load a grammar from a filesystem path.
-     */
-    fun loadGrammarFromPath(path: String): Boolean {
-        return try {
-            val file = File(path)
-            if (!file.exists()) return false
-            file.reader().use { reader ->
-                val grammar = TmGrammarLoader.load(reader)
-                grammars[grammar.scopeName] = grammar
-                tokenizers[grammar.scopeName] = TmTokenizer(grammar)
-                for (ext in grammar.fileTypes) {
-                    extensionToScope[ext.lowercase()] = grammar.scopeName
-                }
-                Log.d(TAG, "Loaded grammar from path: ${grammar.scopeName}")
-                true
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to load grammar from $path", e)
-            false
-        }
-    }
-
-    /**
-     * Load a theme from a filesystem path.
-     */
-    fun loadThemeFromPath(path: String): Boolean {
-        return try {
-            val file = File(path)
-            if (!file.exists()) return false
-            file.reader().use { reader ->
-                theme = TmTheme.load(reader)
+        // TM03 (2026-09-26): the theme pipeline was DEAD — dark-plus.tmTheme.json
+        // shipped in assets but no code ever loaded it, so getTheme() always
+        // returned null and consumers silently fell back to the palette. The
+        // bundled Dark+ theme is now the ONE theme source, loaded here.
+        try {
+            context.assets.open("$GRAMMARS_DIR/dark-plus.tmTheme.json").use { stream ->
+                theme = TmTheme.load(InputStreamReader(stream))
                 Log.d(TAG, "Loaded theme: ${theme?.name}")
-                true
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to load theme from $path", e)
-            false
+            Log.w(TAG, "Bundled theme missing — palette fallback in effect", e)
         }
     }
 
-    /**
-     * Load a theme from a JSON string.
-     */
-    fun loadThemeFromString(json: String) {
-        theme = TmTheme.loadFromString(json)
-    }
+    // TM02 (2026-09-26): loadGrammarFromPath is DELETED — a zero-caller, LATENT
+    // untrusted-grammar API (it compiled arbitrary filesystem joni patterns and
+    // could shadow bundled grammars). If an extension system ever needs it
+    // (XG01-04 remain owner-gated), it must come back behind a TrustState gate
+    // with scoped grammar validation — not as a free public API.
+    //
+    // TM03: loadThemeFromPath / loadThemeFromString are DELETED too — also zero
+    // callers. The bundled Dark+ theme (loaded in initialize) is the one theme
+    // source; the palette fallback covers everything it does not map.
 
     /**
      * Get the scope name for a file extension.
