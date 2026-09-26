@@ -3,6 +3,7 @@ package com.codespace.ide.diagnostics
 import android.content.Context
 import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.domain.Language
+import kotlinx.coroutines.launch  // PR11: CoroutineScope.launch is an EXTENSION — import required, member-style call is unresolved
 
 /**
  * Phase P — Bridges existing diagnostic sources into the central DiagnosticManager.
