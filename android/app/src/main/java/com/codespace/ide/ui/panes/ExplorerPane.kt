@@ -2422,7 +2422,7 @@ fun ExplorerSidePanel(
                                         try {
                                             withContext(Dispatchers.IO) { snap.copyTo(hFile, overwrite = true) }
                                             com.codespace.ide.chat.PendingChangesStore.discard(hFile.absolutePath)
-                                            com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore()
+                                            com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore(hFile.absolutePath)  // G02: record the restored path so the open tab refreshes
                                             showHistoryDialog = false
                                             refresh++
                                         } catch (e: Exception) {
@@ -2974,6 +2974,12 @@ fun fileIconColor(name: String): Color {
 // ── Stub panels ──────────────────────────────────────────────────────────────
 private data class SearchResult(val file: String, val lineNum: Int, val lineText: String, val matchRange: IntRange)
 
+// SR12 (P4b): SCOPE NOTE — this sidebar search covers the project root with an
+// extension whitelist (code+docs), a 500-file cap, and skips dot/build/node_modules
+// dirs. The modal ProjectFileSearchPanel searches the whole root (5000-file cap,
+// glob filters, no extension whitelist); the chat attach search overlays STAGED
+// buffer content (PendingChangesStore) on disk with its own byte/file caps. Differing
+// hits between surfaces are a scope difference, not a search failure.
 @Composable fun SearchPanel(projectId: String, onOpenFileAtLine: ((String, Int) -> Unit)? = null) {
     val context = LocalContext.current
     // Test 49 fix: pre-fill with the last query searched in this project.
@@ -3007,8 +3013,15 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
         // it's non-blank, so results are ready without any extra call here.
     }
 
+    // SR02 (P4b): generation-guarded scan OFF the UI thread. The old code launched an
+    // untracked main-scope job per debounce tick: cancelling the debounce effect did
+    // NOT cancel the in-flight scan, so an OLDER scan could overwrite newer results,
+    // and every file read ran on the UI thread. Only the NEWEST generation may publish.
+    val searchGeneration = remember { java.util.concurrent.atomic.AtomicInteger(0) }
+
     fun performSearch(query: String) {
-        if (query.isBlank()) { results = emptyList(); return }
+        if (query.isBlank()) { results = emptyList(); searching = false; return }
+        val generation = searchGeneration.incrementAndGet()
         searching = true
         scope.launch {
             // Phase V-FIX (Tests 47/48): Fall back to default project dir when
@@ -3016,56 +3029,78 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             val wsPath = loadWorkspacePath(context, projectId)
                 ?: com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
             val wsRoot = wsPath?.let { File(it) }
-            val allResults = mutableListOf<SearchResult>()
-            if (wsRoot != null && wsRoot.exists()) {
-                val extensions = setOf("kt", "java", "xml", "gradle", "kts", "py", "js", "ts", "json", "md", "txt", "yml", "yaml", "sh", "html", "css")
-                val maxFiles = 500
-                var filesScanned = 0
-                fun walk(dir: File) {
-                    if (filesScanned >= maxFiles) return
-                    val files = dir.listFiles() ?: return
-                    for (f in files) {
-                        if (filesScanned >= maxFiles) break
-                        if (f.isDirectory) {
-                            if (!f.name.startsWith(".") && f.name != "build" && f.name != "node_modules") {
-                                walk(f)
-                            }
-                        } else if ((f.extension.lowercase() in extensions || f.extension.isEmpty()) &&
-                                   (includePattern.isBlank() || f.name.matchesSimpleGlob(includePattern)) &&
-                                   (excludePattern.isBlank() || !f.name.matchesSimpleGlob(excludePattern))) {
-                            filesScanned++
-                            try {
-                                f.useLines { lines ->
-                                    lines.forEachIndexed { idx, line ->
-                                        val matched = if (useRegex) {
-                                            try {
-                                                val regex = if (caseSensitive) Regex(query) else Regex(query, RegexOption.IGNORE_CASE)
-                                                regex.containsMatchIn(line)
-                                            } catch (_: Exception) { false }
-                                        } else if (matchWholeWord) {
-                                            val regex = if (caseSensitive) Regex("\\b${Regex.escape(query)}\\b") else Regex("\\b${Regex.escape(query)}\\b", RegexOption.IGNORE_CASE)
-                                            regex.containsMatchIn(line)
-                                        } else if (caseSensitive) {
-                                            line.contains(query)
-                                        } else {
-                                            line.contains(query, ignoreCase = true)
-                                        }
-                                        if (matched) {
-                                            val matchStart = if (caseSensitive) line.indexOf(query) else line.indexOf(query, ignoreCase = true)
-                                            if (matchStart >= 0) {
-                                                allResults.add(SearchResult(f.absolutePath, idx + 1, line.trim(), matchStart..(matchStart + query.length - 1)))
+            // SR01 (P4b): the OLD code accepted a line via the COMPILED REGEX but then
+            // located the match with a LITERAL indexOf(query) — a valid pattern with
+            // metacharacters (e.g. "foo.bar(") matched the regex test yet the literal
+            // probe found nothing and the hit DISAPPEARED (or highlighted the wrong
+            // offset). The match RANGE now comes from the SAME matcher that found it.
+            val matchRangeOf: ((String) -> IntRange?) = when {
+                useRegex -> {
+                    val regex = try {
+                        if (caseSensitive) Regex(query) else Regex(query, RegexOption.IGNORE_CASE)
+                    } catch (_: Exception) { null }
+                    if (regex != null) { line -> regex.find(line)?.range } else { _ -> null }
+                }
+                matchWholeWord -> {
+                    val regex = if (caseSensitive) Regex("\\b${Regex.escape(query)}\\b") else Regex("\\b${Regex.escape(query)}\\b", RegexOption.IGNORE_CASE)
+                    { line -> regex.find(line)?.range }
+                }
+                caseSensitive -> {
+                    { line -> val i = line.indexOf(query); if (i >= 0) i..(i + query.length - 1) else null }
+                }
+                else -> {
+                    { line -> val i = line.indexOf(query, ignoreCase = true); if (i >= 0) i..(i + query.length - 1) else null }
+                }
+            }
+            val allResults = withContext(Dispatchers.Default) {
+                val found = mutableListOf<SearchResult>()
+                if (wsRoot != null && wsRoot.exists()) {
+                    val extensions = setOf("kt", "java", "xml", "gradle", "kts", "py", "js", "ts", "json", "md", "txt", "yml", "yaml", "sh", "html", "css")
+                    val maxFiles = 500
+                    var filesScanned = 0
+                    fun walk(dir: File) {
+                        if (filesScanned >= maxFiles) return
+                        val files = dir.listFiles() ?: return
+                        for (f in files) {
+                            if (filesScanned >= maxFiles) break
+                            if (f.isDirectory) {
+                                if (!f.name.startsWith(".") && f.name != "build" && f.name != "node_modules") {
+                                    walk(f)
+                                }
+                            } else if ((f.extension.lowercase() in extensions || f.extension.isEmpty()) &&
+                                       (includePattern.isBlank() || f.name.matchesSimpleGlob(includePattern)) &&
+                                       (excludePattern.isBlank() || !f.name.matchesSimpleGlob(excludePattern))) {
+                                filesScanned++
+                                try {
+                                    f.useLines { lines ->
+                                        lines.forEachIndexed { idx, line ->
+                                            val rawRange = matchRangeOf(line)
+                                            if (rawRange != null) {
+                                                // The row DISPLAYS the trimmed line — shift the
+                                                // highlight by the trim offset so it lands on the
+                                                // visible text, and skip a match swallowed by
+                                                // leading whitespace trimming.
+                                                val lead = line.length - line.trimStart().length
+                                                val trimmed = line.trim()
+                                                if (rawRange.first >= lead && rawRange.first - lead < trimmed.length) {
+                                                    found.add(SearchResult(f.absolutePath, idx + 1, trimmed, (rawRange.first - lead)..(rawRange.last - lead)))
+                                                }
                                             }
                                         }
                                     }
-                                }
-                            } catch (_: Exception) {}
+                                } catch (_: Exception) {}
+                            }
                         }
                     }
+                    walk(wsRoot)
                 }
-                walk(wsRoot)
+                found
             }
-            results = allResults
-            searching = false
+            if (generation == searchGeneration.get()) {
+                // Only the newest scan publishes — a superseded scan's results die here.
+                results = allResults
+                searching = false
+            }
         }
     }
 

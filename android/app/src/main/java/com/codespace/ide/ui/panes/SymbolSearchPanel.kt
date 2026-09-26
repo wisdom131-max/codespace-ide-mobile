@@ -65,7 +65,10 @@ fun SymbolSearchPanel(
     }
 
     // Regex results from FileIndexer (always available)
-    val regexResults = remember(query) { FileIndexer.search(query) }
+    // SR07 (P4b): indexer completion is IN the key — the old remember(query) kept a
+    // query issued DURING indexing stuck on empty fallback results even after the
+    // index completed, until the query changed.
+    val regexResults = remember(query, indexerState.value.isComplete, indexerState.value.isIndexing, indexerState.value.totalSymbols) { FileIndexer.search(query) }
 
     // LSP results — query workspace symbols if an LSP server is running
     var lspResults by remember { mutableStateOf<List<LspSym>>(emptyList()) }
@@ -74,10 +77,18 @@ fun SymbolSearchPanel(
     val activeLang = remember(activeFilePath) {
         activeFilePath?.let { Language.fromPath(it) }
     }
-    val lspRunning = remember(activeLang) {
+    // SR06 (P4b): readiness is LIVE — the old remember(activeLang) cached "not
+    // initialized" and a server that started WHILE the overlay stayed open was
+    // invisible until it was reopened. serverStateSignal bumps lspStateTick on every
+    // real LSP state transition, re-evaluating both flags.
+    var lspStateTick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        LspManager.serverStateSignal.collect { lspStateTick++ }
+    }
+    val lspRunning = remember(lspStateTick, activeLang) {
         activeLang != null && LspManager.isServerRunning(activeLang)
     }
-    val lspInitialized = remember(activeLang) {
+    val lspInitialized = remember(lspStateTick, activeLang) {
         activeLang != null && LspManager.isServerInitialized(activeLang)
     }
 
@@ -103,7 +114,13 @@ fun SymbolSearchPanel(
                     val symLine = loc.optJSONObject("range")?.optJSONObject("start")?.optInt("line", 0) ?: 0
                     val symKind = sym.optInt("kind", 0)
                     val symPathRaw = if (symUri.startsWith("file://")) symUri.removePrefix("file://") else symUri
-                    val symPath = try { java.net.URLDecoder.decode(symPathRaw, "UTF-8") } catch (_: Exception) { symPathRaw }
+                    // SR11 (P4b): URLDecoder.decode turns a LITERAL '+' in a file name
+                    // into a space, navigating to a different/unreadable path. LSP URIs are
+                    // percent-encoded form-encoded — decode ONLY %XX sequences. The
+                    // overlay's navigation routes through ProjectShellScreen, which
+                    // performs the canonical guest→host translation (CH02 seam) before
+                    // any file is opened.
+                    val symPath = try { java.net.URLDecoder.decode(symPathRaw.replace("+", "%2B"), "UTF-8") } catch (_: Exception) { symPathRaw }
                     val symFile = symPath.substringAfterLast("/")
                     parsed.add(LspSym(name, symPath, symFile, symLine, symKind))
                 }

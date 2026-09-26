@@ -120,9 +120,92 @@ class JsonRpcClient(private val process: Process) {
         readerThread?.interrupt()
     }
 
+    // LS08 (P4b): typed request outcome — request() maps timeout, server error and
+    // connection loss all to null, so call sites could not distinguish unsupported
+    // from busy from dead. requestTyped() returns the classification; the null-
+    // returning request() is kept as a thin compat wrapper for the ~35 existing
+    // call sites (their version/gen guards already treat null as "no result").
+    sealed class LspRequestResult {
+        data class Success(val value: Any?) : LspRequestResult()
+        data class ServerError(val code: Int, val message: String) : LspRequestResult()
+        data class Timeout(val timeoutSeconds: Long) : LspRequestResult()
+        data class WriteFailed(val reason: String) : LspRequestResult()
+        data class Disconnected(val reason: String) : LspRequestResult()
+    }
+
+    // Side-channel for classifying an exceptional future: handleMessage records the
+    // server's error code/message here BEFORE completing exceptionally, so the
+    // catcher can turn ExecutionException back into a typed ServerError.
+    private val pendingOutcomes = ConcurrentHashMap<Long, LspRequestResult.ServerError>()
+
+    fun requestTyped(method: String, params: JSONObject? = null, timeoutSeconds: Long = 30): LspRequestResult {
+        val id = nextId.getAndIncrement()
+        val message = JSONObject()
+        message.put("jsonrpc", "2.0")
+        message.put("id", id)
+        message.put("method", method)
+        if (params != null) message.put("params", params)
+
+        val future = CompletableFuture<Any?>()
+        pendingRequests[id] = future
+        pendingRequestsByMethod.getOrPut(method) { mutableMapOf() }[id] = future
+
+        if (method in SUPERSEDED_ON_NEW_REQUEST) {
+            val stale = pendingRequestsByMethod[method]?.keys?.toList().orEmpty()
+            for (oldId in stale) {
+                if (oldId != id) {
+                    notify("$/cancelRequest", JSONObject().put("id", oldId))
+                    log("[LSP][rpc] B1 supersede: $/cancelRequest for method=$method id=$oldId (superseded by id=$id)")
+                }
+            }
+        }
+
+        try {
+            writeMessage(message)
+        } catch (e: Exception) {
+            log("[LSP][rpc] requestTyped('$method'): writeMessage FAILED: ${e.javaClass.simpleName}: ${e.message}")
+            pendingRequests.remove(id)
+            pendingRequestsByMethod.values.forEach { it.remove(id) }
+            return LspRequestResult.WriteFailed("${e.javaClass.simpleName}: ${e.message}")
+        }
+
+        return try {
+            LspRequestResult.Success(future.get(timeoutSeconds, TimeUnit.SECONDS))
+        } catch (e: Exception) {
+            pendingRequests.remove(id)
+            pendingRequestsByMethod.values.forEach { it.remove(id) }
+            when (e) {
+                is java.util.concurrent.TimeoutException -> {
+                    log("[LSP][rpc] requestTyped('$method') TIMEOUT after ${timeoutSeconds}s")
+                    LspRequestResult.Timeout(timeoutSeconds)
+                }
+                is java.util.concurrent.ExecutionException -> {
+                    val outcome = pendingOutcomes.remove(id)
+                    if (outcome != null) {
+                        log("[LSP][rpc] requestTyped('$method') SERVER ERROR: code=${outcome.code} msg=${outcome.message}")
+                        outcome
+                    } else {
+                        log("[LSP][rpc] requestTyped('$method') CONNECTION ERROR: ${e.cause?.message ?: e.message}")
+                        LspRequestResult.Disconnected(e.cause?.message ?: e.message ?: "connection error")
+                    }
+                }
+                is InterruptedException -> {
+                    Thread.currentThread().interrupt()
+                    log("[LSP][rpc] requestTyped('$method') INTERRUPTED (client shutting down)")
+                    LspRequestResult.Disconnected("interrupted")
+                }
+                else -> {
+                    log("[LSP][rpc] requestTyped('$method') ERROR: ${e.javaClass.simpleName}: ${e.message}")
+                    LspRequestResult.Disconnected("${e.javaClass.simpleName}: ${e.message}")
+                }
+            }
+        }
+    }
+
     /**
      * Send a JSON-RPC request and wait for the response (synchronous, with timeout).
      * Returns the raw result value (JSONObject, JSONArray, String, or null), or null on error/timeout.
+     * LS08: this is the null-collapsing compat wrapper — new code prefers requestTyped().
      */
     fun request(method: String, params: JSONObject? = null, timeoutSeconds: Long = 30): Any? {
         val id = nextId.getAndIncrement()
@@ -190,7 +273,12 @@ class JsonRpcClient(private val process: Process) {
         if (params != null) message.put("params", params)
         try {
             writeMessage(message)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            // LS10: didOpen/didChange/didSave write failures used to vanish here with
+            // no trace — the editor believed the server had the document. The loss is
+            // at least visible in the LSP log channel now.
+            log("[LSP][rpc] notify('$method') FAILED: ${e.javaClass.simpleName}: ${e.message}")
+        }
     }
 
     /**
@@ -198,6 +286,25 @@ class JsonRpcClient(private val process: Process) {
      */
     fun onNotification(method: String, handler: (JSONObject) -> Unit) {
         notificationHandlers[method] = handler
+    }
+
+    /**
+     * LS10 (P4b): notification send with a Boolean outcome — sync paths (didOpen/
+     * didChange/didClose/didSave) used to fire-and-forget with the write failure
+     * swallowed, so the editor believed the server had a document it never received.
+     */
+    fun notifyOutcome(method: String, params: JSONObject? = null): Boolean {
+        val message = JSONObject()
+        message.put("jsonrpc", "2.0")
+        message.put("method", method)
+        if (params != null) message.put("params", params)
+        return try {
+            writeMessage(message)
+            true
+        } catch (e: Exception) {
+            log("[LSP][rpc] notify('$method') FAILED: ${e.javaClass.simpleName}: ${e.message}")
+            false
+        }
     }
 
 
@@ -267,6 +374,9 @@ class JsonRpcClient(private val process: Process) {
                         future.complete(null)
                     } else {
                         log("[LSP][rpc] ERROR response for id=$id: code=$errorCode msg=$errorMsg")
+                        // LS08: record for requestTyped's classifier before the
+                        // exceptional completion (the compat path still sees null).
+                        pendingOutcomes[id] = LspRequestResult.ServerError(errorCode, errorMsg)
                         future.completeExceptionally(RuntimeException(errorMsg))
                     }
                 } else {
@@ -278,8 +388,62 @@ class JsonRpcClient(private val process: Process) {
             val method = message.optString("method", "")
             val params = message.optJSONObject("params") ?: JSONObject()
             notificationHandlers[method]?.invoke(params)
+        } else if (hasId && hasMethod) {
+            // LS01: server-initiated REQUEST — the old dispatch dropped these with NO
+            // response at all (not even a spec-permitted error), so servers waiting on
+            // workspace/applyEdit, client/registerCapability, window/workDoneProgress/create
+            // or showMessageRequest hung on a request that would never be answered.
+            // Registered handlers answer themselves; everything else gets the spec's
+            // MethodNotFound (-32601) so the server can degrade gracefully.
+            val id = message.optLong("id", -1)
+            val method = message.optString("method", "")
+            val params = message.optJSONObject("params") ?: JSONObject()
+            val handler = requestHandlers[method]
+            if (handler != null) {
+                try {
+                    handler(params) { result -> sendResponse(id, result) }
+                } catch (e: Exception) {
+                    log("[LSP][rpc] server request '$method' (id=$id) handler THREW: ${e.javaClass.simpleName}: ${e.message}")
+                    sendError(id, -32603, "Internal error: ${e.message ?: e.javaClass.simpleName}")
+                }
+            } else {
+                log("[LSP][rpc] server request '$method' (id=$id) has no handler — answering MethodNotFound per LSP spec")
+                sendError(id, -32601, "Method '$method' not supported by this client")
+            }
         }
-        // Server-initiated requests (hasId && hasMethod) are ignored for now
+    }
+
+    // LS01: handlers for server-initiated requests. The responder sends the JSON-RPC
+    // response back to the server; a null result is a spec-valid "no result".
+    private val requestHandlers = ConcurrentHashMap<String, (JSONObject, (Any?) -> Unit) -> Unit>()
+
+    /** Register a handler for a server-initiated request. The handler answers with respond(result). */
+    fun onRequest(method: String, handler: (JSONObject, (Any?) -> Unit) -> Unit) {
+        requestHandlers[method] = handler
+    }
+
+    private fun sendResponse(id: Long, result: Any?) {
+        val message = JSONObject()
+        message.put("jsonrpc", "2.0")
+        message.put("id", id)
+        message.put("result", result ?: JSONObject.NULL)
+        try {
+            writeMessage(message)
+        } catch (e: Exception) {
+            log("[LSP][rpc] sendResponse(id=$id) FAILED: ${e.javaClass.simpleName}: ${e.message}")
+        }
+    }
+
+    private fun sendError(id: Long, code: Int, message: String) {
+        val response = JSONObject()
+        response.put("jsonrpc", "2.0")
+        response.put("id", id)
+        response.put("error", JSONObject().put("code", code).put("message", message))
+        try {
+            writeMessage(response)
+        } catch (e: Exception) {
+            log("[LSP][rpc] sendError(id=$id) FAILED: ${e.javaClass.simpleName}: ${e.message}")
+        }
     }
 
     private var firstRead = true  // P32-DIAG: capture raw first bytes for corruption detection

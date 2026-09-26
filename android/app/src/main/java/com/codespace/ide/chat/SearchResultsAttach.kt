@@ -18,6 +18,10 @@ object SearchResultsAttach {
     private const val MAX_MATCH_LINES = 80
     private const val MAX_TOTAL_CHARS = 4000
 
+    // SR12 (P4b): chat-attach scope — the ONLY search surface that includes STAGED
+    // (unsaved buffer) content via PendingChangesStore.overlayFor; caps: MAX_FILES
+    // files, MAX_FILE_BYTES per file, 4000 lines per file, MAX_MATCH_LINES matches.
+    // Do not compare its hit list against the sidebar/modal disk-only searches 1:1.
     fun searchProjectContent(projectRoot: String, query: String): String {
         if (query.isBlank()) return ""
         val root = File(projectRoot)

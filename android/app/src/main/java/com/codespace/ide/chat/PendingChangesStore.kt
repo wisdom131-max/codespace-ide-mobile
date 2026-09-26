@@ -77,6 +77,13 @@ object PendingChangesStore {
 
     /** (path, checkpointFile) of the most recent apply batch — one-tap restore. */
     val lastApplied = androidx.compose.runtime.mutableStateOf<List<Pair<String, String?>>>(emptyList())
+    // G02 (P4b): RESTORED-paths channel. undoLastApply() sets lastApplied to the
+    // FAILED pairs only (retry semantics), and bumpExternalRestore() never touched
+    // lastApplied at all — both ticked appliedTick, so EditorPane's refresh loop
+    // filtered on lastAppliedPaths() and the SUCCESSFULLY restored files never
+    // refreshed; open tabs kept stale buffers over restored disk content.
+    val restoredTick = androidx.compose.runtime.mutableStateOf(0)
+    val restoredPaths = androidx.compose.runtime.mutableStateOf<List<String>>(emptyList())
 
     private val pending = linkedMapOf<String, PendingChange>()
 
@@ -178,6 +185,10 @@ object PendingChangesStore {
                 return ApplyOutcome.Failed(path, "Write failed: ${e.message}")
             }
             // ── Success bookkeeping ──────────────────────────────────────────
+            // G07 (P4b): FileCache is lastModified-based; a rename within the same
+            // mtime second could serve PRE-apply content to non-editor readers.
+            // Invalidate explicitly on every verified disk write (both apply paths).
+            com.codespace.ide.editor.FileCache.invalidate(path)
             synchronized(pending) { pending.remove(path) }
             synchronized(undoGatePaths) { undoGatePaths.add(path) }
             lastApplied.value = lastApplied.value + (path to checkpointFile)
@@ -234,6 +245,10 @@ object PendingChangesStore {
                 tmp.delete()
                 return ApplyOutcome.Failed(path, "Write failed: ${e.message}")
             }
+            // G07 (P4b): FileCache is lastModified-based; a rename within the same
+            // mtime second could serve PRE-apply content to non-editor readers.
+            // Invalidate explicitly on every verified disk write (both apply paths).
+            com.codespace.ide.editor.FileCache.invalidate(path)
             synchronized(pending) { pending.remove(path) }
             synchronized(undoGatePaths) { undoGatePaths.add(path) }
             lastApplied.value = lastApplied.value + (path to checkpointFile)
@@ -279,6 +294,7 @@ object PendingChangesStore {
         var restored = 0
         val notRestored = mutableListOf<Pair<String, String>>() // path to reason
         val remaining = mutableListOf<Pair<String, String?>>()  // failed pairs kept for retry
+        val restoredList = mutableListOf<String>()              // G02: paths restored OK (refresh channel)
         for ((path, bakPath) in batch) {
             val bak = bakPath?.let { File(it) }
             when {
@@ -290,7 +306,9 @@ object PendingChangesStore {
                     try {
                         File(path).parentFile?.mkdirs()
                         bak.copyTo(File(path), overwrite = true)
+                        com.codespace.ide.editor.FileCache.invalidate(path)  // G07
                         restored++
+                        restoredList.add(path)  // G02
                     } catch (e: Exception) {
                         notRestored.add(path to (e.message ?: "copy failed"))
                         // CH01 (P1): keep failed pairs so Undo can be RETRIED — the old
@@ -302,6 +320,8 @@ object PendingChangesStore {
             }
         }
         lastApplied.value = remaining
+        restoredPaths.value = restoredList
+        restoredTick.value++
         appliedTick.value++
         bumpRevision()
         return buildString {
@@ -322,7 +342,15 @@ object PendingChangesStore {
      * I1: bumped when a .versionhistory snapshot is restored from OUTSIDE the
      * store (TimelinePanel) — open editors refresh via the same appliedTick path.
      */
-    fun bumpExternalRestore() {
+    fun bumpExternalRestore(restoredPath: String? = null) {
+        // G02: an externally restored .versionhistory snapshot is now RECORDED so
+        // the refresh loop can see it — bumping appliedTick alone left the restored
+        // file absent from lastAppliedPaths() and its open tab stale.
+        if (restoredPath != null) {
+            com.codespace.ide.editor.FileCache.invalidate(restoredPath)  // G07
+            restoredPaths.value = listOf(restoredPath)
+            restoredTick.value++
+        }
         appliedTick.value++
         bumpRevision()
     }

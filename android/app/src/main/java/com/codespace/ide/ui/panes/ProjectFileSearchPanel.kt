@@ -131,24 +131,34 @@ fun ProjectFileSearchPanel(
         }
     }
 
-    val allFiles = remember(projectRoot, includePattern, excludePattern) {
-        mutableListOf<FileResult>().also { list ->
-            val root = File(projectRoot)
-            if (root.exists()) {
-                root.walkTopDown()
-                    .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") && !it.path.contains("/node_modules/") && !it.path.contains("/.gradle/") }
-                    .filter { f ->
-                        val rel = f.relativeTo(root).path
-                        val incOk = matchesGlob(includePattern, rel)
-                        val excOk = excludePattern.isBlank() || !matchesGlob(excludePattern, rel)
-                        incOk && excOk
-                    }
-                    .take(5000)
-                    .forEach { f ->
-                        list.add(FileResult(f.absolutePath, f.relativeTo(root).path))
-                    }
-            }
-        }.toList()
+    // SR10 (P4b): the walkTopDown() over up to 5000 files ran on the UI thread inside
+    // remember{} during COMPOSITION — a filter tweak could stall the frame. The walk
+    // now runs on Dispatchers.IO and publishes into state; a newer root/filter change
+    // supersedes the previous scan's result. SR12 (P4b): this modal's scope (whole
+    // project root, no extension whitelist, 5000-file cap, hidden dirs excluded like
+    // the sidebar) is now the SAME exclusion set as the sidebar SearchPanel — hits
+    // differing between the two are a REAL scope difference (root/filters), not a bug.
+    var allFiles by remember { mutableStateOf<List<FileResult>>(emptyList()) }
+    LaunchedEffect(projectRoot, includePattern, excludePattern) {
+        allFiles = withContext(Dispatchers.IO) {
+            mutableListOf<FileResult>().also { list ->
+                val root = File(projectRoot)
+                if (root.exists()) {
+                    root.walkTopDown()
+                        .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") && !it.path.contains("/node_modules/") && !it.path.contains("/.gradle/") && !it.path.substringAfterLast('/').startsWith(".") }
+                        .filter { f ->
+                            val rel = f.relativeTo(root).path
+                            val incOk = matchesGlob(includePattern, rel)
+                            val excOk = excludePattern.isBlank() || !matchesGlob(excludePattern, rel)
+                            incOk && excOk
+                        }
+                        .take(5000)
+                        .forEach { f ->
+                            list.add(FileResult(f.absolutePath, f.relativeTo(root).path))
+                        }
+                }
+            }.toList()
+        }
     }
 
     // ── Debounced search ────────────────────────────────────────────────────

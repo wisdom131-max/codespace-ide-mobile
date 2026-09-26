@@ -254,6 +254,28 @@ fun EditorPane(
             }
         }
     }
+    // G02 (P4b): RESTORED paths refresh — undoLastApply() (checkpoint restore) and
+    // bumpExternalRestore() (.versionhistory snapshot restore from TimelinePanel or
+    // the Explorer history dialog) both ticked appliedTick WITHOUT recording the
+    // restored file in lastAppliedPaths(), so this loop's filter never matched and
+    // the open tab kept a stale buffer over restored disk content. Restored paths
+    // now arrive on their own channel; the refresh semantics are identical.
+    LaunchedEffect(com.codespace.ide.chat.PendingChangesStore.restoredTick.value) {
+        if (com.codespace.ide.chat.PendingChangesStore.restoredTick.value > 0) {
+            val restoredPaths = com.codespace.ide.chat.PendingChangesStore.restoredPaths.value
+            if (restoredPaths.isNotEmpty()) {
+                tabs.indices.forEach { i ->
+                    val t = tabs[i]
+                    if (t.path in restoredPaths && t.path.startsWith("/")) {
+                        try {
+                            val refreshed = java.io.File(t.path).readText()
+                            tabs[i] = t.copy(content = refreshed, isDirty = false)
+                        } catch (_: Exception) { }
+                    }
+                }
+            }
+        }
+    }
     // P20-A: Git Blame
     var showBlame by remember { mutableStateOf(false) }
     var blameData by remember { mutableStateOf<Map<Int, com.codespace.ide.editor.BlameLine>?>(null) }
@@ -263,45 +285,67 @@ fun EditorPane(
     var formatting by remember { mutableStateOf(false) }
     // Phase R: Format Selection trigger
     var formatSelectionTrigger by remember { mutableStateOf(0) }
-    // P41-O2: Format on Save — when trigger fires, format active tab then save
-    // Phase R: Gated behind ProjectSettingsStore.formatOnSaveEnabled
-    LaunchedEffect(formatOnSaveTrigger) {
-        if (formatOnSaveTrigger > 0) {
-            val activeTab = resolveActiveTab(activeId, tabs)
-            if (activeTab != null && activeTab.path.startsWith("/")) {
-                if (ProjectSettingsStore.formatOnSaveEnabled.value) {
-                    formatting = true
-                    try {
-                        val result = DocumentFormatter.format(context, activeTab.path, activeTab.language)
-                        if (result.success && result.formattedContent != null && result.formattedContent != activeTab.content) {
-                            val idx = tabs.indexOfFirst { it.id == activeTab.id }
-                            if (idx >= 0) {
-                                tabs[idx] = activeTab.copy(content = result.formattedContent, isDirty = false)
-                                try { File(activeTab.path).writeText(result.formattedContent); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
+    // G10 (P4b): internal companion to formatOnSaveTrigger. When format-on-save is
+    // ENABLED, Ctrl+S bumps THIS instead of writing directly — so File>Save and
+    // Ctrl+S take the IDENTICAL format-then-save route (they used to be two
+    // different callbacks: menu Save could change the text, Ctrl+S could not).
+    var formatOnSaveRoute by remember { mutableStateOf(0) }
+    // P41-O2 + G09 + G10: Format-on-Save / Save route — THE single save semantics:
+    // format (when enabled), then a TYPED writeTabToDisk. Dirty clears ONLY on
+    // verified persistence (G01 rule); write failures are ANNOUNCED, never
+    // swallowed; LSP didSave fires only after a verified write.
+    LaunchedEffect(formatOnSaveTrigger, formatOnSaveRoute) {
+        if (formatOnSaveTrigger == 0 && formatOnSaveRoute == 0) return@LaunchedEffect
+        val activeTab = resolveActiveTab(activeId, tabs)
+        if (activeTab != null && activeTab.path.startsWith("/")) {
+            if (ProjectSettingsStore.formatOnSaveEnabled.value) {
+                formatting = true
+                var textToSave = activeTab.content
+                try {
+                    val result = DocumentFormatter.format(context, activeTab.path, activeTab.language)
+                    if (result.success && result.formattedContent != null) textToSave = result.formattedContent
+                } catch (_: Exception) { /* format failed — save the unformatted buffer */ }
+                formatting = false
+                if (textToSave != activeTab.content) {
+                    val idx = tabs.indexOfFirst { it.id == activeTab.id }
+                    if (idx >= 0) tabs[idx] = activeTab.copy(content = textToSave, isDirty = true)
+                }
+                // Re-resolve: the content may have changed above.
+                val current = resolveActiveTab(activeId, tabs)
+                if (current != null) {
+                    if (writeTabToDisk(current.path, current.content)) {
+                        if (current.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= current.path
+                        val idx = tabs.indexOfFirst { it.id == current.id }
+                        if (idx >= 0) tabs[idx] = current.copy(isDirty = false)
+                        FileCache.invalidate(current.path)
+                        try {
+                            val saveUri = LspManager.fileUriFromHostPath(context, current.path)
+                            if (saveUri != null && LspManager.isServerRunning(current.language)) {
+                                LspManager.didSave(current.language, saveUri, current.content)
                             }
-                        } else {
-                            val idx = tabs.indexOfFirst { it.id == activeTab.id }
-                            if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
-                        }
-                    } catch (_: Exception) {
-                        try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
-                        val idx = tabs.indexOfFirst { it.id == activeTab.id }
-                        if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
+                        } catch (_: Exception) {}
+                    } else {
+                        if (current.path !in diskWriteFailedPaths.value) diskWriteFailedPaths.value += current.path
+                        NotificationStore.add("Save failed", "Disk write failed for ${current.name} — changes kept in editor", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
                     }
-                    formatting = false
-                } else {
-                    // Format on Save disabled — just save the file
-                    try { File(activeTab.path).writeText(activeTab.content); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
+                }
+            } else {
+                // Format on Save disabled — typed write, identical semantics to Ctrl+S.
+                if (writeTabToDisk(activeTab.path, activeTab.content)) {
+                    if (activeTab.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= activeTab.path
                     val idx = tabs.indexOfFirst { it.id == activeTab.id }
                     if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
+                    FileCache.invalidate(activeTab.path)
+                    try {
+                        val saveUri = LspManager.fileUriFromHostPath(context, activeTab.path)
+                        if (saveUri != null && LspManager.isServerRunning(activeTab.language)) {
+                            LspManager.didSave(activeTab.language, saveUri, activeTab.content)
+                        }
+                    } catch (_: Exception) {}
+                } else {
+                    if (activeTab.path !in diskWriteFailedPaths.value) diskWriteFailedPaths.value += activeTab.path
+                    NotificationStore.add("Save failed", "Disk write failed for ${activeTab.name} — changes kept in editor", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
                 }
-                // Notify LSP that the file was saved
-                try {
-                    val saveUri = LspManager.fileUriFromHostPath(context, activeTab.path)
-                    if (saveUri != null && LspManager.isServerRunning(activeTab.language)) {
-                        LspManager.didSave(activeTab.language, saveUri, activeTab.content)
-                    }
-                } catch (_: Exception) {}
             }
         }
     }
@@ -309,9 +353,14 @@ fun EditorPane(
     val saveCurrentFile: () -> Unit = {
         val activeTab = resolveActiveTab(activeId, tabs)
         if (activeTab != null && activeTab.path.startsWith("/")) {
-            // G01 (P1): typed save — dirty clears ONLY on verified persistence; a failed
-            // write keeps the tab dirty, marks the path failed, and never tells LSP "saved".
-            if (writeTabToDisk(activeTab.path, activeTab.content)) {
+            // G10 (P4b): format-on-save is ON → Ctrl+S takes the SAME format-then-save
+            // route as File>Save (formatOnSaveRoute++ above); the divergence where menu
+            // Save could change the text but Ctrl+S could not is closed.
+            if (ProjectSettingsStore.formatOnSaveEnabled.value) {
+                formatOnSaveRoute++
+            } else if (writeTabToDisk(activeTab.path, activeTab.content)) {
+                // G01 (P1): typed save — dirty clears ONLY on verified persistence; a failed
+                // write keeps the tab dirty, marks the path failed, and never tells LSP "saved".
                 if (activeTab.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= activeTab.path
                 val idx = tabs.indexOfFirst { it.id == activeTab.id }
                 if (idx >= 0) tabs[idx] = activeTab.copy(isDirty = false)
@@ -338,6 +387,8 @@ fun EditorPane(
     // below compares this against LspManager.getServerGeneration() to detect
     // in-place server restarts and re-send didOpen for open files of that language.
     val lspSeenServerGen = remember { mutableStateMapOf<com.codespace.ide.domain.Language, Int>() }
+    // LS03 (P4b): per-language on-demand restart throttle (epoch ms of last attempt).
+    val lspRestartLastAttempt = remember { java.util.concurrent.ConcurrentHashMap<com.codespace.ide.domain.Language, Long>() }
 
     // P24-2: LSP server teardown — stop all servers when EditorPane leaves composition
     DisposableEffect(Unit) {
@@ -349,63 +400,63 @@ fun EditorPane(
         }
     }
 
-    // Phase V-D: Clear lspOpenedFiles when a server dies unexpectedly.
-    // Without this, the stale lspOpenedFiles entries block didOpen on the new server
-    // after an auto-restart (the code thinks the file is already open on the server).
-    // This effect polls running servers and clears lspOpenedFiles for dead languages.
-    //
-    // FIX-A (dot-completion bug, 2026-09-05): while a server IS running, also watch its
-    // GENERATION. When a server restarts in place (idle-grace stop + restart, OOM kill
-    // auto-restart, multi-root re-init), the new process has NO documents open even
-    // though lspOpenedFiles still claims they are — Effect A never re-fires (its keys
-    // did not change), so every didChange silently goes to a document the server never
-    // received, and the server serves completions from stale/empty disk state. On a
-    // generation bump we re-send didOpen for every open tab of that language.
-    //
-    // FIX-C (dot-completion bug): the cleanup branch previously cleared entries ONLY
-    // for UNHEALTHY. Servers that pass through STOPPED (30s idle-grace stop, OOM kill,
-    // any restart cycle) left stale entries behind, which blocked didOpen on the
-    // replacement server. STOPPED now clears the same way UNHEALTHY always did.
+    // Phase V-D / FIX-A / FIX-C / LS11 (P4b): the 2s GEN-WATCH + POLL-CLEANUP loop is
+    // DELETED — it ran forever in EVERY editor instance (multiplying per split view)
+    // on a battery-constrained device. Two event-driven StateFlow collects replace it:
+    //   1. recoverySignal (PG02, P3c) — bumped on every non-READY→READY transition —
+    //      re-sends didOpen for open tabs whose GENERATION changed (FIX-A: a restarted-
+    //      in-place server has NO documents open though lspOpenedFiles claims they are).
+    //   2. serverStateSignal (LS11) — bumped on every real state transition — runs the
+    //      old cleanup ONCE per event: clear lspOpenedFiles when a language's server is
+    //      truly gone (STOPPED/UNHEALTHY/IDLE_CLOSE) while its tabs remain, so didOpen
+    //      re-sends when the server returns (FIX-C).
+    // Both StateFlows replay the current value on subscribe, so a fresh pane still runs
+    // one pass on mount — the old poll's first-pass behavior, preserved.
     LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(2000)
+        LspManager.recoverySignal.collect {
             for (lang in com.codespace.ide.domain.Language.entries) {
                 if (!LspManager.isSupported(lang)) continue
-                if (LspManager.isServerRunning(lang)) {
-                    // FIX-A: generation watch while the server is running
-                    val gen = LspManager.getServerGeneration(lang)
-                    val lastGen = lspSeenServerGen[lang]
-                    if (lastGen != null && lastGen != gen) {
-                        val langTabs = tabs.filter { it.language == lang }
-                        if (langTabs.isNotEmpty()) {
-                            com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] GEN-WATCH: " + lang.displayName + " generation " + lastGen + " -> " + gen + " — re-sending didOpen for " + langTabs.size + " open file(s)", "lsp")
-                            for (tab in langTabs) {
-                                val openUri = LspManager.fileUriFromHostPath(context, tab.path) ?: continue
-                                val openVersion = LspManager.nextDocumentVersion(openUri)
-                                withContext(Dispatchers.IO) {
-                                    try { LspManager.didOpen(lang, openUri, LspManager.languageId(lang), tab.content, openVersion) } catch (_: Exception) {}
-                                }
-                                lspOpenedFiles[tab.path] = true
+                if (!LspManager.isServerRunning(lang)) continue
+                val gen = LspManager.getServerGeneration(lang)
+                val lastGen = lspSeenServerGen[lang]
+                if (lastGen != null && lastGen != gen) {
+                    val langTabs = tabs.filter { it.language == lang }
+                    if (langTabs.isNotEmpty()) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] GEN-WATCH: " + lang.displayName + " generation " + lastGen + " -> " + gen + " — re-sending didOpen for " + langTabs.size + " open file(s)", "lsp")
+                        for (tab in langTabs) {
+                            val openUri = LspManager.fileUriFromHostPath(context, tab.path) ?: continue
+                            val openVersion = LspManager.nextDocumentVersion(openUri)
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    // LS02: honor didOpen's Boolean — a rejected send
+                                    // must NOT leave lspOpenedFiles claiming it is open.
+                                    val accepted = LspManager.didOpen(lang, openUri, LspManager.languageId(lang), tab.content, openVersion)
+                                    if (accepted) lspOpenedFiles[tab.path] = true else lspOpenedFiles.remove(tab.path)
+                                } catch (_: Exception) {}
                             }
                         }
                     }
-                    lspSeenServerGen[lang] = gen
-                } else if (lspOpenedFiles.values.any { it }) {
-                    // Server died — clear stale opened files state
-                    // Only clear if the server is truly gone (not just starting)
-                    val state = LspManager.getServerState(lang)
-                    if (state == com.codespace.ide.lsp.LspState.STOPPED || state == com.codespace.ide.lsp.LspState.UNHEALTHY) {
-                        // Check if any tab still has this language — if so, the server
-                        // will be restarted by Effect-A, and we need to re-open files
-                        val hasTabsForLang = tabs.any { it.language == lang }
-                        if (hasTabsForLang) {
-                            // FIX-C: STOPPED (idle-grace stop, OOM kill, restart cycle)
-                            // now clears the same way UNHEALTHY always did.
-                            lspOpenedFiles.entries.removeAll { e ->
-                                tabs.any { it.language == lang && it.path == e.key }
-                            }
-                            com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] POLL-CLEANUP: cleared stale lspOpenedFiles for " + lang.displayName + " (state=" + state + ") — didOpen will be re-sent when the server returns", "lsp")
+                }
+                lspSeenServerGen[lang] = gen
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        LspManager.serverStateSignal.collect {
+            for (lang in com.codespace.ide.domain.Language.entries) {
+                if (!LspManager.isSupported(lang)) continue
+                if (LspManager.isServerRunning(lang)) continue
+                if (!lspOpenedFiles.values.any { it }) continue
+                val state = LspManager.getServerState(lang)
+                if (state == com.codespace.ide.lsp.LspState.STOPPED || state == com.codespace.ide.lsp.LspState.UNHEALTHY || state == com.codespace.ide.lsp.LspState.IDLE_CLOSE) {
+                    val hasTabsForLang = tabs.any { it.language == lang }
+                    if (hasTabsForLang) {
+                        // FIX-C: STOPPED (idle-grace stop, OOM kill, restart cycle) now
+                        // clears the same way UNHEALTHY always did.
+                        lspOpenedFiles.entries.removeAll { e ->
+                            tabs.any { it.language == lang && it.path == e.key }
                         }
+                        com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] STATE-CLEANUP: cleared stale lspOpenedFiles for " + lang.displayName + " (state=" + state + ") — didOpen will be re-sent when the server returns", "lsp")
                     }
                 }
             }
@@ -1262,13 +1313,23 @@ fun EditorPane(
                                 if (result.success && result.formattedContent != null) {
                                     val idx2 = tabs.indexOfFirst { it.id == activeTab.id }
                                     if (idx2 >= 0) {
-                                        tabs[idx2] = activeTab.copy(content = result.formattedContent, isDirty = true)
-                                        if (activeTab.path.startsWith("/")) {
-                                            try { File(activeTab.path).writeText(result.formattedContent); FileCache.invalidate(activeTab.path) } catch (_: Exception) {}
+                                        if (activeTab.path.startsWith("/") && writeTabToDisk(activeTab.path, result.formattedContent)) {
+                                            // G09 (P4b): typed write — verified persistence, buffer matches disk.
+                                            tabs[idx2] = activeTab.copy(content = result.formattedContent, isDirty = false)
+                                            FileCache.invalidate(activeTab.path)
+                                            if (activeTab.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= activeTab.path
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                NotificationStore.add("Formatted", "Formatted & saved ✓ (${activeTab.language.displayName} formatter)", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
+                                            }
+                                        } else {
+                                            // G09: write FAILED — keep the formatted buffer dirty and say so honestly;
+                                            // the old code announced "Formatted ✓" with a swallowed write failure.
+                                            tabs[idx2] = activeTab.copy(content = result.formattedContent, isDirty = true)
+                                            if (activeTab.path !in diskWriteFailedPaths.value) diskWriteFailedPaths.value += activeTab.path
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                NotificationStore.add("Format saved?", "Formatted but the DISK WRITE FAILED for ${activeTab.name} — changes kept in editor (dirty)", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.NORMAL)
+                                            }
                                         }
-                                    }
-                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                        NotificationStore.add("Formatted", "Formatted ✓ (${activeTab.language.displayName} formatter)", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
                                     }
                                 } else {
                                     // P37-TEST4-FIX: surface the failure/no-op reason instead of silently doing nothing
@@ -1319,9 +1380,16 @@ fun EditorPane(
                                     val newContent = applyTextEdits(tab.content, edits)
                                     if (newContent != tab.content) {
                                         val idx = tabs.indexOfFirst { it.id == tab.id }
-                                        if (idx >= 0) tabs[idx] = tab.copy(content = newContent, isDirty = true)
-                                        if (tab.path.startsWith("/")) {
-                                            try { java.io.File(tab.path).writeText(newContent); FileCache.invalidate(tab.path) } catch (_: Exception) {}
+                                        if (tab.path.startsWith("/") && writeTabToDisk(tab.path, newContent)) {
+                                            // G09 (P4b): typed write — verified persistence.
+                                            if (idx >= 0) tabs[idx] = tab.copy(content = newContent, isDirty = false)
+                                            FileCache.invalidate(tab.path)
+                                            if (tab.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= tab.path
+                                        } else {
+                                            // G09: write FAILED — keep buffer dirty, announce honestly.
+                                            if (idx >= 0) tabs[idx] = tab.copy(content = newContent, isDirty = true)
+                                            if (tab.path !in diskWriteFailedPaths.value) diskWriteFailedPaths.value += tab.path
+                                            NotificationStore.add("Format saved?", "Formatted but the DISK WRITE FAILED for ${tab.name} — changes kept in editor (dirty)", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.NORMAL)
                                         }
                                     }
                                 }
@@ -1491,13 +1559,53 @@ fun EditorPane(
                         }
                         if (started && uri != null) {
                             delay(300)
-                            LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(uri))  // FIX-B: monotonic version
-                            lspOpenedFiles[snap.path] = true
+                            val accepted = LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(uri))  // FIX-B: monotonic version
+                            if (accepted) lspOpenedFiles[snap.path] = true  // LS02: mark only on an accepted send
                         }
                     }
                 }
             }
         }
+        // LS13 (P4b): diagnosticsSource (pylsp/pyright) and typescriptVersion (TS5/TS7)
+        // applied only on the NEXT startServer — a running server kept its old identity
+        // until it idled or died. Changing the setting now restarts the affected server
+        // immediately; the recoverySignal collect above re-sends didOpen for open tabs
+        // when the replacement reaches READY.
+        val lastAppliedDiagSource = remember { mutableStateOf(ProjectSettingsStore.diagnosticsSource.value) }
+        LaunchedEffect(ProjectSettingsStore.diagnosticsSource.value) {
+            val current = ProjectSettingsStore.diagnosticsSource.value
+            if (current == lastAppliedDiagSource.value) return@LaunchedEffect  // initial fire — no change
+            lastAppliedDiagSource.value = current
+            if (!ProjectSettingsStore.lspEnabled.value) return@LaunchedEffect
+            val pyLang = com.codespace.ide.domain.Language.PYTHON
+            if (LspManager.isServerRunning(pyLang)) {
+                AppOutputLog.log("[LSP] diagnosticsSource changed — restarting Python server with the new source", "lsp")
+                LspManager.stopServer(pyLang)
+                if (projectRootPath != null) {
+                    withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                        LspManager.startServer(context, pyLang, projectRootPath, projectId)
+                    }
+                }
+            }
+        }
+        val lastAppliedTsVersion = remember { mutableStateOf(ProjectSettingsStore.typescriptVersion.value) }
+        LaunchedEffect(ProjectSettingsStore.typescriptVersion.value) {
+            val current = ProjectSettingsStore.typescriptVersion.value
+            if (current == lastAppliedTsVersion.value) return@LaunchedEffect  // initial fire — no change
+            lastAppliedTsVersion.value = current
+            if (!ProjectSettingsStore.lspEnabled.value) return@LaunchedEffect
+            for (lang in listOf(com.codespace.ide.domain.Language.TYPESCRIPT, com.codespace.ide.domain.Language.JAVASCRIPT)) {
+                if (!LspManager.isServerRunning(lang)) continue
+                AppOutputLog.log("[LSP] typescriptVersion changed — restarting ${lang.displayName} server with the new version", "lsp")
+                LspManager.stopServer(lang)
+                if (projectRootPath != null) {
+                    withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                        LspManager.startServer(context, lang, projectRootPath, projectId)
+                    }
+                }
+            }
+        }
+
         // P22-G / LSP-FIX: Split into two effects.
         // Effect A: keyed on (id, language) ONLY — starts the server and sends didOpen.
         // NOT keyed on content: prevents keystroke-triggered recomposition from cancelling
@@ -1506,8 +1614,10 @@ fun EditorPane(
             val snap = active ?: return@LaunchedEffect
             // BUG-7 FIX: Show informational note for unsupported languages instead of silent no-op
             if (!LspManager.isSupported(snap.language)) {
+                // LS12 (P4b): the old comment claimed JSON/XML/Markdown/Shell have no
+                // server — but configs INCLUDE JSON, HTML and CSS servers; the drift
+                // misled triage. Support is decided by configs alone, not this list.
                 // Language has no LSP server configured — keyword-only completion is used.
-                // Common unsupported: JSON, XML, Markdown, Shell (no standard LSP for these in proot)
                 AppOutputLog.log("[LSP] No LSP server configured for ${snap.language.displayName} — keyword completion only", "lsp")
                 return@LaunchedEffect
             }
@@ -1548,14 +1658,29 @@ fun EditorPane(
             } else {
                 AppOutputLog.log("[LSP] Effect-A: ${snap.language.displayName} server already running — skipping startServer", "lsp")
             }
-            if (LspManager.isServerRunning(snap.language)) {
+            if (LspManager.isServerProcessAlive(snap.language)) {
                 delay(300)
                 if (lspOpenedFiles[snap.path] != true) {
                     android.util.Log.d("LspTrigger", "LSP Effect-A: sending didOpen for ${snap.path}")
                     AppOutputLog.log("[LSP] Effect-A: sending didOpen for ${snap.path.substringAfterLast('/')}", "lsp")
-                    LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(uri))  // FIX-B: monotonic version
-                    lspOpenedFiles[snap.path] = true
-                    AppOutputLog.log("[LSP] Effect-A: didOpen complete for ${snap.path.substringAfterLast('/')}", "lsp")
+                    // LS02 (P4b): honor didOpen's Boolean. The old code marked the file
+                    // OPENED no matter what — a server mid-initialize REJECTS didOpen,
+                    // so the tab was stranded on a server instance that never saw it
+                    // (no completions/diagnostics until a restart or tab re-key). Wait
+                    // (bounded) for the other trigger's initialize, mark only on accept.
+                    var accepted = false
+                    var waitedMs = 0
+                    while (!accepted && waitedMs < 30_000 && LspManager.isServerProcessAlive(snap.language)) {
+                        accepted = LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(uri))  // FIX-B: monotonic version
+                        if (!accepted) { delay(500); waitedMs += 500 }
+                    }
+                    if (accepted) {
+                        lspOpenedFiles[snap.path] = true
+                        AppOutputLog.log("[LSP] Effect-A: didOpen complete for ${snap.path.substringAfterLast('/')}", "lsp")
+                    } else {
+                        // Honest outcome — did NOT mark opened; next tab switch re-fires Effect-A.
+                        AppOutputLog.log("[LSP] Effect-A: didOpen NOT accepted for ${snap.path.substringAfterLast('/')} within 30s (server died or still initializing) — not marking opened, will retry on next tab change", "lsp")
+                    }
                 }
             }
         }
@@ -1573,7 +1698,32 @@ fun EditorPane(
         LaunchedEffect(active?.id, active?.content) {
             val snap = active ?: return@LaunchedEffect
             if (!LspManager.isSupported(snap.language)) return@LaunchedEffect
-            if (!LspManager.isServerRunning(snap.language)) return@LaunchedEffect
+            if (!LspManager.isServerRunning(snap.language)) {
+                // LS03 (P4b): idle auto-close (or a crash) stops the server while this
+                // tab's keys never change, so Effect A never re-fires — typing silently
+                // degraded to LOCAL-ONLY IntelliSense until a tab switch. The first
+                // didChange that finds no server restarts it ON DEMAND, throttled to
+                // one attempt per language per 15s so a broken install cannot loop.
+                if (projectRootPath != null) {
+                    val now = System.currentTimeMillis()
+                    val lastAttempt = lspRestartLastAttempt[snap.language] ?: 0L
+                    if (now - lastAttempt > 15_000) {
+                        lspRestartLastAttempt[snap.language] = now
+                        AppOutputLog.log("[LSP] No ${snap.language.displayName} server running (idle-closed or crashed) — restarting on demand", "lsp")
+                        val restarted = withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                            LspManager.startServer(context, snap.language, projectRootPath, projectId)
+                        }
+                        if (restarted) {
+                            val reopenUri = LspManager.fileUriFromHostPath(context, snap.path)
+                            if (reopenUri != null) {
+                                val accepted = LspManager.didOpen(snap.language, reopenUri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(reopenUri))
+                                if (accepted) lspOpenedFiles[snap.path] = true  // LS02: mark only on accept
+                            }
+                        }
+                    }
+                }
+                return@LaunchedEffect
+            }
             if (lspOpenedFiles[snap.path] != true) return@LaunchedEffect
             val uri = LspManager.fileUriFromHostPath(context, snap.path) ?: return@LaunchedEffect
             delay(150)  // PHASE-B/B3: MUST stay below completion debounce+delay (~220ms)
@@ -1581,10 +1731,16 @@ fun EditorPane(
             // unlike the old clock-derived value which could interleave out-of-order.
             val version = LspManager.nextDocumentVersion(uri)
             withContext(Dispatchers.IO) {
-                LspManager.didChange(snap.language, uri, snap.content, version)
-                lspLastEffectBVersion[uri] = version
-                lspLastEffectBContentLen[uri] = snap.content.length
-                AppOutputLog.log("[LSP-VERSION-DIAG] Effect-B sent: uri=" + uri + " version=" + version + " contentLen=" + snap.content.length, "lsp")
+                val sent = LspManager.didChange(snap.language, uri, snap.content, version)
+                if (sent) {
+                    lspLastEffectBVersion[uri] = version
+                    lspLastEffectBContentLen[uri] = snap.content.length
+                    AppOutputLog.log("[LSP-VERSION-DIAG] Effect-B sent: uri=" + uri + " version=" + version + " contentLen=" + snap.content.length, "lsp")
+                } else {
+                    // LS10: didChange failed (server dead or write lost) — do NOT record
+                    // the version as sent; the server is analyzing stale content.
+                    AppOutputLog.log("[LSP] Effect-B: didChange NOT accepted for ${snap.path.substringAfterLast('/')} — server content is stale, retrying on next edit", "lsp")
+                }
             }
         }
         // GAP-9 FIX: Diagnostics subscription belongs in its own stable effect, NOT in the

@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 internal fun EditorViewStateEffects(
     /** PAD-1/2: view id (tab path or split id). Gates only the scroll-lock work upstream. */
     viewKey: String?,
+    filePath: String? = null,
     /** PERSIST-A: mount-restore — 0-based first visible line (0 = top / none). */
     initialScrollLine: Int,
     /** PERSIST-A: mount-restore — cursor char offset (-1 = leave selection alone). */
@@ -107,11 +108,11 @@ internal fun EditorViewStateEffects(
     }
 
     // ── FIND: persist query + toggles so the find bar reopens where it was left.
+    // G08 (P4b): saved PER FILE (canonical-keyed entry) — file A's find query no
+    // longer overwrites file B's; the global slot stays as last-used default.
+    val liveFilePath by rememberUpdatedState(filePath)
     LaunchedEffect(findQuery, useRegex, caseSensitive, wholeWord) {
-        EditorFindState.query = findQuery
-        EditorFindState.useRegex = useRegex
-        EditorFindState.caseSensitive = caseSensitive
-        EditorFindState.wholeWord = wholeWord
-        EditorFindState.persist()
+        EditorFindState.saveFor(liveFilePath, EditorFindState.FindSnapshot(
+            findQuery, caseSensitive, wholeWord, useRegex))
     }
 }

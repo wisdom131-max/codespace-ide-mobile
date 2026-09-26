@@ -265,7 +265,7 @@ private fun LocalSnapshotsSection(
                                 try {
                                     snap.copyTo(File(filePath), overwrite = true)
                                     com.codespace.ide.chat.PendingChangesStore.discard(filePath)
-                                    com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore()
+                                    com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore(filePath)  // G02: record the restored path so the open tab refreshes
                                     com.codespace.ide.data.NotificationStore.add(
                                         "Restore", "Restored ${File(filePath).name} ✓",
                                         com.codespace.ide.data.NotificationStore.Severity.SUCCESS,

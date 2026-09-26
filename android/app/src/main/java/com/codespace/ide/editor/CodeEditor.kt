@@ -1013,7 +1013,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // R2-1/R2-2: Undo/redo manager — snapshot-based O(1) undo/redo stack.
     // MUST be declared before EVERY reference: the keyboard toolbar handler,
     // and the content LaunchedEffect's R6 chat-apply undo gate below.
-    val snapshotUndo = remember { com.codespace.ide.editor.undo.SnapshotUndoManager() }
+    // G06 (P4b): undo history is PER FILE (canonical key), not per mounted view —
+    // split views of one file share ONE SnapshotUndoManager, so undo works across
+    // panes like VS Code's per-model undo. Untitled buffers keep a view-local stack.
+    val snapshotUndo = remember(currentFilePath) {
+        com.codespace.ide.editor.undo.SharedFileUndo.forFile(currentFilePath)
+    }
 
     suspend fun externalContentSync(newText: String, reason: String) {
         val oldText = value.text
@@ -1886,15 +1891,20 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // PERSIST-A: query + toggles seed from the persistent EditorFindState store
     // and write back on change, so the find bar reopens where you left it
     // (VS Code keeps find state across restarts).
-    var findQuery by remember { mutableStateOf(EditorFindState.query) }
-    var replaceQuery by remember { mutableStateOf("") }
-    var useRegex by remember { mutableStateOf(EditorFindState.useRegex) }
-    var caseSensitive by remember { mutableStateOf(EditorFindState.caseSensitive) }
-    var wholeWord by remember { mutableStateOf(EditorFindState.wholeWord) }
+    // G08 (P4b): find query + toggles are seeded PER FILE (keyed on the path) —
+    // remember(path) re-seeds on tab switch, so file A's query no longer leaks
+    // into file B; a file with no stored entry falls back to the global last-used
+    // state. Replaces the single global seed.
+    var findQuery by remember(currentFilePath) { mutableStateOf(EditorFindState.snapshotFor(currentFilePath).query) }
+    var replaceQuery by remember(currentFilePath) { mutableStateOf("") }
+    var useRegex by remember(currentFilePath) { mutableStateOf(EditorFindState.snapshotFor(currentFilePath).useRegex) }
+    var caseSensitive by remember(currentFilePath) { mutableStateOf(EditorFindState.snapshotFor(currentFilePath).caseSensitive) }
+    var wholeWord by remember(currentFilePath) { mutableStateOf(EditorFindState.snapshotFor(currentFilePath).wholeWord) }
     // 64KB EXTRACTION (#2790): ALL PAD-2/PERSIST-A effects live in
     // EditorViewStateEffects.kt — one call, zero inline effect bodies here.
     EditorViewStateEffects(
         viewKey = viewKey,
+        filePath = currentFilePath,
         initialScrollLine = initialScrollLine,
         initialCursorOffset = initialCursorOffset,
         onViewStateCapture = onViewStateCapture,

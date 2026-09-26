@@ -918,6 +918,11 @@ fun ProjectShellScreen(
             val wsPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId)
             if (wsPath != null) {
                 FileIndexer.startIndexing(wsPath, indexerScope)
+                // SR08 (P4b): the incremental FileIndexer watcher EXISTED but NO call
+                // site started it — symbols went stale until reindex/reopen. Started
+                // alongside the project-open index; its initial snapshot + 5s mtime
+                // sweep keeps the index current as files change on disk.
+                FileIndexer.startFileWatcher(wsPath, indexerScope)
             }
         }
     }
@@ -1085,7 +1090,9 @@ fun ProjectShellScreen(
             "Auto Save"          -> { showNotification("Auto Save toggled", "info") }
             "New File"           -> { activePanel = SidePanel.EXPLORER; triggerNewFileCounter++ }
             "New Folder"         -> { activePanel = SidePanel.EXPLORER; triggerNewFolderCounter++ }
-            "Save"               -> { showNotification("File saved", "success") }
+            // SR09 (P4b): the duplicate "Save" arm here was DELETED — it sat BEFORE the
+            // real "Save" arm below and shadowed it, so the placebo notification ran and
+            // the real formatOnSaveTrigger++ route was unreachable code.
             "About Visual Node Code" -> { showNotification("VN Code v1.0.0 — VS Code for Android", "info") }
             "Documentation"      -> { showNotification("Opening docs...", "info") }
             "Keyboard Shortcuts" -> { showCommandPalette = true }
@@ -1191,7 +1198,10 @@ fun ProjectShellScreen(
                 terminalEnhancements.restoreProfile()
                 showNotification("Shell profile restored", "success")
             }
-            "Save" -> { formatOnSaveTrigger++; showNotification("File saved ✓", "success") }
+            // G10 (P4b): the instant "File saved ✓" lied — the typed save in EditorPane
+            // now reports honestly (silence on success, an ERROR notification on a failed
+            // disk write; dirty clears only on verified persistence).
+            "Save" -> { formatOnSaveTrigger++ }
             // P35-NOTIF: Notification commands — wired to NotificationStore
             "Notifications: Toggle Do Not Disturb" -> {
                 NotificationStore.toggleDoNotDisturb()
@@ -1649,13 +1659,18 @@ fun ProjectShellScreen(
                 activeFilePath = activeEditorTab ?: "",
                 onJumpToSource = { file, line ->
                     // P26-1: Navigate to source file and line
+                    // G05 (P4b): BOTH callers of this seam send 0-based lines —
+                    // DebugStackFrame.line (adapters convert DAP 1-based → 0-based)
+                    // and DebugBreakpoint.line (gutter 0-based per BAND-DIAG). The
+                    // scrollTargetLine seam is 1-BASED; the old raw pass landed
+                    // call-stack and breakpoint jumps ONE LINE EARLY.
                     if (file.isNotBlank()) {
                         val path = file
                         if (path !in editorTabs) {
                             editorTabs.add(path)
                         }
                         activeEditorTab = path
-                        scrollTargetLine = line
+                        scrollTargetLine = line + 1
                     }
                 },
                 // BUG-6 FIX: Run file without debugger — sends run command to terminal
@@ -1859,8 +1874,11 @@ fun ProjectShellScreen(
             if (showSymbolSearch) {
                 SymbolSearchOverlay(
                     activeEditorTab = activeEditorTab,
-                    onNavigate = { filePath ->
+                    onNavigate = { filePath, line ->
                         activeEditorTab = filePath
+                        // SR05: merged results are 1-based lines — the SAME scroll
+                        // target the @-palette uses (scrollTargetLine), not dropped.
+                        if (line > 0) scrollTargetLine = line
                         showBottomPanel = false
                         showSymbolSearch = false
                     },
@@ -2312,7 +2330,7 @@ private fun PssOverlays(
                             // ">" prefix → command search (VS Code style)
                             val cmdQuery = commandQuery.removePrefix(">")
                             val filtered = listOf(
-                                "New File", "New Folder", "Save File", "Open File",
+                                "New File", "New Folder", "Save", "Open File",
                                 "Toggle Sidebar", "Toggle Terminal", "Toggle Zen Mode", "Select Color Theme",
                                 "Go to File", "Find in Files", "Run Program", "Split Terminal",
                                 "Explorer", "Search", "Source Control", "Run & Debug", "Extensions",
@@ -2332,7 +2350,16 @@ private fun PssOverlays(
                                     Row(
                                         Modifier.fillMaxWidth()
                                             .background(if (item == filtered.firstOrNull() && cmdQuery.isNotEmpty()) CmdSelectedBg.copy(alpha = 0.2f) else Color.Transparent)
-                                            .clickable { handleMenuAction(item); onShowCommandPaletteChange(false); onCommandQueryChange("") }
+                                            .clickable {
+                                            handleMenuAction(item)
+                                            // SR09 (P4b): palette-opening commands stay open — the old
+                                            // unconditional close made tapping "Go to File" a no-op that
+                                            // only dismissed the palette (it was already open).
+                                            if (item != "Go to File" && item != "Keyboard Shortcuts" && item != "Preferences" && item != "Color Theme" && item != "Change Color Theme") {
+                                                onShowCommandPaletteChange(false)
+                                                onCommandQueryChange("")
+                                            }
+                                        }
                                             .padding(horizontal = 16.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
@@ -2344,17 +2371,26 @@ private fun PssOverlays(
                             // Phase V-FIX (Test 54): No prefix → file search (VS Code Ctrl+P style)
                             val fileQuery = commandQuery.lowercase()
                             val projectDir = java.io.File(projectRoot)
-                            val matchedFiles = remember(commandQuery) {
-                                if (fileQuery.isBlank() || !projectDir.exists()) emptyList()
-                                else {
-                                    try {
-                                        projectDir.walkTopDown()
-                                            .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") }
-                                            .filter { it.name.lowercase().contains(fileQuery) || it.path.substringAfter(projectDir.absolutePath).lowercase().contains(fileQuery) }
-                                            .take(50)
-                                            .map { it.absolutePath }
-                                            .toList()
-                                    } catch (_: Exception) { emptyList() }
+                            // SR10 (P4b): the walkTopDown() ran on the UI thread inside
+                            // remember{} during COMPOSITION — a keystroke could stall the
+                            // frame while the palette enumerated the project tree. The
+                            // scan now runs on Dispatchers.IO and publishes into state;
+                            // LaunchedEffect keys make a newer keystroke supersede it.
+                            var matchedFiles by remember { mutableStateOf<List<String>>(emptyList()) }
+                            LaunchedEffect(commandQuery) {
+                                if (fileQuery.isBlank() || !projectDir.exists()) {
+                                    matchedFiles = emptyList()
+                                } else {
+                                    matchedFiles = withContext(Dispatchers.IO) {
+                                        try {
+                                            projectDir.walkTopDown()
+                                                .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") }
+                                                .filter { it.name.lowercase().contains(fileQuery) || it.path.substringAfter(projectDir.absolutePath).lowercase().contains(fileQuery) }
+                                                .take(50)
+                                                .map { it.absolutePath }
+                                                .toList()
+                                        } catch (_: Exception) { emptyList() }
+                                    }
                                 }
                             }
                             LazyColumn(Modifier.heightIn(max = 260.dp)) {
@@ -3770,8 +3806,11 @@ private fun PssBottomPanelContent(
                         todos = todoItems,
                         onJumpToSource = { file, line ->
                             // Open file and jump to line
+                            // G05 (P4b): the line was DROPPED here — a TODO tap opened
+                            // the file but never jumped. TodoItem.line is 1-based (idx+1
+                            // in PowerUserAnalyzer), so it routes to the 1-based seam raw.
                             val fullPath = projectRoot?.let { java.io.File(it, file).absolutePath }
-                            if (fullPath != null) onOpenFile(fullPath)
+                            if (fullPath != null) onJumpToSourceWithPath(fullPath, line)
                         },
                     )
                 }
@@ -4251,7 +4290,10 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
 @Composable
 private fun SymbolSearchOverlay(
     activeEditorTab: String?,
-    onNavigate: (String) -> Unit,
+    // SR05 (P4b): carries the LINE — the old (String) -> Unit dropped it before the
+    // shell navigation, so a workspace-symbol jump opened the file but never moved
+    // the viewport/cursor (the @-palette route preserved it; the two now agree).
+    onNavigate: (String, Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     Box(
@@ -4267,8 +4309,8 @@ private fun SymbolSearchOverlay(
                 .clickable { /* consume click */ }
         ) {
             SymbolSearchPanel(
-                onNavigate = { filePath, _ ->
-                    onNavigate(filePath)
+                onNavigate = { filePath, line ->
+                    onNavigate(filePath, line)
                 },
                 onDismiss = onDismiss,
                 activeFilePath = activeEditorTab,

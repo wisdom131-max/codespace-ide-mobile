@@ -20,6 +20,15 @@ import androidx.compose.runtime.setValue
  * FeatureToggleStore.init (lateinit prefs + lazy state seeding).
  */
 object EditorFindState {
+
+    /** Immutable per-file find configuration (G08). */
+    data class FindSnapshot(
+        val query: String,
+        val caseSensitive: Boolean,
+        val wholeWord: Boolean,
+        val useRegex: Boolean,
+    )
+
     private const val PREFS = "editor_find_state"
     private lateinit var prefs: SharedPreferences
 
@@ -32,6 +41,45 @@ object EditorFindState {
     var caseSensitive by mutableStateOf(false)
     var wholeWord by mutableStateOf(false)
     var useRegex by mutableStateOf(false)
+
+    // G08 (P4b): the store was ONE global slot — every file shared the last query
+    // and toggles, so closing file A's find bar leaked its query into file B (VS
+    // Code keys find state per editor MODEL). Entries are now keyed by the
+    // canonical path; the global vars remain as the untitled-buffer default and
+    // cross-file "last used" seed.
+    private fun fileKey(path: String?, field: String): String =
+        field + "@" + com.codespace.ide.util.CanonicalPaths.canonicalKey(path ?: "")
+
+    /** Per-file snapshot, falling back to the global last-used state. */
+    fun snapshotFor(path: String?): FindSnapshot {
+        if (path.isNullOrBlank() || !::prefs.isInitialized) {
+            return FindSnapshot(query, caseSensitive, wholeWord, useRegex)
+        }
+        val q = prefs.getString(fileKey(path, KEY_QUERY), null) ?: query
+        val c = if (prefs.contains(fileKey(path, KEY_CASE))) prefs.getBoolean(fileKey(path, KEY_CASE), false) else caseSensitive
+        val w = if (prefs.contains(fileKey(path, KEY_WORD))) prefs.getBoolean(fileKey(path, KEY_WORD), false) else wholeWord
+        val r = if (prefs.contains(fileKey(path, KEY_REGEX))) prefs.getBoolean(fileKey(path, KEY_REGEX), false) else useRegex
+        return FindSnapshot(q ?: "", c, w, r)
+    }
+
+    /** Persist the per-file entry (and refresh the global last-used defaults). */
+    fun saveFor(path: String?, snapshot: FindSnapshot) {
+        query = snapshot.query
+        caseSensitive = snapshot.caseSensitive
+        wholeWord = snapshot.wholeWord
+        useRegex = snapshot.useRegex
+        if (!::prefs.isInitialized || path.isNullOrBlank()) {
+            persist()
+            return
+        }
+        prefs.edit()
+            .putString(fileKey(path, KEY_QUERY), snapshot.query)
+            .putBoolean(fileKey(path, KEY_CASE), snapshot.caseSensitive)
+            .putBoolean(fileKey(path, KEY_WORD), snapshot.wholeWord)
+            .putBoolean(fileKey(path, KEY_REGEX), snapshot.useRegex)
+            .apply()
+        persist()
+    }
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

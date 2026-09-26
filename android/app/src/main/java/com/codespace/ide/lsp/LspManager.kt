@@ -753,6 +753,15 @@ object LspManager {
         serverStates[language] ?: LspState.STOPPED
 
     // Phase V-A: Set server state with structured logging (Section N)
+    // LS11 (P4b): event-driven state signal — every editor used to run its OWN 2s
+    // POLL-CLEANUP loop over all languages forever (the loop multiplied per split
+    // editor instance on a battery-constrained device). Editors now collect this
+    // StateFlow; setServerState bumps it on every real transition. StateFlow replays
+    // the current value to new subscribers, so a fresh pane still runs one cleanup
+    // pass on mount (the old poll's first-pass behavior, preserved).
+    private val _serverStateSignal = MutableStateFlow(0)
+    val serverStateSignal: StateFlow<Int> get() = _serverStateSignal
+
     private fun setServerState(language: Language, newState: LspState, extra: String = "") {
         val oldState = serverStates[language] ?: LspState.STOPPED
         serverStates[language] = newState
@@ -765,6 +774,7 @@ object LspManager {
             AppOutputLog.log("$LSP_LOG_TAG ${language.displayName} reconnected, recovery counter: $lspRecoveryCounter", "lsp")
         }
         if (oldState != newState) {
+            _serverStateSignal.value = _serverStateSignal.value + 1
             val server = servers[language]
             val gen = server?.generation ?: 0
             val pid = server?.let { getProcessPid(it.process) }?.toString() ?: "N/A"
@@ -870,7 +880,15 @@ object LspManager {
 
     fun isSupported(language: Language): Boolean = configs.containsKey(language)
 
+    // LS02 (P4b): "running" now means USABLE — alive AND initialized. The old check
+    // was process.isAlive only, so callers mid-initialize believed the server was
+    // ready, sent didOpen (rejected — didOpen requires initialized), and then marked
+    // the file as opened anyway. Stray request paths also no longer race the init.
     fun isServerRunning(language: Language): Boolean =
+        servers[language]?.let { it.process.isAlive && it.initialized } ?: false
+
+    /** LS02: raw process liveness, for bounded wait loops (initialize may still be in flight). */
+    fun isServerProcessAlive(language: Language): Boolean =
         servers[language]?.let { it.process.isAlive } ?: false
 
     /**
@@ -1300,7 +1318,23 @@ object LspManager {
         return stdlibReady && scriptOk
     }
 
-    fun startServer(context: Context, language: Language, workspacePath: String, projectId: String? = null): Boolean {
+    // LS09 (P4b): the lifecycle lock — handleAutoRestart ran on a raw thread while
+    // Effect A / master-toggle startServer ran on coroutines, and both passed the
+    // "existing healthy?" check concurrently: two installs, two server processes,
+    // one leaking. All lifecycle mutations serialize on this lock now (reentrant —
+    // startServer calls stopServer internally on the same thread).
+    private val lifecycleLock = Any()
+
+    // LS09: auto-restarts serialize on ONE thread — concurrent restart attempts for
+    // the same or different languages can no longer interleave teardown with spawn.
+    private val restartExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "LSP-Restart")
+    }
+
+    fun startServer(context: Context, language: Language, workspacePath: String, projectId: String? = null): Boolean =
+        synchronized(lifecycleLock) { startServerLocked(context, language, workspacePath, projectId) }
+
+    private fun startServerLocked(context: Context, language: Language, workspacePath: String, projectId: String): Boolean {
         lastProjectId = projectId
         // Master LSP toggle — when disabled, skip all LSP servers, use fallback completions only
         if (!ProjectSettingsStore.lspEnabled.value) {
@@ -1352,6 +1386,21 @@ object LspManager {
             return true
         }
         if (existing != null) {
+            if (existing.process.isAlive && !existing.initialized) {
+                // LS02: another trigger's initialize is IN FLIGHT for this language.
+                // Killing it (the old behavior) forced a full reinstall; wait for it.
+                AppOutputLog.log("[LSP] ${language.displayName} server is mid-initialize — waiting for it instead of killing it", "lsp")
+                var waitedMs = 0
+                while (existing.process.isAlive && !existing.initialized && waitedMs < 60_000) {
+                    try { Thread.sleep(250) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
+                    waitedMs += 250
+                }
+                if (existing.initialized) {
+                    setServerState(language, LspState.READY, "reuse after init wait")
+                    AppOutputLog.log("[LSP] ${language.displayName} server finished initializing — reusing", "lsp")
+                    return true
+                }
+            }
             AppOutputLog.log("[LSP] ${language.displayName} server found but dead (isAlive=${existing.process.isAlive}) — restarting", "lsp")
             stopServer(language)
         }
@@ -1630,6 +1679,42 @@ object LspManager {
                 else -> type
             }
             AppOutputLog.log("[LSP][${language.displayName}][logMsg] [$typeLabel] $msg", "lsp")
+        }
+
+        // LS07 (P4b): server user-messages and long-operation progress were invisible —
+        // only publishDiagnostics and window/logMessage had handlers. showMessage and
+        // $/progress now surface in the LSP output channel; showMessageRequest ANSWERS
+        // the server (null = no action selected — the spec's cancel) instead of hanging
+        // it; workDoneProgress/create is accepted so the server may stream progress.
+        client.onNotification("window/showMessage") { params ->
+            val type = params.optString("type", "3")
+            val msg = params.optString("message", "")
+            val typeLabel = when (type) { "1" -> "ERROR"; "2" -> "WARN"; else -> "INFO" }
+            AppOutputLog.log("[LSP][${language.displayName}][showMessage] [$typeLabel] $msg", "lsp")
+            if (type == "1") {
+                notifyLspEvent(language, "server_message", NotificationStore.Severity.WARNING, msg)
+            }
+        }
+        client.onRequest("window/showMessageRequest") { params, respond ->
+            val msg = params.optString("message", "")
+            AppOutputLog.log("[LSP][${language.displayName}][showMessageRequest] server asked the user: '$msg' — answering null (no action)", "lsp")
+            respond(null)
+        }
+        client.onRequest("window/workDoneProgress/create") { _, respond ->
+            AppOutputLog.log("[LSP][${language.displayName}] workDoneProgress created — accepting", "lsp")
+            respond(JSONObject())
+        }
+        client.onNotification("$/progress") { params ->
+            val value = params.optJSONObject("value") ?: JSONObject()
+            val token = params.optString("token", "")
+            val kind = value.optString("kind", "")
+            val message = value.optString("message", "")
+            val pct = if (value.has("percentage")) " ${value.optInt("percentage")}%" else ""
+            when (kind) {
+                "begin" -> AppOutputLog.log("[LSP][${language.displayName}][progress] BEGIN ${value.optString("title", "")}$pct ${message}", "lsp")
+                "report" -> AppOutputLog.log("[LSP][${language.displayName}][progress] ${token.take(12)}$pct ${message}", "lsp")
+                "end" -> AppOutputLog.log("[LSP][${language.displayName}][progress] END ${message}", "lsp")
+            }
         }
 
         client.start()
@@ -2116,22 +2201,29 @@ object LspManager {
 
         setServerState(language, LspState.RESTARTING, "attempt $nextRestartCount")
 
-        Thread {
+        // LS09: restarts run on the serialized restartExecutor (one thread for ALL
+        // languages) and the teardown holds the lifecycle lock, so a restart can no
+        // longer interleave with a concurrent startServer's spawn/register section.
+        restartExecutor.execute {
             try {
                 Thread.sleep(delayMs)
                 // Check if we were interrupted (e.g., user closed the tab during backoff)
                 if (getServerState(language) == LspState.STOPPED) {
                     lifecycleLog("RESTART lang=${language.displayName} — cancelled during backoff (server stopped)")
-                    return@Thread
+                    return@execute
                 }
                 // Phase V-C: Update backoff before restart attempt
                 restartBackoffs[language] = backoff.increment()
-                // Phase V-D: Save tracked documents before restart
-                val savedDocs = servers[language]?.trackedDocuments?.let { HashMap(it) } ?: emptyMap()
-                // Clean up old server
-                servers.remove(language)?.let { old ->
-                    old.client.stop()
-                    old.process.destroyForcibly()
+                // Phase V-D: Save tracked documents before restart (under lock)
+                val savedDocs = synchronized(lifecycleLock) {
+                    val docs: HashMap<String, TrackedDocument> =
+                        servers[language]?.trackedDocuments?.let { HashMap(it) } ?: HashMap()
+                    // Clean up old server
+                    servers.remove(language)?.let { old ->
+                        old.client.stop()
+                        old.process.destroyForcibly()
+                    }
+                    docs
                 }
                 lifecycleLog("REINITIALIZE lang=${language.displayName}")
                 // Restart the server
@@ -2151,10 +2243,6 @@ object LspManager {
             } catch (_: InterruptedException) {
                 lifecycleLog("RESTART lang=${language.displayName} — interrupted during backoff")
             }
-        }.apply {
-            isDaemon = true
-            name = "LSP-Restart-${language.displayName}"
-            start()
         }
     }
 
@@ -2303,7 +2391,11 @@ object LspManager {
      */
     fun getIdleTimeoutMs(): Long = idleTimeoutSeconds
 
-    fun stopServer(language: Language) {
+    // LS09: stopServer shares the lifecycle lock — teardown can no longer interleave
+    // with a concurrent startServer's spawn/register section.
+    fun stopServer(language: Language): Unit = synchronized(lifecycleLock) { stopServerLocked(language) }
+
+    private fun stopServerLocked(language: Language) {
         val server = servers.remove(language) ?: return
         // Phase V-A: Transition to STOPPING
         setServerState(language, LspState.STOPPING)
@@ -2379,7 +2471,13 @@ object LspManager {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
         val params = LspDocumentSync.buildDidOpenParams(uri, languageId, text, version)
-        server.client.notify("textDocument/didOpen", params)
+        val sendOutcome = server.client.notifyOutcome("textDocument/didOpen", params)
+        if (!sendOutcome) {
+            // LS10: didOpen write failures were invisible — the tab was believed open
+            // on the server while it had never received the document.
+            AppOutputLog.log("[LSP] didOpen WRITE FAILED for $uri — server never received the document", "lsp")
+            return false
+        }
         trackDocument(language, uri, languageId, text, version)
         touchActivity(language)
         val contentPreview = if (text.length > 80) text.take(40) + "..." + text.takeLast(40) else text
@@ -2396,8 +2494,25 @@ object LspManager {
     ): Boolean {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
-        val params = LspDocumentSync.buildDidChangeParams(uri, text, version)
-        server.client.notify("textDocument/didChange", params)
+        // LS04 (P4b): every didChange resent the WHOLE buffer — O(file size) per 150ms
+        // typing window on-device. If the server declares incremental sync (change
+        // kind 2) and we know what it last received, send ONE minimal range edit
+        // (common-prefix/suffix trim) instead; full-text form stays the fallback and
+        // is always spec-valid.
+        var params = LspDocumentSync.buildDidChangeParams(uri, text, version)
+        if (LspDocumentSync.declaredSyncKind(server.capabilities) == 2) {
+            val oldText = server.trackedDocuments[uri]?.content
+            if (oldText != null && oldText != text) {
+                params = LspDocumentSync.buildIncrementalDidChangeParams(uri, oldText, text, version)
+            }
+        }
+        val sendOutcome = server.client.notifyOutcome("textDocument/didChange", params)
+        if (!sendOutcome) {
+            // LS10: a failed didChange write used to vanish — the server now analyzes
+            // stale content while the editor believes it is current.
+            AppOutputLog.log("[LSP] didChange WRITE FAILED for $uri (version=$version) — server content is stale", "lsp")
+            return false
+        }
         updateTrackedDocument(language, uri, text, version)
         touchActivity(language)
         val contentPreview = if (text.length > 80) text.take(40) + "..." + text.takeLast(40) else text
@@ -2501,9 +2616,10 @@ object LspManager {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
         val params = LspDocumentSync.buildDidCloseParams(uri)
-        server.client.notify("textDocument/didClose", params)
+        // LS10: didClose write failures were swallowed — server kept a stale document open.
+        val sent = server.client.notifyOutcome("textDocument/didClose", params)
         untrackDocument(language, uri)
-        return true
+        return sent
     }
 
     // ── LSP requests ───────────────────────────────────────────────
@@ -2638,6 +2754,9 @@ object LspManager {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
 
+        // LS05: gate on advertised capability — completion/hover/codeAction already
+        // gate; an unrequested definition call is the documented crash class (pylsp).
+        if (!hasCapability(language, "definitionProvider")) return null
         val params = positionParams(uri, line, character)
         val response = server.client.request("textDocument/definition", params, timeoutSeconds = 10)
         return when (response) {
@@ -2661,6 +2780,8 @@ object LspManager {
         // BUG-5 FIX (restored): pylsp crashes with KeyError: 'includeDeclaration' if this field
         // is missing — it's required per the LSP spec, not optional as some servers treat it.
         params.put("context", JSONObject().put("includeDeclaration", true))
+        // LS05: capability gate (referencesProvider)
+        if (!hasCapability(language, "referencesProvider")) return null
         val response = server.client.request("textDocument/references", params, timeoutSeconds = 10)
         return when (response) {
             null -> null
@@ -2786,6 +2907,8 @@ object LspManager {
     ): JSONObject? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        // LS05: capability gate (renameProvider — may be boolean or an object)
+        if (!hasCapability(language, "renameProvider")) return null
         val params = positionParams(uri, line, character)
         params.put("newName", newName)
         val response = server.client.request("textDocument/rename", params, timeoutSeconds = 15)
@@ -2808,6 +2931,8 @@ object LspManager {
         val params = JSONObject().apply {
             put("textDocument", JSONObject().apply { put("uri", uri) })
         }
+        // LS05: capability gate (documentSymbolProvider)
+        if (!hasCapability(language, "documentSymbolProvider")) return null
         val response = server.client.request("textDocument/documentSymbol", params, timeoutSeconds = 10)
         return response as? JSONArray
     }
@@ -2964,6 +3089,8 @@ object LspManager {
                 put("insertSpaces", insertSpaces)
             })
         }
+        // LS05: capability gate (documentRangeFormattingProvider)
+        if (!hasCapability(language, "documentRangeFormattingProvider")) return null
         val response = server.client.request("textDocument/rangeFormatting", params, timeoutSeconds = 10)
         return response as? JSONArray
     }
@@ -2989,6 +3116,8 @@ object LspManager {
                 put("tabSize", tabSize)
                 put("insertSpaces", insertSpaces)
             })
+        // LS05: capability gate (documentOnTypeFormattingProvider)
+        if (!hasCapability(language, "documentOnTypeFormattingProvider")) return null
         val response = server.client.request("textDocument/onTypeFormatting", params, timeoutSeconds = 5)
         return response as? JSONArray
     }
@@ -3177,6 +3306,8 @@ object LspManager {
     ): JSONObject? {
         val server = servers[language] ?: return null
         if (!server.initialized) return null
+        // LS05: prepareRename is only meaningful with renameProvider — gate on it.
+        if (!hasCapability(language, "renameProvider")) return null
         val params = positionParams(uri, line, character)
         val response = server.client.request("textDocument/prepareRename", params, timeoutSeconds = 5)
         return response as? JSONObject
@@ -3494,11 +3625,16 @@ object LspManager {
         // not the standard "inlayHintProvider" path. Check both.
         if (!hasCapability(language, "inlayHintProvider") &&
             !hasCapability(language, "experimental.inlayHintProvider")) return null
+        // LS14 (P4b): the range ended at line Int.MAX_VALUE — some servers clamp,
+        // some reject, and whole-file hints blew the budget. Clamp to the ACTUAL
+        // tracked document line count (fall back to 10k — never MAX_VALUE).
+        val trackedText = server.trackedDocuments[uri]?.content
+        val endLine = trackedText?.let { t -> t.count { c -> c == '\n' } + 1 } ?: 10_000
         val params = JSONObject().apply {
             put("textDocument", JSONObject().apply { put("uri", uri) })
             put("range", JSONObject().apply {
                 put("start", JSONObject().apply { put("line", 0); put("character", 0) })
-                put("end", JSONObject().apply { put("line", Int.MAX_VALUE); put("character", 0) })
+                put("end", JSONObject().apply { put("line", endLine); put("character", 0) })
             })
         }
         val response = server.client.request("textDocument/inlayHint", params, timeoutSeconds = 5)
@@ -3525,8 +3661,8 @@ object LspManager {
             put("textDocument", JSONObject().apply { put("uri", uri) })
             put("text", content)
         }
-        server.client.notify("textDocument/didSave", params)
-        return true
+        // LS10: didSave write failures were swallowed — server kept validating stale content.
+        return server.client.notifyOutcome("textDocument/didSave", params)
     }
 
     // ── P41-M: Call Hierarchy ──────────────────────────────────────────────
