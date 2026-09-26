@@ -378,6 +378,9 @@ fun ExplorerSidePanel(
     var contextFile   by remember { mutableStateOf<File?>(null) }
     var showCtxMenu   by remember { mutableStateOf(false) }
     var showHistoryDialog  by remember { mutableStateOf(false) }
+    // SG03 (P4g): armed restore target in the Local History dialog — restore is
+    // a confirmed action now, not an instant overwrite.
+    var historyRestoreTarget by remember { mutableStateOf<java.io.File?>(null) }
     var historyFile        by remember { mutableStateOf<File?>(null) }
     var historySnapshots   by remember { mutableStateOf<List<File>>(emptyList()) }
     var historyProjectDir  by remember { mutableStateOf<File?>(null) }
@@ -2401,38 +2404,9 @@ fun ExplorerSidePanel(
                                     Text(ts, fontSize = 12.sp, color = TextColor)
                                     Text("${sizeKb}KB", fontSize = 10.sp, color = MutedColor)
                                 }
-                                TextButton(onClick = {
-                                    scope.launch {
-                                        // REQUIRED assertion (plan v3 cond. 1): the snapshot
-                                        // must live under .versionhistory/v2/<rel of THIS file>/,
-                                        // else do NOTHING (no copy, dialog stays open).
-                                        val ok = withContext(Dispatchers.IO) {
-                                            com.codespace.ide.util.VersionHistoryV2.isSnapshotOf(historyProjectDir, hFile.absolutePath, snap)
-                                        }
-                                        if (!ok) return@launch
-                                        // B-beta (C4): mirror TimelinePanel's restore — discard any
-                                        // staged AI buffer for this file, then bumpExternalRestore()
-                                        // so open editors refresh (the dialog previously copied the
-                                        // file while the open tab kept showing the OLD content).
-                                        // SG02 (P1): copy FIRST, discard the staged overlay only AFTER
-                                        // the restore is verified — the old order dropped the overlay
-                                        // even when the copy failed, losing staged content and leaving
-                                        // disk stale with NO error. Typed outcome: success closes the
-                                        // dialog; failure keeps it open + ERROR notification.
-                                        try {
-                                            withContext(Dispatchers.IO) { snap.copyTo(hFile, overwrite = true) }
-                                            com.codespace.ide.chat.PendingChangesStore.discard(hFile.absolutePath)
-                                            com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore(hFile.absolutePath)  // G02: record the restored path so the open tab refreshes
-                                            showHistoryDialog = false
-                                            refresh++
-                                        } catch (e: Exception) {
-                                            NotificationStore.add(
-                                                "Restore failed", "Could not restore ${hFile.name}: ${e.message} — file unchanged",
-                                                NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE,
-                                                priority = NotificationStore.Priority.HIGH)
-                                        }
-                                    }
-                                }) { Text("Restore", fontSize = 11.sp, color = IconColor) }
+                                // SG03 (P4g): tap ARMS the confirmation below — the old
+                                // tap overwrote the working file instantly.
+                                TextButton(onClick = { historyRestoreTarget = snap }) { Text("Restore", fontSize = 11.sp, color = IconColor) }
                             }
                             HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
                         }
@@ -2442,6 +2416,68 @@ fun ExplorerSidePanel(
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { showHistoryDialog = false }) { Text("Close") } }
+        )
+    }
+
+    // SG03 (P4g): Local History restore confirmation — restore replaces the
+    // working file's CURRENT content; the confirmed restore captures that
+    // current content as a new snapshot first, so the restore can be undone.
+    if (historyRestoreTarget != null && historyFile != null) {
+        val hFile = historyFile!!
+        val snap = historyRestoreTarget!!
+        AlertDialog(
+            onDismissRequest = { historyRestoreTarget = null },
+            shape = RoundedCornerShape(12.dp),
+            title = { Text("Restore snapshot?", fontSize = 13.sp) },
+            text = {
+                Text(
+                    "Restoring replaces the current content of ${hFile.name} with this snapshot.\n\nA snapshot of the CURRENT content is saved first, so this restore can be undone from Local History.",
+                    fontSize = 12.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    historyRestoreTarget = null
+                    scope.launch {
+                        // REQUIRED assertion (plan v3 cond. 1): the snapshot
+                        // must live under .versionhistory/v2/<rel of THIS file>/,
+                        // else do NOTHING (no copy, dialog stays open).
+                        val ok = withContext(Dispatchers.IO) {
+                            com.codespace.ide.util.VersionHistoryV2.isSnapshotOf(historyProjectDir, hFile.absolutePath, snap)
+                        }
+                        if (!ok) return@launch
+                        // SG03 (P4g): safety capture FIRST — the CURRENT content becomes
+                        // the newest restorable entry, so the overwrite can be undone.
+                        withContext(Dispatchers.IO) {
+                            com.codespace.ide.util.VersionHistoryV2.captureSnapshot(historyProjectDir, hFile.absolutePath)
+                        }
+                        // B-beta (C4): mirror TimelinePanel's restore — discard any
+                        // staged AI buffer for this file, then bumpExternalRestore()
+                        // so open editors refresh (the dialog previously copied the
+                        // file while the open tab kept showing the OLD content).
+                        // SG02 (P1): copy FIRST, discard the staged overlay only AFTER
+                        // the restore is verified — the old order dropped the overlay
+                        // even when the copy failed, losing staged content and leaving
+                        // disk stale with NO error. Typed outcome: success closes the
+                        // dialog; failure keeps it open + ERROR notification.
+                        try {
+                            withContext(Dispatchers.IO) { snap.copyTo(hFile, overwrite = true) }
+                            com.codespace.ide.chat.PendingChangesStore.discard(hFile.absolutePath)
+                            com.codespace.ide.chat.PendingChangesStore.bumpExternalRestore(hFile.absolutePath)  // G02: record the restored path so the open tab refreshes
+                            showHistoryDialog = false
+                            refresh++
+                        } catch (e: Exception) {
+                            NotificationStore.add(
+                                "Restore failed", "Could not restore ${hFile.name}: ${e.message} — file unchanged",
+                                NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE,
+                                priority = NotificationStore.Priority.HIGH)
+                        }
+                    }
+                }) { Text("Restore", fontSize = 11.sp, color = IconColor) }
+            },
+            dismissButton = {
+                TextButton(onClick = { historyRestoreTarget = null }) { Text("Cancel", fontSize = 11.sp) }
+            },
         )
     }
 

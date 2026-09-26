@@ -35,7 +35,9 @@ class ScmState(private val context: Context) {
      */
     suspend fun loadStatus(hostPath: String): ScmRepoState? = withContext(Dispatchers.IO) {
         val workdir = resolveWorkdir(hostPath) ?: return@withContext null
-        if (!service.isRepo(workdir)) return@withContext null
+        // SG07 (P4g): the isRepo pre-spawn is gone — the single porcelain call
+        // (GitService.status) returns null for a non-repo itself. 2 spawns per
+        // refresh (was 7: isRepo + 6 inside status).
         service.status(workdir)
     }
 

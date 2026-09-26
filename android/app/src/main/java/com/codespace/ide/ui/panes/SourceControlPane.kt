@@ -125,13 +125,75 @@ fun SourceControlPane(
     var discardTarget by remember { mutableStateOf<ScmFileStatus?>(null) }
 
     // ── Load status ──
-    fun refresh() {
+    fun refresh(silent: Boolean = false) {
         scope.launch {
-            operation = ScmOperation.Loading("Loading...")
+            // SG06 (P4g): silent refreshes (auto-refresh below) must NOT flip the
+            // pane into the Loading spinner — the list stays visible until the
+            // new state lands; only a manual Refresh shows progress.
+            if (!silent) operation = ScmOperation.Loading("Loading...")
             val state = scmState.loadStatus(hostPath)
             repoState = state
             isRepo = state != null
-            operation = ScmOperation.Idle
+            if (!silent) operation = ScmOperation.Idle
+        }
+    }
+
+    // ── SG06 (P4g): auto-refresh — the pane was refresh-on-open + after its own
+    // operations only, so editor saves, Explorer deletes, chat apply and terminal
+    // git left branch/ahead-behind/change counts stale until a manual Refresh.
+    // (1) Event-driven: a FileObserver on the host-side .git dir catches every
+    //     git-side state change (terminal git, ops from other surfaces) —
+    //     debounced 500ms, gated while an operation runs (our own ops refresh).
+    // (2) VISIBLE-ONLY 30s ticker: worktree edits (save/delete/apply) never touch
+    //     .git, so the observer cannot see them; with SG07's 2-spawn status a
+    //     visible-only periodic refresh is cheap. Both effects live only while
+    //     the GIT side panel is composed — nothing polls while hidden.
+    val observerHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    val pendingRefresh = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+
+    fun refreshDebounced() {
+        if (pendingRefresh.getAndSet(true)) return
+        observerHandler.postDelayed({
+            pendingRefresh.set(false)
+            if (operation is ScmOperation.Idle && isRepo == true) refresh(silent = true)
+        }, 500L)
+    }
+
+    val gitDir = remember(hostPath) { hostPath?.let { java.io.File(it, ".git") } }
+    DisposableEffect(gitDir, isRepo) {
+        val dir = gitDir
+        if (isRepo != true || dir == null || !dir.isDirectory) {
+            return@DisposableEffect onDispose { }
+        }
+        val observer = object : android.os.FileObserver(
+            dir.absolutePath,
+            android.os.FileObserver.MODIFY or android.os.FileObserver.CREATE or android.os.FileObserver.MOVED_TO
+        ) {
+            override fun onEvent(event: Int, path: String?) {
+                // Only .git bookkeeping matters (index, HEAD, refs, packed-refs, locks).
+                val p = path ?: return
+                if (p == "index" || p == "HEAD" || p.startsWith("refs") ||
+                    p.startsWith("packed-refs") || p.endsWith(".lock")) {
+                    // FileObserver callbacks arrive on its own thread — hop to main.
+                    observerHandler.post {
+                        if (operation is ScmOperation.Idle) refreshDebounced()
+                    }
+                }
+            }
+        }
+        observer.startWatching()
+        onDispose {
+            observer.stopWatching()
+            observerHandler.removeCallbacksAndMessages(null)
+        }
+    }
+
+    LaunchedEffect(hostPath, isRepo) {
+        // SG06 (P4g): visible-only worktree ticker (see the SG06 comment block) —
+        // the coroutine is cancelled the moment the pane leaves composition.
+        while (true) {
+            kotlinx.coroutines.delay(30_000)
+            if (operation is ScmOperation.Idle && isRepo == true) refresh(silent = true)
         }
     }
 
@@ -516,6 +578,10 @@ fun SourceControlPane(
             FileChangesList(
                 repoState = repoState,
                 showHidden = showHidden,
+                // SG15 (P4g): the inline +/− icons and row taps are gated while an
+                // operation runs (rapid double-tap race family — same gate as the
+                // handlers above).
+                actionsEnabled = operation is ScmOperation.Idle,
                 onDiscard = { file -> discardTarget = file },
                 onResolveConflict = { file ->
                     if (operation !is ScmOperation.Idle) {
@@ -539,30 +605,44 @@ fun SourceControlPane(
                     }
                 },
                 onStage = { file ->
-                    scope.launch {
-                        operation = ScmOperation.Staging(listOf(file))
-                        val (ok, msg) = scmState.stageFiles(hostPath, listOf(file))
-                        snackbarMsg = msg
-                        operation = ScmOperation.Idle
-                        if (ok) refresh()
+                    // SG15 (P4g): operation pre-check — rapid double-taps used to
+                    // spawn concurrent gits racing on .git/index.lock.
+                    if (operation !is ScmOperation.Idle) {
+                        snackbarMsg = "Wait for current operation to finish"
+                    } else {
+                        scope.launch {
+                            operation = ScmOperation.Staging(listOf(file))
+                            val (ok, msg) = scmState.stageFiles(hostPath, listOf(file))
+                            snackbarMsg = msg
+                            operation = ScmOperation.Idle
+                            if (ok) refresh()
+                        }
                     }
                 },
                 onStageAll = {
-                    scope.launch {
-                        operation = ScmOperation.Staging(emptyList())
-                        val (ok, msg) = scmState.stageAll(hostPath)
-                        snackbarMsg = msg
-                        operation = ScmOperation.Idle
-                        if (ok) refresh()
+                    if (operation !is ScmOperation.Idle) {
+                        snackbarMsg = "Wait for current operation to finish"
+                    } else {
+                        scope.launch {
+                            operation = ScmOperation.Staging(emptyList())
+                            val (ok, msg) = scmState.stageAll(hostPath)
+                            snackbarMsg = msg
+                            operation = ScmOperation.Idle
+                            if (ok) refresh()
+                        }
                     }
                 },
                 onUnstage = { file ->
-                    scope.launch {
-                        operation = ScmOperation.Unstaging(listOf(file))
-                        val (ok, msg) = scmState.unstageFiles(hostPath, listOf(file))
-                        snackbarMsg = msg
-                        operation = ScmOperation.Idle
-                        if (ok) refresh()
+                    if (operation !is ScmOperation.Idle) {
+                        snackbarMsg = "Wait for current operation to finish"
+                    } else {
+                        scope.launch {
+                            operation = ScmOperation.Unstaging(listOf(file))
+                            val (ok, msg) = scmState.unstageFiles(hostPath, listOf(file))
+                            snackbarMsg = msg
+                            operation = ScmOperation.Idle
+                            if (ok) refresh()
+                        }
                     }
                 },
             )
@@ -1022,6 +1102,7 @@ private fun CommitInputSection(
 private fun FileChangesList(
     repoState: ScmRepoState?,
     showHidden: Boolean,
+    actionsEnabled: Boolean,
     onDiscard: (ScmFileStatus) -> Unit,
     onResolveConflict: (String) -> Unit,
     onShowDiff: (String) -> Unit,
@@ -1059,6 +1140,7 @@ private fun FileChangesList(
             SectionHeader("Conflicts (${visibleConflicted.size})", ConflictColor)
             visibleConflicted.forEach { file ->
                 FileRow(
+                    actionsEnabled = actionsEnabled,
                     file = file,
                     isStaged = false,
                     isConflicted = true,
@@ -1075,6 +1157,7 @@ private fun FileChangesList(
             SectionHeader("Staged Changes (${visibleStaged.size})", IconColor)
             visibleStaged.forEach { file ->
                 FileRow(
+                    actionsEnabled = actionsEnabled,
                     file = file,
                     isStaged = true,
                     isConflicted = false,
@@ -1106,14 +1189,15 @@ private fun FileChangesList(
                 if (visibleUnstaged.isNotEmpty()) {
                     Text(
                         "+ Stage All",
-                        color = IconColor,
+                        color = if (actionsEnabled) IconColor else MutedColor,
                         fontSize = 10.sp,
-                        modifier = Modifier.clickable { onStageAll() },
+                        modifier = Modifier.clickable(enabled = actionsEnabled) { onStageAll() },
                     )
                 }
             }
             visibleUnstaged.forEach { file ->
                 FileRow(
+                    actionsEnabled = actionsEnabled,
                     file = file,
                     isStaged = false,
                     isConflicted = false,
@@ -1125,6 +1209,7 @@ private fun FileChangesList(
             }
             visibleUntracked.forEach { file ->
                 FileRow(
+                    actionsEnabled = actionsEnabled,
                     file = file,
                     isStaged = false,
                     isConflicted = false,
@@ -1178,12 +1263,14 @@ private fun FileRow(
     onUnstage: () -> Unit,
     onShowDiff: (() -> Unit)? = null,
     onDiscard: (() -> Unit)? = null,
+    actionsEnabled: Boolean = true,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(if (isStaged) StagedBg else Color.Transparent)
             .combinedClickable(
+                enabled = actionsEnabled,  // SG15 (P4g): no concurrent stage/unstage
                 onClick = {
                     if (isConflicted) onStage()  // resolve conflict
                     else if (isStaged) onUnstage()
@@ -1235,14 +1322,14 @@ private fun FileRow(
                 Icons.Filled.Remove,
                 contentDescription = "Unstage",
                 tint = MutedColor,
-                modifier = Modifier.size(14.dp).clickable { onUnstage() },
+                modifier = Modifier.size(14.dp).clickable(enabled = actionsEnabled) { onUnstage() },
             )
         } else if (!isConflicted) {
             Icon(
                 Icons.Filled.Add,
                 contentDescription = "Stage",
                 tint = MutedColor,
-                modifier = Modifier.size(14.dp).clickable { onStage() },
+                modifier = Modifier.size(14.dp).clickable(enabled = actionsEnabled) { onStage() },
             )
         }
     }
@@ -1408,7 +1495,7 @@ private fun MergeBranchDialog(
 
 // ── Diff Viewer Dialog ──────────────────────────────────────────────────────
 @Composable
-private fun DiffViewerDialog(
+internal fun DiffViewerDialog(
     filePath: String,
     diff: ScmFileDiff?,
     onDismiss: () -> Unit,
@@ -1941,21 +2028,46 @@ private fun PublishDialog(
                         publishing = true
                         scope.launch {
                             try {
-                                // 1. Create repo on GitHub
-                                val cloneUrl = GitHubAuth.createRepo(token, repoName.trim(), repoDesc.trim(), isPrivate)
-                                // 2. Init local repo if not already
-                                val state = scmState.loadStatus(hostPath)
-                                if (state == null) {
+                                // SG10 (P4g): local-first sequencing + origin pre-check.
+                                // The old order created the GitHub repo FIRST and added
+                                // origin at step 3 — `remote add origin` throws when it
+                                // exists, aborting AFTER the GitHub repo was created
+                                // (orphan remote repo, no cleanup/reuse/honest message).
+                                // Now everything that can fail locally runs BEFORE the
+                                // GitHub call, and a pre-existing origin aborts upfront.
+                                // 1. Pre-check: an existing origin means Publish is the
+                                //    wrong action (Push is) — abort BEFORE creating
+                                //    anything on GitHub.
+                                val pre = scmState.loadStatus(hostPath)
+                                if (pre != null) {
+                                    val existing = scmState.remotes(hostPath).map { it.first }
+                                    if ("origin" in existing) {
+                                        publishing = false
+                                        onResult("This repository already has an 'origin' remote — Publish would orphan a new GitHub repo. Remove or rename it first, or use Push.")
+                                        return@launch
+                                    }
+                                }
+                                // 2. Init local repo if needed (before GitHub — a failure
+                                //    here orphans nothing)
+                                if (pre == null) {
                                     scmState.initRepo(hostPath)
                                 }
-                                // 3. Add remote origin
-                                scmState.addRemote(hostPath, "origin", cloneUrl)
-                                // 4. Stage and commit if there are changes
-                                val st = scmState.loadStatus(hostPath)
-                                if (st != null && (st.staged.isNotEmpty() || st.unstaged.isNotEmpty())) {
+                                // 3. Stage and commit the initial state if there are
+                                //    changes (untracked files are pending changes too —
+                                //    the old check ignored them and could push an empty
+                                //    repo when everything was untracked)
+                                val st = if (pre != null) pre else scmState.loadStatus(hostPath)
+                                if (st != null && (st.staged.isNotEmpty() || st.unstaged.isNotEmpty() || st.untracked.isNotEmpty())) {
                                     scmState.stageAllAndCommit(hostPath, "Initial commit")
                                 }
-                                // 5. Push
+                                // 4. Create repo on GitHub (the last failure point that can
+                                //    orphan — a 422 "name already exists" aborts before
+                                //    addRemote/push; nothing local is broken and the
+                                //    message names the cause)
+                                val cloneUrl = GitHubAuth.createRepo(token, repoName.trim(), repoDesc.trim(), isPrivate)
+                                // 5. Add remote origin (pre-checked absent)
+                                scmState.addRemote(hostPath, "origin", cloneUrl)
+                                // 6. Push
                                 val (pushOk, pushMsg) = scmState.push(hostPath)
                                 if (pushOk) {
                                     onResult("Published $repoName to GitHub!")

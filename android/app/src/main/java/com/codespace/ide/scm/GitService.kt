@@ -66,53 +66,71 @@ class GitService(private val context: Context) {
      * @return ScmRepoState or null if not a repo
      */
     fun status(workdir: String): ScmRepoState? {
-        // Branch + upstream + ahead/behind
-        val branchResult = GitCommandExecutor.run(context, listOf(
-            "rev-parse", "--abbrev-ref", "--symbolic-full-name", "HEAD"
-        ), workdir)
-        val branch = if (branchResult is GitResult.Ok) branchResult.output.trim() else "(unknown)"
+        // SG07 (P4g): ONE `status --porcelain -b` call now carries branch, upstream,
+        // ahead/behind AND file statuses — the old implementation ran SIX proot
+        // spawns per refresh (branch + upstream + rev-list + HEAD + porcelain, on
+        // top of the caller's isRepo = 7 total, multi-second on-device), which is
+        // also why auto-refresh (SG06) was never viable. --no-optional-locks: the
+        // status call must never write the index, so the SG06 FileObserver never
+        // reacts to our own refreshes and a refresh can never block a concurrent
+        // stage/commit on .git/index.lock.
+        val statusResult = GitCommandExecutor.run(context, listOf(
+            "--no-optional-locks", "status", "--porcelain", "-b"
+        ), workdir, timeoutSeconds = 30)
+        if (statusResult !is GitResult.Ok) return null  // not a repo / git error → honest null
 
-        // Check for detached HEAD
-        val isDetached = branch == "HEAD"
-
-        // Upstream tracking
-        val upstreamResult = GitCommandExecutor.run(context, listOf(
-            "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"
-        ), workdir)
-        val upstream = if (upstreamResult is GitResult.Ok) upstreamResult.output.trim() else null
-
-        // Ahead/behind counts
+        // ── Branch header ("## ...", always the first line) ──
+        // Shapes: "## main...origin/main [ahead 1, behind 2]" / "## main" /
+        // "## HEAD (no branch)" / "## No commits yet on main".
+        var branch = "(unknown)"
+        var upstream: String? = null
         var ahead = 0
         var behind = 0
-        if (upstream != null) {
-            val countResult = GitCommandExecutor.run(context, listOf(
-                "rev-list", "--left-right", "--count", "$upstream...HEAD"
-            ), workdir)
-            if (countResult is GitResult.Ok) {
-                val parts = countResult.output.trim().split(Regex("\\s+"))
-                if (parts.size >= 2) {
-                    behind = parts[0].toIntOrNull() ?: 0
-                    ahead = parts[1].toIntOrNull() ?: 0
+        var isDetached = false
+        val header = statusResult.output.lines().firstOrNull { it.startsWith("## ") } ?: ""
+        if (header.isNotEmpty()) {
+            val body = header.removePrefix("## ")
+            isDetached = body.startsWith("HEAD (no branch)")
+            if (isDetached) {
+                branch = "(detached HEAD)"
+            } else if (body.startsWith("No commits yet on ")) {
+                // Can ALSO carry tracking: "No commits yet on main...origin/main [gone]"
+                val rest = body.removePrefix("No commits yet on ")
+                val bStart = rest.indexOf(" [")
+                val tracking = if (bStart >= 0) rest.substring(0, bStart) else rest
+                val d = tracking.indexOf("...")
+                branch = if (d >= 0) tracking.substring(0, d).trim() else tracking.trim()
+            } else {
+                val bracketStart = body.indexOf(" [")
+                val trackingPart = if (bracketStart >= 0) body.substring(0, bracketStart) else body
+                val bracket = if (bracketStart >= 0) body.substring(bracketStart + 2, body.length - 1) else ""
+                val dots = trackingPart.indexOf("...")
+                if (dots >= 0) {
+                    branch = trackingPart.substring(0, dots).trim()
+                    upstream = trackingPart.substring(dots + 3).trim().ifBlank { null }
+                } else {
+                    branch = trackingPart.trim()
                 }
+                Regex("""\bahead (\d+)""").find(bracket)?.let { ahead = it.groupValues[1].toIntOrNull() ?: 0 }
+                Regex("""\bbehind (\d+)""").find(bracket)?.let { behind = it.groupValues[1].toIntOrNull() ?: 0 }
             }
         }
 
-        // HEAD commit hash
+        // HEAD commit hash — the one field porcelain does not carry (HistoryDialog
+        // HEAD badge + shell display); the single remaining extra spawn.
         val headResult = GitCommandExecutor.run(context, listOf("rev-parse", "--short", "HEAD"), workdir)
         val headCommit = if (headResult is GitResult.Ok) headResult.output.trim().ifBlank { null } else null
-
-        // File statuses via porcelain
-        val statusResult = GitCommandExecutor.run(context, listOf(
-            "status", "--porcelain"
-        ), workdir)
 
         val staged = mutableListOf<ScmFileStatus>()
         val unstaged = mutableListOf<ScmFileStatus>()
         val untracked = mutableListOf<ScmFileStatus>()
         val conflicted = mutableListOf<ScmFileStatus>()
 
+        // File statuses — the same v1 "XY path" records ScmFileStatus.parse has
+        // always consumed; the "## " header line is skipped.
         if (statusResult is GitResult.Ok) {
             for (line in statusResult.lines) {
+                if (line.startsWith("## ")) continue
                 val fs = ScmFileStatus.parse(line) ?: continue
                 when {
                     fs.isConflicted -> conflicted.add(fs)
@@ -197,7 +215,20 @@ class GitService(private val context: Context) {
      * @param workdir guest-side path to the repository
      */
     fun commit(message: String, workdir: String): GitResult {
-        ensureIdentity(workdir)
+        // SG14 (P4g): NO fabricated identity. If user.name/user.email are unset —
+        // or still hold the old silently-fabricated defaults — the SIGNED-IN
+        // account provides the real author (configured once, in place); not
+        // signed in → the commit fails honestly instead of misattributing it to
+        // a "VN Code User" that persists in git config forever.
+        when (val id = identityToConfigure(workdir)) {
+            is IdentityCheck.Configured -> {}
+            is IdentityCheck.Apply -> {
+                GitCommandExecutor.run(context, listOf("config", "user.name", id.name), workdir)
+                GitCommandExecutor.run(context, listOf("config", "user.email", id.email), workdir)
+            }
+            null -> return GitResult.Err(GitError.Unknown(
+                "Git identity not configured. Sign in (Settings) or run in the terminal: git config user.email you@example.com"))
+        }
         return GitCommandExecutor.run(
             context,
             listOf("commit", "-m", message),
@@ -250,9 +281,12 @@ class GitService(private val context: Context) {
      * Pull from upstream, merging into current branch.
      */
     fun pull(workdir: String): GitResult {
+        // SG13 (P4g): --ff-only — plain `git pull` silently created surprise merge
+        // commits on diverged branches. Pull now fast-forwards or fails honestly;
+        // diverged branches are the explicit Merge/Rebase buttons' job.
         return GitCommandExecutor.run(
             context,
-            listOf("pull"),
+            listOf("pull", "--ff-only"),
             workdir,
             timeoutSeconds = 120,
             token = token,
@@ -278,8 +312,12 @@ class GitService(private val context: Context) {
      * List all branches (local and remote).
      */
     fun branches(workdir: String): List<ScmBranch> {
+        // SG09 (P4g): refname:short collapses to "origin/feature/x", and the old
+        // `startsWith("origin/") || contains("/")` classified ANY local branch
+        // with a slash (feature/xyz, hotfix/abc) as a remote. The FULL refname is
+        // the actual discriminator — refs/remotes/ — remote-name agnostic.
         val result = GitCommandExecutor.run(context, listOf(
-            "branch", "-a", "--format=%(refname:short)|%(objectname)|%(upstream:short)"
+            "branch", "-a", "--format=%(refname)|%(refname:short)|%(objectname)|%(upstream:short)"
         ), workdir)
         if (result !is GitResult.Ok) return emptyList()
 
@@ -291,13 +329,13 @@ class GitService(private val context: Context) {
         return result.lines.mapNotNull { line ->
             val parts = line.split("|")
             if (parts.isEmpty() || parts[0].isBlank()) return@mapNotNull null
-            val name = parts[0].trim()
-            val upstream = parts.getOrNull(2)?.trim()?.ifBlank { null }
-            val isRemote = name.startsWith("origin/") || name.contains("/")
+            val fullRef = parts[0].trim()
+            val name = parts.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() } ?: fullRef
+            val upstream = parts.getOrNull(3)?.trim()?.ifBlank { null }
             ScmBranch(
                 name = name,
                 isCurrent = name == currentBranch,
-                isRemote = isRemote,
+                isRemote = fullRef.startsWith("refs/remotes/"),  // SG09 (P4g)
                 upstream = upstream,
             )
         }
@@ -347,7 +385,7 @@ class GitService(private val context: Context) {
         val result = GitCommandExecutor.run(context, baseArgs, execDir, timeoutSeconds = 30)
         if (result !is GitResult.Ok) return emptyList()
 
-        return result.lines.mapNotNull { line ->
+        val commits = result.lines.mapNotNull { line ->
             val parts = line.split("|", limit = 4)
             if (parts.size < 4) return@mapNotNull null
             ScmCommit(
@@ -355,9 +393,16 @@ class GitService(private val context: Context) {
                 author = parts[1].trim(),
                 date = parts[2].trim(),
                 message = parts[3].trim(),
-                isHead = false, // Could check if hash matches HEAD
+                isHead = false,
             )
         }
+        // SG13 (P4g): git log starts FROM HEAD, so with no file filter the first
+        // listed commit IS HEAD — the HistoryDialog badge was dead (hard-coded
+        // false since the dialog was written). With --follow (file filter) the
+        // first entry is the file's latest change, NOT HEAD — badge stays false.
+        return if (file == null && commits.isNotEmpty()) {
+            commits.toMutableList().also { it[0] = commits[0].copy(isHead = true) }
+        } else commits
     }
 
     // ── Diff ──────────────────────────────────────────────────────────────
@@ -392,6 +437,25 @@ class GitService(private val context: Context) {
         }
 
         return parseUnifiedDiff(path, result.output)
+    }
+
+    /**
+     * SG08 (P4g): diff of one file AT a given commit — the timeline git rows
+     * were inert (no tap action at all); this makes a row show what the commit
+     * changed in THIS file (`git show <hash> -- <path>`). The commit header
+     * (Author:/Date:/message) is sliced off before the shared parser — only
+     * the `diff --git` tail is a unified diff; a file untouched by the commit
+     * (or renamed away) yields an honest empty diff.
+     */
+    fun showFileAtCommit(hash: String, path: String, workdir: String): ScmFileDiff {
+        val result = GitCommandExecutor.run(context, listOf(
+            "show", "--unified=3", hash, "--", path
+        ), rootFor(workdir), timeoutSeconds = 30)
+        if (result !is GitResult.Ok) return ScmFileDiff(path = path, hunks = emptyList())
+        val raw = result.output
+        val idx = raw.indexOf("diff --git")
+        if (idx < 0) return ScmFileDiff(path = path, hunks = emptyList())
+        return parseUnifiedDiff(path, raw.substring(idx))
     }
 
     // ── Conflict detection ────────────────────────────────────────────────
@@ -515,27 +579,47 @@ class GitService(private val context: Context) {
      * Initialize a new git repository.
      */
     fun init(workdir: String): GitResult {
-        val result = GitCommandExecutor.run(context, listOf("init"), workdir, timeoutSeconds = 15)
-        if (result is GitResult.Ok) {
-            ensureIdentity(workdir)
-        }
-        return result
+        // SG14 (P4g): init no longer pre-writes an identity — commit() decides the
+        // author honestly at commit time (signed-in account, or typed failure).
+        return GitCommandExecutor.run(context, listOf("init"), workdir, timeoutSeconds = 15)
     }
 
+    // ── SG14 (P4g): honest commit identity ──────────────────────────────
+
+    /** SG14 (P4g): outcome of the commit-time identity check. */
+    private sealed class IdentityCheck {
+        object Configured : IdentityCheck()
+        data class Apply(val name: String, val email: String) : IdentityCheck()
+    }
+
+    /** The old silent fabrication (SG14 removed it; still detected + upgraded). */
+    private val fabricatedIdentityName = "VN Code User"
+    private val fabricatedIdentityEmail = "user@codespace.local"
+
     /**
-     * Ensure git user.name and user.email are configured.
-     * If not set, auto-configures sensible defaults so commits don't fail
-     * with "Author identity unknown" (Test 47 fix — unblocks Tests 48-56).
+     * SG14 (P4g): decide the commit identity honestly.
+     * - real identity already configured → leave it untouched (Configured)
+     * - unset OR holding the old fabricated defaults → apply the signed-in
+     *   account's identity (Apply) — the same in-place upgrade pattern as SK04's
+     *   legacy PIN migration
+     * - not signed in (or no email on the account) → null → the caller fails
+     *   with instructions instead of inventing an author.
      */
-    fun ensureIdentity(workdir: String) {
-        val nameResult = GitCommandExecutor.run(context, listOf("config", "user.name"), workdir)
-        if (nameResult !is GitResult.Ok || nameResult.output.isBlank()) {
-            GitCommandExecutor.run(context, listOf("config", "user.name", "VN Code User"), workdir)
-        }
-        val emailResult = GitCommandExecutor.run(context, listOf("config", "user.email"), workdir)
-        if (emailResult !is GitResult.Ok || emailResult.output.isBlank()) {
-            GitCommandExecutor.run(context, listOf("config", "user.email", "user@codespace.local"), workdir)
-        }
+    private fun identityToConfigure(workdir: String): IdentityCheck? {
+        val name = configValue("user.name", workdir)
+        val email = configValue("user.email", workdir)
+        val needsApply = name.isBlank() || email.isBlank() ||
+            name == fabricatedIdentityName || email == fabricatedIdentityEmail
+        if (!needsApply) return IdentityCheck.Configured
+        val user = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser ?: return null
+        val accountEmail = user.email ?: return null
+        val accountName = user.displayName?.takeIf { it.isNotBlank() } ?: accountEmail.substringBefore("@")
+        return IdentityCheck.Apply(accountName, accountEmail)
+    }
+
+    private fun configValue(key: String, workdir: String): String {
+        val r = GitCommandExecutor.run(context, listOf("config", key), workdir)
+        return if (r is GitResult.Ok) r.output.trim() else ""
     }
 
     /**
@@ -605,7 +689,9 @@ class GitService(private val context: Context) {
             // Diff header lines
             if (line.startsWith("diff --git")) continue  // skip
             if (line.startsWith("--- ")) {
-                if (line != "--- /dev/null") oldPath = line.removePrefix("--- ").removePrefix("b/")
+                // SG11 (P4g): the --- header carries the a/ prefix (not b/) —
+                // oldPath kept a bogus "a/" on every renamed diff.
+                if (line != "--- /dev/null") oldPath = line.removePrefix("--- ").removePrefix("a/")
                 continue
             }
             if (line.startsWith("+++ ")) continue

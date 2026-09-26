@@ -89,6 +89,31 @@ object VersionHistoryV2 {
     }
 
     /**
+     * SG03 (P4g): pre-restore safety capture. Both restore surfaces
+     * (TimelinePanel + the Local History dialog) call this BEFORE overwriting
+     * the working file, so the CURRENT content becomes the newest restorable
+     * timeline entry and the confirmed restore can itself be undone from the
+     * same list. Same stamp format as the 20s loop captures. A capture failure
+     * never blocks the confirmed restore — the snapshot list is best-effort,
+     * exactly like the loop.
+     */
+    fun captureSnapshot(root: File?, filePath: String): File? {
+        val dir = v2DirFor(root, filePath) ?: return null
+        return try {
+            val src = File(filePath)
+            if (!src.isFile) return null
+            val stamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US)
+                .format(java.util.Date())
+            val dst = File(dir, "${'$'}stamp.bak")
+            src.copyTo(dst, overwrite = true)
+            trimGrouped(dir)
+            dst
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
      * REQUIRED tap-time Restore assertion (plan v3 condition 1): the snapshot
      * must live under the v2 dir computed from THIS file, else the caller must
      * do NOTHING. Fail closed on any ambiguity.
