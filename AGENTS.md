@@ -61,6 +61,12 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 18:05 WAT] — TALLY-CORRERECTION PASS (docs-only, no code): P4b-DG was never folded into the running tally — true closed = 138/249, true remaining = 111
+
+**Owner query: the remaining-rows breakdown for session planning exposed an arithmetic drop. The P4b-DG batch closed 10 rows (DG01/03/05/06/07/09/10/12/13/14, dd5c975+d21b4ca, CI #2953 GREEN, 2026-09-26 09:40) but the NEXT entry (P4b2) computed its tally as 72+31=103 — the DG batch's +10 was not folded in, and every figure since (116 → 121 → 124 → 128, and every "remain" count derived from them) inherited the -10. TRUE chain: 53 → 60 → 66 → 72 → 82 (P4b-DG) → 113 (P4b2) → 126 (P4c) → 131 (P4d) → 134 (P4e) → 138 (P4f). True remaining: 111, not 121. Verified two independent ways: (1) the closure-chain sum above; (2) a full ledger re-count (249 rows in MASTER-GAPS incl. the single-letter G-series) minus the complete closed-ID set from the changelog = 111 open rows, group counts internally consistent with the P3d-era 189-remaining listing minus every closure since (78 rows). The 111 is the figure the owner's session planning uses. The P4b-DG entry itself was correct; only the running chain was wrong. Also noted: MASTER-GAPS closed-row annotations still lag for P1/P2/P3-series + P4b-DG rows (changelog remains source of truth) — annotation backfill is a bookkeeping item, not a blocker.**
+
+---
+
 ### [2026-09-26 16:10 WAT] — AI Agent: Claude Sonnet 5.6, P4f remaining-HIGH batch (SK04/SG01/PG01/VG03), Commits dcbfabe+1010814, CI #36250180894 GREEN
 
 **[P4f SHIPPED — the last four named HIGH rows. Two honesty-of-controls fixes (the PIN lock that said "secure" while brute-forcing in seconds; the staging UI that said "scoped" while sweeping everything), one performance defect confined (150ms whole-editor recomposition), one untrusted-input crash closed (OOM on malformed APK). Revertable as dcbfabe+1010814.]**
@@ -132,7 +138,7 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
   - **THE STANDING NOTE:** the historical signal-31/proot/IME crash attributions graduate from UNVERIFIED to checkable against real telemetry only after this forced-crash record lands — a native-signal forced crash (the signal-31 class) would additionally validate the native_crash_pending.txt path end-to-end.
 
 #### Roadmap (all pending items)
-- **P4:** 121 of 249 rows remain after this batch (ALL named HIGH now closed as of P4f: TP04/OG01/RG01 in P4e, SK04/SG01/PG01/VG03 in P4f; SK01/SK02 were stale listings, closed in P0). What remains is MEDIUM/LOW + backlog owner decisions — next P4 batches pick by group or the owner names a batch.
+- **P4:** 111 of 249 rows remain (CORRECTED 2026-09-26 evening — see the tally-correction entry below: the P4b-DG batch's 10 closures were never folded into the running tally, every figure from P4b2 onward was 10 low). ALL named HIGH closed as of P4f. Remaining: ~11 MEDIUM-sized group batches (TP/SG/SK/CH/PG/RG/VG/TM/IG + XG06-16 audit rows), 12 SMALL sweep rows (TG/OG/IM/EX/TB02), 4 LARGE feature-scale enablers (XG01-04, owner-decision territory).
 - **P5:** full device verification round (P2a-e, P3a-e, F1-F5, P4a-1/2, P4b DG + batch 2, P4c IC checks, P4d TB checks, this batch's TP04/OG01/RG01 checks — the TP04 install-report read and the RG01 first-organic-crash check are the two that close standing notes).
 - **Bookkeeping note:** MASTER-GAPS per-row CLOSED annotations still lag for P1/P2/P3-series and P4b-DG closures (TP04/OG01/RG01/SK01/SK02 rows are now annotated); changelog remains the source of truth.
 - **Backlog owner decisions:** F6 JVM debug; MK re-test after MK restructure; stdio-vs-TCP AgentApiServer; F01/F02/F09 feature decisions.
