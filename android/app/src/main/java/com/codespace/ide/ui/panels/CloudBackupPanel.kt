@@ -48,6 +48,10 @@ fun CloudBackupPanel(
     var confirmRestore by remember { mutableStateOf<String?>(null) }   // backup id awaiting confirm
 
     val authToken = tokenStore.lastAccessToken ?: ""
+    // RG09 (2026-09-26): an empty token used to produce opaque 401s from the backend.
+    // The panel now states the missing sign-in plainly (same phrasing as the connector
+    // surfaces) instead of failing with a bare auth error.
+    val signedOut = authToken.isBlank()
     val IconBlue  = Color(0xFF007ACC)
     val BgColor   = Color(0xFF1E1E1E)
     val CardBg    = Color(0xFF252526)
@@ -179,6 +183,13 @@ fun CloudBackupPanel(
                 }
 
                 // Status message
+                if (signedOut) {
+                    Text(
+                        "Not signed in to CodeSpace IDE \u2014 sign in first, then cloud backup becomes available.",
+                        fontSize = 12.sp,
+                        color = MutedColor,
+                    )
+                }
                 actionMsg?.let { msg ->
                     Text(
                         text = msg,

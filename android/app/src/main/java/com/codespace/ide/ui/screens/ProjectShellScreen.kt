@@ -1145,7 +1145,9 @@ fun ProjectShellScreen(
                     try {
                         val projectDir = com.codespace.ide.util.ProjectPathResolver.resolveProjectRootFile(context, projectId) ?: java.io.File(context.filesDir, "projects/$projectId")
                         val outFile = WorkspaceManager.createSnapshot(context, projectDir)
-                        snapshotMessage = "Saved to Downloads/CodespaceIDE/${outFile.name}"
+                        // RG12 (2026-09-26): snapshots are EXPORT-ONLY (there is no in-app restore yet);
+                        // the success message says so instead of implying an import path exists.
+                        snapshotMessage = "Saved to Downloads/CodespaceIDE/${outFile.name} - export-only (no in-app restore yet; unzip manually into the project folder to recover)."
                         showNotification("Snapshot created!", "success")
                     } catch (e: Exception) {
                         showNotification("Snapshot failed: ${e.message}", "error")

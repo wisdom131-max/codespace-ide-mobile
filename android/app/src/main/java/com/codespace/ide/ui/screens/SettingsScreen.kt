@@ -12,6 +12,8 @@ import android.net.Uri
 import androidx.biometric.BiometricManager
 import com.codespace.ide.ui.screens.PinRegistrationDialog
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -358,6 +360,33 @@ fun SettingsScreen(
             var backupStatus by remember { mutableStateOf("") }
             var backupRunning by remember { mutableStateOf(false) }
             var showRestoreConfirm by remember { mutableStateOf(false) }
+
+            // RG05 (2026-09-26): prompt surface — armed by BackupManager.onAppStart on
+            // version change, fresh-install restore, or a missing/stale (>7d) container
+            // backup. Container backup used to be manual-only: one forgotten button and
+            // a CI-rebuild uninstall wiped the whole Ubuntu container.
+            var backupPrompt by remember { mutableStateOf(BackupManager.containerPromptPending(context)) }
+            if (backupPrompt) {
+                ContainerBackupPromptBanner(
+                    onBackupNow = {
+                        BackupManager.setContainerPrompt(context, false)
+                        backupPrompt = false
+                        backupRunning = true
+                        scope.launch {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                BackupManager.backupPrefs(context)
+                                BackupManager.createBackup(context) { msg -> backupStatus = msg }
+                            }
+                            backupInfo = BackupManager.backupInfo()
+                            backupRunning = false
+                        }
+                    },
+                    onDismiss = {
+                        BackupManager.setContainerPrompt(context, false)
+                        backupPrompt = false
+                    },
+                )
+            }
 
             ListItem(
                 headlineContent = { Text("Ubuntu container (Node, ffmpeg, projects, etc.)") },
@@ -784,4 +813,32 @@ private fun DeletedProjectsSection(context: android.content.Context) {
         }
     }
     HorizontalDivider()
+}
+
+/**
+ * RG05 (2026-09-26): the container-backup prompt banner. Extracted to its own composable
+ * (JVM 64KB bytecode limit — no inline additions to the big SettingsScreen body).
+ */
+@Composable
+private fun ContainerBackupPromptBanner(onBackupNow: () -> Unit, onDismiss: () -> Unit) {
+    Surface(
+        tonalElevation = 2.dp,
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text("Container backup recommended", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "App updated, freshly installed, or the container backup is missing or older than a week. " +
+                    "Prefs and settings are backed up automatically; the Ubuntu container itself is not.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row {
+                TextButton(onClick = onBackupNow) { Text("Back up now") }
+                TextButton(onClick = onDismiss) { Text("Later") }
+            }
+        }
+    }
 }

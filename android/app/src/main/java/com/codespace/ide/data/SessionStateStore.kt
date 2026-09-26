@@ -19,7 +19,8 @@ import org.json.JSONObject
  *  - Active bottom tab
  *  - Bottom panel visibility
  *  - Editor font size
- *  - Terminal working directory
+ *  - Terminal working directory (COSMETIC-ONLY, RG11: cwd + last 50 commands —
+ *    terminal PROCESSES do not resume; consumers must not present this as a live session)
  *  - Last N terminal commands (per tab, capped at 50)
  *
  * Safety:

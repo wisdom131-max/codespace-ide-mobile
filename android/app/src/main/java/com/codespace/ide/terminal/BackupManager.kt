@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Environment
 import android.util.Log
 import java.io.File
+import org.xmlpull.v1.XmlPullParser
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
@@ -251,18 +252,93 @@ object BackupManager {
     }
 
     /**
-     * Backs up all relevant SharedPreferences files to /sdcard/CodespaceIDE/prefs-backup/
-     * so they survive an app uninstall. Called alongside createBackup().
-     * Prefs saved: "projects", "copilot_chat", "agent_memory" (from agent_memory/ dir),
-     * and the global app prefs file (com.codespace.ide_preferences.xml).
+     * RG05 (2026-09-26): called FIRST in CodeSpaceApplication.onCreate, before any store init.
+     *
+     * - If shared storage holds a prefs-backup but the LIVE prefs are empty (fresh install
+     *   after the forced uninstall of a CI rebuild, or wiped prefs), the backup is RESTORED
+     *   through the prefs API (RG06) so the first store load sees it — a backup must never
+     *   be overwritten with empty data.
+     * - Otherwise the prefs-backup is refreshed on EVERY start (a handful of small file
+     *   copies) — no more "one forgotten Settings tap loses everything".
+     * - The heavy CONTAINER backup stays manual (auto-tarring the rootfs on start would be
+     *   too heavy) but now PROMPTS via SettingsScreen: on version change, fresh-install
+     *   restore, or a missing/stale (>7 days) backup while a rootfs exists.
+     * Synchronous on purpose: it must complete before the first prefs/JSON store load.
+     */
+    fun onAppStart(context: Context) {
+        val dest = File(backupDir(), "prefs-backup")
+        val marker = File(dest, "version.txt")
+        val currentVersion = currentVersionCode(context)
+        val previousVersion = if (marker.exists()) marker.readText().trim().toLongOrNull() else null
+        val backupHasData = prefsXmlFiles(dest).isNotEmpty()
+        val liveHasData = context.getSharedPreferences("projects", Context.MODE_PRIVATE).all.isNotEmpty()
+
+        if (backupHasData && !liveHasData) {
+            restorePrefs(context)
+            setContainerPrompt(context, true)
+        } else {
+            backupPrefs(context)
+            if (previousVersion != currentVersion) setContainerPrompt(context, true)
+            val rootfs = ProotInstaller.rootfsDir(context)
+            val stale = !hasBackup() ||
+                System.currentTimeMillis() - backupFile().lastModified() >= 7L * 24 * 60 * 60 * 1000
+            if (rootfs.exists() && stale) setContainerPrompt(context, true)
+        }
+        marker.parentFile?.mkdirs()
+        marker.writeText(currentVersion.toString())
+    }
+
+    /** RG05: the Settings prompt flag (survives restarts). */
+    fun containerPromptPending(context: Context): Boolean =
+        context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            .getBoolean("container_backup_prompt", false)
+
+    fun setContainerPrompt(context: Context, pending: Boolean) {
+        context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE).edit()
+            .putBoolean("container_backup_prompt", pending).apply()
+    }
+
+    private fun currentVersionCode(context: Context): Long =
+        context.packageManager.getPackageInfo(context.packageName, 0).let {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) it.longVersionCode
+            else @Suppress("DEPRECATION") it.versionCode.toLong()
+        }
+
+    private fun prefsXmlFiles(dir: File): List<File> =
+        dir.listFiles { f -> f.isFile && f.name.endsWith(".xml") }?.sortedBy { it.name } ?: emptyList()
+
+    /**
+     * Backs up ALL app SharedPreferences files to /sdcard/CodespaceIDE/prefs-backup/
+     * so they survive an app uninstall, plus the filesDir JSON stores.
+     *
+     * RG05 (2026-09-26): the list was SELECTIVE (projects/copy_chat/agent_memory plus a
+     * legacy "com.codespace.ide_preferences" name that no longer even exists) while
+     * keybindings, ssh-profiles, session_state, settings.json, scheduler tasks, terminal
+     * history, trust state, etc. were EXCLUDED — a CI-rebuild uninstall silently lost
+     * all of them. Now EVERY *.xml under shared_prefs is copied (glob, so future prefs
+     * files are covered automatically) plus:
+     *   - filesDir/settings.json      (JsonSettingsStore: settings + feature toggles)
+     *   - filesDir/ssh-profiles.json   (SshProfileStore)
+     *   - filesDir/agent_scheduler/    (AgentScheduler tasks)
+     *   - filesDir/agent_memory/memory.json
+     * Also runs on every app start via [onAppStart], not just the Settings button.
      */
     fun backupPrefs(context: Context) {
         val dest = File(backupDir(), "prefs-backup")
         dest.mkdirs()
         val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
-        listOf("projects.xml", "copilot_chat.xml", "com.codespace.ide_preferences.xml").forEach { name ->
-            val src = File(prefsDir, name)
+        prefsXmlFiles(prefsDir).forEach { it.copyTo(File(dest, it.name), overwrite = true) }
+        // JSON stores under filesDir (re-read at store init on next process start)
+        listOf("settings.json", "ssh-profiles.json").forEach { name ->
+            val src = File(context.filesDir, name)
             if (src.exists()) src.copyTo(File(dest, name), overwrite = true)
+        }
+        // Scheduler tasks
+        val schedSrc = File(context.filesDir, "agent_scheduler")
+        if (schedSrc.exists()) {
+            val schedDest = File(dest, "agent_scheduler")
+            schedDest.mkdirs()
+            schedSrc.listFiles()?.forEach { it.copyTo(File(schedDest, it.name), overwrite = true) }
         }
         // Agent memory JSON
         val memFile = File(context.filesDir, "agent_memory/memory.json")
@@ -271,18 +347,29 @@ object BackupManager {
     }
 
     /**
-     * Restores SharedPreferences from /sdcard/CodespaceIDE/prefs-backup/ into the app's
-     * shared_prefs folder. Called alongside restoreBackup(). Safe to call even if the
-     * backup folder doesn't exist (returns silently).
+     * Restores the prefs-backup into the app.
+     *
+     * RG06 (2026-09-26): the old code copied raw XML files over shared_prefs while the
+     * process was LIVE — already-loaded SharedPreferences instances ignored the restored
+     * file until restart, and any later commit overwrote it with stale in-memory state
+     * (the restore was silently lost). Prefs are now applied THROUGH the prefs API
+     * ([applyPrefsXml]): the live instance is updated in memory AND persisted atomically.
+     * filesDir JSON stores are file copies — those stores re-read at next init.
      */
     fun restorePrefs(context: Context) {
         val src = File(backupDir(), "prefs-backup")
         if (!src.exists()) return
-        val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
-        prefsDir.mkdirs()
-        listOf("projects.xml", "copilot_chat.xml", "com.codespace.ide_preferences.xml").forEach { name ->
+        val applied = mutableListOf<String>()
+        prefsXmlFiles(src).forEach { f -> if (applyPrefsXml(context, f)) applied += f.name }
+        listOf("settings.json", "ssh-profiles.json").forEach { name ->
             val f = File(src, name)
-            if (f.exists()) f.copyTo(File(prefsDir, name), overwrite = true)
+            if (f.exists()) f.copyTo(File(context.filesDir, name), overwrite = true)
+        }
+        val schedSrc = File(src, "agent_scheduler")
+        if (schedSrc.exists()) {
+            val schedDest = File(context.filesDir, "agent_scheduler")
+            schedDest.mkdirs()
+            schedSrc.listFiles()?.forEach { it.copyTo(File(schedDest, it.name), overwrite = true) }
         }
         val memSrc = File(src, "agent_memory.json")
         if (memSrc.exists()) {
@@ -290,6 +377,71 @@ object BackupManager {
             memDir.mkdirs()
             memSrc.copyTo(File(memDir, "memory.json"), overwrite = true)
         }
-        Log.d(TAG, "Prefs restored from ${src.absolutePath}")
+        Log.d(TAG, "Prefs restored (via prefs API: ${applied.joinToString()})")
     }
+
+    /**
+     * RG06: parses a backed-up SharedPreferences XML (AOSP format: map of
+     * int/long/float/boolean/string/set entries) and applies every entry through the
+     * LIVE instance's editor, so the restore is visible immediately and survives later
+     * commits. Unknown tags are skipped (forward-compatible). Returns true if anything
+     * was applied. Never throws — a corrupt/foreign XML is reported as false.
+     */
+    private fun applyPrefsXml(context: Context, src: File): Boolean = runCatching {
+        val prefs = context.getSharedPreferences(src.name.removeSuffix(".xml"), Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        var applied = false
+        val parser = android.util.Xml.newPullParser()
+        parser.setInput(src.inputStream(), null)
+        var event = parser.eventType
+        var inMap = false
+        var setName: String? = null
+        var setBuilder: MutableSet<String>? = null
+        while (event != XmlPullParser.END_DOCUMENT) {
+            when (event) {
+                XmlPullParser.START_TAG -> when (parser.name) {
+                    "map" -> inMap = true
+                    "set" -> if (inMap) {
+                        setName = parser.getAttributeValue(null, "name")
+                        setBuilder = mutableSetOf()
+                    }
+                    "string" -> if (inMap) {
+                        val name = parser.getAttributeValue(null, "name")
+                        if (setBuilder != null && name == null) setBuilder?.add(parser.nextText())
+                        else if (name != null) { editor.putString(name, parser.nextText()); applied = true }
+                    }
+                    "int" -> if (inMap) {
+                        val name = parser.getAttributeValue(null, "name")
+                        val v = parser.getAttributeValue(null, "value")
+                        if (name != null && v != null) { editor.putInt(name, v.toInt()); applied = true }
+                    }
+                    "long" -> if (inMap) {
+                        val name = parser.getAttributeValue(null, "name")
+                        val v = parser.getAttributeValue(null, "value")
+                        if (name != null && v != null) { editor.putLong(name, v.toLong()); applied = true }
+                    }
+                    "float" -> if (inMap) {
+                        val name = parser.getAttributeValue(null, "name")
+                        val v = parser.getAttributeValue(null, "value")
+                        if (name != null && v != null) { editor.putFloat(name, v.toFloat()); applied = true }
+                    }
+                    "boolean" -> if (inMap) {
+                        val name = parser.getAttributeValue(null, "name")
+                        val v = parser.getAttributeValue(null, "value")
+                        if (name != null && v != null) { editor.putBoolean(name, v.toBoolean()); applied = true }
+                    }
+                }
+                XmlPullParser.END_TAG -> if (parser.name == "set") {
+                    val n = setName
+                    val b = setBuilder
+                    if (n != null && b != null) { editor.putStringSet(n, b); applied = true }
+                    setName = null
+                    setBuilder = null
+                }
+            }
+            event = parser.next()
+        }
+        if (applied) editor.apply()
+        applied
+    }.getOrDefault(false)
 }

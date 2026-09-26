@@ -38,6 +38,11 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             .build()
 
     override fun onCreate() {
+        // RG05/RG06 (2026-09-26): auto prefs-backup + fresh-install restore must run
+        // BEFORE any store init — the first load of each prefs/JSON store then sees the
+        // restored state (restores through the prefs API; never overwrites a surviving
+        // backup with empty data).
+        com.codespace.ide.terminal.BackupManager.onAppStart(this)
         // Initialize unified JSON settings store first — other stores delegate to it
         JsonSettingsStore.init(this)
         FeatureToggleStore.init(this)
