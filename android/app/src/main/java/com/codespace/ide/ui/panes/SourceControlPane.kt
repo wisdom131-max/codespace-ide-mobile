@@ -439,8 +439,10 @@ fun SourceControlPane(
 
         // SG01 (P4f): smart-commit ask — shown when Commit is pressed with NO
         // staged files but pending changes. Replaces the silent stage-all sweep.
-        if (showSmartCommitConfirm && repoState != null) {
-            val pendingCount = repoState.unstaged.size + repoState.untracked.size
+        // Capture-first (delegated state property cannot be smart-cast — pitfall #2724)
+        val stCommit = repoState
+        if (showSmartCommitConfirm && stCommit != null) {
+            val pendingCount = stCommit.unstaged.size + stCommit.untracked.size
             AlertDialog(
                 onDismissRequest = { showSmartCommitConfirm = false },
                 title = { Text("Stage all and commit?", fontSize = 14.sp) },

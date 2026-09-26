@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
  *
  * @param topDp computed band Y position in dp (layout-aware, as before — this
  *   recomposes this band on scroll, which is bounded to the band itself).
+ * @param gutterWidthDp GUTTER_WIDTH (Float, same dp units the inline code used).
  */
 @Composable
 internal fun BoxScope.EditorHighlightBlinkBand(
@@ -45,7 +46,7 @@ internal fun BoxScope.EditorHighlightBlinkBand(
     highlightBlinkStartMs: Long,
     topDp: Float,
     lineHeight: Dp,
-    gutterWidthDp: Int,
+    gutterWidthDp: Float,
 ) {
     // Blink animation: tick every 150ms while the highlight is active — confined here.
     var blinkTick by remember(highlightBlinkStartMs) { mutableStateOf(0) }
