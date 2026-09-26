@@ -61,6 +61,37 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 09:40 WAT] — AI Agent: Claude Sonnet 5.6, P4b DG group (Debug), Commits dd5c975+d21b4ca, CI #2953 GREEN
+**Closed:** DG01, DG03, DG05, DG06, DG07, DG09, DG10, DG12, DG13, DG14 (10 of 10 rows in the MASTER-GAPS DG group).
+**Files:** UniversalDebugManager.kt, DAPClient.kt, PythonDAPAdapter.kt, NodeDAPAdapter.kt, ExplorerPane.kt, VariableInspectorPanel.kt, ProjectShellScreen.kt
+**Details:**
+- **DG01:** saveBreakpoints had NO callers — breakpoint store died with the process. Now: every mutation persists (persistBreakpoints), loadBreakpoints wires the app context, schema carries hitCondition (was silently dropped), corrupt store logs instead of vanishing.
+- **DG03:** launch filters enabled==false (VS Code enabledOnly); setBreakpointEnabled pushes to live sessions. A disabled bp no longer keeps stopping the debuggee.
+- **DG05:** restartSession was synchronous in onClick (10s proot check / 5-min install freeze). New restartSessionAsync front-door; Explorer Debug button and PSS Restart menu both async now.
+- **DG06:** failed launches/attaches no longer linger in the session map; multi-session switcher lists only LIVE states.
+- **DG07:** DAPClient dispatch had no "request" branch — reverse requests (runInTerminal etc.) were dropped with no response, hanging servers. Every request now answers (capability=false → notSupported, per DAP spec).
+- **DG09:** stack frames carry GUEST paths + real lines; old jump dropped the line and joined guest path to host root (wrong file). VariableInspectorPanel onJumpToSource is (file,line); PSS translates guest→host (IdeTerminalBridge chain, same as Problems) and jumps line+1.
+- **DG10:** ONE watch store (UDM DebugWatch; panel-private WatchExpr model and Explorer's separate list both deleted; watch-change notifications keep both surfaces in sync). ONE transcript: REPL/setVariable echoes publish via UDM.logDebugConsole; PSS Debug tab subscribes to UDM output (bounded, CopyOnWriteArrayList).
+- **DG12:** adapters held ONE mutable client field on the singleton — a second same-language session overwrote it (stop(A) killed B; pause/step/evaluate went to the last launcher). All per-session state moved to SessionRuntime keyed by session id; closures capture their own runtime; stop tears down only that session. Node's dead stopProcess() member deleted.
+- **DG13:** ProcessTracker had ZERO callers — adapters now register their DAP server (reflection pid; Android has no Process.getPid) and stopSession/natural-stop/failed-launch untrack. Adapter stop() sends DAP disconnect(terminateDebuggee=true) BEFORE killing the local server — the debuggee is no longer reparented alive inside the rootfs.
+- **DG14:** ONE broadcast rule (edit pushed ALL to EVERY session while add/remove/toggle pushed ONE file to the FIRST session). clearAllBreakpoints had NO callers → breakpoints view gains Remove All (VS Code parity). P27-11 verification finally renders: unverified line bps dim while a session is live + server message shown.
+**Removed (honesty ledger):** WatchExpr private model (VariableInspectorPanel), watchIdCounter + separate DebugWatch lists (ExplorerPane), TerminalDebugProvider-style dead members: NodeDAPAdapter.stopProcess() never called; UDM.saveBreakpoints/loadBreakpoints-without-callers pattern; synchronous restartSession call sites; DAPClient request-black-hole; single-adapter-single-session assumption.
+**Pitfalls hit:** #2952 red — leftover early `return proc` under the new Pair<Process,Int>? signature (patch placed `return Pair(...)` before the drain thread). Fix d21b4ca moved the pair return behind the drain, restored single return. Android java.lang.Process has NO pid getter — reflection helper added to UDM trackProcess overload.
+
+### P5 device checks (per gap ID)
+- **DG01:** set a breakpoint (with hitCondition), fully kill the app from Recents, reopen — the breakpoint is STILL in the BREAKPOINTS list with its condition intact. Kill during a session → restored after relaunch.
+- **DG03:** run a session, tap a breakpoint's toggle (or right-swipe → Disable) while paused → Continue → the disabled bp does NOT stop the debuggee on the next pass.
+- **DG05:** with a live session, Overflow → Restart (and the Explorer Restart icon): UI stays responsive (spinner/notification, no ANR), session restarts, no app close. Also Restart on a cold project without proot boot — stays responsive through the boot wait.
+- **DG06:** force a failed launch (bad interpreter / missing file) → session picker shows NO phantom entry for the failed id.
+- **DG07:** debug something that emits a DAP reverse request (js-debug attach path) → server does not hang; log shows the notSupported response instead of silence.
+- **DG09:** pause on a breakpoint, open VARIABLES tab, tap a stack frame from a guest path → jumps to the CORRECT host file at the frame's exact line (not project-root guest path, not line 1).
+- **DG10:** add a watch in the Explorer debug panel → it appears in VARIABLES immediately; add one in VARIABLES → appears in Explorer; remove either → gone from both. REPL echo shows in BOTH the Explorer console and the PSS Debug tab.
+- **DG12:** start TWO Python sessions (or Python + attach two jest runs): stopping session A does NOT kill or corrupt session B; pause/step/evaluate on B still works after stopping A.
+- **DG13:** stop a session mid-debug → the debuggee process actually terminates inside the rootfs (`ps` shows no orphan); a failed launch leaves no tracked process.
+- **DG14:** with TWO live sessions, add/remove/toggle a bp in one → both sessions rebind (edit in file A while session B on another file: B keeps its bps). BREAKPOINTS header shows Remove All when ≥1 bp; tapping it clears store + live sessions + persisted state (reopen app: still empty). While running, an unverified bp renders dim with its server message.
+
+**Next:** P4b batch 2 proposal (SR/LS/G groups) awaiting owner go; P5 round pending.
+
 (empty — all old phases and changelogs purged on 2026-08-22)
 
 ### [2026-08-23 07:15 WAT] — AI Agent: Claude, Commit e0cf91a, CI Build pending
