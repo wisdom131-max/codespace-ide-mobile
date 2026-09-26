@@ -205,6 +205,29 @@ object UniversalDebugManager {
     private val processTracker = ConcurrentHashMap<String, TrackedProcess>()
 
     /** P27-6: Register a process for tracking. Called by adapters/providers on launch. */
+    /**
+     * DG13 (P4b): Process-based overload. java.lang.Process has NO pid getter on
+     * Android (Process.getPid is Java 9) — LspManager already resolves it by
+     * reflection over the implementation's private "pid" field; adapters now
+     * get the same treatment here instead of calling an unavailable property.
+     */
+    fun trackProcess(sessionId: String, process: Process, command: String, workDir: String) {
+        var pid = -1
+        try {
+            var cls: Class<*>? = process.javaClass
+            while (cls != null && pid < 0) {
+                try {
+                    val f = cls.getDeclaredField("pid")
+                    f.isAccessible = true
+                    pid = (f.get(process) as? Int) ?: -1
+                } catch (_: NoSuchFieldException) {
+                    cls = cls.superclass
+                }
+            }
+        } catch (_: Exception) {}
+        trackProcess(sessionId, pid, command, workDir)
+    }
+
     fun trackProcess(sessionId: String, pid: Int, command: String, workDir: String) {
         processTracker[sessionId] = TrackedProcess(pid, sessionId, command, workDir)
         Log.d(TAG, "trackProcess: pid=$pid session=$sessionId cmd=${command.take(80)}")
@@ -267,7 +290,10 @@ object UniversalDebugManager {
 
     private val breakpointListeners = mutableListOf<() -> Unit>()
     private val sessionStateListeners = mutableListOf<(DebugSession) -> Unit>()
-    private val outputListeners = mutableListOf<(String) -> Unit>()
+    // DG10 (P4b): CopyOnWriteArrayList — output fires from IO threads (adapter
+    // closures) while panels register/unregister on main; iteration while adding
+    // must not ConcurrentModificationException a debug transcript.
+    private val outputListeners = java.util.concurrent.CopyOnWriteArrayList<(String) -> Unit>()
     private val pausedListeners = mutableListOf<(List<DebugStackFrame>, List<DebugVariable>) -> Unit>()
     
     fun addOnBreakpointsChangedListener(l: () -> Unit) { breakpointListeners.add(l) }
@@ -295,25 +321,70 @@ object UniversalDebugManager {
     
     private fun notifyBreakpointsChanged() = breakpointListeners.forEach { it() }
 
+    // ── DG10 (P4b): ONE watch-expression store ─────────────────────────
+    // VariableInspectorPanel kept a private WatchExpr remember list and the
+    // Explorer RunDebugPanel kept its own DebugWatch remember list — two
+    // independent stores over one session, so a watch added in one vanished
+    // in the other and neither survived switching. The UDM DebugWatch model
+    // is now the single store both panels read AND write.
+    private val watchStore = java.util.concurrent.ConcurrentHashMap<Int, DebugWatch>()
+    private val watchIdCounter = java.util.concurrent.atomic.AtomicInteger(0)
+
+    fun getWatches(): List<DebugWatch> = watchStore.values.sortedBy { it.id }
+
+    // DG10: panels subscribe so a watch added in ONE surface appears in the
+    // other immediately (they cache locally from getWatches()).
+    private val watchListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+    fun addOnWatchesChangedListener(l: () -> Unit) { watchListeners.add(l) }
+    fun removeOnWatchesChangedListener(l: () -> Unit) { watchListeners.remove(l) }
+    private fun notifyWatchesChanged() = watchListeners.forEach { it() }
+
+    fun addWatch(expression: String): DebugWatch {
+        val w = DebugWatch(watchIdCounter.getAndIncrement(), expression.trim())
+        watchStore[w.id] = w
+        notifyWatchesChanged()
+        return w
+    }
+
+    fun removeWatch(id: Int) {
+        watchStore.remove(id)
+        notifyWatchesChanged()
+    }
+
+    /** Re-evaluate every watch against the given session (no-op without one). */
+    fun refreshWatches(sessionId: String?) {
+        val sid = sessionId ?: getActiveSession()?.id ?: return
+        val session = sessions[sid] ?: return
+        val adapter = sessionAdapters[sid] ?: return
+        for (w in watchStore.values.toList()) {
+            val v = adapter.evaluate(session, w.expression) ?: "—"
+            watchStore[w.id] = w.copy(value = v)
+        }
+        notifyWatchesChanged()
+    }
+
     /**
      * P32-BREAKPOINT-FIX: Send updated breakpoints to the active DAP adapter.
      * Called by addBreakpoint/removeBreakpoint/toggleBreakpoint when a debug
      * session is running. If no session is active, this is a no-op (breakpoints
      * will be passed to launch() when a session starts).
      */
-    private fun sendBreakpointsToActiveSession(filePath: String) {
-        // Find any active session that matches this file
-        val activeSession = sessions.values.firstOrNull {
-            it.state == DebugState.RUNNING || it.state == DebugState.PAUSED
-        } ?: return
-
-        val adapter = sessionAdapters[activeSession.id] ?: return
-        val fileBps = breakpoints[filePath] ?: emptyList()
-
-        AppOutputLog.log("[DAP] Sending ${fileBps.size} breakpoint(s) for ${filePath.substringAfterLast("/")} to active session", "lsp")
-        val sent = adapter.sendBreakpoints(activeSession, fileBps)
-        if (!sent) {
-            AppOutputLog.log("[DAP] WARNING: sendBreakpoints returned false — adapter may not support live updates", "lsp")
+    // DG14 (P4b): ONE broadcast rule. The old code had two inconsistent ones:
+    // editBreakpoint pushed ALL breakpoints for ALL files to EVERY session,
+    // while add/remove/toggle pushed ONE file to the FIRST active session —
+    // a second live session drifted out of sync on any single-file change.
+    // Breakpoints are global state: every change now pushes the full state
+    // to every live session (adapters group by file themselves).
+    private fun syncBreakpointsToLiveSessions(reason: String) {
+        val all = getAllBreakpoints()
+        for (session in sessions.values.toList()) {
+            if (session.state != DebugState.RUNNING && session.state != DebugState.PAUSED) continue
+            val adapter = sessionAdapters[session.id] ?: continue
+            AppOutputLog.log("[DAP] Syncing ${all.size} breakpoint(s) to session ${session.id} ($reason)", "lsp")
+            val sent = adapter.sendBreakpoints(session, all)
+            if (!sent) {
+                AppOutputLog.log("[DAP] WARNING: sendBreakpoints returned false — adapter may not support live updates", "lsp")
+            }
         }
     }
     private fun notifySessionStateChanged(s: DebugSession) = sessionStateListeners.forEach { it(s) }
@@ -331,6 +402,17 @@ object UniversalDebugManager {
         notifySessionStateChanged(session)
     }
     private fun notifyOutput(msg: String) = outputListeners.forEach { it(msg) }
+
+    /**
+     * DG10 (P4b): ONE transcript source. The Explorer debug console and the
+     * PSS Debug tab previously kept SEPARATE transcripts over one session —
+     * REPL echoes and evaluate results only ever appeared in the panel that
+     * produced them. Console side-effects now publish through the normal
+     * output listeners so every console view renders the same lines.
+     */
+    fun logDebugConsole(line: String) {
+        if (line.isNotBlank()) notifyOutput(line)
+    }
     private fun notifyPaused(stack: List<DebugStackFrame>, vars: List<DebugVariable>) = pausedListeners.forEach { it(stack, vars) }
 
     init {
@@ -451,7 +533,9 @@ object UniversalDebugManager {
         }
         notifySessionStateChanged(session)
 
-        val fileBreakpoints = breakpoints[filePath] ?: emptyList()
+        // DG03: VS Code enabledOnly — a disabled breakpoint must not stop the
+        // debuggee. Filter ONCE here so both the DAP and legacy paths get it.
+        val fileBreakpoints = (breakpoints[filePath] ?: emptyList()).filter { it.enabled }
 
         val launched = if (adapter != null && context != null) {
             // P27-1: DAP adapter path (or LegacyDebugAdapter with context)
@@ -473,6 +557,7 @@ object UniversalDebugManager {
                     if (activeSessionId == session.id) activeSessionId = null
                     sessions.remove(session.id)
                     sessionAdapters.remove(session.id)
+                    untrackProcess(session.id)  // DG13: tracker stays truthful
                 },
             )
         } else {
@@ -491,8 +576,14 @@ object UniversalDebugManager {
             transitionState(session, DebugState.RUNNING)
             activeSessionId = session.id  // P27-7: Track active session in UDM
         } else {
+            // DG06 (P4b): the FAILED session previously stayed in the map
+            // FOREVER — the multi-session switcher listed and selected dead
+            // sessions. Notify the failure, then remove it.
             transitionState(session, DebugState.FAILED)
+            if (activeSessionId == session.id) activeSessionId = null
+            sessions.remove(session.id)
             sessionAdapters.remove(session.id)
+            untrackProcess(session.id)  // DG13
         }
 
         return if (launched) session.id else null
@@ -515,6 +606,7 @@ object UniversalDebugManager {
         }
         sessions.remove(sessionId)
         sessionAdapters.remove(sessionId)
+        untrackProcess(sessionId)  // DG13: stopSession never untracked — dead sessions left tracker entries
         // Phase N: Notify debug session stopped
         NotificationStore.notifyDebugEvent(
             title = "Debug session ended",
@@ -575,13 +667,19 @@ object UniversalDebugManager {
                 }
                 sessions.remove(session.id)
                 sessionAdapters.remove(session.id)
+                untrackProcess(session.id)  // DG13
             }
         )
 
         if (launched) {
             transitionState(session, DebugState.RUNNING)
         } else {
+            // DG06: same honesty as startDebug — a failed attach leaves no
+            // dead session behind for the switcher to list.
             transitionState(session, DebugState.FAILED)
+            if (activeSessionId == session.id) activeSessionId = null
+            sessions.remove(session.id)
+            sessionAdapters.remove(session.id)
         }
         return if (launched) session.id else null
     }
@@ -589,8 +687,16 @@ object UniversalDebugManager {
     /**
      * P26-3d: Multi-session — return all active sessions (any state except IDLE/STOPPED).
      */
+    // DG06 (P4b): "active" now means LIVE. The old filter (anything except
+    // IDLE/STOPPED) listed FAILED/CRASHED/ERROR sessions in the multi-session
+    // switcher, where tapping one selected a dead session. Only states that
+    // can still respond are active.
     fun getActiveSessions(): List<DebugSession> =
-        sessions.values.filter { it.state != DebugState.IDLE && it.state != DebugState.STOPPED }
+        sessions.values.filter {
+            it.state == DebugState.STARTING || it.state == DebugState.RUNNING ||
+            it.state == DebugState.PAUSED || it.state == DebugState.STEPPING ||
+            it.state == DebugState.STOPPING
+        }
 
     /**
      * P26-3d: Get a specific session by ID.
@@ -624,6 +730,24 @@ object UniversalDebugManager {
         // Start new session with same config — breakpoints preserved in BreakpointManager
         Log.d(TAG, "restartSession: restarting $language debug for ${filePath.substringAfterLast("/")}")
         return startDebug(language, filePath, null, context)
+    }
+
+    /**
+     * DG05 (P4b): async front-door for restartSession. restart is stop +
+     * synchronous startDebug — up to a 10s proot check and a possible 5-min
+     * install — and it was called DIRECTLY in onClick at PSS:1217 and
+     * ExplorerPane:3430, freezing the UI (the same ANR family the Run/Debug
+     * button suffered). Result returns on the main thread.
+     */
+    fun restartSessionAsync(
+        sessionId: String,
+        context: Context? = null,
+        onResult: (String?) -> Unit,
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val newId = restartSession(sessionId, context)
+            Handler(Looper.getMainLooper()).post { onResult(newId) }
+        }
     }
 
     /**
@@ -741,13 +865,10 @@ object UniversalDebugManager {
         )
         fileBps[idx] = newBp
         notifyBreakpointsChanged()
-        // Note: like the existing toggle path, edit is in-memory only; saveBreakpoints()
-        // is only invoked at load time today (pre-existing behavior, unchanged here).
-        // Live session: push updated breakpoints to the adapter
-        for (sessionId in sessions.keys) {
-            val adapter = sessionAdapters[sessionId] ?: continue
-            adapter.sendBreakpoints(sessions[sessionId]!!, getAllBreakpoints())
-        }
+        persistBreakpoints()  // DG01: edits survive restarts (incl. hitCondition now)
+        // DG14: the same single broadcast rule as every other mutation —
+        // full state to every live session.
+        syncBreakpointsToLiveSessions("edit")
     }
 
     /**
@@ -914,7 +1035,8 @@ object UniversalDebugManager {
         if (list.none { it.filePath == filePath && it.line == line }) {
             list.add(DebugBreakpoint(filePath, line, condition, logMessage))
             notifyBreakpointsChanged()
-            sendBreakpointsToActiveSession(filePath)
+            persistBreakpoints()  // DG01: breakpoints survive the process now
+            syncBreakpointsToLiveSessions("add")  // DG14: one full-state push
         }
     }
 
@@ -937,7 +1059,8 @@ object UniversalDebugManager {
         breakpoints[filePath]?.removeAll { it.line == line }
         if (breakpoints[filePath]?.isEmpty() == true) breakpoints.remove(filePath)
         notifyBreakpointsChanged()
-        sendBreakpointsToActiveSession(filePath)
+        persistBreakpoints()  // DG01
+        syncBreakpointsToLiveSessions("remove")  // DG14
     }
 
     fun toggleBreakpoint(filePath: String, line: Int) {
@@ -949,9 +1072,9 @@ object UniversalDebugManager {
             list.add(DebugBreakpoint(filePath, line))
         }
         notifyBreakpointsChanged()
-        // P32-BREAKPOINT-FIX: If a debug session is active, send updated breakpoints
-        // to the DAP adapter so it stops at the new breakpoint location.
-        sendBreakpointsToActiveSession(filePath)
+        persistBreakpoints()  // DG01
+        // P32-BREAKPOINT-FIX/DG14: push the updated state to every live session.
+        syncBreakpointsToLiveSessions("toggle")
     }
 
     fun getBreakpoints(filePath: String): List<DebugBreakpoint> = breakpoints[filePath]?.toList() ?: emptyList()
@@ -972,14 +1095,23 @@ object UniversalDebugManager {
             logMessage = logMessage?.trim()?.takeIf { it.isNotEmpty() },
         )
         notifyBreakpointsChanged()
-        sendBreakpointsToActiveSession(filePath)
+        persistBreakpoints()  // DG01
+        syncBreakpointsToLiveSessions("condition")  // DG14
     }
 
+    // DG03 (P4b): disabling a breakpoint is now HONEST end-to-end. Previously
+    // neither launch nor sendBreakpoints filtered enabled == false and this
+    // toggle never pushed to a live session — a disabled breakpoint kept
+    // stopping the debuggee while the Explorer list dimmed it as off.
+    // Now: the toggle pushes to live sessions AND every send filters to
+    // enabled-only (VS Code's enabledOnly: true).
     fun setBreakpointEnabled(filePath: String, line: Int, enabled: Boolean) {
         breakpoints[filePath]?.find { it.line == line }?.let { bp ->
             val idx = breakpoints[filePath]!!.indexOf(bp)
             breakpoints[filePath]!![idx] = bp.copy(enabled = enabled)
             notifyBreakpointsChanged()
+            persistBreakpoints()  // DG01
+            syncBreakpointsToLiveSessions("enable")  // DG03: live session honors it immediately
         }
     }
 
@@ -989,11 +1121,29 @@ object UniversalDebugManager {
     /** Total breakpoint count. */
     fun breakpointCount(): Int = breakpoints.values.sumOf { it.size }
 
-    // ── Breakpoint persistence (P23-8) ────────────────────────────────
+    // ── Breakpoint persistence (P23-8; DG01 P4b: save is now WIRED) ──────
     // Saves/loads breakpoints to SharedPreferences so they survive app restarts.
+    // DG01 (P4b): saveBreakpoints previously had NO callers — MainActivity only
+    // called loadBreakpoints, so the store was always empty at load and every
+    // breakpoint died with the process. loadBreakpoints now captures the app
+    // context and every mutation persists through persistBreakpoints(). The
+    // save schema now carries hitCondition (it was silently dropped before).
 
     private const val PREFS_NAME = "debug_breakpoints"
     private const val KEY_BREAKPOINTS = "breakpoints_json"
+
+    // Captured at loadBreakpoints() (called from MainActivity.onCreate).
+    @Volatile private var persistContext: android.content.Context? = null
+
+    /** DG01: persist the current breakpoint state (no-op before first load). */
+    private fun persistBreakpoints() {
+        val ctx = persistContext ?: return
+        try {
+            saveBreakpoints(ctx)
+        } catch (e: Exception) {
+            Log.w(TAG, "persistBreakpoints failed: ${e.message}")
+        }
+    }
 
     fun saveBreakpoints(context: android.content.Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
@@ -1005,12 +1155,17 @@ object UniversalDebugManager {
             obj.put("condition", bp.condition ?: org.json.JSONObject.NULL)
             obj.put("logMessage", bp.logMessage ?: org.json.JSONObject.NULL)
             obj.put("enabled", bp.enabled)
+            // DG01: hitCondition was silently dropped from the save schema —
+            // a persisted hit-counted breakpoint restored without it.
+            obj.put("hitCondition", bp.hitCondition ?: org.json.JSONObject.NULL)
             json.put(obj)
         }
         prefs.edit().putString(KEY_BREAKPOINTS, json.toString()).apply()
     }
 
     fun loadBreakpoints(context: android.content.Context) {
+        // DG01: capture the app context so every later mutation can persist.
+        persistContext = context.applicationContext
         val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
         val jsonStr = prefs.getString(KEY_BREAKPOINTS, null) ?: return
         try {
@@ -1021,21 +1176,33 @@ object UniversalDebugManager {
                 val line = obj.optInt("line")
                 val condition = obj.opt("condition") as? String
                 val logMessage = obj.opt("logMessage") as? String
+                val hitCondition = obj.opt("hitCondition") as? String
                 val enabled = obj.optBoolean("enabled", true)
                 if (filePath.isNotEmpty()) {
                     val list = breakpoints.getOrPut(filePath) { mutableListOf() }
                     if (list.none { it.line == line }) {
-                        list.add(DebugBreakpoint(filePath, line, condition, logMessage, enabled))
+                        list.add(DebugBreakpoint(filePath, line, condition, logMessage, enabled, hitCondition = hitCondition))
                     }
                 }
             }
             notifyBreakpointsChanged()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            // DG01: a corrupt store previously vanished SILENTLY — the user's
+            // breakpoints just "disappeared" with no hint why. Surface it.
+            Log.w(TAG, "loadBreakpoints: corrupt breakpoint store — starting empty (${e.message})")
+            AppOutputLog.log("[debug] Saved breakpoints could not be read (${e.message}) — starting with none", "lsp")
+        }
     }
 
+    // DG14 (P4b): clearAllBreakpoints previously had NO callers and cleared
+    // neither the persisted store nor any live session. The breakpoints view
+    // now ships a Remove All action (VS Code breakpointsView parity) and this
+    // clears everywhere at once.
     fun clearAllBreakpoints() {
         breakpoints.clear()
         notifyBreakpointsChanged()
+        persistBreakpoints()  // DG01
+        syncBreakpointsToLiveSessions("clearAll")  // DG14
     }
 }
 

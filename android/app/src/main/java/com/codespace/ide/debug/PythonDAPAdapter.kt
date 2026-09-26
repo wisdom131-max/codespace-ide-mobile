@@ -33,22 +33,30 @@ class PythonDAPAdapter : DebugAdapter {
 
     private val TAG = "PythonDAPAdapter"
 
-    private var client: DAPClient? = null
+    // DG12 (P4b): this adapter used to hold ONE mutable client field on its
+    // single registered instance — a second same-language session OVERWROTE
+    // it: stop(A) killed B's client and pause/step/evaluate routed to
+    // whichever session launched last. All per-session runtime state now
+    // lives in a map keyed by DebugSession.id; each launch creates its own
+    // SessionRuntime, every event closure closes over it, and stop(session)
+    // tears down only that session's client.
+    private class SessionRuntime(val client: DAPClient) {
+        // P27-10: Track process exit code for crash detection
+        @Volatile var lastExitCode: Int = 0
+        // Running thread ID — set when stopped event fires
+        @Volatile var threadId: Int = 1
+        // P2-PAGING: totalFrames from last stackTrace response (-1 = unknown); frames loaded so far
+        @Volatile var lastTotalFrames: Int = -1
+        @Volatile var framesLoaded: Int = 0
+        @Volatile var currentFrameId: Int = 0
+    }
+    private val runtimes = java.util.concurrent.ConcurrentHashMap<String, SessionRuntime>()
+    private fun runtime(sessionId: String): SessionRuntime? = runtimes[sessionId]
 
     // DG02 (P3b): the live sendBreakpoints path needs the SAME host->guest
     // translation as launch — capture the launch context for it.
     @Volatile private var appContext: android.content.Context? = null
-
-    // P27-10: Track process exit code for crash detection
-    @Volatile private var lastExitCode: Int = 0
     private var caps: DAPCapabilities? = null
-
-    // Running thread ID — set when stopped event fires
-    @Volatile private var threadId: Int = 1
-    // P2-PAGING: totalFrames from last stackTrace response (-1 = unknown); frames loaded so far
-    @Volatile private var lastTotalFrames: Int = -1
-    @Volatile private var framesLoaded: Int = 0
-    @Volatile private var currentFrameId: Int = 0
 
     override fun canDebug(language: Language, filePath: String) =
         language == Language.PYTHON && filePath.endsWith(".py")
@@ -60,7 +68,7 @@ class PythonDAPAdapter : DebugAdapter {
      * Called by UDM when breakpoints change while debugging is active.
      */
     override fun sendBreakpoints(session: DebugSession, breakpoints: List<DebugBreakpoint>): Boolean {
-        val c = client ?: return false
+        val c = runtime(session.id)?.client ?: return false
         val ctx = appContext
         // DG02 FIX: translate source.path host->guest exactly like launch. UDM's
         // breakpoint store is HOST-keyed; the old code sent raw host paths here,
@@ -209,7 +217,15 @@ class PythonDAPAdapter : DebugAdapter {
 
         // 4. Create and start DAPClient
         val dapClient = DAPClient(process)
-        client = dapClient
+        // DG12: per-session runtime — the client and ALL its mutable state are
+        // keyed by session id from here on.
+        val rt = SessionRuntime(dapClient)
+        runtimes[session.id] = rt
+        // DG13 (P4b): register the adapter process with the ProcessTracker
+        // (previously dead code with zero callers) so stop/restart can act
+        // on a truthful pid record.
+        UniversalDebugManager.trackProcess(session.id, process, "debugpy.adapter",
+            session.filePath.substringBeforeLast("/"))
 
         // Wire events BEFORE start() so no events are missed
         dapClient.onEvent("output") { body ->
@@ -226,17 +242,17 @@ class PythonDAPAdapter : DebugAdapter {
         }
 
         dapClient.onEvent("stopped") { body ->
-            threadId = body.optInt("threadId", 1)
+            rt.threadId = body.optInt("threadId", 1)
             val reason = body.optString("reason", "breakpoint")
-            Log.d(TAG, "DAP stopped: reason=$reason threadId=$threadId")
+            Log.d(TAG, "DAP stopped: reason=$reason threadId=${rt.threadId}")
             onOutput("[debugpy] Paused: $reason\n")
 
             // Fetch stack frames + variables on IO thread
             Thread {
-                val frames = fetchStackFrames(dapClient, threadId)
+                val frames = fetchStackFrames(dapClient, rt.threadId, rt)
                 val vars = if (frames.isNotEmpty()) {
-                    currentFrameId = frames.first().frameId
-                    fetchVariables(dapClient, currentFrameId)
+                    rt.currentFrameId = frames.first().frameId
+                    fetchVariables(dapClient, rt.currentFrameId)
                 } else emptyList()
                 onPaused(frames, vars)
             }.also { it.isDaemon = true }.start()
@@ -245,14 +261,14 @@ class PythonDAPAdapter : DebugAdapter {
         dapClient.onEvent("terminated") { _ ->
             Log.d(TAG, "DAP terminated")
             onOutput("[debugpy] Session terminated.\n")
-            onStopped(lastExitCode)
-            client = null
+            onStopped(rt.lastExitCode)
+            runtimes.remove(session.id)  // DG12: only THIS session's runtime
         }
 
         dapClient.onEvent("exited") { body ->
             val code = body.optInt("exitCode", 0)
             onOutput("[debugpy] Process exited with code $code\n")
-            lastExitCode = code  // P27-10
+            rt.lastExitCode = code  // P27-10
         }
 
         // P32-DAP-ORDER: Register initialized event handler BEFORE start().
@@ -283,6 +299,8 @@ class PythonDAPAdapter : DebugAdapter {
         if (initResp == null) {
             onOutput("[debugpy] initialize failed or timed out\n")
             dapClient.stop()
+            runtimes.remove(session.id)  // DG12: no orphan runtime on failed launch
+            UniversalDebugManager.untrackProcess(session.id)  // DG13
             return false
         }
         caps = initResp.toDAPCapabilities()
@@ -403,48 +421,51 @@ class PythonDAPAdapter : DebugAdapter {
     // ── P2: threads / paging / restartFrame / function breakpoints ──────────
 
     override fun getThreads(session: DebugSession): List<DebugThread> {
-        val dapClient = client ?: return emptyList()
-        val resp = dapClient.request("threads", timeoutSeconds = 5) ?: return emptyList()
+        val rt = runtime(session.id) ?: return emptyList()
+        val resp = rt.client.request("threads", timeoutSeconds = 5) ?: return emptyList()
         val arr = resp.optJSONArray("threads") ?: return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
             val t = arr.optJSONObject(i) ?: return@mapNotNull null
             val id = t.optInt("id", -1)
-            DebugThread(id = id, name = t.optString("name", "Thread $id"), active = id == threadId)
+            DebugThread(id = id, name = t.optString("name", "Thread $id"), active = id == rt.threadId)
         }
     }
 
     override fun switchThread(session: DebugSession, newThreadId: Int): List<DebugStackFrame> {
-        threadId = newThreadId
-        val dapClient = client ?: return emptyList()
-        return fetchStackFrames(dapClient, newThreadId)
+        val rt = runtime(session.id) ?: return emptyList()
+        rt.threadId = newThreadId
+        return fetchStackFrames(rt.client, newThreadId, rt)
     }
 
     override fun loadMoreFrames(session: DebugSession): Pair<List<DebugStackFrame>, Int> {
-        val dapClient = client ?: return Pair(emptyList(), lastTotalFrames)
-        if (lastTotalFrames in 0..framesLoaded) return Pair(emptyList(), lastTotalFrames)
-        val args = JSONObject().put("threadId", threadId).put("startFrame", framesLoaded).put("levels", 20)
-        val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5) ?: return Pair(emptyList(), lastTotalFrames)
-        val framesArr = resp.optJSONArray("stackFrames") ?: return Pair(emptyList(), lastTotalFrames)
-        if (framesArr.length() == 0) return Pair(emptyList(), lastTotalFrames)
-        lastTotalFrames = resp.optInt("totalFrames", framesLoaded + framesArr.length())
-        val parsed = (0 until framesArr.length()).map { i -> parseFrame(framesArr.optJSONObject(i) ?: JSONObject(), framesLoaded + i) }
-        framesLoaded += framesArr.length()
-        return Pair(parsed, lastTotalFrames)
+        val rt = runtime(session.id) ?: return Pair(emptyList(), -1)
+        val dapClient = rt.client
+        if (rt.lastTotalFrames in 0..rt.framesLoaded) return Pair(emptyList(), rt.lastTotalFrames)
+        val args = JSONObject().put("threadId", rt.threadId).put("startFrame", rt.framesLoaded).put("levels", 20)
+        val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5) ?: return Pair(emptyList(), rt.lastTotalFrames)
+        val framesArr = resp.optJSONArray("stackFrames") ?: return Pair(emptyList(), rt.lastTotalFrames)
+        if (framesArr.length() == 0) return Pair(emptyList(), rt.lastTotalFrames)
+        rt.lastTotalFrames = resp.optInt("totalFrames", rt.framesLoaded + framesArr.length())
+        val parsed = (0 until framesArr.length()).map { i -> parseFrame(framesArr.optJSONObject(i) ?: JSONObject(), rt.framesLoaded + i) }
+        rt.framesLoaded += framesArr.length()
+        return Pair(parsed, rt.lastTotalFrames)
     }
 
     override fun restartFrame(session: DebugSession, frameId: Int): Boolean {
         if (caps?.supportsRestartFrame != true) return false
+        val rt = runtime(session.id) ?: return false
         // On success debugpy emits a 'stopped' event (reason=frameEntry) which
         // refreshes the stack/variables UI through the normal paused path.
-        return client?.request("restartFrame", JSONObject().put("frameId", frameId), timeoutSeconds = 5) != null
+        return rt.client.request("restartFrame", JSONObject().put("frameId", frameId), timeoutSeconds = 5) != null
     }
 
     override fun setFunctionBreakpoints(session: DebugSession, bps: List<DebugFunctionBreakpoint>): Boolean {
         if (caps?.supportsFunctionBreakpoints != true) return false
+        val rt = runtime(session.id) ?: return false
         val args = JSONObject().put("breakpoints", JSONArray().apply {
             bps.forEach { fb -> put(JSONObject().put("name", fb.name)) }
         })
-        val resp = client?.request("setFunctionBreakpoints", args, timeoutSeconds = 5) ?: return false
+        val resp = rt.client.request("setFunctionBreakpoints", args, timeoutSeconds = 5) ?: return false
         val arr = resp.optJSONArray("breakpoints")
         val verified = mutableMapOf<String, Pair<Boolean, String?>>()
         if (arr != null) {
@@ -459,37 +480,51 @@ class PythonDAPAdapter : DebugAdapter {
     }
 
     override fun stop(session: DebugSession) {
-        val c = client ?: return
-        c.sendRequest("terminate")
+        val rt = runtimes.remove(session.id) ?: return
+        val c = rt.client
+        // DG13 (P4b): send the DAP teardown BEFORE killing the local adapter
+        // process. The old path destroyed the process with no disconnect —
+        // the debuggee could be reparented inside the rootfs and keep running.
+        // disconnect(terminateDebuggee=true) tells the server to end the
+        // debuggee; terminate is the fallback when disconnect fails.
+        try {
+            val resp = c.request("disconnect", JSONObject().put("terminateDebuggee", true), timeoutSeconds = 3)
+            if (resp == null) c.sendRequest("terminate")
+        } catch (_: Exception) {}
         c.stop()
-        client = null
     }
 
     override fun pause(session: DebugSession) {
-        client?.sendRequest("pause", JSONObject().put("threadId", threadId))
+        val rt = runtime(session.id) ?: return
+        rt.client.sendRequest("pause", JSONObject().put("threadId", rt.threadId))
     }
 
     override fun resume(session: DebugSession) {
-        client?.sendRequest("continue", JSONObject().put("threadId", threadId))
+        val rt = runtime(session.id) ?: return
+        rt.client.sendRequest("continue", JSONObject().put("threadId", rt.threadId))
     }
 
     override fun stepOver(session: DebugSession) {
-        client?.sendRequest("next", JSONObject().put("threadId", threadId))
+        val rt = runtime(session.id) ?: return
+        rt.client.sendRequest("next", JSONObject().put("threadId", rt.threadId))
     }
 
     override fun stepInto(session: DebugSession) {
-        client?.sendRequest("stepIn", JSONObject().put("threadId", threadId))
+        val rt = runtime(session.id) ?: return
+        rt.client.sendRequest("stepIn", JSONObject().put("threadId", rt.threadId))
     }
 
     override fun stepOut(session: DebugSession) {
-        client?.sendRequest("stepOut", JSONObject().put("threadId", threadId))
+        val rt = runtime(session.id) ?: return
+        rt.client.sendRequest("stepOut", JSONObject().put("threadId", rt.threadId))
     }
 
     override fun evaluate(session: DebugSession, expression: String, frameId: Int): String? {
-        val c = client ?: return null
+        val rt = runtime(session.id) ?: return null
+        val c = rt.client
         val args = JSONObject().apply {
             put("expression", expression)
-            put("frameId", if (frameId > 0) frameId else currentFrameId)
+            put("frameId", if (frameId > 0) frameId else rt.currentFrameId)
             put("context", "repl")
         }
         val resp = c.request("evaluate", args, timeoutSeconds = 5) ?: return null
@@ -498,13 +533,13 @@ class PythonDAPAdapter : DebugAdapter {
 
     // ── Stack frame / variable helpers ─────────────────────────────────────
 
-    private fun fetchStackFrames(client: DAPClient, threadId: Int): List<DebugStackFrame> {
+    private fun fetchStackFrames(client: DAPClient, threadId: Int, rt: SessionRuntime): List<DebugStackFrame> {
         val args = JSONObject().put("threadId", threadId).put("startFrame", 0).put("levels", 20)
         val resp = client.request("stackTrace", args, timeoutSeconds = 5) ?: return emptyList()
         val framesArr = resp.optJSONArray("stackFrames") ?: return emptyList()
         // P2-PAGING: record total frame count so the UI can offer "load more"
-        lastTotalFrames = resp.optInt("totalFrames", framesArr.length())
-        framesLoaded = framesArr.length()
+        rt.lastTotalFrames = resp.optInt("totalFrames", framesArr.length())
+        rt.framesLoaded = framesArr.length()
         val result = mutableListOf<DebugStackFrame>()
         for (i in 0 until framesArr.length()) {
             result += parseFrame(framesArr.optJSONObject(i) ?: JSONObject(), i)
@@ -569,7 +604,7 @@ class PythonDAPAdapter : DebugAdapter {
     // P27-AUDIT: Public override — fetch child variables by DAP variablesReference
     override fun getVariables(session: DebugSession, variablesReference: Int): List<DebugVariable> {
         if (variablesReference == 0) return emptyList()
-        val dapClient = client ?: return emptyList()
+        val dapClient = runtime(session.id)?.client ?: return emptyList()
         val varResp = dapClient.request("variables",
             JSONObject().put("variablesReference", variablesReference).put("count", 100),
             timeoutSeconds = 5) ?: return emptyList()
@@ -595,7 +630,7 @@ class PythonDAPAdapter : DebugAdapter {
      * Returns the new value string on success, null on failure.
      */
     override fun setVariable(session: DebugSession, variablesReference: Int, name: String, value: String): String? {
-        val dapClient = client ?: return null
+        val dapClient = runtime(session.id)?.client ?: return null
         val args = JSONObject()
             .put("variablesReference", variablesReference)
             .put("name", name)
@@ -608,7 +643,7 @@ class PythonDAPAdapter : DebugAdapter {
      * P1-D4: DAP setExceptionBreakpoints — push enabled exception filter ids to the adapter.
      */
     override fun setExceptionBreakpoints(session: DebugSession, filterIds: List<String>): Boolean {
-        val dapClient = client ?: return false
+        val dapClient = runtime(session.id)?.client ?: return false
         val args = JSONObject().put("filters", JSONArray(filterIds))
         val resp = dapClient.request("setExceptionBreakpoints", args, timeoutSeconds = 5)
         return resp != null

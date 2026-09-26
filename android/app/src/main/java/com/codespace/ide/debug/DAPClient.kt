@@ -121,6 +121,28 @@ class DAPClient(private val process: Process) {
                 val body = msg.optJSONObject("body") ?: JSONObject()
                 eventHandlers[event]?.invoke(body)
             }
+            // DG07 (P4b): server->client REVERSE requests (runInTerminal,
+            // launchBrowser, ...). dispatch previously had no "request" branch
+            // at all — any reverse request was silently ignored with no
+            // response, hanging the server side. We do not implement them
+            // (initialize advertises supportsRunInTerminalRequest=false),
+            // but per DAP spec the client MUST answer a request with a
+            // response — we now reply honestly: not supported.
+            "request" -> {
+                val command = msg.optString("command", "")
+                val reqSeq = msg.optInt("seq", -1)
+                Log.w(TAG, "DAP reverse request '$command' received — replying notSupported")
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[DAP] Server requested '$command' (reverse request) — not supported, replied to server", "lsp")
+                writeMessage(JSONObject().apply {
+                    put("seq", seq.getAndIncrement())
+                    put("type", "response")
+                    put("request_seq", reqSeq)
+                    put("success", false)
+                    put("command", command)
+                    put("message", "Reverse request not supported by this client")
+                })
+            }
         }
     }
 

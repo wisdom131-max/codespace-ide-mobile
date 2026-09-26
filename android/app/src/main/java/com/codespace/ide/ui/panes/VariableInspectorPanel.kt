@@ -32,12 +32,6 @@ import androidx.compose.ui.unit.sp
 // P8-3 Variable Inspector — shows variables, watch expressions, and call stack.
 // Works standalone (static analysis of current file) and is ready for DAP integration.
 
-private data class WatchExpr(
-    val id: Int,
-    val expression: String,
-    val value: String = "—",
-)
-
 private data class VarEntry(
     val name: String,
     val type: String,
@@ -56,12 +50,26 @@ private data class StackFrame(
 @Composable
 fun VariableInspectorPanel(
     activeFilePath: String? = null,
-    onJumpToSource: () -> Unit = {},
+    // DG09 (P4b): the jump now carries the frame's FILE and LINE — the old
+    // no-arg callback ignored the line entirely and the caller joined the
+    // GUEST frame path onto the HOST project root, opening a wrong/nonexistent
+    // file. Callers translate guest->host and jump with the exact line.
+    onJumpToSource: (file: String, line: Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
-    var watchExprs by remember { mutableStateOf(listOf<WatchExpr>()) }
+    val udm = com.codespace.ide.debug.UniversalDebugManager
+    // DG10 (P4b): watches come from UDM's single DebugWatch store — the panel's
+    // private remember list previously diverged from the Explorer panel's list
+    // and neither survived switching.
+    var watchExprs by remember { mutableStateOf(udm.getWatches()) }
+    // DG10: a watch added/removed in the Explorer debug panel re-syncs this
+    // cache immediately — both surfaces render the ONE UDM watch list.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        val sync: () -> Unit = { watchExprs = udm.getWatches() }
+        udm.addOnWatchesChangedListener(sync)
+        onDispose { udm.removeOnWatchesChangedListener(sync) }
+    }
     var newExpr by remember { mutableStateOf("") }
-    var nextId by remember { mutableStateOf(0) }
     var expandedSections by remember { mutableStateOf(setOf("watch", "locals", "stack")) }
 
     fun toggleSection(key: String) {
@@ -102,7 +110,11 @@ fun VariableInspectorPanel(
                         IconButton(
                             onClick = {
                                 if (newExpr.isNotBlank()) {
-                                    watchExprs = watchExprs + WatchExpr(nextId++, newExpr.trim())
+                                    // DG10: the shared store is the one watch list.
+                                    udm.addWatch(newExpr)
+                                    val sid = udm.getActiveSession()?.id
+                                    if (sid != null) udm.refreshWatches(sid)
+                                    watchExprs = udm.getWatches()
                                     newExpr = ""
                                 }
                             },
@@ -149,7 +161,10 @@ fun VariableInspectorPanel(
                             overflow = TextOverflow.Ellipsis,
                         )
                         IconButton(
-                            onClick = { watchExprs = watchExprs.filterNot { it.id == we.id } },
+                            onClick = {
+                                udm.removeWatch(we.id)  // DG10: shared store
+                                watchExprs = udm.getWatches()
+                            },
                             modifier = Modifier.size(20.dp),
                         ) {
                             Icon(Icons.Default.Close, "Remove", tint = Color(0xFF666666), modifier = Modifier.size(12.dp))
@@ -181,14 +196,11 @@ fun VariableInspectorPanel(
                 var pausedVars by remember { mutableStateOf<List<com.codespace.ide.debug.DebugVariable>>(emptyList()) }
                 val varsListener: (List<com.codespace.ide.debug.DebugStackFrame>, List<com.codespace.ide.debug.DebugVariable>) -> Unit = { _, vars ->
                     pausedVars = vars
-                    // P26-1c: Live watch — re-evaluate all watch expressions on each pause
-                    val udm = com.codespace.ide.debug.UniversalDebugManager
-                    val sid = udm.getActiveSession()?.id
-                    if (sid != null && watchExprs.isNotEmpty()) {
-                        watchExprs = watchExprs.map { w ->
-                            val newVal = udm.evaluateExpression(sid, w.expression) ?: "—"
-                            w.copy(value = newVal)
-                        }
+                    // P26-1c/DG10: live watch refresh goes through the shared
+                    // UDM store so the Explorer watch list stays in sync too.
+                    if (watchExprs.isNotEmpty()) {
+                        udm.refreshWatches(udm.getActiveSession()?.id)
+                        watchExprs = udm.getWatches()
                     }
                 }
                 LaunchedEffect(Unit) {
@@ -278,7 +290,7 @@ fun VariableInspectorPanel(
                     "  No active debug session — set breakpoints and press Run",
                     modifier = Modifier
                         .padding(horizontal = 12.dp, vertical = 4.dp)
-                        .clickable { onJumpToSource() },
+                        .clickable { activeFilePath?.let { onJumpToSource(it, 0) } },
                     color = Color(0xFF666666),
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
@@ -292,14 +304,36 @@ fun VariableInspectorPanel(
                     fontFamily = FontFamily.Monospace,
                 )
             } else {
+                // DG09: tapping a frame jumps to its REAL location — the guest
+                // frame path is translated by the caller (host form) and the
+                // 0-based frame line carries through to the editor jump.
                 pausedStack.forEach { frame ->
-                    VarRow(VarEntry(
-                        name = frame.function,
-                        type = frame.file,
-                        value = "line " + frame.line,
-                        depth = 0,
-                        expandable = false,
-                    ))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onJumpToSource(frame.file, frame.line) }
+                            .padding(start = 12.dp, top = 2.dp, bottom = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            frame.function,
+                            color = if (frame.active) Color(0xFF569CD6) else Color(0xFF9CDCFE),
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            frame.file.substringAfterLast("/") + ":" + (frame.line + 1),
+                            color = Color(0xFFCE9178),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }

@@ -823,6 +823,22 @@ fun ProjectShellScreen(
     var showTerminalThemePicker by remember { mutableStateOf(false) }
     val debugInput = remember { mutableStateOf("") }
     val debugMessages = remember { mutableStateListOf("Debugger ready. Press Run to start.") }
+    // DG10 (P4b): the Debug tab now renders the ONE UDM transcript — adapter
+    // output and REPL echoes stream to every listener, so the Explorer console
+    // and this tab show the same lines instead of two divergent histories.
+    DisposableEffect(Unit) {
+        val udmOut: (String) -> Unit = { msg ->
+            if (msg.isNotBlank()) {
+                msg.lineSequence().filter { it.isNotBlank() }.forEach { line ->
+                    debugMessages.add(line)
+                    // keep the transcript bounded like the Explorer console (100)
+                    if (debugMessages.size > 200) debugMessages.removeAt(0)
+                }
+            }
+        }
+        com.codespace.ide.debug.UniversalDebugManager.addOnOutputListener(udmOut)
+        onDispose { com.codespace.ide.debug.UniversalDebugManager.removeOnOutputListener(udmOut) }
+    }
     val cursorLineMs = remember { mutableStateOf(1) }; var cursorLine by cursorLineMs
     val cursorColMs = remember { mutableStateOf(1) }; var cursorCol by cursorColMs
     // Reset scroll target after use so the same line can be re-triggered
@@ -1216,9 +1232,19 @@ fun ProjectShellScreen(
             "Restart" -> {
                 val sid = com.codespace.ide.debug.UniversalDebugManager.getActiveSession()?.id
                 if (sid != null) {
-                    com.codespace.ide.debug.UniversalDebugManager.restartSession(sid)
+                    // DG05 (P4b): restart was called synchronously in this onClick —
+                    // stop + a blocking startDebug (10s proot check / possible 5-min
+                    // install) froze the UI. Same async front-door as the buttons.
                     debugMessages.add("[debug] Restarting session $sid...")
                     showNotification("Restarting debug session", "info")
+                    com.codespace.ide.debug.UniversalDebugManager.restartSessionAsync(sid, context) { newId ->
+                        if (newId != null) {
+                            debugMessages.add("[debug] Session restarted as $newId.")
+                        } else {
+                            debugMessages.add("[debug] Restart failed — session was not re-launched.")
+                            showNotification("Restart failed", "error")
+                        }
+                    }
                 } else showNotification("No active session to restart", "warning")
             }
             "Stop" -> {
@@ -3675,6 +3701,29 @@ private fun PssBottomPanelContent(
             BottomTab.VARIABLES -> if (heavyPanesReady) {
                 VariableInspectorPanel(
                     activeFilePath = activeEditorTab,
+                    // DG09 (P4b): the stack frames carry GUEST paths (the
+                    // debuggee runs inside proot) — translate guest->host with
+                    // the SAME chain the Problems panel uses, then jump through
+                    // the canonical shell route WITH the frame's line (the old
+                    // wiring dropped the line and joined the guest path onto
+                    // the host root, opening a wrong file).
+                    onJumpToSource = { file, line ->
+                        if (file.isNotBlank()) {
+                            val hostPath = if (file.startsWith("/host-files/")) {
+                                val filesDir = context.filesDir.absolutePath
+                                "$filesDir/" + file.removePrefix("/host-files/")
+                            } else if (file.startsWith(context.filesDir.absolutePath)) {
+                                file
+                            } else {
+                                val viaTerminal = com.codespace.ide.terminal.IdeTerminalBridge.guestPathToHostFile(context, file)
+                                if (viaTerminal != null) viaTerminal.absolutePath else {
+                                    val uri = "file://$file"
+                                    LspManager.hostPathFromFileUri(context, uri) ?: file
+                                }
+                            }
+                            onJumpToSourceWithPath(hostPath, line + 1)
+                        }
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {

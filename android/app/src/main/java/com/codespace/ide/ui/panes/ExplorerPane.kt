@@ -3304,7 +3304,17 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     var sessionState by remember { mutableStateOf<DebugState>(DebugState.IDLE) }
     var variables by remember { mutableStateOf<List<DebugVariable>>(emptyList()) }
     var callStack by remember { mutableStateOf<List<DebugStackFrame>>(emptyList()) }
-    var watchExprs by remember { mutableStateOf<List<DebugWatch>>(emptyList()) }
+    // DG10 (P4b): watches now live in UDM's single DebugWatch store — this
+    // panel and VariableInspectorPanel share one list, and it survives
+    // switching panes. watchExprs is a local cache refreshed after each op.
+    var watchExprs by remember { mutableStateOf(udm.getWatches()) }
+    // DG10: a watch added/removed in VariableInspectorPanel (the OTHER watch
+    // surface over the same session) re-syncs this cache immediately.
+    DisposableEffect(Unit) {
+        val sync: () -> Unit = { watchExprs = udm.getWatches() }
+        udm.addOnWatchesChangedListener(sync)
+        onDispose { udm.removeOnWatchesChangedListener(sync) }
+    }
     var allBreakpoints by remember { mutableStateOf(udm.getAllBreakpoints()) }
     var showVariables by remember { mutableStateOf(true) }
     var showWatch by remember { mutableStateOf(false) }
@@ -3313,7 +3323,6 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
     // P27-AUDIT: Full DAP variable expansion — maps variable key to child variables
     val expandedVarChildren = remember { mutableStateMapOf<String, List<DebugVariable>>() }
     var watchInput by remember { mutableStateOf("") }
-    var watchIdCounter by remember { mutableStateOf(0) }
     var debugInput by remember { mutableStateOf("") }
     // P1-D1..D5 (debugger parity): console REPL, breakpoint/variable edit, exception filters
     var consoleLines by remember { mutableStateOf(listOf<String>()) }
@@ -3368,13 +3377,11 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             exceptionFilters = udm.getExceptionFilters(pausedSid)
             enabledFilters = udm.getEnabledExceptionFilters(pausedSid)
         }
-        // P26-1c: Live watch — re-evaluate all watch expressions on each pause
+        // P26-1c/DG10: live watch refresh goes through the UDM store so BOTH
+        // console surfaces (this panel + VariableInspectorPanel) re-sync.
         if (activeSessionId != null && watchExprs.isNotEmpty()) {
-            val sid = activeSessionId!!
-            watchExprs = watchExprs.map { w ->
-                val newVal = udm.evaluateExpression(sid, w.expression) ?: "—"
-                w.copy(value = newVal)
-            }
+            udm.refreshWatches(activeSessionId)
+            watchExprs = udm.getWatches()
         }
     }
     // FIX (Batch E): program + adapter output was wired to notifyOutput but NO UI ever
@@ -3466,16 +3473,21 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                                 else -> Language.KOTLIN
                             }
                         }
-                        val sessionId = udm2.startDebug(dbgLang, activeFilePath, null, dbgContext)
-                        if (sessionId != null) {
-                            activeSessionId = sessionId
-                            sessionState = DebugState.STARTING
-                        } else {
-                            // DG04 (P3e): honest refusal — no fake RUNNING session for
-                            // languages without a real debug adapter (Kotlin/C/Go...).
-                            consoleLines = (consoleLines + listOf(
-                                "[debug] No debugger available for " + dbgLang.displayName + " — use Run instead."
-                            )).takeLast(100)
+                        // DG05 (P4b): startDebug blocks up to 10s+ on proot (debugpy
+                        // check + possible install) — the old synchronous call here
+                        // froze the UI (same ANR family as the PSS Run/Debug button,
+                        // which was fixed with startDebugAsync). Same front-door now.
+                        sessionState = DebugState.STARTING
+                        udm2.startDebugAsync(dbgLang, activeFilePath, null, dbgContext) { sessionId ->
+                            if (sessionId != null) {
+                                activeSessionId = sessionId
+                            } else {
+                                // DG04 (P3e): honest refusal — no fake RUNNING session for
+                                // languages without a real debug adapter (Kotlin/C/Go...).
+                                consoleLines = (consoleLines + listOf(
+                                    "[debug] No debugger available for " + dbgLang.displayName + " — use Run instead."
+                                )).takeLast(100)
+                            }
                         }
                     },
                     modifier = Modifier.size(36.dp),
@@ -3524,11 +3536,22 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 }
                 Spacer(Modifier.width(4.dp))
                 // P27-AUDIT: Restart button — wired to udm.restartSession()
+                // DG05 (P4b): restart = stop + synchronous startDebug (10s proot
+                // check / possible 5-min install) — the direct onClick call froze
+                // the UI; the async front-door keeps the main thread free.
                 FilledIconButton(
                     onClick = {
                         activeSessionId?.let { sid ->
-                            udm.restartSession(sid)
                             sessionState = DebugState.STARTING
+                            udm.restartSessionAsync(sid, dbgContext) { newId ->
+                                if (newId != null) {
+                                    activeSessionId = newId
+                                } else {
+                                    consoleLines = (consoleLines + listOf(
+                                        "[debug] Restart failed — session was not re-launched."
+                                    )).takeLast(100)
+                                }
+                            }
                         }
                     },
                     modifier = Modifier.size(36.dp),
@@ -3656,7 +3679,10 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                     items(watchExprs) { w ->
                         Row(Modifier.padding(start = 24.dp, top = 2.dp, bottom = 2.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Close, "Remove", tint = MutedColor, modifier = Modifier.size(12.dp).clickable {
-                                watchExprs = watchExprs.filter { it.id != w.id }
+                                // DG10: removal hits the shared store — the watch
+                                // disappears from VariableInspectorPanel too.
+                                udm.removeWatch(w.id)
+                                watchExprs = udm.getWatches()
                             })
                             Spacer(Modifier.width(4.dp))
                             Text(w.expression, fontSize = 11.sp, color = IconColor, fontFamily = FontFamily.Monospace)
@@ -3677,8 +3703,10 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                         )
                         Icon(Icons.Default.Add, "Add", tint = IconColor, modifier = Modifier.size(14.dp).clickable {
                             if (watchInput.isNotBlank()) {
-                                val value = activeSessionId?.let { udm.evaluateExpression(it, watchInput) } ?: "---"
-                                watchExprs = watchExprs + DebugWatch(watchIdCounter++, watchInput.trim(), value)
+                                // DG10: the shared UDM store is the one watch list.
+                                udm.addWatch(watchInput)
+                                if (activeSessionId != null) udm.refreshWatches(activeSessionId)
+                                watchExprs = udm.getWatches()
                                 watchInput = ""
                             }
                         })
@@ -3776,7 +3804,30 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 }
             }
 
-            item { SectionHeader("BREAKPOINTS (" + allBreakpoints.size + ")", showBreakpoints) { showBreakpoints = !showBreakpoints } }
+            item {
+                // DG14 (P4b): the breakpoints header carries Remove All —
+                // clearAllBreakpoints previously had NO callers (VS Code ships
+                // Remove All in the breakpoints view). It now clears the store,
+                // the persisted state AND every live session at once.
+                Row(
+                    Modifier.fillMaxWidth().clickable { showBreakpoints = !showBreakpoints }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        if (showBreakpoints) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        null, tint = MutedColor, modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("BREAKPOINTS (" + allBreakpoints.size + ")", fontSize = 11.sp, color = MutedColor,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    if (allBreakpoints.isNotEmpty()) {
+                        Icon(Icons.Default.DeleteSweep, "Remove all breakpoints", tint = MutedColor,
+                            modifier = Modifier.size(16.dp).clickable { udm.clearAllBreakpoints() })
+                        Spacer(Modifier.width(6.dp))
+                    }
+                }
+            }
             if (showBreakpoints) {
                 if (allBreakpoints.isEmpty()) {
                     item { Text("No breakpoints set", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) }
@@ -3790,7 +3841,17 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                                     udm.setBreakpointEnabled(bp.filePath, bp.line, !bp.enabled)
                                 })
                             Spacer(Modifier.width(4.dp))
-                            Text(bp.filePath.substringAfterLast("/") + ":" + (bp.line + 1), fontSize = 11.sp, color = TextColor, fontFamily = FontFamily.Monospace)
+                            // DG14 (P4b): P27-11 parsed verification but rendered it
+                            // NOWHERE — a rejected breakpoint looked healthy. Same
+                            // render as function breakpoints: unverified dims the
+                            // row while a session is live, and the server's message
+                            // (e.g. "breakpoint not set") shows next to it.
+                            Text(bp.filePath.substringAfterLast("/") + ":" + (bp.line + 1), fontSize = 11.sp,
+                                color = if (bp.verified || !isRunning) TextColor else Color(0xFFDCDCAA),
+                                fontFamily = FontFamily.Monospace)
+                            if (isRunning && !bp.verified && bp.message != null) {
+                                Text(" " + bp.message, fontSize = 9.sp, color = Color(0xFFF48771), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                             if (bp.condition != null) {
                                 Text("  [" + bp.condition + "]", fontSize = 10.sp, color = Color(0xFFCE9178), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             }
@@ -3881,9 +3942,12 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                             } else {
                                 "= no active session"
                             }
-                            consoleLines = (consoleLines + listOf("> " + expr, resultLine)).takeLast(100)
-                            com.codespace.ide.chat.DebugConsoleCapture.record("> " + expr)
-                            com.codespace.ide.chat.DebugConsoleCapture.record(resultLine)
+                            // DG10: REPL echoes publish through UDM's ONE transcript
+                            // source — the local output listener appends them here
+                            // (and captures them), and the PSS Debug tab renders the
+                            // same lines instead of a second, divergent transcript.
+                            udm.logDebugConsole("> " + expr)
+                            udm.logDebugConsole(resultLine)
                         })
                     } else {
                         Text("No active session", fontSize = 11.sp, color = MutedColor, modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp))
@@ -3925,11 +3989,9 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                     variables = variables.map { existing ->
                         if (existing.name == v.name && existing.scopeName == v.scopeName) existing.copy(value = newResult) else existing
                     }
-                    consoleLines = (consoleLines + listOf("= set " + v.name + " = " + newResult)).takeLast(100)
-                    com.codespace.ide.chat.DebugConsoleCapture.record("= set " + v.name + " = " + newResult)
+                    udm.logDebugConsole("= set " + v.name + " = " + newResult)  // DG10
                 } else {
-                    consoleLines = (consoleLines + listOf("= set failed (adapter rejected or unsupported)")).takeLast(100)
-                    com.codespace.ide.chat.DebugConsoleCapture.record("= set failed (adapter rejected or unsupported)")
+                    udm.logDebugConsole("= set failed (adapter rejected or unsupported)")  // DG10
                 }
                 editVarTarget = null
             },

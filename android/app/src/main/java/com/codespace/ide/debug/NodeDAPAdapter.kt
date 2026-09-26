@@ -47,26 +47,33 @@ class NodeDAPAdapter : DebugAdapter {
 
     private val TAG = "NodeDAPAdapter"
 
-    private var client: DAPClient? = null
+    // DG12 (P4b): this adapter used to hold ONE mutable client field (plus
+    // shared thread/frame/test-process state) on its single registered
+    // instance — a second JS/TS session OVERWROTE it: stop(A) killed B's
+    // client and pause/step/evaluate routed to whichever session launched
+    // last. All per-session runtime state now lives in a map keyed by
+    // DebugSession.id; every event closure closes over its own runtime and
+    // stop(session) tears down only that session's client + test process.
+    private class SessionRuntime(val client: DAPClient) {
+        // P27-10: Track process exit code for crash detection
+        @Volatile var lastExitCode: Int = 0
+        // F5 (TG07p1): the jest test-debuggee spawned under node --inspect-brk —
+        // the DAP session ATTACHES to it; stop() must kill it too.
+        @Volatile var testProcess: Process? = null
+        @Volatile var testInspectPort: Int = 9229
+        @Volatile var threadId: Int = 1
+        // P2-PAGING: totalFrames from last stackTrace response (-1 = unknown); frames loaded so far
+        @Volatile var lastTotalFrames: Int = -1
+        @Volatile var framesLoaded: Int = 0
+        @Volatile var currentFrameId: Int = 0
+    }
+    private val runtimes = java.util.concurrent.ConcurrentHashMap<String, SessionRuntime>()
+    private fun runtime(sessionId: String): SessionRuntime? = runtimes[sessionId]
 
     // DG02 (P3b): live sendBreakpoints needs the SAME host->guest translation
     // as launchInternal — capture the launch/attach context for it.
     @Volatile private var appContext: Context? = null
     private var caps: DAPCapabilities? = null
-
-    // P27-10: Track process exit code for crash detection
-    @Volatile private var lastExitCode: Int = 0
-
-    // F5 (TG07p1): the jest test-debuggee spawned under node --inspect-brk —
-    // the DAP session ATTACHES to it; stop() must kill it too.
-    private var testProcess: Process? = null
-    private var testInspectPort: Int = 9229
-
-    @Volatile private var threadId: Int = 1
-    // P2-PAGING: totalFrames from last stackTrace response (-1 = unknown); frames loaded so far
-    @Volatile private var lastTotalFrames: Int = -1
-    @Volatile private var framesLoaded: Int = 0
-    @Volatile private var currentFrameId: Int = 0
 
     override fun canDebug(language: Language, filePath: String) =
         language == Language.JAVASCRIPT ||
@@ -81,7 +88,7 @@ class NodeDAPAdapter : DebugAdapter {
      * Called by UDM when breakpoints change while debugging is active.
      */
     override fun sendBreakpoints(session: DebugSession, breakpoints: List<DebugBreakpoint>): Boolean {
-        val c = client ?: return false
+        val c = runtime(session.id)?.client ?: return false
         val ctx = appContext
         val bpsByFile = if (breakpoints.isEmpty()) {
             // DG02: clear-all also goes through the shared host->guest mapper.
@@ -170,14 +177,24 @@ class NodeDAPAdapter : DebugAdapter {
         // (P26-3b) then carries breakpoints, pause, step and variables.
         val debugSpec = session.testDebug
         if (debugSpec != null) {
-            val proc = spawnJestTest(context, debugSpec, onOutput) ?: return false
-            testProcess = proc
-            return launchInternal(
+            // DG12: the spawned debuggee belongs to THIS session's runtime, not
+            // the adapter singleton — spawn first, remember the port, and hand
+            // both to launchInternal via the per-session runtime it creates.
+            val spawned = spawnJestTest(context, debugSpec, onOutput) ?: return false
+            val ok = launchInternal(
                 context, session, breakpoints, onOutput, onPaused, onStopped,
                 attachParams = JSONObject()
-                    .put("port", testInspectPort)
+                    .put("port", spawned.second)
                     .put("address", "127.0.0.1"),
+                preSpawned = spawned,
             )
+            if (!ok) {
+                // DG12: launch failed after the debuggee spawned — kill it now;
+                // a per-session runtime only exists once launchInternal connects.
+                onOutput("[js-debug] Launch failed — stopping the spawned test process.\n")
+                spawned.first.destroyForcibly()
+            }
+            return ok
         }
         return launchInternal(
             context, session, breakpoints, onOutput, onPaused, onStopped,
@@ -192,11 +209,12 @@ class NodeDAPAdapter : DebugAdapter {
      * Output is drained (a full pipe would deadlock the runner) and streamed
      * to the Debug Console.
      */
+    /** DG12: returns (process, inspectPort) — both belong to the CALLING session. */
     private fun spawnJestTest(
         context: Context,
         spec: TestDebugSpec,
         onOutput: (String) -> Unit,
-    ): Process? {
+    ): Pair<Process, Int>? {
         // Honest pre-flight: debugging requires jest installed LOCALLY — the
         // npx-fetched fallback of the Run path cannot be debugged.
         val hostWorkdir = spec.hostWorkdir
@@ -218,8 +236,6 @@ class NodeDAPAdapter : DebugAdapter {
             onOutput("[js-debug] Cannot allocate an inspector port: ${e.message}\n")
             return null
         }
-        testInspectPort = port
-
         val prootEnv = IdeEnvironment.forSubprocess(context)
         val proot = prootEnv.proot
         val headArgs = prootEnv.args.dropLast(2).toTypedArray()
@@ -240,6 +256,7 @@ class NodeDAPAdapter : DebugAdapter {
         }
         onOutput("[js-debug] jest starting under node --inspect-brk (port $port) - attaching debugger...\n")
         onOutput("[js-debug] After attach, tap Continue in the Debug Console to run the test.\n")
+        return Pair(proc, port)
 
         // Drain the debuggee's output so a full pipe never blocks the runner.
         Thread {
@@ -294,6 +311,7 @@ class NodeDAPAdapter : DebugAdapter {
         onPaused: (List<DebugStackFrame>, List<DebugVariable>) -> Unit,
         onStopped: (exitCode: Int) -> Unit,
         attachParams: JSONObject?,
+        preSpawned: Pair<Process, Int>? = null,
     ): Boolean {
         // 1. Ensure js-debug is installed
         if (!isJsDebugInstalled(context)) {
@@ -363,7 +381,19 @@ class NodeDAPAdapter : DebugAdapter {
 
         // 5. Create and start DAPClient
         val dapClient = DAPClient(process)
-        client = dapClient
+        // DG12: per-session runtime — the client and ALL its mutable state are
+        // keyed by session id from here on.
+        val rt = SessionRuntime(dapClient)
+        if (preSpawned != null) {
+            // F5 (TG07p1): the jest debuggee spawned by launch() for THIS session.
+            rt.testProcess = preSpawned.first
+            rt.testInspectPort = preSpawned.second
+        }
+        runtimes[session.id] = rt
+        // DG13 (P4b): register the DAP server process with the ProcessTracker
+        // (previously dead code with zero callers).
+        UniversalDebugManager.trackProcess(session.id, process, "js-debug (node)",
+            session.filePath.substringBeforeLast("/"))
 
         // Wire events BEFORE start() so no race
         dapClient.onEvent("output") { body ->
@@ -381,15 +411,15 @@ class NodeDAPAdapter : DebugAdapter {
         }
 
         dapClient.onEvent("stopped") { body ->
-            threadId = body.optInt("threadId", 1)
+            rt.threadId = body.optInt("threadId", 1)
             val reason = body.optString("reason", "breakpoint")
-            Log.d(TAG, "DAP stopped: reason=$reason threadId=$threadId")
+            Log.d(TAG, "DAP stopped: reason=$reason threadId=${rt.threadId}")
             onOutput("[js-debug] Paused: $reason\n")
 
             Thread {
-                val frames = fetchStackFrames(dapClient, threadId)
+                val frames = fetchStackFrames(dapClient, rt.threadId, rt)
                 val frameId = if (frames.isNotEmpty()) frames.first().frameId else 0
-                currentFrameId = frameId
+                rt.currentFrameId = frameId
                 val vars = fetchVariables(dapClient, frameId)
                 onPaused(frames, vars)
             }.also { it.isDaemon = true }.start()
@@ -398,14 +428,15 @@ class NodeDAPAdapter : DebugAdapter {
         dapClient.onEvent("terminated") { _ ->
             Log.d(TAG, "DAP terminated")
             onOutput("[js-debug] Session terminated.\n")
-            onStopped(lastExitCode)
+            onStopped(rt.lastExitCode)
+            runtimes.remove(session.id)  // DG12: only THIS session's runtime
         }
 
         dapClient.onEvent("exited") { body ->
             val code = body.optInt("exitCode", 0)
             onOutput("[js-debug] Process exited with code $code.\n")
-        
-            lastExitCode = code  // P27-10
+
+            rt.lastExitCode = code  // P27-10
         }
 
         dapClient.onEvent("thread") { body ->
@@ -449,7 +480,9 @@ class NodeDAPAdapter : DebugAdapter {
         val initResp = dapClient.request("initialize", initArgs, timeoutSeconds = 15)
         if (initResp == null) {
             onOutput("[js-debug] initialize timed out (15s). Is Node.js installed?\n")
-            stopProcess()
+            dapClient.stop()
+            runtimes.remove(session.id)  // DG12: no orphan runtime on failed launch
+            UniversalDebugManager.untrackProcess(session.id)  // DG13
             return false
         }
 
@@ -580,48 +613,51 @@ class NodeDAPAdapter : DebugAdapter {
     // ── P2: threads / paging / restartFrame / function breakpoints ──────────
 
     override fun getThreads(session: DebugSession): List<DebugThread> {
-        val dapClient = client ?: return emptyList()
+        val rt = runtime(session.id) ?: return emptyList()
+        val dapClient = rt.client
         val resp = dapClient.request("threads", timeoutSeconds = 5) ?: return emptyList()
         val arr = resp.optJSONArray("threads") ?: return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
             val t = arr.optJSONObject(i) ?: return@mapNotNull null
             val id = t.optInt("id", -1)
-            DebugThread(id = id, name = t.optString("name", "Thread $id"), active = id == threadId)
+            DebugThread(id = id, name = t.optString("name", "Thread $id"), active = id == rt.threadId)
         }
     }
 
     override fun switchThread(session: DebugSession, newThreadId: Int): List<DebugStackFrame> {
-        threadId = newThreadId
-        val dapClient = client ?: return emptyList()
-        return fetchStackFrames(dapClient, newThreadId)
+        val rt = runtime(session.id) ?: return emptyList()
+        rt.threadId = newThreadId
+        return fetchStackFrames(rt.client, newThreadId, rt)
     }
 
     override fun loadMoreFrames(session: DebugSession): Pair<List<DebugStackFrame>, Int> {
-        val dapClient = client ?: return Pair(emptyList(), lastTotalFrames)
-        if (lastTotalFrames in 0..framesLoaded) return Pair(emptyList(), lastTotalFrames)
-        val args = JSONObject().put("threadId", threadId).put("startFrame", framesLoaded).put("levels", 20)
-        val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5) ?: return Pair(emptyList(), lastTotalFrames)
-        val frames = resp.optJSONArray("stackFrames") ?: return Pair(emptyList(), lastTotalFrames)
-        if (frames.length() == 0) return Pair(emptyList(), lastTotalFrames)
-        lastTotalFrames = resp.optInt("totalFrames", framesLoaded + frames.length())
-        val parsed = (0 until frames.length()).map { i -> parseFrame(frames.optJSONObject(i) ?: JSONObject(), framesLoaded + i) }
-        framesLoaded += frames.length()
-        return Pair(parsed, lastTotalFrames)
+        val rt = runtime(session.id) ?: return Pair(emptyList(), -1)
+        val dapClient = rt.client
+        if (rt.lastTotalFrames in 0..rt.framesLoaded) return Pair(emptyList(), rt.lastTotalFrames)
+        val args = JSONObject().put("threadId", rt.threadId).put("startFrame", rt.framesLoaded).put("levels", 20)
+        val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5) ?: return Pair(emptyList(), rt.lastTotalFrames)
+        val frames = resp.optJSONArray("stackFrames") ?: return Pair(emptyList(), rt.lastTotalFrames)
+        if (frames.length() == 0) return Pair(emptyList(), rt.lastTotalFrames)
+        rt.lastTotalFrames = resp.optInt("totalFrames", rt.framesLoaded + frames.length())
+        val parsed = (0 until frames.length()).map { i -> parseFrame(frames.optJSONObject(i) ?: JSONObject(), rt.framesLoaded + i) }
+        rt.framesLoaded += frames.length()
+        return Pair(parsed, rt.lastTotalFrames)
     }
 
     override fun restartFrame(session: DebugSession, frameId: Int): Boolean {
         if (caps?.supportsRestartFrame != true) return false
         // On success the adapter emits a 'stopped' event (reason=frameEntry) which
         // refreshes the stack/variables UI through the normal paused path.
-        return client?.request("restartFrame", JSONObject().put("frameId", frameId), timeoutSeconds = 5) != null
+        return runtime(session.id)?.client?.request("restartFrame", JSONObject().put("frameId", frameId), timeoutSeconds = 5) != null
     }
 
     override fun setFunctionBreakpoints(session: DebugSession, bps: List<DebugFunctionBreakpoint>): Boolean {
+        val rt = runtime(session.id) ?: return false
         if (caps?.supportsFunctionBreakpoints != true) return false
         val args = JSONObject().put("breakpoints", JSONArray().apply {
             bps.forEach { fb -> put(JSONObject().put("name", fb.name)) }
         })
-        val resp = client?.request("setFunctionBreakpoints", args, timeoutSeconds = 5) ?: return false
+        val resp = rt.client.request("setFunctionBreakpoints", args, timeoutSeconds = 5) ?: return false
         val arr = resp.optJSONArray("breakpoints")
         val verified = mutableMapOf<String, Pair<Boolean, String?>>()
         if (arr != null) {
@@ -638,53 +674,67 @@ class NodeDAPAdapter : DebugAdapter {
     // ── Control ───────────────────────────────────────────────────────
 
     override fun stop(session: DebugSession) {
-        try { client?.request("terminate", timeoutSeconds = 3) } catch (_: Exception) {}
+        val rt = runtimes.remove(session.id) ?: return
+        // DG13 (P4b): send the DAP teardown BEFORE killing the local server
+        // process — disconnect(terminateDebuggee=true) tells js-debug to end
+        // the debuggee so it cannot be reparented inside the rootfs and keep
+        // running; terminate is the fallback when disconnect fails.
+        try {
+            val resp = rt.client.request("disconnect", JSONObject().put("terminateDebuggee", true), timeoutSeconds = 3)
+            if (resp == null) rt.client.sendRequest("terminate")
+        } catch (_: Exception) {}
         // F5: the jest test-debuggee is a separate spawned process — the DAP
-        // terminate does not cover it. Kill it or the runner keeps running.
-        testProcess?.destroyForcibly()
-        testProcess = null
-        stopProcess()
+        // teardown does not cover it. Kill it or the runner keeps running.
+        rt.testProcess?.destroyForcibly()
+        rt.testProcess = null
+        rt.client.stop()
     }
 
     override fun pause(session: DebugSession) {
-        client?.sendRequest("pause", JSONObject().put("threadId", threadId))
+        val rt = runtime(session.id) ?: return
+        rt.client.sendRequest("pause", JSONObject().put("threadId", rt.threadId))
     }
 
     override fun resume(session: DebugSession) {
-        client?.sendRequest("continue", JSONObject().put("threadId", threadId))
+        val rt = runtime(session.id) ?: return
+        rt.client.sendRequest("continue", JSONObject().put("threadId", rt.threadId))
     }
 
     override fun stepOver(session: DebugSession) {
-        client?.sendRequest("next", JSONObject().put("threadId", threadId))
+        val rt = runtime(session.id) ?: return
+        rt.client.sendRequest("next", JSONObject().put("threadId", rt.threadId))
     }
 
     override fun stepInto(session: DebugSession) {
-        client?.sendRequest("stepIn", JSONObject().put("threadId", threadId))
+        val rt = runtime(session.id) ?: return
+        rt.client.sendRequest("stepIn", JSONObject().put("threadId", rt.threadId))
     }
 
     override fun stepOut(session: DebugSession) {
-        client?.sendRequest("stepOut", JSONObject().put("threadId", threadId))
+        val rt = runtime(session.id) ?: return
+        rt.client.sendRequest("stepOut", JSONObject().put("threadId", rt.threadId))
     }
 
     override fun evaluate(session: DebugSession, expression: String, frameId: Int): String? {
+        val rt = runtime(session.id) ?: return null
         val evalArgs = JSONObject().apply {
             put("expression", expression)
             put("context", "repl")
-            put("frameId", if (frameId > 0) frameId else currentFrameId)
+            put("frameId", if (frameId > 0) frameId else rt.currentFrameId)
         }
-        val resp = client?.request("evaluate", evalArgs, timeoutSeconds = 5) ?: return null
+        val resp = rt.client.request("evaluate", evalArgs, timeoutSeconds = 5) ?: return null
         return if (resp.has("result") && !resp.isNull("result")) resp.getString("result") else null
     }
 
     // ── Stack / Variables ─────────────────────────────────────────────
 
-    private fun fetchStackFrames(dapClient: DAPClient, threadId: Int): List<DebugStackFrame> {
+    private fun fetchStackFrames(dapClient: DAPClient, threadId: Int, rt: SessionRuntime): List<DebugStackFrame> {
         val args = JSONObject().put("threadId", threadId).put("startFrame", 0).put("levels", 20)
         val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5) ?: return emptyList()
         val frames = resp.optJSONArray("stackFrames") ?: return emptyList()
         // P2-PAGING: record total frame count so the UI can offer "load more"
-        lastTotalFrames = resp.optInt("totalFrames", frames.length())
-        framesLoaded = frames.length()
+        rt.lastTotalFrames = resp.optInt("totalFrames", frames.length())
+        rt.framesLoaded = frames.length()
         return (0 until frames.length()).map { i -> parseFrame(frames.optJSONObject(i) ?: JSONObject(), i) }
     }
 
@@ -736,7 +786,7 @@ class NodeDAPAdapter : DebugAdapter {
     // P27-AUDIT: Public override — fetch child variables by DAP variablesReference
     override fun getVariables(session: DebugSession, variablesReference: Int): List<DebugVariable> {
         if (variablesReference == 0) return emptyList()
-        val dapClient = client ?: return emptyList()
+        val dapClient = runtime(session.id)?.client ?: return emptyList()
         val varArgs = JSONObject().put("variablesReference", variablesReference)
         val varResp = dapClient.request("variables", varArgs, timeoutSeconds = 5) ?: return emptyList()
         val variables = varResp.optJSONArray("variables") ?: return emptyList()
@@ -760,7 +810,7 @@ class NodeDAPAdapter : DebugAdapter {
      * Returns the new value string on success, null on failure.
      */
     override fun setVariable(session: DebugSession, variablesReference: Int, name: String, value: String): String? {
-        val dapClient = client ?: return null
+        val dapClient = runtime(session.id)?.client ?: return null
         val args = JSONObject()
             .put("variablesReference", variablesReference)
             .put("name", name)
@@ -773,14 +823,10 @@ class NodeDAPAdapter : DebugAdapter {
      * P1-D4: DAP setExceptionBreakpoints — push enabled exception filter ids to the adapter.
      */
     override fun setExceptionBreakpoints(session: DebugSession, filterIds: List<String>): Boolean {
-        val dapClient = client ?: return false
+        val dapClient = runtime(session.id)?.client ?: return false
         val args = JSONObject().put("filters", JSONArray(filterIds))
         val resp = dapClient.request("setExceptionBreakpoints", args, timeoutSeconds = 5)
         return resp != null
     }
 
-    private fun stopProcess() {
-        client?.stop()
-        client = null
-    }
 }
