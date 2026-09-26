@@ -59,10 +59,25 @@ object ChatAttachmentInjector {
         sb.append("## ATTACHED CONTEXT\n")
         sb.append("The user explicitly attached the following to this request.\n")
         var total = 0
+        var noted = 0  // CH04 (P4h): image/audio notes count toward "block has content"
         for (att in attachments) {
             // R8-VISION: images ride the request as structured multimodal parts,
-            // never as text — skip them in the text-injection path entirely.
-            if (att.kind == ChatAttachment.Kind.IMAGE) continue
+            // never as text. CH04 (P4h): restored conversations now still TELL the
+            // model an image was attached (previously the block was empty, so a
+            // restored conversation hid the image entirely).
+            if (att.kind == ChatAttachment.Kind.IMAGE) {
+                sb.append("\n### Image attachment: ").append(att.name).append(" (sent as an image part with this message)\n")
+                noted++
+                continue
+            }
+            // CH04 (P4h): audio rides the request as a structured audio part —
+            // it must never fall through to the file branch's readText() (binary
+            // garbage) and, like images, restored conversations still see the note.
+            if (att.kind == ChatAttachment.Kind.AUDIO) {
+                sb.append("\n### Audio attachment: ").append(att.name).append(" (sent as an audio part with this message)\n")
+                noted++
+                continue
+            }
             if (att.kind == ChatAttachment.Kind.SELECTION) {
                 val text = (att.selText ?: "").trim().take(MAX_FILE_CHARS)
                 if (text.isEmpty()) continue
@@ -90,7 +105,7 @@ object ChatAttachmentInjector {
                 // unreadable attachment — skip
             }
         }
-        return if (total == 0) "" else sb.toString().trimEnd()
+        return if (total == 0 && noted == 0) "" else sb.toString().trimEnd()
     }
 
     /**

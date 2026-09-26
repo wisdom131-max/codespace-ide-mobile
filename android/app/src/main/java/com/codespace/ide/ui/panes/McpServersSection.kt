@@ -65,6 +65,7 @@ internal fun McpServersSection() {
 
     var servers by remember { mutableStateOf(listOf<McpClientManager.McpServerConfig>()) }
     var expanded by remember { mutableStateOf<String?>(null) }
+    var removeTarget by remember { mutableStateOf<String?>(null) }  // CH14 (P4h)
     var showAddDialog by remember { mutableStateOf(false) }
     var addName by remember { mutableStateOf("") }
     var addCommand by remember { mutableStateOf("") }
@@ -195,6 +196,15 @@ internal fun McpServersSection() {
         }
 
         for (cfg in servers) {
+            // CH10 (P4h): per-server discovery failures render INLINE — a broken
+            // server no longer just looks like "no tools".
+            McpClientManager.lastDiscoveryErrors.value[cfg.name]?.let { dErr ->
+                Text(
+                    "Discovery failed: $dErr",
+                    fontSize = 10.sp, color = McpMuted,
+                    modifier = Modifier.padding(start = 56.dp, bottom = 4.dp),
+                )
+            }
             McpServerRow(
                 cfg = cfg,
                 expanded = expanded == cfg.name,
@@ -218,13 +228,7 @@ internal fun McpServersSection() {
                     com.codespace.ide.diagnostics.AppOutputLog.log("[MCP-ROW-DIAG] tap fired for '" + cfg.name + "', expanded was '" + expanded + "' -> now '" + (if (expanded == cfg.name) null else cfg.name) + "'", "lsp")
                     expanded = if (expanded == cfg.name) null else cfg.name
                 },
-                onRemove = {
-                    scope.launch(Dispatchers.IO) {
-                        McpClientManager.removeServer(context, cfg.name)
-                        reload()
-                        statusLine = "Removed ${cfg.name}"
-                    }
-                },
+                onRemove = { removeTarget = cfg.name },  // CH14 (P4h): confirm first — was a silent kill
                 onAddEnv = { envDialogServer = cfg.name },
                 onToolToggled = { tool, disabled ->
                     scope.launch(Dispatchers.IO) {
@@ -234,6 +238,36 @@ internal fun McpServersSection() {
                 },
             )
         }
+    }
+
+    // ── CH14 (P4h): delete confirm — MCP server DELETE was the ONLY destructive
+    // settings action without one, and it silently killed a live session.
+    removeTarget?.let { name ->
+        AlertDialog(
+            onDismissRequest = { removeTarget = null },
+            title = { Text("Delete MCP server '$name'?") },
+            shape = RoundedCornerShape(12.dp),
+            containerColor = McpSurface,
+            text = {
+                Text(
+                    "Its live session is stopped and its stored env secrets are wiped. This cannot be undone.",
+                    fontSize = 11.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    removeTarget = null
+                    scope.launch(Dispatchers.IO) {
+                        McpClientManager.removeServer(context, name)
+                        reload()
+                        statusLine = "Removed $name"
+                    }
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { removeTarget = null }) { Text("Cancel") }
+            },
+        )
     }
 
     // ── Add-server dialog ────────────────────────────────────────────────

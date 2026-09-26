@@ -122,7 +122,21 @@ object McpClientManager {
             AppOutputLog.log("mcp config save failed: ${e.message}", CHANNEL)
         }
         // Config changed — next chat re-discovers docs.
+        // CH10 (P4h note): this latch reset already covered add/remove/toggle at the
+        // saveConfig choke point; the NEW CH10 pieces are invalidateTools (stale
+        // tools die with the server) + lastDiscoveryErrors (failures render in the
+        // MCP panel rows, not Output-only).
         discoveryStarted = false
+    }
+
+    /**
+     * CH10 (P4h): wipe a server's cached tools (delete/disable). Stale tools must
+     * not stay callable after the config change removed them.
+     */
+    private fun invalidateTools(name: String) {
+        val prefix = "mcp_${name}_"
+        val it = toolsCache.entries.iterator()
+        while (it.hasNext()) { if (it.next().key.startsWith(prefix)) it.remove() }
     }
 
     fun serverNameRaw(name: String): String =
@@ -146,6 +160,7 @@ object McpClientManager {
         for (secretKey in cfg.envKeys.values) {
             try { SecureTokenStore(context).setAiKey(secretKey, null) } catch (_: Exception) {}
         }
+        invalidateTools(name)  // CH10 (P4h): stale tools die with the server
         stopServer(name)
         saveConfig(context, list.filter { it.name != name })
         AppOutputLog.log("mcp server removed: $name", CHANNEL)
@@ -155,7 +170,7 @@ object McpClientManager {
         val list = loadConfig(context)
         val cfg = list.find { it.name == name } ?: return
         cfg.enabled = enabled
-        if (!enabled) stopServer(name)
+        if (!enabled) { stopServer(name); invalidateTools(name) }  // CH10 (P4h)
         saveConfig(context, list)
     }
 
@@ -263,17 +278,28 @@ object McpClientManager {
         refreshTools(context)
     }
 
+    /**
+     * CH10 (P4h): last per-server discovery failures — the MCP panel rows render
+     * them inline, so a broken server no longer looks like "no tools" with the
+     * only trace buried in the Output channel. Cleared at the start of each
+     * refresh; empty map = no failures this pass.
+     */
+    val lastDiscoveryErrors = androidx.compose.runtime.mutableStateOf(mapOf<String, String>())
+
     /** Force re-discovery (UI Refresh button). Also re-runs the MCP handshake. */
     suspend fun refreshTools(context: Context) {
         withContext(Dispatchers.IO) {
+            val errs = mutableMapOf<String, String>()
             for (cfg in loadConfig(context)) {
                 if (!cfg.enabled) continue
                 try {
                     refreshServerTools(context, cfg)
                 } catch (e: Exception) {
+                    errs[cfg.name] = e.message ?: "unknown error"
                     AppOutputLog.log("mcp server '${cfg.name}' discovery failed: ${e.message}", CHANNEL)
                 }
             }
+            lastDiscoveryErrors.value = errs
         }
     }
 

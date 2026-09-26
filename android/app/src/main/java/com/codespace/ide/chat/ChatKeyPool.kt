@@ -22,9 +22,12 @@ import org.json.JSONArray
  */
 object ChatKeyPool {
     @Volatile private var prefs: SharedPreferences? = null
+    @Volatile private var appCtx: Context? = null
 
     fun init(ctx: Context) {
         prefs = ctx.applicationContext.getSharedPreferences("chat_key_pool", Context.MODE_PRIVATE)
+        appCtx = ctx.applicationContext
+        migrateLabelsToSecureStore()
     }
 
     private fun idxName(providerId: String) = "index_" + providerId
@@ -118,22 +121,44 @@ object ChatKeyPool {
         saveIndex(providerId, slots(providerId).filter { it != suffix })
     }
 
+    // CH12 (P4h): user-entered labels moved OUT of plain SharedPreferences into
+    // the encrypted store (SecureTokenStore) next to the key VALUES they describe —
+    // key order stays in plain prefs (derived, not secret). slot prefix keeps them
+    // out of the numbered slot space, so the pool never lists a label as a key.
+    private const val LABEL_SLOT = "label_"
+
+    private fun secure(): com.codespace.ide.data.SecureTokenStore? =
+        appCtx?.let { com.codespace.ide.data.SecureTokenStore(it) }
+
     fun setLabel(suffix: String, label: String) {
-        val p = prefs ?: return
-        val labels = readLabels()
-        if (label.isBlank()) labels.remove(suffix) else labels.put(suffix, label.trim().take(40))
-        try { p.edit().putString("labels", labels.toString()).apply() } catch (_: Exception) { }
+        val store = secure() ?: return
+        try {
+            if (label.isBlank()) store.setAiKey(LABEL_SLOT + suffix, null)
+            else store.setAiKey(LABEL_SLOT + suffix, label.trim().take(40))
+        } catch (_: Exception) { }
     }
 
     fun label(suffix: String): String {
-        val l = readLabels()
-        return try { l.optString(suffix, "") } catch (_: Exception) { "" }
+        val store = secure() ?: return ""
+        return try { store.aiKey(LABEL_SLOT + suffix) ?: "" } catch (_: Exception) { "" }
     }
 
-    private fun readLabels(): org.json.JSONObject {
-        val p = prefs ?: return org.json.JSONObject()
-        val raw: String? = try { p.getString("labels", null) } catch (_: Exception) { null }
-        val txt = raw ?: return org.json.JSONObject()
-        return try { org.json.JSONObject(txt) } catch (_: Exception) { org.json.JSONObject() }
+    /** One-time migration: labels JSON in plain prefs -> SecureTokenStore; the
+     *  plain "labels" entry is removed after the move. Safe to re-run (no-ops). */
+    private fun migrateLabelsToSecureStore() {
+        val p = prefs ?: return
+        val ctx = appCtx ?: return
+        val raw: String? = try { p.getString("labels", null) } catch (_: Exception) { null } ?: return
+        try {
+            val l = org.json.JSONObject(raw)
+            val keys = l.keys()
+            val store = com.codespace.ide.data.SecureTokenStore(ctx)
+            while (keys.hasNext()) {
+                val suf = keys.next()
+                val v = l.optString(suf, "")
+                if (v.isNotEmpty()) store.setAiKey(LABEL_SLOT + suf, v)
+            }
+            p.edit().remove("labels").apply()
+        } catch (_: Exception) { }
     }
 }

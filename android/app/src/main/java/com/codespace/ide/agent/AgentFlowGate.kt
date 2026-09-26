@@ -3,6 +3,13 @@ package com.codespace.ide.agent
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.CompletableDeferred
+// CH09 (P4h): Mutex/withLock serializes concurrent approvals (was: a second call
+// REPLACED the pending card, leaving the first chat suspended FOREVER).
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+// CH09 (P4h): withTimeoutOrNull bounds the wait — 10 minutes with no response is a
+// typed TIMEOUT, never an eternal spinner.
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * P-FLOW: Gates AI Agent tool-call execution on the user's permission level
@@ -19,6 +26,13 @@ import kotlinx.coroutines.CompletableDeferred
  * approve()/reject()/approveAlways().
  */
 object AgentFlowGate {
+    /**
+     * CH09 (P4h): typed verdict — a timed-out approval is no longer reported to
+     * the transcript as "rejected by user" (a misattribution on the SAME surface
+     * this gate exists to make honest).
+     */
+    enum class ApprovalVerdict { APPROVED, REJECTED, TIMEOUT }
+
     data class PendingApproval(
         val toolName: String,
         val argsSummary: String,
@@ -41,22 +55,36 @@ object AgentFlowGate {
      * token-bearing network egress) and (b) the first gated action in an untrusted
      * project (prompt-once trust card).
      */
+    /** CH09 (P4h): serializes concurrent approvals — a second gated call now WAITS
+     * for the current card instead of clobbering it (the old clobber left the first
+     * caller's deferred forever-incomplete = a chat stuck loading). */
+    private val approvalSlot = Mutex()
+
     suspend fun awaitApproval(
         context: android.content.Context,
         toolName: String,
         argsSummary: String,
         forceApproval: Boolean = false,
         onTrust: (() -> Unit)? = null,
-    ): Boolean {
-        if (!forceApproval && ChatPermissionStore.isAutoApproved(context, toolName)) return true
-        val deferred = CompletableDeferred<Boolean>()
-        pending.value = PendingApproval(toolName, argsSummary, deferred, onAlwaysAllow = {
-            ChatPermissionStore.allowTool(context, toolName)
-            deferred.complete(true)
-        }, onTrust = onTrust)
-        val result = deferred.await()
-        pending.value = null
-        return result
+    ): ApprovalVerdict {
+        if (!forceApproval && ChatPermissionStore.isAutoApproved(context, toolName)) return ApprovalVerdict.APPROVED
+        return approvalSlot.withLock {
+            val deferred = CompletableDeferred<Boolean>()
+            pending.value = PendingApproval(toolName, argsSummary, deferred, onAlwaysAllow = {
+                ChatPermissionStore.allowTool(context, toolName)
+                deferred.complete(true)
+            }, onTrust = onTrust)
+            // CH09 (P4h): the old await() suspended FOREVER — a lost card left the
+            // chat loading with Stop as the only escape. 10 minutes with no response
+            // = the call is abandoned with an honest TIMEOUT verdict.
+            val outcome = withTimeoutOrNull(600_000L) { deferred.await() }
+            pending.value = null
+            when (outcome) {
+                true -> ApprovalVerdict.APPROVED
+                false -> ApprovalVerdict.REJECTED
+                null -> ApprovalVerdict.TIMEOUT
+            }
+        }
     }
 
     fun approve() { pending.value?.deferred?.complete(true) }

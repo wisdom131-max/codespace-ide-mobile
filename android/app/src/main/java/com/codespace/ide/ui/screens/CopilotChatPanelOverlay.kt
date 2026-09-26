@@ -103,14 +103,19 @@ private enum class ChatEntryKind {
 }
 
 // R4-TYPED-ENTRY: one message model for the transcript; kind drives rendering.
-// Persistence unchanged (save/load still write role+text only) — old histories
-// with "Error:" replies auto-classify to ERROR on load via the of() heuristic.
+// CH04 (P4h): persistence now carries the message's resolved ATTACHMENTS too — a
+// restored conversation re-sends with its attached context instead of silently
+// changing what the model sees mid-thread. Old role+text JSON loads unchanged
+// (missing "att" key -> empty list); "Error:" replies still auto-classify on load.
 private data class ChatMsg(
     val role: String,
     val text: String,
     val kind: ChatEntryKind = ChatEntryKind.of(role, text),
     // R7-FEEDBACK: local thumbs up/down on assistant replies — "up" | "down" | null.
     val rating: String? = null,
+    // CH04 (P4h): the attachments that rode this user message (chips + resolved
+    // "#file" tokens, capped at 8 per message when persisted).
+    val attachments: List<com.codespace.ide.chat.ChatAttachment> = emptyList(),
 )
 
 /**
@@ -154,7 +159,10 @@ private fun loadHistory(ctx: Context): List<ChatMsg> {
 // ── Sessions (UI bucket #5) ─────────────────────────────────────────────────
 // Multiple named chat threads instead of one flat history. Persisted as a single JSON
 // blob (fine at this scale — 50-message cap per session, sessions list itself is small).
-private const val KEY_SESSIONS = "sessions_v1"
+private const val KEY_SESSIONS = "sessions_v1"           // legacy single blob — migrated on first load
+private const val KEY_SESSION_INDEX = "sessions_idx_v1"    // CH13 (P4h): tiny index of session headers
+/** CH13 (P4h): one blob PER SESSION — persisting a message no longer re-serializes every session. */
+private fun sessionKey(id: String) = "session_v1_" + id
 
 private data class ChatSession(
     val id: String,
@@ -169,43 +177,136 @@ private data class ChatSession(
 private fun newSession(mode: ChatMode = ChatMode.ASK, customModeId: String? = null): ChatSession =
     ChatSession(id = java.util.UUID.randomUUID().toString(), title = "New chat", mode = mode, customModeId = customModeId)
 
-private fun saveSessions(ctx: Context, sessions: List<ChatSession>) {
-    val arr = JSONArray()
-    sessions.forEach { s ->
-        val msgsArr = JSONArray()
-        s.messages.takeLast(50).forEach { m ->
-            val mo = JSONObject().put("role", m.role).put("text", m.text)
-            if (m.rating != null) mo.put("rating", m.rating)
-            msgsArr.put(mo)
+private fun msgToJson(m: ChatMsg): JSONObject {
+    val mo = JSONObject().put("role", m.role).put("text", m.text)
+    if (m.rating != null) mo.put("rating", m.rating)
+    // CH04 (P4h): attachment descriptors ride the message (capped: 8 per message,
+    // selection snippets at 4000 chars) so a restored conversation re-sends faithfully.
+    if (m.attachments.isNotEmpty()) {
+        val atts = JSONArray()
+        m.attachments.take(8).forEach { a ->
+            val ao = JSONObject().put("p", a.path).put("r", a.relPath).put("n", a.name).put("k", a.kind.name)
+            if (a.kind == com.codespace.ide.chat.ChatAttachment.Kind.SELECTION && !a.selText.isNullOrEmpty()) ao.put("s", a.selText!!.take(4000))
+            if (!a.mimeType.isNullOrEmpty()) ao.put("m", a.mimeType)
+            atts.put(ao)
         }
-        arr.put(
+        mo.put("att", atts)
+    }
+    return mo
+}
+
+private fun msgFromJson(o: JSONObject): ChatMsg {
+    val base = ChatMsg(o.getString("role"), o.getString("text"), rating = o.optString("rating").ifBlank { null })
+    val attsArr = o.optJSONArray("att") ?: return base
+    val atts = mutableListOf<com.codespace.ide.chat.ChatAttachment>()
+    for (j in 0 until attsArr.length()) {
+        try {
+            val ao = attsArr.getJSONObject(j)
+            atts.add(com.codespace.ide.chat.ChatAttachment(
+                path = ao.optString("p"),
+                relPath = ao.optString("r"),
+                name = ao.optString("n"),
+                kind = try { com.codespace.ide.chat.ChatAttachment.Kind.valueOf(ao.optString("k")) } catch (_: Exception) { com.codespace.ide.chat.ChatAttachment.Kind.FILE },
+                selText = if (ao.has("s")) ao.optString("s") else null,
+                mimeType = if (ao.has("m")) ao.optString("m") else null,
+            ))
+        } catch (_: Exception) { }
+    }
+    return base.copy(attachments = atts)
+}
+
+/**
+ * CH13 (P4h): was ONE blob re-serializing EVERY session on EVERY persist —
+ * O(total messages) per send/rating/command on the UI-thread prefs path. Now a
+ * tiny index + one blob per session, and only sessions whose blob CHANGED are
+ * rewritten (blob cache) — steady-state cost is the active session only.
+ * Stale blobs from sessions deleted in an earlier process are purged on load.
+ */
+private val sessionBlobCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+private fun saveSessions(ctx: Context, sessions: List<ChatSession>) {
+    val editor = ctx.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE).edit()
+    val idx = JSONArray()
+    val live = mutableSetOf<String>()
+    sessions.forEach { s ->
+        live.add(s.id)
+        val msgsArr = JSONArray()
+        s.messages.takeLast(50).forEach { m -> msgsArr.put(msgToJson(m)) }
+        val blob = JSONObject()
+            .put("id", s.id)
+            .put("title", s.title)
+            .put("mode", s.mode.name)
+            .put("updatedAt", s.updatedAt)
+            .put("customModeId", s.customModeId ?: "")
+            .put("messages", msgsArr)
+            .toString()
+        if (sessionBlobCache[s.id] != blob) {
+            editor.putString(sessionKey(s.id), blob)
+            sessionBlobCache[s.id] = blob
+        }
+        idx.put(
             JSONObject()
                 .put("id", s.id)
                 .put("title", s.title)
                 .put("mode", s.mode.name)
                 .put("updatedAt", s.updatedAt)
                 .put("customModeId", s.customModeId ?: "")
-                .put("messages", msgsArr)
         )
     }
-    ctx.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
-        .edit().putString(KEY_SESSIONS, arr.toString()).apply()
+    // purge blobs of sessions deleted this process
+    sessionBlobCache.keys().toList().forEach { id ->
+        if (id !in live) { editor.remove(sessionKey(id)); sessionBlobCache.remove(id) }
+    }
+    editor.putString(KEY_SESSION_INDEX, idx.toString()).apply()
 }
 
 private fun loadSessions(ctx: Context): MutableList<ChatSession> {
     val prefs = ctx.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
+    val idxStr = prefs.getString(KEY_SESSION_INDEX, null)
+    if (idxStr != null) {
+        try {
+            val arr = JSONArray(idxStr)
+            val live = mutableSetOf<String>()
+            val out = (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                val id = o.getString("id")
+                live.add(id)
+                val blob = prefs.getString(sessionKey(id), null)
+                if (blob != null) sessionBlobCache[id] = blob
+                val msgs = mutableListOf<ChatMsg>()
+                if (blob != null) {
+                    val msgsArr = JSONObject(blob).optJSONArray("messages")
+                    if (msgsArr != null) for (j in 0 until msgsArr.length()) msgs.add(msgFromJson(msgsArr.getJSONObject(j)))
+                }
+                ChatSession(
+                    id = id,
+                    title = o.getString("title"),
+                    mode = try { ChatMode.valueOf(o.getString("mode")) } catch (_: Exception) { ChatMode.ASK },
+                    customModeId = o.optString("customModeId", "").ifBlank { null },
+                    messages = msgs,
+                    updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
+                )
+            }.sortedByDescending { it.updatedAt }.toMutableList()
+            // purge stale session blobs (sessions deleted in an earlier process)
+            val stray = prefs.all.keys.filter { it.startsWith("session_v1_") }
+                .map { it.removePrefix("session_v1_") }.filter { it !in live }
+            if (stray.isNotEmpty()) {
+                val e = prefs.edit()
+                stray.forEach { e.remove(sessionKey(it)); sessionBlobCache.remove(it) }
+                e.apply()
+            }
+            return out
+        } catch (_: Exception) { mutableListOf<ChatSession>() }
+    }
+    // legacy single-blob path: parse, rewrite into the per-session format, drop the old key
     val str = prefs.getString(KEY_SESSIONS, null)
     if (str != null) {
         return try {
             val arr = JSONArray(str)
-            (0 until arr.length()).map {
+            val parsed = (0 until arr.length()).map {
                 val o = arr.getJSONObject(it)
                 val msgsArr = o.getJSONArray("messages")
-                val msgs = (0 until msgsArr.length()).map { j ->
-                    val m = msgsArr.getJSONObject(j)
-                    ChatMsg(m.getString("role"), m.getString("text"),
-                        rating = m.optString("rating").ifBlank { null })
-                }.toMutableList()
+                val msgs = (0 until msgsArr.length()).map { j -> msgFromJson(msgsArr.getJSONObject(j)) }.toMutableList()
                 ChatSession(
                     id = o.getString("id"),
                     title = o.getString("title"),
@@ -215,7 +316,10 @@ private fun loadSessions(ctx: Context): MutableList<ChatSession> {
                     updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
                 )
             }.sortedByDescending { it.updatedAt }.toMutableList()
-        } catch (_: Exception) { mutableListOf() }
+            saveSessions(ctx, parsed)
+            prefs.edit().remove(KEY_SESSIONS).apply()
+            parsed
+        } catch (_: Exception) { mutableListOf<ChatSession>() }
     }
     // One-time migration: fold the old single-thread history (if any) into a session so
     // existing conversations aren't lost when this feature ships.
@@ -441,7 +545,11 @@ private fun convMsgsOf(
     val attBlock = com.codespace.ide.chat.ChatAttachmentInjector.buildBlock(attachments)
     val lastUserIdx = messages.indexOfLast { it.role == "user" }
     messages.forEachIndexed { i, m ->
-        val content = if (i == lastUserIdx && attBlock.isNotEmpty()) m.text + "\n\n" + attBlock else m.text
+        // CH04 (P4h): RESTORED user messages re-inject their own attachment blocks —
+        // the current request's chips apply only to the last user message (old rule).
+        val block = if (i == lastUserIdx) attBlock
+            else com.codespace.ide.chat.ChatAttachmentInjector.buildBlock(m.attachments)
+        val content = if (block.isNotEmpty()) m.text + "\n\n" + block else m.text
         convMsgs.put(JSONObject().put("role", m.role).put("content", content))
     }
     return convMsgs
@@ -659,11 +767,14 @@ private suspend fun chat(
                     } else null
                 // IG15 (P2c): use_connector is token-bearing network egress —
                 // PER-CALL consent at every permission level, allowlist included.
-                val approved = stagedMsg != null ||
-                    com.codespace.ide.agent.AgentFlowGate.awaitApproval(
+                // CH09 (P4h): typed verdict — a TIMED-OUT approval no longer reports
+                // as "rejected by user".
+                val verdict = if (stagedMsg != null) com.codespace.ide.agent.AgentFlowGate.ApprovalVerdict.APPROVED
+                    else com.codespace.ide.agent.AgentFlowGate.awaitApproval(
                         context, toolName, argsSummary,
                         forceApproval = toolName == "use_connector" || trustAction != null,
                         onTrust = trustAction)
+                val approved = verdict == com.codespace.ide.agent.AgentFlowGate.ApprovalVerdict.APPROVED
                 if (toolName == "plan" && approved) planStaged =
                     com.codespace.ide.chat.ChatPlanStore.planFor(
                         com.codespace.ide.chat.ChatPlanStore.activeSessionId ?: "default") != null
@@ -671,6 +782,8 @@ private suspend fun chat(
                     stagedMsg
                 } else if (approved) {
                     AgentTools.executeTool(toolName, toolArgs, context)
+                } else if (verdict == com.codespace.ide.agent.AgentFlowGate.ApprovalVerdict.TIMEOUT) {
+                    "Skipped — no response to the approval card for 10 minutes (auto-timeout). Retry the request and respond to the card to run this tool."
                 } else {
                     "Skipped — rejected by user in Manual Flow Mode."
                 }
@@ -870,8 +983,10 @@ internal fun CopilotChatPanelInline(
     // R7-FIND: in-transcript find bar (distinct from session search)
     var findActive by remember { mutableStateOf(false) }
     var findQuery  by remember { mutableStateOf("") }
-    // R8-QUEUE: message queued while a reply is streaming; auto-sends after.
-    var queuedText by remember { mutableStateOf<String?>(null) }
+    // R8-QUEUE: messages queued while a reply is streaming; auto-send FIFO after.
+    // CH07 (P4h): was a single slot — a SECOND send while loading silently
+    // REPLACED the first (the user believed both were sent). Now a FIFO list.
+    var queuedTexts by remember { mutableStateOf<List<String>>(emptyList()) }
     // R1-CHAT-PARITY: cancelable in-flight chat job + session-rename dialog target
     var chatJob by remember { mutableStateOf<Job?>(null) }
     var renameTargetId by remember { mutableStateOf<String?>(null) }
@@ -1133,7 +1248,7 @@ internal fun CopilotChatPanelInline(
         com.codespace.ide.chat.ChatInputHistory.push(context, projectRootPath, userText)
         inputHistIdx = -1
         // R8-QUEUE: while a reply is streaming, sending QUEUES instead of dropping.
-        if (chatLoading) { queuedText = userText; chatInput = ""; return }
+        if (chatLoading) { queuedTexts = queuedTexts + userText; chatInput = ""; return }  // CH07 (P4h): FIFO append
         // R1-CHAT-PARITY: slash commands never reach the model
         val cmd = com.codespace.ide.chat.ChatSlashCommands.parse(userText)
         if (cmd != null) {
@@ -1141,11 +1256,13 @@ internal fun CopilotChatPanelInline(
             handleCommand(cmd.name, cmd.arg)
             return
         }
-        val msg = ChatMsg("user", userText)
         // R3-ATTACH: merge explicit chips + "#file" tokens; chips clear on send
         val hashAtts = com.codespace.ide.chat.ChatAttachmentInjector.resolveHashTokens(userText, projectRootPath)
         val sendAtts = (attachments + hashAtts).distinctBy { it.path }
         attachments = emptyList()
+        // CH04 (P4h): the message carries its resolved attachments so the session
+        // persists them and a restored conversation re-sends faithfully.
+        val msg = ChatMsg("user", userText, attachments = sendAtts)
         messages.add(msg)
         chatInput = ""
         error = ""
@@ -1319,12 +1436,12 @@ internal fun CopilotChatPanelInline(
         }
     }
 
-    // R8-QUEUE: the queued message auto-sends as soon as the current turn ends.
-    LaunchedEffect(queuedText, chatLoading) {
-        if (queuedText != null && !chatLoading) {
-            val t = queuedText
-            queuedText = null
-            if (t != null) send(t)
+    // R8-QUEUE + CH07 (P4h): queued messages auto-send in ORDER as turns end.
+    LaunchedEffect(queuedTexts, chatLoading) {
+        if (queuedTexts.isNotEmpty() && !chatLoading) {
+            val t = queuedTexts.first()
+            queuedTexts = queuedTexts.drop(1)
+            send(t)
         }
     }
 
@@ -1808,15 +1925,19 @@ internal fun CopilotChatPanelInline(
                             }
                         },
                         onExport = {
-                            val rel = com.codespace.ide.chat.writeSessionMarkdown(
+                            // CH08 (P4h): typed export result — a real write failure is no
+                            // longer misreported as "open a project first".
+                            when (val exp = com.codespace.ide.chat.writeSessionMarkdown(
                                 projectRootPath,
                                 activeSession.title,
                                 messages.map { it.role to it.text },
-                            )
-                            if (rel != null) {
-                                android.widget.Toast.makeText(context, "Session exported: " + rel, android.widget.Toast.LENGTH_SHORT).show()
-                            } else {
-                                error = "Export failed \u2014 open a project first"
+                            )) {
+                                is com.codespace.ide.chat.ChatExportResult.Ok ->
+                                    android.widget.Toast.makeText(context, "Session exported: " + exp.relPath, android.widget.Toast.LENGTH_SHORT).show()
+                                com.codespace.ide.chat.ChatExportResult.NoProject ->
+                                    error = "Export failed \u2014 no project open (open a project first)"
+                                is com.codespace.ide.chat.ChatExportResult.WriteFailed ->
+                                    error = "Export failed \u2014 write error: " + exp.detail + ". Check the project folder is writable."
                             }
                         },
                         colors = colors,
@@ -1834,8 +1955,14 @@ internal fun CopilotChatPanelInline(
         }
 
         // R8-QUEUE: queued-message chip (auto-sends when the current turn ends)
-        queuedText?.let { qt ->
-            ChatQueueBar(queuedText = qt, onCancel = { queuedText = null }, colors = colors)
+        if (queuedTexts.isNotEmpty()) {
+            ChatQueueBar(
+                // CH07 (P4h): shows the head of the FIFO + how many more wait;
+                // cancel clears the whole queue (was: silently dropped them).
+                queuedText = queuedTexts.first() + (if (queuedTexts.size > 1) "  (+${queuedTexts.size - 1} more queued)" else ""),
+                onCancel = { queuedTexts = emptyList() },
+                colors = colors,
+            )
         }
 
         // ── Context gauge (running per-turn token usage) ─────────────────────

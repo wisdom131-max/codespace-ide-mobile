@@ -221,7 +221,9 @@ object AgentApiServer {
                     } else if (!com.codespace.ide.security.TrustState.isActiveProjectTrusted(ctx)) {
                         httpJson(403, """{"error":"project not trusted yet - open the project and approve the trust prompt (any gated action in the chat panel), then retry"}""")
                     } else {
-                        val result = AgentTools.executeTool(toolName, args, ctx)
+                        // CH11 (P4h): executeTool is suspend now (MCP bridge cancellable)
+                        // — this handler runs on a plain socket thread, so bridge here.
+                        val result = kotlinx.coroutines.runBlocking { AgentTools.executeTool(toolName, args, ctx) }
                         httpJson(200, """{"tool":"$toolName","result":${JSONObject.quote(result)}}""")
                     }
                 }

@@ -85,19 +85,29 @@ private fun RetryExportChip(
 }
 
 /**
+ * CH08 (P4h): typed export outcome — "no project" and "write failed" are no
+ * longer the SAME null (the panel used to report every failure as a project
+ * problem, misattributing real write errors).
+ */
+internal sealed class ChatExportResult {
+    data class Ok(val relPath: String) : ChatExportResult()
+    object NoProject : ChatExportResult()
+    data class WriteFailed(val detail: String) : ChatExportResult()
+}
+
+/**
  * CW8 export: writes the conversation to `<projectRoot>/.codespace/exports/chat-<timestamp>.md`.
- * Returns the relative path on success (for a toast), null when there is no
- * project root or the write failed. Pure std-lib — no entity/store churn.
+ * Returns the typed outcome on success/failure. Pure std-lib — no entity/store churn.
  */
 internal fun writeSessionMarkdown(
     projectRoot: String?,
     title: String,
     entries: List<Pair<String, String>>,
-): String? {
-    if (projectRoot.isNullOrBlank()) return null
+): ChatExportResult {
+    if (projectRoot.isNullOrBlank()) return ChatExportResult.NoProject
     return try {
         val dir = java.io.File(projectRoot, ".codespace/exports")
-        if (!dir.exists() && !dir.mkdirs()) return null
+        if (!dir.exists() && !dir.mkdirs()) return ChatExportResult.WriteFailed("could not create .codespace/exports")
         val ts = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
         val sb = StringBuilder()
         sb.append("# Chat session export \u2014 ").append(title).append('\n')
@@ -113,8 +123,8 @@ internal fun writeSessionMarkdown(
         }
         val f = java.io.File(dir, "chat-" + ts + ".md")
         f.writeText(sb.toString())
-        ".codespace/exports/" + f.name
-    } catch (_: Exception) {
-        null
+        ChatExportResult.Ok(".codespace/exports/" + f.name)
+    } catch (e: Exception) {
+        ChatExportResult.WriteFailed(e.message ?: "unknown error")
     }
 }

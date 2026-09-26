@@ -3,7 +3,6 @@ package com.codespace.ide.agent
 import android.content.Context
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.terminal.ProotInstaller
-import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -165,7 +164,10 @@ You can use multiple tools in sequence. When done, give a final summary.
     fun hasToolCalls(text: String): Boolean = TOOL_REGEX.containsMatchIn(text)
     fun stripToolCalls(text: String): String = text.replace(TOOL_REGEX, "").trim()
 
-    fun executeTool(name: String, args: JSONObject, context: Context): String {
+    // CH11 (P4h): suspend — the MCP branch was runBlocking { callTool }, blocking
+    // the calling thread for up to 60s per call with Stop unable to cancel mid-call.
+    // The bridge is now a normal cancellable suspend call with a hard 90s bound.
+    suspend fun executeTool(name: String, args: JSONObject, context: Context): String {
         return try {
             when (name) {
                 "run_command" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
@@ -215,13 +217,24 @@ You can use multiple tools in sequence. When done, give a final summary.
                 // through McpClientManager — SAME dispatch path, so the SAME
                 // AgentFlowGate AUTO/MANUAL approval already gated this call.
                 else -> if (name.startsWith("mcp_")) {
-                    runBlocking { McpClientManager.callTool(name, args, context) }
+                    // CH11 (P4h): cancellable + hard-bounded; runBlocking is GONE.
+                    kotlinx.coroutines.withTimeoutOrNull(90_000L) {
+                        McpClientManager.callTool(name, args, context)
+                    } ?: "MCP tool '$name' timed out after 90s — the call was abandoned (Stop now cancels it too). Check the server or retry."
                 } else "Unknown tool: $name"
             }
         } catch (e: Exception) {
             "Error executing $name: ${e.message}"
         }
     }
+
+    // ── CH06 (P4h): truncation honesty ─────────────────────────────────────
+    // Every output cap used to slice SILENTLY — the model believed it saw the
+    // whole output/file and answered about content it never received. Each
+    // capped result now carries a marker naming the cap and the real size.
+    private fun truncMark(raw: String, max: Int): String =
+        if (raw.length <= max) raw
+        else raw.take(max) + "\n[... TRUNCATED — showing " + max + " of " + raw.length + " chars. Ask for a specific range/section to see the rest.]"
 
     // ── Shell & Files ────────────────────────────────────────────────────
     // Runs INSIDE the Ubuntu proot rootfs (git, npm, apt, etc. only exist there — the bare
@@ -242,10 +255,10 @@ You can use multiple tools in sequence. When done, give a final summary.
                 translated
             } else wd
         }
-        val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, guestWorkdir).take(4000)
+        val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, guestWorkdir)
         // I2 — TERMINAL BRIDGE: last agent-run command + output are attachable in chat
         com.codespace.ide.terminal.TerminalAiBridge.recordRun(command, out, guestWorkdir)
-        return out
+        return truncMark(out, 4000)  // CH06 (P4h): marked, not silent
     }
 
     /**
@@ -278,13 +291,13 @@ You can use multiple tools in sequence. When done, give a final summary.
         val staged = com.codespace.ide.chat.PendingChangesStore.overlayFor(path)
             ?: com.codespace.ide.chat.PendingChangesStore.overlayFor(resolvedPath)
         if (staged != null) {
-            return "[staged pending version — not yet on disk]\n" + staged.take(8000)
+            return truncMark("[staged pending version — not yet on disk]\n" + staged, 8000)  // CH06 (P4h)
         }
         val file = File(resolvedPath)
         if (!file.exists()) return "File not found: $path"
         if (file.isDirectory) return "Path is a directory: $path"
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
-        return file.readText().take(8000)
+        return truncMark(file.readText(), 8000)  // CH06 (P4h)
     }
 
     private fun writeFile(path: String, content: String, context: android.content.Context): String {
@@ -312,39 +325,57 @@ You can use multiple tools in sequence. When done, give a final summary.
         if (!dir.exists()) return "Directory not found: $path"
         if (!dir.isDirectory) return "Not a directory: $path"
         val files = dir.listFiles()?.sortedBy { it.name } ?: return "Empty directory"
-        return files.joinToString("\n") { f ->
+        return truncMark(files.joinToString("\n") { f ->
             val type = if (f.isDirectory) "[DIR] " else "      "
             "$type${f.name} (${f.length()} bytes)"
-        }.take(4000)
+        }, 4000)  // CH06 (P4h)
     }
 
     private fun searchFiles(path: String, pattern: String, context: android.content.Context): String {
         val dir = File(resolveToolPath(context, path))
         if (!dir.exists()) return "Directory not found: $path"
         val results = mutableListOf<String>()
-        dir.walkTopDown().take(500).forEach { f ->
-            if (f.isFile && f.length() < 100_000) {
-                try {
-                    // R6-PENDING-EDITS: staged files search the STAGED content
-                    val stagedContent = com.codespace.ide.chat.PendingChangesStore.overlayFor(f.absolutePath)
-                    if (stagedContent != null) {
-                        stagedContent.lineSequence().forEachIndexed { i, line ->
+        // CH06 (P4h): the walk caps are now HONEST — the old take(500) stopped
+        // silently (matches looked complete) and large files were skipped with
+        // no note. Cap hit + skipped-file count now ride the result.
+        val walked = dir.walkTopDown().take(501).toList()
+        val fileCapHit = walked.size > 500
+        var skippedLarge = 0
+        walked.take(500).forEach { f ->
+            if (!f.isFile) return@forEach
+            // CH06 (P4h): over-cap files are counted and SKIPPED with an honest
+            // note in the result (was: silently invisible).
+            if (f.length() >= 100_000) { skippedLarge++; return@forEach }
+            try {
+                // R6-PENDING-EDITS: staged files search the STAGED content
+                val stagedContent = com.codespace.ide.chat.PendingChangesStore.overlayFor(f.absolutePath)
+                if (stagedContent != null) {
+                    stagedContent.lineSequence().forEachIndexed { i, line ->
+                        if (line.contains(pattern, ignoreCase = true))
+                            results.add("${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
+                    }
+                } else {
+                    f.useLines { lines ->
+                        lines.forEachIndexed { i, line ->
                             if (line.contains(pattern, ignoreCase = true))
                                 results.add("${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
                         }
-                    } else {
-                        f.useLines { lines ->
-                            lines.forEachIndexed { i, line ->
-                                if (line.contains(pattern, ignoreCase = true))
-                                    results.add("${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
-                            }
-                        }
                     }
-                } catch (_: Exception) {}
-            }
+                }
+            } catch (_: Exception) {}
         }
-        return if (results.isEmpty()) "No matches for '$pattern' in $path"
-               else results.joinToString("\n").take(4000)
+        if (results.isEmpty()) {
+            val notes = buildList {
+                if (fileCapHit) add("the 500-file scan cap was hit — results are PARTIAL; narrow the path")
+                if (skippedLarge > 0) add("$skippedLarge file(s) over 100KB were skipped")
+            }
+            return if (notes.isEmpty()) "No matches for '$pattern' in $path"
+                   else "No matches for '$pattern' in $path (but: " + notes.joinToString("; ") + ")"
+        }
+        var joined = results.joinToString("\n")
+        if (fileCapHit) joined += "\n[NOTE: 500-file scan cap hit — matches may be MISSING beyond it; narrow the path]"
+        if (skippedLarge > 0) joined += "\n[NOTE: $skippedLarge file(s) over 100KB were skipped by the search cap]"
+        return truncMark(joined, 4000)  // CH06 (P4h)
     }
 
     // ── Git (full access) ────────────────────────────────────────────────
@@ -375,7 +406,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         val add = gitRun("add", "-A", repo = repo, context = context)
         val commit = gitRun("commit", "-m", message, repo = repo, context = context)
         val push = gitRun("push", repo = repo, context = context)
-        return "git add: $add\ngit commit: $commit\ngit push: $push".take(4000)
+        return truncMark("git add: $add\ngit commit: $commit\ngit push: $push", 4000)  // CH06 (P4h)
     }
 
     private fun gitPullRebase(repoDir: String?, context: Context): String {
