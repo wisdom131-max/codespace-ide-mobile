@@ -1334,7 +1334,7 @@ object LspManager {
     fun startServer(context: Context, language: Language, workspacePath: String, projectId: String? = null): Boolean =
         synchronized(lifecycleLock) { startServerLocked(context, language, workspacePath, projectId) }
 
-    private fun startServerLocked(context: Context, language: Language, workspacePath: String, projectId: String): Boolean {
+    private fun startServerLocked(context: Context, language: Language, workspacePath: String, projectId: String?): Boolean {
         lastProjectId = projectId
         // Master LSP toggle — when disabled, skip all LSP servers, use fallback completions only
         if (!ProjectSettingsStore.lspEnabled.value) {

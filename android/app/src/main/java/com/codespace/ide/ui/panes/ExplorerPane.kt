@@ -3034,22 +3034,34 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
             // metacharacters (e.g. "foo.bar(") matched the regex test yet the literal
             // probe found nothing and the hit DISAPPEARED (or highlighted the wrong
             // offset). The match RANGE now comes from the SAME matcher that found it.
+            // NOTE (P4b CI red #2954): lambdas written as bare last-statements of a
+            // when-branch block FAIL type inference here — the expected function
+            // type does not propagate into if/else branches of lambdas, and a `{`
+            // on the line after a constructor call parses as a TRAILING LAMBDA arg
+            // (the matchWholeWord regex ctor absorbed the lambda). Every lambda is
+            // assigned to an explicitly-typed local first; the local is the branch
+            // value. Same class as the documented pitfall list — new rule logged.
             val matchRangeOf: ((String) -> IntRange?) = when {
                 useRegex -> {
                     val regex = try {
                         if (caseSensitive) Regex(query) else Regex(query, RegexOption.IGNORE_CASE)
                     } catch (_: Exception) { null }
-                    if (regex != null) { line -> regex.find(line)?.range } else { _ -> null }
+                    val noMatch: (String) -> IntRange? = { _ -> null }
+                    val byRegex: (String) -> IntRange? = { line -> regex?.find(line)?.range }
+                    if (regex != null) byRegex else noMatch
                 }
                 matchWholeWord -> {
-                    val regex = if (caseSensitive) Regex("\\b${Regex.escape(query)}\\b") else Regex("\\b${Regex.escape(query)}\\b", RegexOption.IGNORE_CASE)
-                    { line -> regex.find(line)?.range }
+                    val wordRegex = if (caseSensitive) Regex("\\b${Regex.escape(query)}\\b") else Regex("\\b${Regex.escape(query)}\\b", RegexOption.IGNORE_CASE)
+                    val byWord: (String) -> IntRange? = { line -> wordRegex.find(line)?.range }
+                    byWord
                 }
                 caseSensitive -> {
-                    { line -> val i = line.indexOf(query); if (i >= 0) i..(i + query.length - 1) else null }
+                    val byLiteral: (String) -> IntRange? = { line -> val i = line.indexOf(query); if (i >= 0) i..(i + query.length - 1) else null }
+                    byLiteral
                 }
                 else -> {
-                    { line -> val i = line.indexOf(query, ignoreCase = true); if (i >= 0) i..(i + query.length - 1) else null }
+                    val byLiteralCi: (String) -> IntRange? = { line -> val i = line.indexOf(query, ignoreCase = true); if (i >= 0) i..(i + query.length - 1) else null }
+                    byLiteralCi
                 }
             }
             val allResults = withContext(Dispatchers.Default) {
