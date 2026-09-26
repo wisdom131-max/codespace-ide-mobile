@@ -61,6 +61,32 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 21:58 WAT] — P4k SHIPPED: TM group COMPLETE (6 rows: TM01-TM06); first push clean; file-verified tally 178/236, 58 open
+
+**Code:** f2af024, CI #2989 GREEN (clean first push). **Docs:** this push.
+
+**[Why: the TextMate engine is the syntax-highlighting core — the audit found a never-consulted while-rule sentinel (while blocks could never end), a dead theme pipeline with a bundled asset nobody loaded, and a latent untrusted-grammar API.]**
+
+**What was REMOVED/fixed (per row):**
+- **TM01** — the real divergence found and fixed: `WHILE_RULE_ID` was declared but NEVER consulted, so while-rule frames stayed on the state stack forever (blocks never ended). Termination implemented: the while pattern is re-checked at every scan position (anchored), pop when it stops matching; the unused sentinel is deleted. Anchors, $self/$base includes, end back-refs, applyEndPatternLast verified supported; injection grammars + while-begin-capture back-refs documented as unsupported in an honest divergence matrix in the class KDoc — failure bounded to wrong highlighting, never a crash.
+- **TM02** — `loadGrammarFromPath` DELETED: zero callers, latent untrusted-grammar API (compiled arbitrary filesystem joni patterns, could shadow bundled grammars). In-file note: a future re-add (extension system, XG01-04 owner-gated) must come back behind a TrustState gate.
+- **TM03** — the theme pipeline was WIRED, not deleted: dark-plus.tmTheme.json shipped in assets but NOTHING ever loaded it (getTheme() always null → silent palette fallback). initialize() now loads the bundled Dark+ theme; the dead zero-caller path/string loaders (loadThemeFromPath, loadThemeFromString) are deleted; palette fallback remains for unmapped scopes.
+- **TM04** — the plain mutable maps behind the singleton are now ConcurrentHashMaps; theme volatile; initialize() synchronized.
+- **TM05** — the 25-branch Language→scope when-map DELETED (drift family with VG12): the engine's grammar fileTypes are the single registry — a language maps through its own extensions; unmapped → null → built-in highlighter fallback. Callers updated (SyntaxHighlighter, IncrementalTmHighlighter).
+- **TM06** — STALE ROW, verified wired, no code change: the grammar toggle IS consulted — TextMateEngineHolder.isActive() gates on ProjectSettingsStore.textMateHighlightingEnabled, and both highlighter entry points call it before tokenizing.
+
+**End-of-batch sweep (standing rule):** touched files swept — only the TM rows are anchored there; no additional closable rows found.
+
+**ROADMAP (continuity — all pending items):** File-verified 178/236 closed, 58 open (54 batchable + XG01-04 PARKED by owner ruling — own go-decision each, like F6; F6 JVM-debug decision likewise owner-gated). Remaining open groups for P4 batching: TG (3), OG (3), IM (3), EX (2), TB02 (1, race test), TP02 re-verify note, SK (11), PG (10), IG (10), XG non-parked (11). VG + RG + TM groups complete here. Next decision points: P5 device verification round for P4d-P4k gaps, or next MEDIUM/LOW group batch (TG recommended — testing, 3 rows, closes the last F-TRACK-adjacent group).
+
+**P5 DEVICE CHECKS (TM group — run on next APK install):**
+- TM03: with TextMate highlighting ON, open a Kotlin/Python/JS/JSON file — token colors should now come from the bundled Dark+ theme (e.g. comments #6A9955, strings #CE9178, keywords #569CD6) rather than the generic palette; languages without grammars keep the built-in highlighter.
+- TM05: open a .ts or other non-bundled-grammar file with TextMate ON — falls back to the built-in highlighter cleanly (no crash, no blank highlighting).
+- TM06: toggle "TextMate Highlighting" in In-Project Settings off/on — highlighting switches between built-in and grammar-based on the next edit (regression: toggle still works).
+- TM01/TM02/TM04: latent (no bundled grammar uses while; loaders deleted) — regression only: normal editing across ~50-line files keeps stable highlighting with no drift over scroll (state-stack sanity).
+
+---
+
 ### [2026-09-26 20:52 WAT] — P4j SHIPPED: VG group COMPLETE (7 rows: VG05, VG06, VG07, VG08, VG09, VG11, VG12); first push clean; file-verified tally 172/236, 64 open
 
 **Code:** 38aa3b1, CI #2987 GREEN (clean first push). **Docs:** this push.
