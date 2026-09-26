@@ -4521,6 +4521,12 @@ private fun PssEditorColumn(
     onOpenSettings: () -> Unit = {},
     tokenStore: com.codespace.ide.data.SecureTokenStore,
     editorTabs: SnapshotStateList<String>,
+    // TB06/TB07 (P4d): threaded through from the main scope (deep-nested
+    // helpers do NOT see main-body state vars — params + wiring at the owner).
+    renameFileRequest: Pair<String, String>? = null,
+    onRenameFileHandled: (() -> Unit)? = null,
+    closeTabRequest: String? = null,
+    onCloseTabHandled: (() -> Unit)? = null,
     closeRootRequest: String? = null,
     onCloseRootHandled: (() -> Unit)? = null,
     heavyPanesReady: Boolean,
@@ -4734,6 +4740,10 @@ private fun PssEditorColumn(
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (activeEditorTab != null) {
                 EditorPane(
+                    renameFileRequest = renameFileRequest,
+                    onRenameFileHandled = onRenameFileHandled,
+                    closeTabRequest = closeTabRequest,
+                    onCloseTabHandled = onCloseTabHandled,
                     openFilePath       = activeEditorTab,
                     fontSize           = editorFontSize,
                     onInsertRequest    = keyInsertDispatcher,
