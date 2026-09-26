@@ -61,7 +61,7 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
-### [2026-09-26 18:05 WAT] — TALLY-CORRERECTION PASS (docs-only, no code): P4b-DG was never folded into the running tally — true closed = 138/249, true remaining = 111
+### [2026-09-26 18:05 WAT] — TALLY-CORRECTION PASS (docs-only, no code): P4b-DG was never folded into the running tally — true closed = 138/249, true remaining = 111
 
 **Owner query: the remaining-rows breakdown for session planning exposed an arithmetic drop. The P4b-DG batch closed 10 rows (DG01/03/05/06/07/09/10/12/13/14, dd5c975+d21b4ca, CI #2953 GREEN, 2026-09-26 09:40) but the NEXT entry (P4b2) computed its tally as 72+31=103 — the DG batch's +10 was not folded in, and every figure since (116 → 121 → 124 → 128, and every "remain" count derived from them) inherited the -10. TRUE chain: 53 → 60 → 66 → 72 → 82 (P4b-DG) → 113 (P4b2) → 126 (P4c) → 131 (P4d) → 134 (P4e) → 138 (P4f). True remaining: 111, not 121. Verified two independent ways: (1) the closure-chain sum above; (2) a full ledger re-count (249 rows in MASTER-GAPS incl. the single-letter G-series) minus the complete closed-ID set from the changelog = 111 open rows, group counts internally consistent with the P3d-era 189-remaining listing minus every closure since (78 rows). The 111 is the figure the owner's session planning uses. The P4b-DG entry itself was correct; only the running chain was wrong. Also noted: MASTER-GAPS closed-row annotations still lag for P1/P2/P3-series + P4b-DG rows (changelog remains source of truth) — annotation backfill is a bookkeeping item, not a blocker.**
 
