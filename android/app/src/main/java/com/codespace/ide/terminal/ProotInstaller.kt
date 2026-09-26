@@ -1521,6 +1521,10 @@ exit 0
      * @param onProcess fires right after Process.start(), before output is
      *        read — lets the caller store the Process for cancellation.
      */
+    /** TP11 (2026-09-26): POSIX single-quote escaping — safe for any user-controlled
+     *  path fragment interpolated into a shell command string. */
+    private fun shQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+
     fun execTyped(
         context: Context,
         command: String,
@@ -1530,10 +1534,6 @@ exit 0
         maxLines: Int = 2000,
         logTag: String = "proot",
         onLine: ((String) -> Unit)? = null,
-    /** TP11 (2026-09-26): POSIX single-quote escaping — safe for any user-controlled
-     *  path fragment interpolated into a shell command string. */
-    private fun shQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
-
         onProcess: ((Process) -> Unit)? = null,
     ): ProotResult {
         val (proot, baseArgs, envVars) = launchArgs(context)
