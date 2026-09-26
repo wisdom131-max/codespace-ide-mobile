@@ -256,7 +256,6 @@ class NodeDAPAdapter : DebugAdapter {
         }
         onOutput("[js-debug] jest starting under node --inspect-brk (port $port) - attaching debugger...\n")
         onOutput("[js-debug] After attach, tap Continue in the Debug Console to run the test.\n")
-        return Pair(proc, port)
 
         // Drain the debuggee's output so a full pipe never blocks the runner.
         Thread {
@@ -270,7 +269,7 @@ class NodeDAPAdapter : DebugAdapter {
             } catch (_: Exception) {
             }
         }.also { it.isDaemon = true }.start()
-        return proc
+        return Pair(proc, port)
     }
 
     /**
