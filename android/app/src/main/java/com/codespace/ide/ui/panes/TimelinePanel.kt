@@ -189,7 +189,7 @@ fun TimelinePanel(
                                 val gd = guestRoot
                                 val rootDir = projectDir ?: return@clickable
                                 if (gd.isBlank()) return@clickable
-                                scope.launch(Dispatchers.IO) {
+                                snapScope.launch(Dispatchers.IO) {
                                     val rel = try {
                                         val r = File(filePath).canonicalFile.relativeTo(rootDir.canonicalFile).path
                                         if (r.startsWith("..")) "" else r
