@@ -172,7 +172,9 @@ object SessionHandoffManager {
                 ?.bufferedReader()?.readText() ?: ""
             conn.disconnect()
             if (code !in 200..299) error("Pull session failed ($code): $body")
-            importSession(context, body)
+            // RG10: importSession now returns a typed verdict — log it and keep
+            // this cloud-pull's own result shape Result<Unit>.
+            android.util.Log.d("SessionHandoff", importSession(context, body))
         }
     }
 }
