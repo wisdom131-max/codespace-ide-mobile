@@ -61,6 +61,46 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 23:59 WAT] — P4o SHIPPED: SK settings group COMPLETE (SK03-SK14, 11 rows, zero ledger misses — every row verified live before code); file-verified tally 205/249, 44 open
+
+**Code:** 17b336b + fix e4f8fd4 (CI #36272641464 GREEN). **Docs:** this push.
+
+**[Why: the settings boundary carried dead UI capability, an overclaiming destructive button, and a split-brain store that could silently eat the user's keybindings.]**
+
+**What was REMOVED/deleted (per row):**
+- **SK03** — the keybinding DUAL WRITER deleted: JSON is the single writer-side store, JSON overrides WIN at load (fill-if-absent rule deleted), every write scrubs the action's legacy prefs key; dead legacy writers persistBinding/persistAll/clearPersisted (zero callers) DELETED.
+- **SK05** — the "All Data" overclaim deleted: it now clears keybindings + settings.json + notifications + workspace memory on top of the original 3 prefs, and the dialog states the exact scope including what is NOT touched (disk files, container, backups).
+- **SK06** — fire-and-forget .apply() DELETED on clear paths: commit() typed Boolean read back; app-lock disable + GitHub sign-out read back the persisted store before claiming success.
+- **SK07** — the "In-Project Settings" misnomer deleted: relabeled "Settings (App-wide)" (gear menu, dialog, AI-facing string); ConfigurationScope-style per-project settings recorded as a future-feature decision.
+- **SK08** — silent combo shadowing deleted: findConflictingAction + reassign dialog (steals from the other action only on confirm).
+- **SK09** — the dead recordingAction state is LIVE: Record chip per row → hardware-key capture dialog (Esc cancels, bare modifiers held) → conflict gate → setBinding. Rebinding was IMPOSSIBLE before; works end-to-end now.
+- **SK10** — the fragmentation gap closed: one search box indexes all three surfaces (SETTINGS_SEARCH_INDEX; section + surface shown per result).
+- **SK11** — the theme-flattening toggle deleted: last picked dark theme restored (last_dark_theme pref).
+- **SK12** — the caller-less exportJson/importJson wired: Settings Backup section (Export to clipboard + Import from SAF file picker, typed result surfaced).
+- **SK13** — the premature "migrated" flag write deleted from migrateIfNeeded; caller marks migration done only after applyMigratedData + saveToJson succeed.
+- **SK14** — the silent formatter contradiction deleted: Formatter Selection cross-links the format_on_save/TS rows in Settings (App-wide).
+
+**Verify-before-code (owner protocol):** ALL 11 rows verified live in current source first — first batch with ZERO ledger misses (SK01/SK02/SK04 were already closed in the ledger; the open 11 all reproduced at their anchors).
+
+**One red (17b336b #36272072303):** `Modifier.focusable()` imports from androidx.compose.foundation, NOT androidx.compose.ui.focus (the ui.focus package only holds FocusRequester/focusRequester). Lesson: an import compiling for FocusRequester proves nothing for a DIFFERENT symbol from the same-looking package — verify each new symbol's real package, not its neighbor's. Fixed e4f8fd4 (GREEN).
+
+**End-of-batch sweep (standing rule):** all 10 touched files swept — no other open rows were fixed by this diff (TB02/PG07/PG09/PG14/IG07/IG12/OG06 anchor on the same files but their defects are untouched by this commit and stay correctly open).
+
+**ROADMAP (continuity — all pending items):** File-verified 205/249 closed, 44 open (40 batchable + XG01-04 PARKED by owner ruling — own go-decision each, like F6; F6 JVM-debug decision likewise owner-gated). Remaining open rows: PG (10, editor perf/recomposition), IG (10, integrations incl. IG10/IG16 SK01-family atomic-store batch), XG non-parked (11), OG (3), IM (3), EX (2), TB02 (1, race — repeated rapid-action device testing), TP02 re-verify note. COMPLETE groups now: VG, RG, TM, TG, SG, TP, SK, Problems, Search (SR), Tabs (TB04-08), CH. Next decision points: P5 device verification round for P4d-P4o gaps, or next MEDIUM/LOW group batch (recommend PG — 10 rows, editor perf family).
+
+**P5 DEVICE CHECKS (SK group — run on next APK install):**
+- SK03: rebind a key (e.g. SAVE to Ctrl+Alt+S), fully kill the app, relaunch — the rebind persists (JSON store is now authoritative; the old bug could resurrect a stale legacy copy on load).
+- SK05: Settings → Clear Data → Clear All Data → confirm dialog lists the honest scope; after clearing: keybindings are back to defaults, notifications panel is empty, workspace restore is off/empty, AI chat history gone; projects/trash/version history on disk INTACT.
+- SK06: in airplane mode or with storage pressure, a Clear that fails reports "✗ Clear failed…" instead of a fake "✓ Cleared!" (normal case still shows ✓ and means it).
+- SK07: gear menu shows "Settings (App-wide)"; the dialog title matches; AI connector hints name the same label.
+- SK08/SK09: gear menu → Settings (App-wide) → Keybindings → tap a row's pencil → capture dialog opens → press Ctrl+S → conflict dialog names SAVE → Reassign → the row now shows the new combo and SAVE lost its binding (check SAVE row shows its combo removed/reset).
+- SK10: Settings → search "theme" → results list the shell theme picker entry and the Appearance section; tap a result → full list returns.
+- SK11: pick Dracula (shell gear menu → Theme), then Settings → Dark mode OFF, then ON — Dracula comes back (was: Dark (Default)).
+- SK12: Settings → Settings Backup → Export to clipboard (paste somewhere to verify non-empty JSON), edit a setting, Import from file with the exported JSON → setting restores; a corrupt file reports the honest failure message.
+- SK13/SK14/SK07-label: no user-visible surface; covered by regression checks (fresh-install + settings-load paths in the next session log; formatter picker shows the cross-link note).
+
+---
+
 ### [2026-09-26 23:10 WAT] — P4n SHIPPED: TP terminal group COMPLETE (TP05-TP16, 12 rows: 9 real fixes + 2 ledger misses + 1 recorded tradeoff); file-verified tally 194/249, 55 open
 
 **Code:** dcd38ae + fix 7260a0e (CI #36270074020 GREEN). **Docs:** this push.
