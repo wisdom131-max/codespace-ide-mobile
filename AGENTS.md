@@ -61,6 +61,41 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 14:30 WAT] — AI Agent: Claude Sonnet 5.6, P4e silent-loss trio (TP04/OG01/RG01), Commits 850155d+2f9b29f, CI #2967 GREEN
+
+**[P4e SHIPPED — three HIGH rows that all shared one failure shape: data or evidence silently LOST and the failure hidden behind a success-shaped surface (a "downloaded" rootfs, a synced project list, an "active" telemetry pipeline). Revertable as 850155d+2f9b29f.]**
+
+**Closed:** TP04, OG01, RG01 (3 rows). Tally: 124/249.
+**Files:** terminal/ProotInstaller.kt, ui/panes/TerminalPane.kt, ui/screens/HomeScreen.kt, project/ProjectWizard.kt, util/ProjectPathResolver.kt, MainActivity.kt, CodeSpaceApplication.kt (+ deployed reportCrash backend function on the CURRENT Superagent)
+
+#### What shipped (code 850155d + fix 2f9b29f)
+
+- **TP04 (HIGH, install integrity):** pinned-asset SHA-256 + exact-size (57,831,960 B) verification INSIDE the download retry loop — the trust-existing-bytes resume is gone, a corrupted prefix now discards the file and restarts instead of being extracted. Symlink census at install end: every failed/pending link is retried (tar does not guarantee link-after-target ordering), then the recorded Termux SYMLINKS.txt lesson is applied — explicit file copy (or recursive dir copy) with exec/permission bits set. Honest verdict: zero-files-written or any unresolved link now throws BEFORE the version marker is written, so a half-broken rootfs is never marked installed. Tar-entry containment via CanonicalPaths.safeEntryDestination (TP05/EX05 family). install() now RETHROWS after its onProgress report — both call sites (TerminalPane thread, LspManager auto-install, SettingsScreen reinstall) catch; the TerminalPane install thread previously had NO catch at all. New .ubuntu_install_report (files, bytes, sha, symlink census) written next to the version marker for P5 reads. The stale 250MB expected-size estimate (real asset ~58MB) — which made even download progress a lie — is deleted.
+- **OG01 (HIGH, recoverable-but-terrifying index loss):** both sync sites (auto LaunchedEffect + manual refresh) now MERGE — cloud stays authoritative for what it CONTAINS, local-only projects survive in the list AND the persisted index (this also fixes the emptied-cloud-account wipe). The wizard's dead end ("Folder already exists and is not empty") gains the audit-required re-registration path: a "Register Existing Folder" adoption button that registers the existing folder as a LOCAL project (no scaffold, no overwrite) and goes through the normal onProjectCreated registration (local index + cloud push + open). The resolver's legacy fallback now tries projects/<NAME> from the local index after the by-ID path — wizard folders are named by NAME, so the ID-only fallback missed exactly the projects this gap is about.
+- **RG01 (HIGH, VERIFIED-DEAD telemetry):** root cause was NOT the app's race/timeout theory — BOTH app URL constants pointed at a DIFFERENT (dead) superagent instance, so months of crashes went to a URL serving nothing while the real CrashLog store on THIS Superagent sat at zero. The reportCrash function is now DEPLOYED ON THE CURRENT SUPERAGENT (package allowlist, per-field length caps, 403 on unknown package, typed error/success response) and verified live end-to-end: two real CrashLog records created through the deployed function (then removed). App side: one shared CRASH_SINK_URL constant used by both the crash-time POST (CodeSpaceApplication) and the next-launch retry (MainActivity), and the crash-time POST response code is now checked and logged. The STANDING NOTE on RG01 stays in force until the FIRST organic device crash produces a real record — every historical crash attribution remains unverified until then.
+
+#### What I REMOVED (dead/placebo code)
+- **TP04:** the trust-existing-bytes resume; the silent Log.w-skip for failed symlinks; install()'s swallow-everything catch (now rethrow — it made every caller's catch dead code); the stale 250MB estimate; the catch-less install thread.
+- **OG01:** the replace-all sync blocks themselves, not just their symptoms.
+- **RG01:** the dead-URL constants (each hardcoding a different wrong instance).
+
+#### CI (#2966 red, #2967 GREEN)
+- #2966 red, self-caught from downloadable logs: the new top-level `const val CRASH_SINK_URL` was inserted BETWEEN `@AndroidEntryPoint` and `class MainActivity` — the annotation landed on the property ("This annotation is not applicable to target 'top level property wi..."). Fixed in 2f9b29f by moving the const above the annotation. NEW pitfall instance for the log: never insert a top-level declaration between an annotation and the declaration it annotates.
+- #2967 GREEN. APK artifact: codespace-ide-arm64-v8a.
+
+#### P5 device checks (owner, add to the round — per gap ID)
+- **TP04:** (1) Fresh install: the progress stream shows "Verifying rootfs checksum..." and completes; check `.ubuntu_install_report` (files_written>0, sha256 matches the pinned value, symlinks_unresolved=0). (2) Existing-install upgrade path: normal Ubuntu open still works with the new census (no unresolved-link failure on a healthy install). (3) Corrupt-resume honesty is CI/dev-only to force (kill the app mid-download, corrupt the partial, re-open): the install must say so and restart, NOT extract.
+- **OG01:** (1) Airplane-mode: create a project locally (it appears in the list), then reconnect and let the sync run — the project SURVIVES the sync and shows "+N local-only" in the status. (2) Empty-cloud edge: with a fresh/emptied cloud account, the visible project list is NOT wiped on sync. (3) Wizard: navigate to a parent containing an existing project folder, type that folder's name — the "Register Existing Folder" button appears and registering opens the existing folder with its files intact. (4) After any project open, force-close and reopen the app — the session restores into the SAME project (resolver NAME fallback).
+- **RG01:** (1) First organic crash (or a debug-mode crash): confirm a CrashLog record appears on the CURRENT Superagent's store with package com.codespace.ide.debug and full stack/state fields. (2) The crash-time POST log line shows a non-2xx/2xx with the message. THE STANDING NOTE: once the first organic record lands, the historical signal-31/proot/IME crash attributions graduate from unverified to checkable against real telemetry.
+
+#### Roadmap (all pending items)
+- **P4:** 125 of 249 rows remain after this batch (named HIGH remaining after today: SK04 PIN hardening, SG01 staging honesty, PG01 blinkTick recomposition, VG03 untrusted-input crash; TP04/OG01/RG01 closed today; SK01/SK02 were stale listings, closed in P0).
+- **P5:** full device verification round (P2a-e, P3a-e, F1-F5, P4a-1/2, P4b DG + batch 2, P4c IC checks, P4d TB checks, this batch's TP04/OG01/RG01 checks — the TP04 install-report read and the RG01 first-organic-crash check are the two that close standing notes).
+- **Bookkeeping note:** MASTER-GAPS per-row CLOSED annotations still lag for P1/P2/P3-series and P4b-DG closures (TP04/OG01/RG01/SK01/SK02 rows are now annotated); changelog remains the source of truth.
+- **Backlog owner decisions:** F6 JVM debug; MK re-test after MK restructure; stdio-vs-TCP AgentApiServer; F01/F02/F09 feature decisions.
+
+---
+
 ### [2026-09-26 13:20 WAT] — TALLY-CORRECTION PASS (docs-only, no code): SK01/SK02 stale-listing resolved
 
 **Owner query: the 2026-09-26 P4d roadmap line listed SK01/SK02 as remaining HIGH. STALE — they closed in P0 (29e80c8, CI #2905 GREEN, 2026-09-24 17:05) and were always counted in the tally (P3d's 52 included P0's 2 rows; current 121/249 is accurate). Verified in source: JsonSettingsStore atomicWrite + corrupt-parse quarantine (SK01), facade exception surfacing in FeatureToggleStore/KeyBindingRegistry (SK02). No ID reuse — the SK01-family rows IG10/IG16 (AgentMemory + 5 integration JSON stores) are distinct IDs and remain OPEN awaiting the shared atomic-write batch. MASTER-GAPS SK01/SK02 rows now carry their CLOSED annotations (annotation-lag backlog reduced by 2). The roadmap's named-HIGH list is corrected in place; remaining named HIGH: TP04, SK04, OG01, SG01, PG01, RG01, VG03.**
