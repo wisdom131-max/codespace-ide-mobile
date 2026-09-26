@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P4b batch 2 SHIPPED (code a806566 + fix d69e358, CI #2956 GREEN; one red #2955 self-fixed): 31 rows — SR01-SR02+SR05-SR12, G02+G04-G10, LS01-05+LS07-14. Tally: 103/249. SR/LS/G scope COMPLETE (SR03/SR04 closed in P3a; all 14 LS rows closed). Next: owner go — next P4 group or P5 device round |
+| Latest commit | P4c IntelliSense group SHIPPED (code 360b660, CI #2960 GREEN, first-push clean): 13 rows — IC01-IC03, IC05-IC14 (IC04 closed in P3a). Tally: 116/249. Next: owner go — next P4 group or P5 device round |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -60,6 +60,54 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 ---
 
 ## CHANGE LOG
+
+### [2026-09-26 12:35 WAT] — AI Agent: Claude Sonnet 5.6, P4c IntelliSense group, Commit 360b660, CI #2960 GREEN (first push)
+
+**[P4c SHIPPED — the completion pipeline: accept contract, popup navigation, ranking honesty, hover/word providers. Revertable as 360b660. IC01 (owner-flagged) closed; IC04 was already closed in P3a (cursor-shift rule + logged fallback), verified in code before scoping.]**
+
+**Closed:** IC01, IC02, IC03, IC05, IC06, IC07, IC08, IC09, IC10, IC11, IC12, IC13, IC14 (13 rows). Tally: 116/249 (133 remain).
+**Files:** editor/CompletionAccept.kt (NEW — the shared accept routine), editor/DocumentWordCompletions.kt (NEW — word provider + extracted state), CodeEditor.kt, CompletionPopupOverlay.kt, CompletionEngine.kt, CompletionContextDetector.kt, CompletionHistoryStore.kt, EditorPane.kt
+
+#### What shipped (code 360b660)
+
+- **IC01 (HIGH-VISIBILITY):** ONE shared accept routine — editor/CompletionAccept.kt — now drives ALL FOUR accept routes (tap, Tab, commit chars, Enter). The old Tab splice scanned '.' as a word char, so accepting "method" over "obj.m|" replaced the whole "obj.m" (silent code corruption); Tab-accepted snippets also inserted raw $1 text instead of entering a snippet session; commit chars did a plain insert ignoring every extended field. The overlay tap path was rewritten onto the routine (202 lines to 72).
+- **IC02:** the server's range-based textEdit is now applied (was approximated by the word scan on every route).
+- **IC03:** the completion's LSP command executes after accept (LspManager.executeCommand), outcome logged; previously carried but never executed anywhere.
+- **IC05:** hardware Up/Down move the popup selection through the filter-aware visible list — selectedLabel was previously only ever RESET, so the highlight was stuck at index 0 and Tab always accepted the first item.
+- **IC06:** IME Enter accepts the selected completion while the popup is visible (VS Code behavior; Enter previously always inserted a newline).
+- **IC07:** sortText semantics made honest — penalty rescaled 0..-100 so it dominates the fuzzy tier (0..-50); the comment now states the actually-computed range; the redundant hasSortText double-sort branch was removed.
+- **IC09:** signature help is no longer suppressed while completions are visible (they anchor at different heights and coexist).
+- **IC10:** hover falls back to the curated doc table when no LSP server is running or the server returns null — hover used to render NOTHING outside LSP.
+- **IC11:** resolve cache/lookup keyed by label#lspKind (matching the dedupe key shape) — same-label items no longer resolve each other's docs.
+- **IC12:** MRU/usage boosts scoped to the active language (a Kotlin-accepted "size" no longer boosts Python typing); history save failures now logged instead of silently swallowed.
+- **IC13:** document-word suggestions — words from the open document, deduped against curated items; ONE scan per popup open on Dispatchers.Default (never per keystroke); state lives in its own file per the 64KB rule.
+- **IC14:** isInsideCallParens is lexical-aware — parens inside strings/comments/escapes no longer flip call-argument context.
+
+#### What I REMOVED (dead/placebo code)
+- **IC08:** the entire dead AI completion source — CompletionSource.AI enum value, its +5f ranking boost, the filter-chip branch, the badge branch, the "? Explain" overlay block, and the overlay's onAiFixRequest param. No producer ever created AI-source items, so none of it could ever render. The lightbulb's REAL AI-fix flow (onAiFixRequest via LightbulbMenuOverlay) is untouched.
+- **IC07:** the divergent "+50f boost" comment and the redundant hasSortText double-sort branch.
+- **IC01:** the three divergent per-route inline splices (Tab's dot-crossing scan, commit-char plain insert, the overlay's duplicated 200-line tap handler).
+
+#### P5 device checks (owner, add to the round — per gap ID)
+- **IC01:** type "obj.m" and accept a member with the accessory Tab — ONLY "m" is replaced, "obj." intact (do this with the popup visible). Tab-accept a snippet item (e.g. a for-loop snippet): tab stops engage (first default text selected), no raw "$1" appears. Commit-char route: with an LSP item selected, type a commit char like "(" — the item commits then "(" is appended.
+- **IC02:** with the pyright/tsserver server running, accept a completion whose server entry replaces more than the typed word (e.g. an auto-imported symbol) — the replaced span matches what the server intended, no leftover fragments.
+- **IC03:** hard to force without a command-issuing server; check the Output/lsp channel after accepting completions — a "[Completion] post-accept command" line appears when a server sends one (or a FAILED line, never silence).
+- **IC05:** open the completion popup, press accessory/hardware Down, Down, Up — the highlight moves through the list; Tab accepts the HIGHLIGHTED row, not the first.
+- **IC06:** with the popup visible, press the keyboard's Enter — the selected item is accepted and NO newline is inserted. With the popup closed, Enter still inserts a newline.
+- **IC07:** in a TS file, trigger member completions where the server orders members — the server's ordering (sortText) is respected over fuzzy-score reshuffling.
+- **IC09:** type "(" to trigger signature help, keep typing to open the completion popup — the parameter hint STAYS visible above the line while completions show below.
+- **IC10:** open a file in a language WITHOUT a running server (or kill the server), hover a common keyword ("val", "fun", "def") — the curated doc popup appears.
+- **IC11:** highlight (arrow keys) an LSP completion and check its detail panel — the doc shown belongs to the selected item even when a local item shares the label.
+- **IC12:** accept "size" in a Python file, then type the same prefix in a Kotlin file — no Python-recency boost reorders the Kotlin list.
+- **IC13:** in a file that uses an unusual identifier ("myCustomThing") in one function, type "myCustom" in ANOTHER function — a "word from this document" suggestion appears.
+- **IC14:** type `foo("` then `(` inside a string literal before the cursor, then an identifier — call-argument context (signature boost) only when genuinely inside call parens.
+
+#### Roadmap (all pending items)
+- **P4:** 133 of 249 rows remain after this batch (IntelliSense group complete; open HIGH/HIGH-VISIBILITY clusters left: TB04/TB06 split-identity, DG remainder, TP04 install integrity, SK04 security-in-group).
+- **P5:** full device verification round (P2a-e, P3a-e, F1-F5, P4a-1/2, P4b DG + batch 2 checks, this batch's IC checks).
+- **Backlog owner decisions:** F6 JVM debug; MK re-test after MK restructure; stdio-vs-TCP AgentApiServer; F01/F02/F09 feature decisions.
+
+---
 
 ### [2026-09-26 10:40 WAT] — AI Agent: Claude Sonnet 5.6, P4b batch 2 (Search group + Editor G-series), Commits a806566+d69e358, CI #2956 GREEN
 
