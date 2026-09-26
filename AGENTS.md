@@ -61,6 +61,43 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 23:10 WAT] — P4n SHIPPED: TP terminal group COMPLETE (TP05-TP16, 12 rows: 9 real fixes + 2 ledger misses + 1 recorded tradeoff); file-verified tally 194/249, 55 open
+
+**Code:** dcd38ae + fix 7260a0e (CI #36270074020 GREEN). **Docs:** this push.
+
+**[Why: the terminal group carried silent-kill, dead-code, and secret-leak debt that P3/P4 infrastructure work had already half-fixed without the ledger noticing.]**
+
+**What was REMOVED/deleted (per row):**
+- **TP09** — RemoteTerminalSession.kt DELETED + the never-constructed local TerminalSession.kt DELETED (the dead half-pair; backend TerminalModule was already gone in 57236a0).
+- **TP10** — the unreachable busybox -ash branch in TerminalService.createSession DELETED (54 lines; fail-closed throw) + TermuxBootstrapInstaller.kt DELETED. BusyboxInstaller KEPT — LIVE (ProjectShellScreen offline-shell actions); its stale DEAD-CODE banner corrected.
+- **TP07** — dead killAllSessions() DELETED (zero callers; its stale ON_STOP doc claims in TerminalPane rewritten with an explicit do-NOT-resurrect warning).
+- **TP06** — the unconditional SIGKILL close DELETED: closeTab now gates on a kill-processes confirmation when output arrived in the last 15s; performCloseTab extracted (one implementation for confirm + silent paths).
+- **TP11** — raw workdir interpolation DELETED: POSIX single-quote escaping (shQuote) before the cd preamble.
+- **TP12** — guest secrets EXCLUDED from the rootfs tar (root/.ssh, .gitconfig, .git-credentials, .aws, .kube, .mcp, .env — dir + children). Shared-storage location kept as accepted, documented tradeoff.
+- **TP13** — the silent startForeground catch made LESS silent: one bounded retry (startFgs extracted so the retry repeats the FULL sequence), then an honest final-failure log.
+- **TP14** — the dual session registries MERGED into one: liveSessions moved to the TerminalService companion; the pane factory registers via registerLiveSession; onDestroy teardown now genuinely covers pane-created sessions; bonus: the pane fallback factory hardcoded projectId "default" (dual-factory drift) — projectId threaded through all fallback call sites.
+- **TP16** — unbounded writeToDisplay appends capped at 64k chars with an honest truncation log.
+- **TP15** — VERIFIED, no code change beyond recording: the "no message" claim was outdated (warn log already existed); the accepted-tradeoff comment added in-code.
+- **Ledger misses closed with original commits:** TP05 (P4e 2f9b29f — CanonicalPaths.safeEntryDestination at the extraction site), TP08 (P3c fdb660d — revision-gated URL chip loop). Both verified in code BEFORE closing.
+
+**One red (dcd38ae #36269704043):** the shQuote helper insertion anchored on the WRONG line (rindex math landed mid-parameter-list of execTyped) — "Function declaration must have a name" / "Parameter name expected". Lesson re-confirmed: NEVER compute insertion points with rindex on indentation; anchor on exact unique strings. Fixed in 7260a0e (GREEN).
+
+**End-of-batch sweep (standing rule):** TerminalPane/TerminalService/ProotInstaller/BackupManager/TerminalSessionStore + deleted files swept — only the 12 TP rows themselves anchor there; no other open rows affected.
+
+**ROADMAP (continuity — all pending items):** File-verified 194/249 closed, 55 open (55 = 51 batchable + XG01-04 PARKED by owner ruling — own go-decision each, like F6; F6 JVM-debug decision likewise owner-gated). Remaining open groups for P4 batching: SK (11), PG (10), IG (10), XG non-parked (11), OG (3), IM (3), EX (2), TB02 (1, race — repeated rapid-action device testing), TP02 re-verify note. COMPLETE groups now: VG, RG, TM, TG, SG, TP, Problems, Search (SR), Tabs (TB04-08), CH. Next decision points: P5 device verification round for P4d-P4n gaps, or next MEDIUM/LOW group batch (recommend SK — security group, 11 rows).
+
+**P5 DEVICE CHECKS (TP group — run on next APK install):**
+- TP06: start a long-running command in a tab (e.g. `sleep 300 && echo done`), then tap the tab close X — the "Close terminal?" dialog appears (recent output); Cancel leaves it alive. A quiet tab (no output for 15s) closes with NO dialog. Kill-and-close ends the process.
+- TP07: minimize the app for a minute and return — terminal sessions PERSIST (regression: no ON_STOP kill); check `ps` in a surviving tab.
+- TP08: leave a tab idle 30s+ — no URL chip flicker/rebuild (regression vs P3c).
+- TP11: create a project whose path contains a space or a `$(echo hi)` fragment and run a terminal task from it — the session cd's to the right dir, no command substitution in the transcript.
+- TP12: run Backup Ubuntu — the completion summary reports files; then check the tar listing (on-device: `tar -tzf` in a terminal) contains NO `root/.ssh` or `root/.gitconfig` entries, and `.ssh` still exists in the live rootfs afterward.
+- TP13: no visible change on healthy starts (notification appears as usual); the retry path needs the transient race, so just confirm no notification regressions.
+- TP14: open two projects in sequence, minimize, return, switch back — reattach finds the right session per project (no cross-project session bleed, no duplicate forks); force-stop the app → proot trees are gone (onDestroy teardown now covers pane sessions).
+- TP15/TP16/TP05/TP09/TP10: no user-visible surface; covered by regression checks (tabs restore after force-stop; app boots with zero new logcat errors from terminal; install-time extraction works).
+
+---
+
 ### [2026-09-26 22:41 WAT] — P4m SHIPPED: TG group COMPLETE (3 rows: TG08-TG10) + G03 ledger miss caught by sweep; TALLY DENOMINATOR RECONCILED (bold-only regex was dropping 13 non-bold rows); first push clean; file-verified tally 182/249, 67 open
 
 **Code:** 44266f3, CI #2991 GREEN (clean first push). **Docs:** this push.
