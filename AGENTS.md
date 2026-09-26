@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P4a-1 SHIPPED (ef1b1b0, CI #2946 GREEN): PR14 panel/squiggle shift lockstep + panel/badge liveness fix (remember(list) never re-keyed); PR02 RUN badge reads central store; PR05 related-info rendered; PR07 real menu filters; PR04 dead QuickFix model removed; PR10 dead ProblemsPanel.kt deleted. Tally: 66/249 closed. Next: P4a-2 (PR06, PR08, PR09, PR11, PR12, PR13) |
+| Latest commit | P4a-2 SHIPPED (code dfbccc0 + fixes ee5ff84/8e7c778, CI #2950 GREEN): PR06 per-tool matchers; PR08 honest build rows; PR09 exact-file preset; PR11 deduped off-main lint; PR12 one task catalogue; PR13 durable run state. Tally: 72/249 closed. Next: P4b (proposed: DG group) awaiting owner go |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -5065,6 +5065,36 @@ Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — 
 - **P4:** remaining ~187 rows by group (53 of 249 closed).
 - **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1/F2 checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+## [2026-09-26 05:55 WAT] — AI Agent: Claude Sonnet 5.6 (P4a-2 SHIPPED: matcher/task-runner integrity — PR06, PR08, PR09, PR11, PR12, PR13; code dfbccc0 + fixes ee5ff84/8e7c778, CI #2950 GREEN, two reds fixed same-session)
+
+**[2026-09-26 — P4a-2: the Problems group, batch 2 (matcher/task-runner integrity). P-series Problems rows COMPLETE — 72/249 closed.]**
+
+- **PR06 — per-tool matcher selection (ProblemMatcher.kt).** The old single BUILDISH gate ran ALL compiler formats (GCC/KT_PROC/TSC/JAVAC + TRACEBACK) against ANY build-ish command, so python/npm/node RUNTIME output produced false BUILD rows ("server.py:42: error: retry failed" matched the javac format). Formats are now opt-in per command class: build tools/compilers (gradle, make, gcc/clang, javac, kotlinc, tsc, cargo, dotnet, cmake) get the full compiler scan; python/python3 get TRACEBACK pairing ONLY; npm/npx/yarn get TSC ONLY; node is REMOVED from the gate entirely (pure runtime, no stable compiler format — scanning it was all false-positive risk). scan() and matchLine() carry allowCompiler/allowPy/allowTsc flags; publishFromCommand computes the class once.
+- **PR08 — empty-path build rows are honest non-navigable.** "Task FAILED" and "What went wrong" rows arrive with file="" and previously sent "" into the jump chain (matched no tab → opened a broken empty-path tab, BUG-A family). Now: the group header labels them "(build output)"; the row is not clickable when pathless (modifier-gated); the panel onClick skips blank paths; and ProjectShellScreen's onJumpToSourceWithPath has a labeled-return blank-path guard (defense in depth for every calling surface).
+- **PR09 — explorer badge preset is an EXACT-FILE filter.** The badge passed a bare FILENAME into the panel's SUBSTRING search, so "Main.kt" also matched MainViewModel.kt and every message containing "main". The badge now passes node.file.absolutePath; the preset is consumed as a fileFilter state (path equality or basename-end match — the same semantics the badge-count code already used), never as search text; a dismissible "File: <name> (tap to clear)" chip shows the active filter; severity chips all forced on so the file's real counts show.
+- **PR11 — lint deduped + off the main thread (DiagnosticPublisher.kt).** Lint previously ran SYNCHRONOUSLY ON MAIN three passes over the SAME content (file open, every tab switch, every save). Now: content-hash dedupe (unchanged content = zero re-lint; the rows are already in the store) and the scan itself runs on Dispatchers.Default via a per-file single-flight worker (newer content parks as pending and re-runs when the worker frees — never dropped). DiagnosticManager publishes via its own mainHandler post, so callers never block. Known residual: a manual clear-all is not auto-repopulated on tab switch of unchanged content (next content change or reopen repopulates) — accepted.
+- **PR12 — one task catalogue.** BuildPanel's dropdown had a second hardcoded 6-entry list drifted from TaskRunner's 8-entry CATALOGUE (missing installDebug/bundleRelease/assemble; "build" was in neither gradle semantics nor the runner). The dropdown now reads TaskRunner.CATALOGUE.gradleTask — drift impossible by construction.
+- **PR13 — durable run state (new project/TaskRunStore.kt + TaskRunner).** TaskRunner's runs map was memory-only, and a UI-scope cancellation (task panel closed mid-run) could leave a RUNNING tile FOREVER in the process-lifetime singleton. Now: state persists per task (SharedPreferences, state+timestamp only — BuildResult output intentionally not persisted); startup sweep (CodeSpaceApplication.onCreate, restorePersistedState) converts any persisted RUNNING into FAILED with an honest "interrupted by app restart" message; CancellationException is caught before the generic catch, marks FAILED "UI closed mid-run" under NonCancellable, and RETHROWS so the caller's scope observes the cancellation. Orphaned gradle process after a kill is NOT cleaned here — that stays the TP06/DG13 family, tracked separately. Terminal states restore as state-only (log area empty until the next real run).
+
+**REMOVED (this batch):** the single BUILDISH gate (all-formats-against-any-command); node/npm/python from the full compiler scan (each keeps only what it really emits); bare-filename preset-into-search-text path; triple synchronous main-thread lint passes; the hardcoded 6-entry BuildPanel task list; the silently-forever RUNNING tile (both death paths).
+
+**Reds fixed same-session (CI):** #2948 `Unresolved reference: launch` (CoroutineScope.launch is an EXTENSION — import kotlinx.coroutines.launch required, member-style call is unresolved; same class as the #2695 detectTapGestures rule); #2949 `Unresolved reference: clip` (chip used the ui.draw.clip extension unimported — replaced with the imported foundation background(color, shape) overload).
+
+### P5 device checks (per gap ID)
+- **PR06:** run a python script that prints a "file.py:42: error: retry failed" style line at runtime → NO false BUILD row in Problems. Run a real javac/gcc-format error via terminal → row still appears. Run `npx tsc` with a TS error → TSC row appears; `npm install` output → no rows.
+- **PR08:** run a failing gradle task → "Task FAILED"/"What went wrong" rows appear under a "(build output)" header and tapping them does NOTHING (no broken tab); a real file row still jumps.
+- **PR09:** explorer badge tap on a file with problems → panel shows ONLY that file's rows + the "File: <name>" chip; sibling files with similar names excluded; tap chip → all files return. User-typed search still works as substring.
+- **PR11:** open a large file → no jank (lint off main); switch tabs fast → no repeated lint passes (identical rows, no flicker); edit → rows update once, debounced; save → no duplicate pass over unchanged content.
+- **PR12:** Build panel dropdown shows all 8 catalogue tasks; picking one runs exactly that gradle task.
+- **PR13:** start a task, close the task panel mid-run → tile shows FAILED "interrupted" (not spinning forever); kill the app mid-build, relaunch → tile FAILED "interrupted by app restart", terminal still works, re-run allowed.
+
+### Roadmap
+- **P4a COMPLETE (owner batch ruling honored).** Problems group closed: PR01-PR14 all shipped.
+- **P4 (next, awaiting owner go):** 177 rows by group — proposed order DG → SR → LS → G(Editor) → TB → CH → SG → rest by tier within group. Batch proposal for P4b: DG group (10 rows) first.
+- **P5:** full device round — TP02 batch checks, P2a-e checks, F1-F5 checks, P4a-1/P4a-2 checks as listed above.
+
+---
 
 ## [2026-09-26 01:05 WAT] — AI Agent: Claude Sonnet 5.6 (P4a-1 SHIPPED: Problems panel/store truth — PR02, PR04, PR05, PR07, PR10, PR14; code ef1b1b0, CI #2946 GREEN, first-push clean)
 
