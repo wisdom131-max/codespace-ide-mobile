@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P4c IntelliSense group SHIPPED (code 360b660, CI #2960 GREEN, first-push clean): 13 rows — IC01-IC03, IC05-IC14 (IC04 closed in P3a). Tally: 116/249. Next: owner go — next P4 group or P5 device round |
+| Latest commit | P4d Tab/Split identity group SHIPPED (code 403be7e + fix 93bc7fc, CI #2963 GREEN; one red #2962 self-fixed — PssEditorColumn deep-nested-helper seam): 5 rows — TB04-TB08. Tally: 121/249. TB group COMPLETE. Next: owner go — next P4 group or P5 device round |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -60,6 +60,45 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 ---
 
 ## CHANGE LOG
+
+### [2026-09-26 13:05 WAT] — AI Agent: Claude Sonnet 5.6, P4d Tab/Split identity group, Commits 403be7e+93bc7fc, CI #2963 GREEN
+
+**[P4d SHIPPED — the tab/split identity cluster the roadmap named next (TB04/TB06 HIGH + TB05/TB07/TB08). Revertable as 403be7e+93bc7fc. All five fixes share one theme: the EditorPane is the AUTHORITATIVE tab owner, and every identity decision now keys through P3b's canonical sameFileIdentity.]**
+
+**Closed:** TB04, TB05, TB06, TB07, TB08 (5 rows). Tally: 121/249.
+**Files:** editor/SplitViewStore.kt, editor/undo/SharedFileUndo.kt, editor/PerFileStateStore.kt, debug/UniversalDebugManager.kt, ui/panes/EditorPaneTabEffects.kt (NEW — request effects, 64KB rule), ui/panes/EditorPane.kt, ui/screens/ProjectShellScreen.kt
+
+#### What shipped (code 403be7e + fix 93bc7fc)
+
+- **TB04 (HIGH):** SplitViewStore.add() allocates the LOWEST UNUSED sibling number instead of existing.size+1. The old formula: create views 1..4, remove #2, add again -> "::4" exists twice — one id, two strip views. Uniqueness is now by construction.
+- **TB05:** restore() runs for EMPTY saved lists too and prunes ALL process-global views — an empty saved list is the project saying "no splits"; the old nonempty-list gate let the previous project's views survive the switch.
+- **TB06 (HIGH):** Explorer rename rekeys the AUTHORITATIVE side via a new shell->EditorPane request seam (renameFileRequest, extracted effect file): tabs, active id, split view ids (the id EMBEDS the path), scroll/cursor/fold/bookmark maps, pinned paths, lspOpenedFiles (no protocol traffic — didRenameFiles already told the server), PerFileStateStore, SharedFileUndo, UDM breakpoints (+persist), FileCache invalidation. The shell keeps only its mirror update + LSP notifications.
+- **TB07:** OPEN-EDITORS close routes through the SAME shared closeEditorTabInternal path as the strip X (didClose + split cascade + active fixup). The B1 reactive-sync updates the shell mirror; the old direct mirror removal (which the sync resurrected) is DELETED.
+- **TB08:** tab/split identity is canonical everywhere: open-effect match, split-of-path guard, restore active/pinned matching, bookmark lookup, peek type-def/implementation guards, and all SplitViewStore matching fns — a guest/relative/dialect-spelled target now resolves to the open tab instead of opening a duplicate.
+
+#### What I REMOVED (dead/placebo code)
+- **TB07:** the shell's direct mirror mutations in onCloseTab (editorTabs.remove + activeEditorTab fixup) — a second writer that fought the B1 sync stream and could resurrect a closed tab.
+- **TB04:** the existing.size+1 id formula — the collision itself, not a bandage on the symptom.
+- **TB06:** the illusion that a shell mirror update was a rename — the mirror rename path previously left EVERY per-path store, split id and breakpoint pointing at the deleted old path.
+
+#### CI (#2962 red, #2963 GREEN)
+- #2962 red, self-caught from downloadable logs: the TB06/TB07 request params were wired at the PssEditorColumn CALL but the EditorPane actually lives INSIDE that extracted helper — the deep-nested-helper pitfall (helpers do not see main-body state; params must be declared on the helper AND threaded to its inner EditorPane call). Fixed in 93bc7fc: 4 params added to PssEditorColumn + passed through. New concrete instance of the documented pitfall class logged.
+- #2963 GREEN. APK artifact: codespace-ide-arm64-v8a.
+
+#### P5 device checks (owner, add to the round — per gap ID)
+- **TB04:** split a file into 4 views, close view #2, add a split again — the new view gets a fresh number; NO two strip entries share one id (toggle between them; no state bleed, closing one never closes the other).
+- **TB05:** open project A, split a file, switch to project B that has no saved splits — the strip shows NO split views from project A. Switch back to A: its splits (if persisted) return.
+- **TB06:** with a file open (and split), rename it in the Explorer — the tab title updates, the split survives with the new name, bookmarks/undo history/folds/scroll position carry over, breakpoint dots stay on the same lines, and no second tab for the old path reappears.
+- **TB07:** OPEN EDITORS panel -> X on a tab — the tab actually closes in the strip (and STAYS closed; no resurrection), split views of it cascade away, and the shell breadcrumb follows the newly active tab.
+- **TB08:** open a file via a path spelled differently than the Explorer's (e.g. go-to-definition from an LSP server that returns a relative/URL-decoded path) — NO duplicate tab for the same physical file; the existing tab activates.
+
+#### Roadmap (all pending items)
+- **P4:** 128 of 249 rows remain after this batch (TB group complete; named HIGH clusters left: TP04 install integrity, SK01/SK02/SK04 settings+PIN, OG01 recoverable index loss, SG01 staging honesty, PG01 blinkTick recomposition, RG01 verified-dead backend, VG03 untrusted-input crash).
+- **Bookkeeping note (flagged 2026-09-26):** MASTER-GAPS per-row CLOSED annotations lag the changelog truth — P1/P2/P3-series and P4b-DG closures are counted in the tally but only partially annotated per row. AGENTS.md changelog remains the source of truth for closed IDs; a backfill pass is optional owner work.
+- **P5:** full device verification round (P2a-e, P3a-e, F1-F5, P4a-1/2, P4b DG + batch 2, P4c IC checks, this batch's TB checks).
+- **Backlog owner decisions:** F6 JVM debug; MK re-test after MK restructure; stdio-vs-TCP AgentApiServer; F01/F02/F09 feature decisions.
+
+---
 
 ### [2026-09-26 12:35 WAT] — AI Agent: Claude Sonnet 5.6, P4c IntelliSense group, Commit 360b660, CI #2960 GREEN (first push)
 
