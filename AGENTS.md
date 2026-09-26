@@ -61,6 +61,40 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 19:10 WAT] — AI Agent: Claude Sonnet 5.6, P4h Chat group complete (10 rows shipped + 4 bookkeeping closures), Commit 876887f, CI #36260563034 GREEN
+
+**[P4h SHIPPED — the CH (chat/AI/settings) group complete in one batch. The theme: the chat layer stops losing and misreporting state — attachments survive restarts, caps are disclosed, the queue stops eating messages, approvals time out honestly, and MCP servers stop lying by omission. CH01/CH02/CH03/CH05 were fixed in earlier phases (P1/P2c/P3b) but had never been marked CLOSED in MASTER-GAPS — this pass verified the code and closed the bookkeeping; the 10 newly-shipped rows are CH04, CH06-CH14. Revertable as 876887f.]**
+
+**Closed:** CH04, CH06, CH07, CH08, CH09, CH10, CH11, CH12, CH13, CH14 + bookkeeping CH01 (P1 7216ec0), CH02 (P3b ae5633a), CH03 (P2c 0342c96), CH05 (P1 7216ec0). **Tally: 159/249 closed, 90 remain** (chain: 149 P4g → 159 P4h).
+**Files:** agent/AgentTools.kt, agent/AgentFlowGate.kt, agent/AgentApiServer.kt, agent/McpClientManager.kt, ui/screens/CopilotChatPanelOverlay.kt, ui/panes/McpServersSection.kt, chat/ChatRetryExport.kt, chat/ChatAttachment.kt, chat/ChatKeyPool.kt
+**Details:**
+- **CH04:** ChatMsg carries its resolved attachments (chips + "#file" tokens) at send; saveSessions persists att descriptors (8/message, selection snippets 4000 chars); restored conversations re-inject EACH user message's own attachment block instead of silently changing what the model sees; IMAGE/AUDIO attachments ride honest text notes on restore (audio previously fell into the file branch's readText — binary garbage injection).
+- **CH06:** truncMark() helper — run_command (4000), readFile (8000 incl. the staged branch), listFiles, gitCommitPush outputs all carry "[... TRUNCATED — showing N of M chars]" markers; searchFiles discloses 500-file scan-cap hits and skipped-over-100KB counts inline (was: silently complete-looking results).
+- **CH07:** queuedTexts is a FIFO list — a second send while streaming APPENDS (the old single slot silently REPLACED the first); the queue chip shows "+N more queued"; auto-send runs in order; cancel clears the whole queue.
+- **CH08:** ChatExportResult sealed class (Ok/NoProject/WriteFailed) — write failures (mkdirs/writeText) report as WRITE errors with detail; "open a project first" only prints when that is actually the problem.
+- **CH09:** ApprovalVerdict (APPROVED/REJECTED/TIMEOUT) + Mutex serialization of concurrent approvals (the old single-slot clobber left the first deferred forever-incomplete) + 10-min withTimeoutOrNull — a lost card no longer hangs the chat with Stop as the only escape, and a timeout is reported honestly, never as "rejected by user".
+- **CH10:** lastDiscoveryErrors state — per-server discovery failures render INLINE in the MCP panel rows (a broken server no longer looks like "no tools"); invalidateTools() wipes a deleted/disabled server's cached tools; the saveConfig latch reset pre-existed and was verified (noted in code, not double-claimed).
+- **CH11:** executeTool is suspend; the MCP branch is a cancellable withTimeoutOrNull(90s) call — runBlocking DELETED from AgentTools; AgentApiServer bridges with runBlocking on its own socket thread. Stop now cancels mid-MCP-call.
+- **CH12:** user-entered key-slot labels moved to SecureTokenStore (ai_label_<slot> prefix keeps them out of the numbered key space); one-time migration folds the old plain-prefs labels JSON and removes it; key order stays plain prefs (derived, not secret).
+- **CH13:** per-session storage — sessions_idx_v1 index + one session_v1_<id> blob each; blob cache means only CHANGED sessions re-serialize on persist (was: O(total messages) per send/rating on the UI thread); stale blobs purged on load; legacy single blob migrated on first load.
+- **CH14:** MCP server DELETE arms an AlertDialog confirm naming the consequences — it was the only destructive settings action without one.
+
+### P5 device checks (per gap ID)
+- **CH04:** Attach a file via the chat chip (and one via "#path" token), send, force-close the app, reopen the chat session → the restored thread shows the messages; send a follow-up in the restored thread → the model's answer reflects the attached file's content (check the rendered request in Output if available); an image-attached message restored from a previous session shows its image note in the request.
+- **CH06:** Ask the model to run a command with output > 4000 chars (e.g. a long find) → the tool result carries the "[... TRUNCATED — showing N of M chars]" marker; ask it to read a file > 8000 chars → same marker; a search across a folder with > 500 files shows the scan-cap note.
+- **CH07:** While a reply is streaming, send message A, then message B → the queue chip shows "Queued: A (+1 more queued)"; when the reply ends, A sends first, then B (both delivered, none replaced). Cancel (×) while queued → the chip clears and neither sends.
+- **CH08:** Export with NO project open → "Export failed — no project open"; open a project, make .codespace/exports read-only (or fill storage), export → the error names the WRITE failure, not the project.
+- **CH09:** In MANUAL flow, trigger a tool approval and IGNORE the card for 10 minutes (screen on) → the turn ends with the honest auto-timeout message, not "rejected by user", and the chat is not stuck loading. Trigger two gated calls back-to-back → the second card appears only after the first resolves.
+- **CH10:** Add an MCP server with a bad command, tap Refresh → its row shows "Discovery failed: ..." inline; delete a server whose tools were previously discovered → its mcp_* tools no longer appear to the model; re-add → tools return after the next chat/Refresh.
+- **CH11:** Trigger a tool call on a slow/hung MCP server, tap Stop → the turn ends before the 90s bound (mid-call cancel works); a server that hangs past 90s yields the honest timeout message, and the chat stays usable.
+- **CH12:** Set a custom label on a key slot, restart the app → the label persists (and shows in AiKeysSection/ChatStatusSheet); check SecureTokenStore data — no "labels" entry remains in plain chat_key_pool prefs.
+- **CH13:** With several saved sessions, send a message in one and watch for UI jank/ANR (persist is now O(active session)); delete a session, restart → it stays deleted (blob purged); a session from before the update still loads (legacy migration).
+- **CH14:** MCP server with a live session: tap its delete → confirm dialog names the session stop + secret wipe; Cancel keeps it; Delete removes it and ends the session.
+
+**ROADMAP (continuity — all pending items):** Tally 159/249, 90 open rows for P4 (XG01-04 extension-architecture enablers PARKED by owner ruling 2026-09-26 — never batch, each needs its own go-decision like F6; F6 JVM-debug decision likewise owner-gated). Remaining open groups for P4 batching: IC (intelli-continuity), LS, PG, PM, TM, TP, VG, IG, RG, EX, SK remaining, OG, TB, TG, IM, IC/other small sweeps; XG non-parked rows likewise owner-gated. CH group complete here. Next decision points: P5 device verification round for P4d-P4h gaps, or owner-named MEDIUM/LOW group batch.
+
+---
+
 ### [2026-09-26 18:35 WAT] — AI Agent: Claude Sonnet 5.6, P4g SCM group (11 SG rows), Commits 188c346+613c294, CI #36259040115 GREEN
 
 **[P4g SHIPPED — the SG (source-control) group complete in one batch. The theme: the SCM pane finally tells the truth and stays fresh — no fabricated identities, no orphan GitHub repos, no dead HEAD badges, and the recovery paths (timeline/history restore) are now confirmed AND reversible. SG12 was already fixed by P3a; verified and closed stale. Revertable as 188c346+613c294.]**
