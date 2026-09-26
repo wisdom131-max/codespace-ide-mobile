@@ -61,6 +61,18 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 19:35 WAT] — FULL LEDGER RECONCILIATION PASS (docs-only, no code): owner end-of-batch-sweep rule adopted + applied retroactively; 59 rows marked CLOSED; denominator corrected 249 → 236
+
+**[Why: the owner flagged the third same-root-cause tally correction (SK01/SK02, SR03/SR04, CH01/CH02/CH03/CH05). A full file-vs-ledger audit found the disease at scale: MASTER-GAPS carried only 99 CLOSED markers while the ledger claimed 159 closed — 59 rows were fixed-and-CI-green in earlier phases but never marked. Also: the "249 total rows" denominator never matched the file, which has 236 rows. NEW STANDING RULE (owner, 2026-09-26): at the end of EVERY batch, grep MASTER-GAPS for any row anchored on files the current commit's diff touches — even rows not fixed this batch — and mark it closed if the code confirms it. This pass applies that rule retroactively across all shipped phases.]**
+
+**Marked CLOSED (59 rows), each with its original shipping commit + CI:** G01, TB01, TB03, SG02 (P1 7216ec0, CI #2907); EX04, EX05, EX07, RG03, RG04, RG07, IG01, VG02, OG04 (P2a e707ccc, CI #2909); VG01 (P2b 988b4a0, CI #2911); SG04, SG16, IG02, IG15 (P2c 0342c96, CI #2915); TP03, PR01, PR03, XG05, EX01, EX02, EX06, SG05, IG05, RG02, OG02, IC04 (P3a 5ddb03b+1802702, CI #2919); DG02, DG08, DG11 (P3b ae5633a, CI #2922); PG02, PG04, PG05 (P3c fdb660d, CI #2924); IG03, IG04, IG06, VG04, VG10 (P3d d6669fc, CI #2926); DG04 (P3e a6efe97, CI #2928); PR06, PR08, PR09, PR11, PR12, PR13 (P4a-2 dfbccc0, CI #2950); DG01, DG03, DG05, DG06, DG07, DG09, DG10, DG12, DG13, DG14 (P4b dd5c975+d21b4ca, CI #2953); TP01 (RESOLVED 2026-09-24 same-day: backend deploy 57236a0, owner-verified probe — /socket.io/ and /ws/terminal both 404; re-verify on any future backend deploy that touches dependencies).
+**Code spot-verified during the pass:** IG15 (use_connector per-call consent — chat forceApproval + headless AgentApiServer 403, AgentApiServer.kt:217-220), plus the CH-group verifications from the P4h entry.
+**File-verified tally (denominator corrected): 158/236 closed, 78 open** (74 batchable + XG01-04 parked by owner ruling). The old 159/249 ledger was wrong on both sides: 2 closure overcounts (rows never in the file) and a 13-row phantom denominator. From now on the tally is COUNTED FROM THE FILE at every batch end, not incremented by hand.
+
+**ROADMAP (continuity — all pending items):** File-verified 158/236, 78 open. XG01-04 PARKED (owner ruling — own go-decision each, like F6). Remaining batchable groups: RG (7: RG05 owner-impact anchor, RG06, RG08-RG12), VG (7), TM (6), TG (3), OG (3), IM (3), EX (2), TB02 (1, race test), TP02 (1, security), SK (11), PG (10), IG (10), XG non-parked (11). Next decision points: P5 device verification round for P4d-P4h gaps, or next MEDIUM/LOW group batch (RG recommended — RG05 is the owner's own device pain).
+
+---
+
 ### [2026-09-26 19:10 WAT] — AI Agent: Claude Sonnet 5.6, P4h Chat group complete (10 rows shipped + 4 bookkeeping closures), Commit 876887f, CI #36260563034 GREEN
 
 **[P4h SHIPPED — the CH (chat/AI/settings) group complete in one batch. The theme: the chat layer stops losing and misreporting state — attachments survive restarts, caps are disclosed, the queue stops eating messages, approvals time out honestly, and MCP servers stop lying by omission. CH01/CH02/CH03/CH05 were fixed in earlier phases (P1/P2c/P3b) but had never been marked CLOSED in MASTER-GAPS — this pass verified the code and closed the bookkeeping; the 10 newly-shipped rows are CH04, CH06-CH14. Revertable as 876887f.]**
@@ -91,7 +103,7 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 - **CH13:** With several saved sessions, send a message in one and watch for UI jank/ANR (persist is now O(active session)); delete a session, restart → it stays deleted (blob purged); a session from before the update still loads (legacy migration).
 - **CH14:** MCP server with a live session: tap its delete → confirm dialog names the session stop + secret wipe; Cancel keeps it; Delete removes it and ends the session.
 
-**ROADMAP (continuity — all pending items):** Tally 159/249, 90 open rows for P4 (XG01-04 extension-architecture enablers PARKED by owner ruling 2026-09-26 — never batch, each needs its own go-decision like F6; F6 JVM-debug decision likewise owner-gated). Remaining open groups for P4 batching: IC (intelli-continuity), LS, PG, PM, TM, TP, VG, IG, RG, EX, SK remaining, OG, TB, TG, IM, IC/other small sweeps; XG non-parked rows likewise owner-gated. CH group complete here. Next decision points: P5 device verification round for P4d-P4h gaps, or owner-named MEDIUM/LOW group batch.
+**ROADMAP (continuity — all pending items):** Tally superseded the same day by the RECONCILIATION PASS entry above — file-verified truth: 158/236 closed, 78 open (74 batchable + XG01-04 parked). XG01-04 extension-architecture enablers PARKED by owner ruling 2026-09-26 — never batch, each needs its own go-decision like F6; F6 JVM-debug decision likewise owner-gated. Remaining open groups for P4 batching: RG (7), VG (7), TM (6), TG (3), OG (3), IM (3), EX (2), TB02 (1), TP02 (1), SK (11), PG (10), IG (10), XG non-parked (11). CH group complete here. Next decision points: P5 device verification round for P4d-P4h gaps, or owner-named MEDIUM/LOW group batch.
 
 ---
 
