@@ -124,6 +124,11 @@ object TerminalSessionStore {
             Log.d(TAG, "Loaded ${result.size}/${arr.length()} eligible tabs for project $projectId")
             result
         } catch (e: Exception) {
+            // TP15 (2026-09-26): ACCEPTED TRADEOFF, recorded per the audit row — a
+            // corrupted store wipes this project's tab list (names/locks vanish) rather
+            // than risking a half-parsed restore. The warning log makes the wipe
+            // non-silent for diagnostics; rebuilding the tab layout is cheap and the
+            // store holds layout only, never session contents.
             Log.w(TAG, "load() corrupted JSON — wiping project store: ${e.message}")
             wipe(ctx, projectId)
             emptyList()

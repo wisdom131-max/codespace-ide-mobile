@@ -77,7 +77,16 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     fun initBell(ctx: Context) { /* sound pool reserved for future beep mode */ }
     fun releaseBell() {}
 
-    override fun onTextChanged(changedSession: TerminalSession) { onTextChanged?.invoke() }
+    // TP06 (2026-09-26): recency proxy for "a foreground process may be running" —
+    // bumped on EVERY output batch, read by closeTab to decide whether killing the
+    // shell needs a confirmation. Volatile: output arrives on the reader thread.
+    @kotlin.jvm.Volatile
+    var lastOutputAtMs: Long = 0L
+
+    override fun onTextChanged(changedSession: TerminalSession) {
+        lastOutputAtMs = android.os.SystemClock.elapsedRealtime()
+        onTextChanged?.invoke()
+    }
 
     override fun onTitleChanged(changedSession: TerminalSession) {
         onTitleChanged?.invoke(changedSession.title)
@@ -518,14 +527,27 @@ internal object TerminalSchemes {
     val ALL = listOf(DARK, DRACULA, SOLARIZED_DARK, MONOKAI, GRUVBOX)
 }
 
-internal fun createTerminalSession(context: Context, isUbuntu: Boolean = false, workDir: String? = null): Pair<TerminalSession, SimpleTerminalSessionClient> {
+internal fun createTerminalSession(
+    context: Context,
+    isUbuntu: Boolean = false,
+    workDir: String? = null,
+    projectId: String = "default",
+): Pair<TerminalSession, SimpleTerminalSessionClient> {
     val client = SimpleTerminalSessionClient()
     client.appContext = context.applicationContext
 
     if (isUbuntu) {
         // Gap 1+3: Use IdeEnvironment for central env config + baked WORKSPACE_PATH.
-        val prootEnv = IdeEnvironment.forTerminal(context, "default", workDir)
+        // TP14 (2026-09-26): projectId is threaded through (was hardcoded "default" —
+        // the pane fallback built the session for the WRONG project while the service
+        // path used the real one: dual-factory drift).
+        val prootEnv = IdeEnvironment.forTerminal(context, projectId, workDir)
         val session = TerminalSession(prootEnv.proot, "/", prootEnv.args, prootEnv.envVars, 4000, client)
+        // TP14 (2026-09-26): single session registry — pane-created sessions used to be
+        // invisible to the service (TB02 dual-writer family: one concept, two owners):
+        // service-level reattach/cleanup missed them. Registered exactly like
+        // TerminalService.createSession does.
+        com.codespace.ide.terminal.TerminalService.registerLiveSession(session, projectId)
         // Fallback: session.write() commands as belt-and-suspenders (env already baked).
         IdeEnvironment.workspacePathFallbackCommands(prootEnv.workspacePath).forEach { cmd ->
             session.write(cmd)
@@ -621,11 +643,18 @@ internal fun TerminalPane(
     val context      = LocalContext.current
     val scope        = androidx.compose.runtime.rememberCoroutineScope()
 
-    // ── Moved up: needed by the lifecycle observer (ON_STOP handler) below.
+    // ── Moved up: needed by the lifecycle observer (visibility tracking) below.
+    //    TP07 (2026-09-26): the comment above used to claim an ON_STOP handler that
+    //    calls killAllSessions() — that handler NEVER existed in this file. Sessions
+    //    deliberately PERSIST across minimize: the foreground service owns their
+    //    lifetime. Do NOT resurrect an ON_STOP kill-everything path here: it would
+    //    kill all sessions on every minimize and reintroduce the exact behavior the
+    //    FGS design removed (the abandoned HiOS workaround).
     // Use shared state if provided, otherwise own state
     val sharedState = externalState ?: rememberTerminalState(context)
     val tabs = sharedState.tabs
-    // Service binding — declared early so the ON_STOP lifecycle handler can call killAllSessions()
+    // Service binding — declared early; the pane falls back to its own factory when
+    // the service is not bound yet (TP14: pane sessions register into the SAME registry).
     var boundService by remember { mutableStateOf<TerminalService?>(null) }
 
     // ── Activity visibility tracker — mirrors Termux's mActivity.isVisible() check in
@@ -670,6 +699,9 @@ internal fun TerminalPane(
     var showMenu        by remember { mutableStateOf(false) }
     var lockMenuRoot    by remember { mutableStateOf<String?>(null) }   // Part B: root-lock second menu
     var renameTargetId  by remember { mutableStateOf<String?>(null) }
+    // TP06 (2026-09-26): tab close awaiting confirmation — non-null while the
+    // kill-processes dialog is showing.
+    var pendingCloseId  by remember { mutableStateOf<String?>(null) }
     var renameValue     by remember { mutableStateOf("") }
     var showSshManager    by remember { mutableStateOf(false) }
     var showTextExpansions by remember { mutableStateOf(false) }
@@ -776,8 +808,19 @@ internal fun TerminalPane(
         onDispose { tab?.client?.onTextChanged = null; fsNotifyJob?.cancel() }
     }
 
+    // TP16 (2026-09-26): append cap — declared above writeToDisplay (local
+    // declaration-order rule). Unbounded appends previously burned transcript
+    // rows silently; anything past the cap is truncated with an honest log.
+    val maxDisplayAppendChars = 64_000
+
     fun writeToDisplay(session: TerminalSession, text: String) {
-        val bytes = text.toByteArray(Charsets.UTF_8)
+        val clipped = if (text.length > maxDisplayAppendChars) {
+            AppOutputLog.log("writeToDisplay truncated " + text.length + " -> " + maxDisplayAppendChars + " chars", "terminal")
+            text.substring(0, maxDisplayAppendChars)
+        } else {
+            text
+        }
+        val bytes = clipped.toByteArray(Charsets.UTF_8)
         session.getEmulator()?.append(bytes, bytes.size)
         currentView.value?.post { currentView.value?.onScreenUpdated() }
     }
@@ -838,7 +881,7 @@ internal fun TerminalPane(
             val id = System.currentTimeMillis().toString()
             // Part B: locked root (if any) wins over the app's active root
             val wd = lockedRoot ?: loadWorkspacePath(ctx, projectId)
-            val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd))
+            val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
             if (onOpenFileAtLine != null) {
                 com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!)
             }
@@ -1010,7 +1053,7 @@ internal fun TerminalPane(
                 val activeRoots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(ctx, projectId)
                 val validLock = tabLock?.takeIf { it in activeRoots }
                 val wd = validLock ?: loadWorkspacePath(ctx, projectId)
-                val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd))
+                val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
                 if (onOpenFileAtLine != null) {
                     com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!,
                         lockedRootProvider = { tabs.firstOrNull { it.id == id }?.lockedRootPath })
@@ -1165,9 +1208,13 @@ internal fun TerminalPane(
         tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
     }
 
-    fun closeTab(id: String) {
+    // TP06 (2026-09-26): the actual kill, extracted so the confirm path and the
+    // silent path share ONE implementation. Declared ABOVE closeTab (local-function
+    // declaration-order rule).
+    fun performCloseTab(id: String) {
         if (tabs.size <= 1) return
         val idx = tabs.indexOfFirst { it.id == id }
+        if (idx < 0) return
         tabs[idx].session.finishIfRunning()
         tabs.removeAt(idx)
         sharedState.viewCache.remove(id) // P14-A: evict cached view so it can be GC'd
@@ -1176,6 +1223,22 @@ internal fun TerminalPane(
         scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
             TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
         }) }
+    }
+
+    fun closeTab(id: String) {
+        if (tabs.size <= 1) return
+        // TP06 (2026-09-26): closing previously SIGKILLed the shell pid with NO check
+        // and NO confirm — gradle/apt chains died silently mid-run. Honest heuristic:
+        // output in the last 15 seconds implies a live foreground process (quiet
+        // processes are missed — documented bound, wrong-close beats wrong-kill).
+        val tab = tabs.firstOrNull { it.id == id } ?: return
+        val recentOutput = tab.client.lastOutputAtMs > 0 &&
+            (android.os.SystemClock.elapsedRealtime() - tab.client.lastOutputAtMs) < 15_000L
+        if (recentOutput && tab.session.isRunning) {
+            pendingCloseId = id
+            return
+        }
+        performCloseTab(id)
     }
 
     LaunchedEffect(initialCommand, active?.id) {
@@ -1401,6 +1464,31 @@ internal fun TerminalPane(
                 },
                 dismissButton = {
                     TextButton(onClick = { renameTargetId = null; renameValue = "" }) { Text("Cancel") }
+                },
+            )
+            }
+        }
+
+        // TP06 (2026-09-26): kill-processes confirmation — closing a tab whose
+        // session showed output in the last 15s (a gradle/apt chain may be running).
+        // Rotation fix (#8): same key(orientation) rationale as the rename dialog.
+        if (pendingCloseId != null) {
+            key(configuration.orientation) {
+            AlertDialog(
+                onDismissRequest = { pendingCloseId = null },
+                title = { Text("Close terminal?") },
+                text = {
+                    Text("This terminal showed recent output — a build or install may still be running. Closing kills its processes immediately.")
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val target = pendingCloseId
+                        pendingCloseId = null
+                        target?.let { performCloseTab(it) }
+                    }) { Text("Kill and close") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingCloseId = null }) { Text("Cancel") }
                 },
             )
             }
@@ -1904,7 +1992,7 @@ internal fun TerminalPane(
                     // Ubuntu proot is the only terminal environment now — openssh-client
                     // lives in the rootfs (apt install openssh-client), not on the host.
                     val id = System.currentTimeMillis().toString()
-                    val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId) ?: createTerminalSession(context, isUbuntu = true, workDir = loadWorkspacePath(context, projectId)))
+                    val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId) ?: createTerminalSession(context, isUbuntu = true, workDir = loadWorkspacePath(context, projectId), projectId = projectId))
                     tabs.add(TabSession(id, label, session, client))
                     activeId = id
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({

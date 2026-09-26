@@ -984,14 +984,18 @@ object ProotInstaller {
 
 ## Terminal & Container
 - terminal/ProotInstaller.kt — Ubuntu rootfs download, proot setup, writes all shell scripts (THIS FILE)
-- terminal/TerminalSession.kt — PTY session wrapper, isolated per project
 - terminal/TerminalService.kt — Foreground service keeping terminal alive in background
 - terminal/BackupManager.kt — Backup/restore Ubuntu rootfs + SharedPreferences to /sdcard/CodespaceIDE/
 - terminal/McpShellProfile.kt — Writes shell profile: agent() alias, MCP config, session bridge
 - terminal/NativePty.kt — JNI bridge to native PTY
 - terminal/TerminalModeManager.kt — Ubuntu vs Bash tab mode manager
-- terminal/TermuxBootstrapInstaller.kt — ⚠️ DEAD CODE. App is Ubuntu-only.
-- terminal/BusyboxInstaller.kt — ⚠️ DEAD CODE. No longer used.
+- terminal/TerminalSession.kt — TP09 (2026-09-26): DELETED — the dead remote half-pair
+  (never constructed; the pane uses the vendored com.termux.terminal session).
+- terminal/RemoteTerminalSession.kt — TP09 (2026-09-26): DELETED with it (never sent the
+  gateway ticket; the backend TerminalModule was already removed 57236a0).
+- terminal/TermuxBootstrapInstaller.kt — TP10 (2026-09-26): DELETED (dead code, Ubuntu-only app).
+- terminal/BusyboxInstaller.kt — LIVE (offline-shell menu actions in ProjectShellScreen);
+  the unreachable busybox session branch in TerminalService was deleted (TP10).
 
 ## AI / Agent
 - agent/AgentApiServer.kt — HTTP server port 8765 in Ubuntu; /tool/* endpoints for terminal AI
@@ -1526,6 +1530,10 @@ exit 0
         maxLines: Int = 2000,
         logTag: String = "proot",
         onLine: ((String) -> Unit)? = null,
+    /** TP11 (2026-09-26): POSIX single-quote escaping — safe for any user-controlled
+     *  path fragment interpolated into a shell command string. */
+    private fun shQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+
         onProcess: ((Process) -> Unit)? = null,
     ): ProotResult {
         val (proot, baseArgs, envVars) = launchArgs(context)
@@ -1537,7 +1545,10 @@ exit 0
             it != "--bind=/proc/self/fd/2:/dev/stderr"
         }
         val headArgs = filteredArgs.dropLast(2).toTypedArray()
-        val cd = if (workdir != null) "[ -d \"$workdir\" ] && cd \"$workdir\"; " else ""
+        // TP11 (2026-09-26): single-quote escaped — the workdir is user-controlled
+        // (project paths) and was interpolated inside double quotes, so a path
+        // containing $() or backticks executed command substitution in the shell.
+        val cd = if (workdir != null) "[ -d ${shQuote(workdir)} ] && cd ${shQuote(workdir)}; " else ""
         // P32: bash -c (non-login) with profile sourcing redirected to /dev/null —
         // prevents [Agent] banner text from polluting stdout.
         val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; $cd$command"

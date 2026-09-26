@@ -27,6 +27,22 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream
 object BackupManager {
     private const val TAG = "BackupManager"
     private const val BACKUP_FOLDER = "CodespaceIDE"
+
+    // TP12 (2026-09-26): guest secrets are EXCLUDED from the rootfs tar — the backup
+    // lands on PUBLIC external storage (world-readable on this device class), and it
+    // previously contained /root/.ssh keys, gitconfig/git-credential tokens and MCP
+    // env files. Secrets stay in the live rootfs only; they are never shipped through
+    // a shared-storage artifact. (The shared location itself is an accepted tradeoff:
+    // the user pulls backups manually.)
+    private val GUEST_SECRET_PATHS = listOf(
+        "root/.ssh",
+        "root/.gitconfig",
+        "root/.git-credentials",
+        "root/.aws",
+        "root/.kube",
+        "root/.mcp",
+        "root/.env",
+    )
     private const val BACKUP_FILE = "container-backup.tar.gz"
 
     fun backupDir(): File = File(Environment.getExternalStorageDirectory(), BACKUP_FOLDER)
@@ -73,6 +89,11 @@ object BackupManager {
                     // Skip proc/sys/dev virtual mounts — never real files worth archiving,
                     // and walking into them can hang or explode in apparent size.
                     if (relPath.startsWith("proc/") || relPath.startsWith("sys/") || relPath.startsWith("dev/")) {
+                        return@forEach
+                    }
+                    // TP12 (2026-09-26): skip guest secrets (directory and children) —
+                    // see GUEST_SECRET_PATHS above.
+                    if (GUEST_SECRET_PATHS.any { relPath == it || relPath.startsWith("$it/") }) {
                         return@forEach
                     }
                     runCatching {

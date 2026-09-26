@@ -15,7 +15,6 @@ import android.os.Process
 import androidx.core.app.NotificationCompat
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.terminal.ProotInstaller
-import com.codespace.ide.terminal.BusyboxInstaller
 import com.codespace.ide.environment.IdeEnvironment
 import com.codespace.ide.ui.panes.SimpleTerminalSessionClient
 import com.termux.terminal.TerminalSession
@@ -80,9 +79,13 @@ class TerminalService : Service() {
     // caused terminal state ("even unsent keystrokes") to bleed between different
     // projects. See AGENTS.md #12 for the full root-cause writeup.
     private data class TrackedSession(val session: TerminalSession, val projectId: String)
-    private val liveSessions = java.util.Collections.synchronizedList(
-        mutableListOf<TrackedSession>()
-    )
+
+    // TP14 (2026-09-26): the live-session registry moved into the class COMPANION
+    // (declared at the bottom of this file) — it used to be an instance field, so
+    // sessions created by the pane's own factory (used before the service binds)
+    // were invisible to every service-level consumer (findLive for reattach,
+    // cleanup): one concept (open sessions), two owners. Both factories now register
+    // into that ONE registry; the pane registers via TerminalService.registerLiveSession.
 
     /** Returns an existing, still-running Ubuntu session for THIS project, if one exists,
      *  so a freshly recreated Activity/Compose tree can REATTACH instead of forking a
@@ -111,25 +114,41 @@ class TerminalService : Service() {
     private val binder = LocalBinder()
     override fun onBind(intent: Intent?): IBinder = binder
 
+    /** TP13 (2026-09-26): FGS start + notification-toggle observer, extracted so the
+     *  bounded retry in onStartCommand repeats the FULL sequence, not half of it. */
+    private fun startFgs(text: String) {
+        startForeground(NOTIF_ID, buildNotification(text))
+        // TEST-50-FIX: Observe terminal notification toggle and rebuild immediately
+        serviceScope.launch {
+            androidx.compose.runtime.snapshotFlow { ProjectSettingsStore.terminalNotifications.value }
+                .distinctUntilChanged()
+                .collect { rebuildNotification("Terminal ready") }
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Terminal session active"
         // Boost service thread priority — reduces chance of OEM scheduler deprioritizing it.
         // THREAD_PRIORITY_FOREGROUND = -2 (higher than default 0, same as UI thread).
         Process.setThreadPriority(Process.THREAD_PRIORITY_FOREGROUND)
         try {
-            startForeground(NOTIF_ID, buildNotification(text))
-            // TEST-50-FIX: Observe terminal notification toggle and rebuild immediately
-            serviceScope.launch {
-                androidx.compose.runtime.snapshotFlow { ProjectSettingsStore.terminalNotifications.value }
-                    .distinctUntilChanged()
-                    .collect { rebuildNotification("Terminal ready") }
-            }
+            startFgs(text)
         } catch (e: Exception) {
             // Defensive: if this throws (e.g. a transient AMS race right after process
             // restart from a killed background state), don't take the whole app down —
             // log it and continue. The service can still function; worst case it loses
             // FGS priority for this cycle instead of crashing on relaunch.
-            android.util.Log.e("TerminalService", "startForeground() failed: ${e.message}", e)
+            // TP13 (2026-09-26): the degradation is no longer SILENT — one bounded retry
+            // (transient AMS races often clear within half a second), then an honest
+            // final-failure log. The deliberate continue stays: crashing the service on
+            // a transient race is worse than one cycle without foreground priority.
+            try {
+                Thread.sleep(500)
+                startFgs(text)
+                android.util.Log.w("TerminalService", "startForeground() succeeded on bounded retry (transient AMS race cleared)")
+            } catch (retry: Exception) {
+                android.util.Log.e("TerminalService", "startForeground() failed TWICE — running WITHOUT foreground priority this cycle (OEM-kill protection lost): ${retry.message}", retry)
+            }
         }
 
         when (intent?.action) {
@@ -153,23 +172,11 @@ class TerminalService : Service() {
         return START_STICKY
     }
 
-    /**
-     * Kills ALL live terminal sessions (proot/bash process trees) and clears the tracking list.
-     * Called when the Activity goes to background (ON_STOP) to free memory on 3GB devices.
-     * Without this, proot processes survive across minimize/reopen cycles and cause OOM crashes
-     * because TECNO HiOS kills the app when memory pressure gets too high.
-     *
-     * Tradeoff: terminal sessions don't persist across minimize. On 3GB devices, stability
-     * is more important than session persistence. On reopen, addUbuntuTab() starts a fresh session.
-     */
-    fun killAllSessions() {
-        synchronized(liveSessions) {
-            liveSessions.forEach { try { it.session.finishIfRunning() } catch (_: Throwable) {} }
-            liveSessions.clear()
-        }
-        com.codespace.ide.agent.AgentApiServer.stop()
-        android.util.Log.d("TerminalService", "All sessions killed (minimize cleanup)")
-    }
+    // TP07 (2026-09-26): killAllSessions() is DELETED — it had ZERO callers while
+    // TerminalPane's comments still documented an ON_STOP kill-everything handler
+    // that never existed (the abandoned HiOS workaround). A resurrected call would
+    // kill every session on every minimize. Sessions persist across minimize by
+    // design: the foreground service owns their lifetime.
 
     override fun onDestroy() {
         serviceScope.cancel()
@@ -342,62 +349,30 @@ class TerminalService : Service() {
             return Pair(session, client)
         }
 
-        // ── Shell session — mirrors Termux's TermuxShellEnvironmentClient exactly ──
-        // Termux: executablePath=$PREFIX/bin/bash, argv[0]="-bash" (login shell)
-        // We ship bash via libbusybox.so (busybox ash) since no real bash .so exists.
-        // busybox launched with argv[0]="-ash" triggers login-shell .profile sourcing.
-        val busybox   = BusyboxInstaller.shellPath(this)
-        val home      = File(filesDir, "home").also { it.mkdirs() }.absolutePath
-        val bin       = BusyboxInstaller.binDir(this).absolutePath
-        val nativeDir = applicationInfo.nativeLibraryDir
-        val tmpDir    = File(cacheDir, "tmp").also { it.mkdirs() }.absolutePath
-
-        // Termux sets LD_LIBRARY_PATH to nativeLibraryDir so .so deps resolve
-        val ldLibPath = buildString {
-            append(nativeDir)
-            System.getenv("LD_LIBRARY_PATH")?.let { append(":$it") }
-        }
-
-        val envBuilder = mutableListOf(
-            // Core identity — match Termux exactly
-            "HOME=$home",
-            "TERM=xterm-256color",
-            "COLORTERM=truecolor",
-            "LANG=en_US.UTF-8",
-            "SHELL=$busybox",
-            "USER=vncode",
-            "LOGNAME=vncode",
-            "TMPDIR=$tmpDir",
-            "PWD=$home",
-            // PATH: our bin symlinks first, then system
-            "PATH=$bin:$nativeDir:/system/bin:/system/xbin",
-            // LD_LIBRARY_PATH: required for native .so resolution (Termux does this)
-            "LD_LIBRARY_PATH=$ldLibPath",
-            // libtermux-exec intercepts exec() calls for Samsung/OEM compat
-            "LD_PRELOAD=$nativeDir/libtermux-exec.so",
-            // ash interactive mode: point ENV at our rc file
-            "ENV=$home/.ashrc"
+        // TP10 (2026-09-26): the busybox -ash branch (54 lines: BusyboxInstaller shell
+        // path, full Termux env builder, login-shell session) is DELETED — it was
+        // UNREACHABLE for the app's whole life: Ubuntu-only, every caller passes
+        // isUbuntu=true, and the pane's inert-placeholder path uses the pane factory,
+        // not this service. Shipping a dead second shell system was maintenance debt.
+        // Fail closed rather than resurrect it.
+        throw IllegalStateException(
+            "TerminalService.createSession is Ubuntu-only — the busybox shell branch was removed (TP10)"
         )
-
-        // Inherit Android system vars exactly as Termux does
-        for (key in listOf(
-            "ANDROID_DATA", "ANDROID_ROOT", "ANDROID_STORAGE",
-            "ANDROID_RUNTIME_ROOT", "ANDROID_ART_ROOT",
-            "ANDROID_I18N_ROOT", "ANDROID_TZDATA_ROOT",
-            "EXTERNAL_STORAGE", "BOOTCLASSPATH", "DEX2OATBOOTCLASSPATH"
-        )) {
-            System.getenv(key)?.let { envBuilder.add("$key=$it") }
-        }
-
-        val env = envBuilder.toTypedArray()
-
-        // "-ash" as argv[0] = login shell mode — busybox reads .profile on startup
-        // This is equivalent to Termux passing "-bash" for bash login sessions
-        val session = TerminalSession(busybox, home, arrayOf("-ash"), env, 4000, client)
-        return Pair(session, client)
     }
 
         companion object {
+        // TP14 (2026-09-26): the ONE live-session registry (moved from an instance
+        // field — see the comment near TrackedSession). The pane's factory registers
+        // here too, so reattach/cleanup cover pane-created sessions.
+        private val liveSessions = java.util.Collections.synchronizedList(
+            mutableListOf<TrackedSession>()
+        )
+
+        /** TP14: pane-factory sessions register here (same registry createSession uses). */
+        internal fun registerLiveSession(session: TerminalSession, projectId: String) {
+            synchronized(liveSessions) { liveSessions.add(TrackedSession(session, projectId)) }
+        }
+
         private const val CHANNEL_ID      = "termux_notification_channel"
         private const val NOTIF_ID        = 1337   // 0x539 — matches Termux exactly
         private const val EXTRA_TEXT      = "notif_text"
