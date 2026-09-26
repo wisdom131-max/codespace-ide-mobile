@@ -22,6 +22,19 @@ object SharedFileUndo {
 
     /** The shared undo manager for a file path (canonical key), or a fresh
      *  view-local one when the path is blank. */
+    /**
+     * TB06 (P4d): move a renamed file's undo stack to its new canonical key —
+     * Explorer rename previously rekeyed NOTHING, so undo history for the old
+     * path silently detached from the renamed tab.
+     */
+    fun rekey(oldPath: String, newPath: String) {
+        val oldKey = CanonicalPaths.canonicalKey(oldPath)
+        val newKey = CanonicalPaths.canonicalKey(newPath)
+        if (oldKey == newKey) return
+        val stack = stacks.remove(oldKey) ?: return
+        stacks[newKey] = stack
+    }
+
     fun forFile(path: String?): SnapshotUndoManager {
         if (path.isNullOrBlank() || !path.startsWith("/")) return SnapshotUndoManager()
         val key = CanonicalPaths.canonicalKey(path)

@@ -38,6 +38,20 @@ object PerFileStateStore {
 
     fun stateFor(path: String): FileState = states[key(path)] ?: EMPTY
 
+    /**
+     * TB06 (P4d): move a renamed file's persisted state (squiggles, jump
+     * highlight, bookmarks) to its new canonical key — Explorer rename
+     * previously rekeyed nothing, so the file's bookmarks and diagnostics
+     * detached on rename.
+     */
+    fun rekey(oldPath: String, newPath: String) {
+        val oldKey = key(oldPath)
+        val newKey = key(newPath)
+        if (oldKey == newKey) return
+        val state = states.remove(oldKey) ?: return
+        states[newKey] = state
+    }
+
     /** Publish squiggle ranges for a file (LSP diagnostics handler + tab re-pull). */
     fun setSquiggles(path: String, squiggles: List<LintError>) {
         val k = key(path)

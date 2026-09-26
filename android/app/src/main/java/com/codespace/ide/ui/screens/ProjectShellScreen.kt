@@ -862,6 +862,12 @@ fun ProjectShellScreen(
     // LSP servers via didChangeWorkspaceFolders "removed" (AFTER didClose).
     var closeRootRequest by remember(projectId) { mutableStateOf<String?>(null) }
     var pendingRemovedRoot by remember(projectId) { mutableStateOf<String?>(null) }
+    // TB06/TB07 (P4d): shell->EditorPane tab requests. EditorPane is the
+    // AUTHORITATIVE tab owner (B1 reactive-sync) — rename rekeys and OPEN-EDITORS
+    // closes now go through it (the shell used to mutate its own mirror, which
+    // the sync stream resurrected or never rekeyed).
+    var renameFileRequest by remember(projectId) { mutableStateOf<Pair<String, String>?>(null) }
+    var closeTabRequest by remember(projectId) { mutableStateOf<String?>(null) }
     val activeEditorTabMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }; var activeEditorTab by activeEditorTabMs
     val keyInsertDispatcher = remember { com.codespace.ide.editor.KeyInsertDispatcher() }
     /** Breadcrumb: when set, ExplorerSidePanel auto-expands and scrolls to this dir. */
@@ -1458,6 +1464,12 @@ fun ProjectShellScreen(
                                     showNotification("Opened ${path.substringAfterLast("/")}", "success")
                                 },
                                 onFileRenamed = { oldPath, newPath ->
+                                    // TB06 (P4d): the AUTHORITATIVE tab rekey lives in
+                                    // EditorPane (tabs, split ids, scroll/cursor/fold/bookmark
+                                    // maps, undo + PerFile stores, breakpoints, FileCache);
+                                    // this handler keeps only the shell mirror update and the
+                                    // LSP willRename/didRename notifications.
+                                    renameFileRequest = oldPath to newPath
                                     val idx = editorTabs.indexOf(oldPath)
                                     if (idx >= 0) {
                                         editorTabs[idx] = newPath
@@ -1604,8 +1616,12 @@ fun ProjectShellScreen(
                                 onCloseTab = { tabPath ->
                                     revealFile = tabPath
                                     revealFileTrigger++
-                                    editorTabs.remove(tabPath)
-                                    if (activeEditorTab == tabPath) activeEditorTab = editorTabs.lastOrNull()
+                                    // TB07 (P4d): close the REAL tab through EditorPane's
+                                    // shared path (didClose + split cascade) — the old
+                                    // mirror-only removal was resurrected by the next
+                                    // onTabsChanged report. The B1 sync now updates
+                                    // editorTabs/activeEditorTab itself.
+                                    closeTabRequest = tabPath
                                 },
                                 tokenStore = tokenStore,
                             
@@ -1737,6 +1753,10 @@ fun ProjectShellScreen(
                     context = context,
                     tokenStore = tokenStore,
                     editorTabs = editorTabs,
+                    renameFileRequest = renameFileRequest,
+                    onRenameFileHandled = { renameFileRequest = null },
+                    closeTabRequest = closeTabRequest,
+                    onCloseTabHandled = { closeTabRequest = null },
                     closeRootRequest = closeRootRequest,
                     onCloseRootHandled = {
                         // MULTI-ROOT (Part B): EditorPane closed all tabs under the removed

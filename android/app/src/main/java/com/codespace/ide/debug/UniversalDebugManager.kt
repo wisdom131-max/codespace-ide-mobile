@@ -1145,6 +1145,30 @@ object UniversalDebugManager {
         }
     }
 
+    /**
+     * TB06 (P4d): rekey a renamed file's breakpoints (in-memory map + persisted
+     * store). Explorer rename previously rekeyed nothing — the gutter dots and
+     * the persisted store kept pointing at the old, deleted path, and the next
+     * session restored breakpoints for a file that no longer exists.
+     */
+    fun rekeyBreakpoints(oldPath: String, newPath: String) {
+        // Keys are raw paths (gutter taps use tab.path); match by canonical
+        // identity so a dialect-spelled key still rekeys.
+        val keys = breakpoints.keys.filter {
+            com.codespace.ide.util.CanonicalPaths.sameFileIdentity(it, oldPath)
+        }
+        if (keys.isEmpty()) return
+        keys.forEach { k ->
+            val list = breakpoints.remove(k) ?: return@forEach
+            breakpoints[newPath] = list.map { it.copy(filePath = newPath) }.toMutableList()
+        }
+        try {
+            persistContext?.let { ctx -> saveBreakpoints(ctx) }
+        } catch (e: Exception) {
+            Log.w(TAG, "rekeyBreakpoints persist failed: " + e.message)
+        }
+    }
+
     fun saveBreakpoints(context: android.content.Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
         val json = org.json.JSONArray()

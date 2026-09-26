@@ -2,6 +2,7 @@ package com.codespace.ide.editor
 
 import androidx.compose.runtime.mutableStateListOf
 import com.codespace.ide.domain.EditorTab
+import com.codespace.ide.util.CanonicalPaths
 
 /**
  * SPLIT-VIEW STORE (2026-09-11; PAD-2 multi-view 2026-09-13, user-approved):
@@ -56,10 +57,16 @@ object SplitViewStore {
     /** Legacy first-view id for a path (also what idFor() always meant). */
     fun idFor(path: String): String = SPLIT_ID_PREFIX + path
 
-    fun hasFor(path: String): Boolean = views.any { it.path == path }
+    // TB08 (P4d): view<->path matching is canonical IDENTITY, not raw string
+    // equality — one physical file reached as host/guest/relative spellings used
+    // to count as different files (G03's tab-level manifestation).
+    private fun matchesPath(candidate: String, path: String): Boolean =
+        CanonicalPaths.sameFileIdentity(candidate, path)
+
+    fun hasFor(path: String): Boolean = views.any { matchesPath(it.path, path) }
 
     /** Id of the MOST RECENTLY created view for a path (what auto-focus targets). */
-    fun latestIdFor(path: String): String? = views.lastOrNull { it.path == path }?.id
+    fun latestIdFor(path: String): String? = views.lastOrNull { matchesPath(it.path, path) }?.id
 
     /** 1-based position of a view among its siblings (plain id = 1, "::N" = N). */
     fun viewNumber(id: String): Int {
@@ -76,7 +83,7 @@ object SplitViewStore {
      * closing the primary tab, which cascades.)
      */
     fun add(path: String): String? {
-        val existing = views.filter { it.path == path }
+        val existing = views.filter { matchesPath(it.path, path) }
         return when {
             existing.isEmpty() -> {
                 val id = idFor(path)
@@ -85,7 +92,15 @@ object SplitViewStore {
             }
             existing.size >= MAX_VIEWS_PER_FILE -> null
             else -> {
-                val id = idFor(path) + "::" + (existing.size + 1)
+                // TB04 (P4d): the old `existing.size + 1` formula RECREATED a live
+                // sibling's number after a removal (create 1..4, remove #2, add ->
+                // "::4" twice — one id, two strip views). Allocate the LOWEST UNUSED
+                // number instead, so every live view id is unique by construction.
+                val used = existing.map { viewNumber(it.id) }.toSet()
+                var n = 2
+                while (n in used) n++
+                if (n > MAX_VIEWS_PER_FILE) return null
+                val id = idFor(path) + "::" + n
                 views.add(SplitView(id, path))
                 id
             }
@@ -98,11 +113,23 @@ object SplitViewStore {
      * or ::N sibling) so viewNumber() labels stay stable across restarts.
      */
     fun restore(viewIds: List<String>, openPaths: Set<String>) {
-        views.removeAll { it.path !in openPaths }
+        // TB05 (P4d): an EMPTY saved list is a REAL project state ("no splits"),
+        // not "leave whatever is live" — the store is process-global, so views
+        // from the PREVIOUS project used to survive into a project that saved
+        // no splits (the old caller skipped restore entirely on an empty list,
+        // and this prune never ran).
+        if (viewIds.isEmpty()) {
+            views.clear()
+            return
+        }
+        // TB08 (P4d): prune against open tabs by IDENTITY, not raw membership —
+        // a view whose path spelling differs from the tab's still resolves.
+        views.removeAll { v -> openPaths.none { CanonicalPaths.sameFileIdentity(v.path, it) } }
         viewIds.forEach { id ->
             val p = pathOf(id) ?: return@forEach
-            if (p in openPaths && views.none { it.id == id }) {
-                views.add(SplitView(id, p))
+            val openMatch = openPaths.firstOrNull { CanonicalPaths.sameFileIdentity(p, it) } ?: return@forEach
+            if (views.none { it.id == id }) {
+                views.add(SplitView(id, openMatch))
             }
         }
     }
@@ -112,7 +139,29 @@ object SplitViewStore {
     }
 
     fun removeForPath(path: String) {
-        views.removeAll { it.path == path }
+        views.removeAll { matchesPath(it.path, path) }
+    }
+
+    /**
+     * TB06 (P4d): rekey every view of a renamed file — the id EMBEDS the path
+     * ("split::<path>[::N]"), so an Explorer rename must re-derive both the id
+     * and the path or the split view dangles against the old, deleted path.
+     * Returns oldId -> newId so callers can fix an active split id.
+     */
+    fun rekeyPath(oldPath: String, newPath: String): Map<String, String> {
+        val remap = mutableMapOf<String, String>()
+        val updated = views.mapNotNull { v ->
+            if (!matchesPath(v.path, oldPath)) return@mapNotNull null
+            val suffix = if (viewNumber(v.id) > 1) "::" + viewNumber(v.id) else ""
+            val newId = idFor(newPath) + suffix
+            remap[v.id] = newId
+            v.copy(id = newId, path = newPath)
+        }
+        if (updated.isNotEmpty()) {
+            views.removeAll { it.id in remap.keys }
+            views.addAll(updated)
+        }
+        return remap
     }
 
     fun isSplitId(id: String?): Boolean = id != null && id.startsWith(SPLIT_ID_PREFIX)
@@ -138,7 +187,9 @@ internal fun resolveActiveTab(activeId: String?, tabs: List<EditorTab>): EditorT
     if (activeId == null) return null
     val splitPath = SplitViewStore.pathOf(activeId)
     return if (splitPath != null) {
-        tabs.firstOrNull { it.path == splitPath }
+        // TB08 (P4d): canonical identity, not raw equality — a guest/relative
+        // split id still resolves to its primary tab.
+        tabs.firstOrNull { CanonicalPaths.sameFileIdentity(it.path, splitPath) }
     } else {
         tabs.firstOrNull { it.id == activeId }
     }

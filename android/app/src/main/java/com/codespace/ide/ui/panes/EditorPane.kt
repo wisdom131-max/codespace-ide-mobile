@@ -196,6 +196,16 @@ fun EditorPane(
     /** MULTI-ROOT (Part B): invoked after closeRootRequest has been handled so the
      * shell can clear its request state. */
     onCloseRootHandled: (() -> Unit)? = null,
+    /** TB06 (P4d): (oldPath, newPath) set by the shell when the Explorer renames
+     * an open file — rekeys the authoritative tab, split views, per-path maps,
+     * undo/PerFile state stores and breakpoints. Cleared via onRenameFileHandled. */
+    renameFileRequest: Pair<String, String>? = null,
+    onRenameFileHandled: (() -> Unit)? = null,
+    /** TB07 (P4d): path set by the shell when OPEN EDITORS closes a tab — closed
+     * through the SAME shared path as the strip X (was a shell-mirror edit the
+     * reactive sync resurrected). Cleared via onCloseTabHandled. */
+    closeTabRequest: String? = null,
+    onCloseTabHandled: (() -> Unit)? = null,
     /** B1 REACTIVE-SYNC (2026-09-06): EditorPane is the AUTHORITATIVE owner of the
      * open-tab list — this callback reports (openPaths, activePath) on EVERY tab
      * open/close/switch, including internal opens the shell never saw before
@@ -727,21 +737,51 @@ fun EditorPane(
                     tabs.add(tab)
                 }
             }
-            pinnedPaths.addAll(restoredPinned.filter { p -> tabs.any { it.path == p } })
-            activeId = tabs.firstOrNull { it.path == restoredActive }?.id ?: tabs.firstOrNull()?.id
+            // TB08 (P4d): identity match — restored spellings from an older
+            // session can differ from the freshly-opened tab spellings.
+            pinnedPaths.addAll(restoredPinned.filter { p ->
+                tabs.any { com.codespace.ide.util.CanonicalPaths.sameFileIdentity(it.path, p) }
+            })
+            activeId = tabs.firstOrNull {
+                com.codespace.ide.util.CanonicalPaths.sameFileIdentity(it.path, restoredActive ?: "")
+            }?.id ?: tabs.firstOrNull()?.id
             // PERSIST-A: restore split views — only ids whose file is actually open.
+            // TB05 (P4d): restore runs even when the saved list is EMPTY — an empty
+            // saved list is the project saying "no splits", and the store is
+            // process-global, so previous-project views must be pruned on entry
+            // (the old nonempty-list gate left them alive).
             val splitsMem = restoredSplits
-            if (splitsMem != null && splitsMem.viewIds.isNotEmpty()) {
+            if (splitsMem != null) {
                 com.codespace.ide.editor.SplitViewStore.restore(
                     splitsMem.viewIds, tabs.map { it.path }.toSet())
-                suppressSplitFocus = true
-                val av = splitsMem.activeViewId
-                if (av != null && com.codespace.ide.editor.SplitViewStore.views.any { it.id == av }) {
-                    activeId = av
+                if (splitsMem.viewIds.isNotEmpty()) {
+                    suppressSplitFocus = true
+                    val av = splitsMem.activeViewId
+                    if (av != null && com.codespace.ide.editor.SplitViewStore.views.any { it.id == av }) {
+                        activeId = av
+                    }
                 }
             }
         }
     }
+
+    // TB06/TB07 (P4d): shell-driven tab requests (rename rekey + OPEN-EDITORS
+    // close) — extracted file per the 64KB rule, called once with the locals.
+    EditorPaneTabRequests(
+        renameFileRequest = renameFileRequest,
+        onRenameFileHandled = onRenameFileHandled,
+        closeTabRequest = closeTabRequest,
+        onCloseTabHandled = onCloseTabHandled,
+        tabs = tabs,
+        activeIdState = activeIdState,
+        lspOpenedFiles = lspOpenedFiles,
+        pinnedPaths = pinnedPaths,
+        tabScrollLines = tabScrollLines,
+        tabCursorOffsets = tabCursorOffsets,
+        tabFoldedRanges = tabFoldedRanges,
+        fileBookmarks = fileBookmarks,
+        udm = udm,
+    )
 
     // Unsaved changes warning
     var showUnsavedDialog by remember { mutableStateOf(false) }
@@ -825,7 +865,11 @@ fun EditorPane(
     // Open a new tab when the explorer requests a file
     LaunchedEffect(openFilePath) {
         if (openFilePath != null) {
-            val existing = tabs.firstOrNull { it.path == openFilePath }
+            // TB08 (P4d): identity match, not raw equality — one physical file
+            // reached through a different spelling used to open a DUPLICATE tab.
+            val existing = tabs.firstOrNull {
+                com.codespace.ide.util.CanonicalPaths.sameFileIdentity(it.path, openFilePath)
+            }
             if (existing != null) {
                 // SPLIT-VIEW GUARD: the shell's activeEditorTab mirror sync round-trips
                 // back through this effect. When a split view of the SAME file is the
@@ -833,7 +877,9 @@ fun EditorPane(
                 // primary tab — the report already resolved the path, so this is a
                 // no-op unless the user actually switched files.
                 val activeIsSplitOfPath = com.codespace.ide.editor.SplitViewStore.isSplitId(activeId) &&
-                    com.codespace.ide.editor.SplitViewStore.pathOf(activeId) == openFilePath
+                    com.codespace.ide.editor.SplitViewStore.pathOf(activeId)?.let {
+                        com.codespace.ide.util.CanonicalPaths.sameFileIdentity(it, openFilePath)
+                    } == true
                 if (!activeIsSplitOfPath) {
                     activeId = existing.id
                 }
@@ -1487,7 +1533,12 @@ fun EditorPane(
                             Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    val tab = tabs.firstOrNull { it.path == filePath }
+                                    // TB08 (P4d): identity match — a bookmark
+                                    // recorded under a different spelling still
+                                    // resolves to the open tab instead of no-op.
+                                    val tab = tabs.firstOrNull {
+                                        com.codespace.ide.util.CanonicalPaths.sameFileIdentity(it.path, filePath)
+                                    }
                                     if (tab != null) activeId = tab.id
                                     showBookmarkPanel = false
                                 }
@@ -3238,7 +3289,13 @@ fun EditorPane(
                         TextButton(
                             onClick = {
                                 val fp = peek.filePath
-                                if (tabs.none { it.path == fp }) {
+                                // TB08 (P4d): identity match — a peek target whose
+                                // spelling differs from the open tab resolves to the
+                                // EXISTING tab instead of opening a duplicate.
+                                val matchTd = tabs.firstOrNull {
+                                    com.codespace.ide.util.CanonicalPaths.sameFileIdentity(it.path, fp)
+                                }
+                                if (matchTd == null) {
                                     tabs.add(EditorTab(
                                         id = fp,
                                         path = fp,
@@ -3249,7 +3306,7 @@ fun EditorPane(
                                         savedContent = loadFileContent(fp),
                                     ))
                                 }
-                                activeId = fp
+                                activeId = matchTd?.id ?: fp
                                 lspTypeDefResult = null
                             }
                         ) {
@@ -3281,7 +3338,10 @@ fun EditorPane(
                             TextButton(
                                 onClick = {
                                     val fp = path
-                                    if (tabs.none { it.path == fp }) {
+                                    val matchImpl = tabs.firstOrNull {
+                                        com.codespace.ide.util.CanonicalPaths.sameFileIdentity(it.path, fp)
+                                    }
+                                    if (matchImpl == null) {
                                         tabs.add(EditorTab(
                                             id = fp,
                                             path = fp,
@@ -3292,7 +3352,7 @@ fun EditorPane(
                                             savedContent = loadFileContent(fp),
                                         ))
                                     }
-                                    activeId = fp
+                                    activeId = matchImpl?.id ?: fp
                                     lspImplResults = emptyList()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
