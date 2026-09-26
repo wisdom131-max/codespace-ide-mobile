@@ -53,7 +53,6 @@ import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
 
-@AndroidEntryPoint
 /**
  * RG01 (P4e): the ONE crash-report sink URL -- the deployed reportCrash backend
  * function on the current Superagent. BOTH call sites use it (the crash-time
@@ -63,6 +62,7 @@ import javax.inject.Inject
  */
 const val CRASH_SINK_URL = "https://superagent-4a7af576.base44.app/functions/reportCrash"
 
+@AndroidEntryPoint
 class MainActivity : FragmentActivity() {
 
     @Inject
