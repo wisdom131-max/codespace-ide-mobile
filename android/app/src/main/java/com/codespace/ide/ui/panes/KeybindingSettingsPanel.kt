@@ -7,13 +7,25 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,7 +58,13 @@ fun KeybindingSettingsPanel(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var bindings by remember { mutableStateOf(KeyBindingRegistry.getAllBindings()) }
+    // SK09 (2026-09-26): this used to be declared and COMPARED but never ASSIGNED —
+    // the keybinding editor could view/reset but never rebind. It is now the live
+    // target of the per-row Record chip and drives the capture dialog below.
     var recordingAction by remember { mutableStateOf<EditorAction?>(null) }
+    // SK08 (2026-09-26): a captured combo that collides with another action's binding
+    // waits here for the user's Reassign/Cancel decision instead of silently shadowing.
+    var conflictCapture by remember { mutableStateOf<Pair<EditorAction, KeyCombination>?>(null) }
 
     // Categories for grouping
     data class ActionGroup(val title: String, val actions: List<EditorAction>)
@@ -171,12 +189,104 @@ fun KeybindingSettingsPanel(
                             KeyBindingRegistry.resetBinding(action)
                             bindings = KeyBindingRegistry.getAllBindings()
                         },
+                        onRecord = { recordingAction = action },
                     )
                 }
             }
         }
     }
+
+    // ── SK09: key-capture dialog — the hardware key press for the recording target ──
+    recordingAction?.let { target ->
+        val captureFocus = remember { FocusRequester() }
+        LaunchedEffect(target) { try { captureFocus.requestFocus() } catch (_: Exception) { } }
+        AlertDialog(
+            onDismissRequest = { recordingAction = null },
+            title = { Text("Press keys") },
+            text = {
+                Column {
+                    Text(
+                        "Press the keys for '" +
+                            target.name.replace('_', ' ').lowercase() + "'. Esc cancels.",
+                        fontSize = 13.sp,
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .height(48.dp)
+                            .focusRequester(captureFocus)
+                            .focusable()
+                            .onPreviewKeyEvent { e ->
+                                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                if (e.key == Key.Escape) { recordingAction = null; return@onPreviewKeyEvent true }
+                                // Bare modifier presses are held for the real key, not captured alone.
+                                if (SK09_MODIFIER_KEYS.contains(e.key)) return@onPreviewKeyEvent true
+                                val combo = KeyCombination(
+                                    key = e.key,
+                                    ctrl = e.isCtrlPressed,
+                                    shift = e.isShiftPressed,
+                                    alt = e.isAltPressed,
+                                )
+                                recordingAction = null
+                                // SK08: ask before stealing a combo from another action.
+                                val conflict = KeyBindingRegistry.findConflictingAction(combo, target)
+                                if (conflict == null) {
+                                    KeyBindingRegistry.setBinding(target, combo)
+                                    bindings = KeyBindingRegistry.getAllBindings()
+                                } else {
+                                    conflictCapture = target to combo
+                                }
+                                true
+                            }
+                    ) {
+                        Text(
+                            "Waiting for key press…",
+                            fontSize = 12.sp,
+                            color = textSecondary,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+                }
+            },
+            confirmButton = { },
+            dismissButton = { TextButton(onClick = { recordingAction = null }) { Text("Cancel") } },
+        )
+    }
+
+    // ── SK08: conflict resolution — reassign steals the combo from the other action ──
+    conflictCapture?.let { (target, combo) ->
+        val conflict = KeyBindingRegistry.findConflictingAction(combo, target)
+        AlertDialog(
+            onDismissRequest = { conflictCapture = null },
+            title = { Text("Key combination already bound") },
+            text = {
+                Text(
+                    combo.toString() + " is already bound to '" +
+                        (conflict?.name?.replace('_', ' ')?.lowercase() ?: "another action") +
+                        "'. Reassign takes it from that action."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    conflict?.let { KeyBindingRegistry.resetBinding(it) }
+                    KeyBindingRegistry.setBinding(target, combo)
+                    bindings = KeyBindingRegistry.getAllBindings()
+                    conflictCapture = null
+                }) { Text("Reassign") }
+            },
+            dismissButton = { TextButton(onClick = { conflictCapture = null }) { Text("Cancel") } },
+        )
+    }
 }
+
+/** SK09: keys that only modify the NEXT key press — never captured as a binding alone. */
+private val SK09_MODIFIER_KEYS = setOf(
+    Key.CtrlLeft, Key.CtrlRight,
+    Key.ShiftLeft, Key.ShiftRight,
+    Key.AltLeft, Key.AltRight,
+    Key.MetaLeft, Key.MetaRight,
+)
 
 @Composable
 private fun KeybindingRow(
@@ -190,6 +300,7 @@ private fun KeybindingRow(
     accentColor: Color,
     dividerColor: Color,
     onReset: () -> Unit,
+    onRecord: () -> Unit,
 ) {
     var showReset by remember { mutableStateOf(false) }
     val isModified = combo != null && defaultCombo != null && combo != defaultCombo
@@ -227,6 +338,24 @@ private fun KeybindingRow(
                     fontWeight = if (isModified) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     maxLines = 1,
+                )
+            }
+        }
+
+        // SK09 (2026-09-26): Record chip — the rebind entry point that was never wired.
+        // While recording, the badge is replaced by the live recording state text.
+        if (isRecording) {
+            Text("Press keys…", fontSize = 11.sp, color = accentColor, modifier = Modifier.padding(end = 4.dp))
+        } else {
+            IconButton(
+                onClick = onRecord,
+                modifier = Modifier.size(24.dp),
+            ) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = "Rebind " + action.name.replace('_', ' ').lowercase(),
+                    tint = textSecondary,
+                    modifier = Modifier.size(14.dp),
                 )
             }
         }

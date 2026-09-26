@@ -114,7 +114,7 @@ object AgentConnectorManager {
     fun connectService(service: String, scopes: JSONArray?, context: Context): String {
         if (service in PAT_SERVICES) {
             return "${DISPLAY_NAMES[service]} connects with a personal API token, not a sign-in page. " +
-                "The user should open the Connectors Hub (chat kebab or In-Project Settings) and tap ${DISPLAY_NAMES[service]}. " +
+                "The user should open the Connectors Hub (chat kebab or Settings (App-wide)) and tap ${DISPLAY_NAMES[service]}. " +
                 "Use the request_connector tool to show them a connect card instead."
         }
         if (service !in SERVICES) {

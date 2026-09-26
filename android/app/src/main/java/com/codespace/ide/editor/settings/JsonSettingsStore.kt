@@ -61,11 +61,13 @@ object JsonSettingsStore {
             val migrated = SettingsMigration.migrateIfNeeded(context)
             if (migrated != null) {
                 applyMigratedData(migrated)
+                // SK13: the migrated flag is written only after the JSON save succeeds.
+                if (saveToJson()) SettingsMigration.markMigrated(context)
             } else {
                 // Fresh install — just use defaults
                 initDefaults()
+                saveToJson()
             }
-            saveToJson()
         }
 
         Log.i(TAG, "Initialized: ${settingsState.size} settings, ${toggleState.size} toggles, ${keybindingOverrides.size} keybinding overrides")
@@ -109,7 +111,8 @@ object JsonSettingsStore {
             val migrated = SettingsMigration.migrateIfNeeded(context)
             if (migrated != null) {
                 applyMigratedData(migrated)
-                saveToJson()
+                // SK13: mark migrated only when the JSON save succeeded.
+                if (saveToJson()) SettingsMigration.markMigrated(context)
             }
         } catch (e: Exception) {
             // SK01 (P0): the old behavior quarantined NOTHING — initDefaults + saveToJson

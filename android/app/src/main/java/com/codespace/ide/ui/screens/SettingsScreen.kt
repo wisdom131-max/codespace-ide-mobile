@@ -76,13 +76,21 @@ import androidx.compose.runtime.produceState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.FormatterConfig
+import com.codespace.ide.editor.KeyBindingRegistry
+import com.codespace.ide.editor.settings.JsonSettingsStore
+import com.codespace.ide.data.NotificationStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.codespace.ide.util.WorkspaceManager
 import androidx.compose.foundation.layout.Box
 
@@ -113,6 +121,28 @@ fun SettingsScreen(
     // token rejection, paste-to-route, live model check, no global Save button.
     var savedMsg by remember { mutableStateOf("") }
     var showClearDialog by remember { mutableStateOf<String?>(null) }
+    // SK10 (2026-09-26): unified settings search — one box that finds every setting
+    // across all three surfaces (this screen, In-Project Settings, the shell theme
+    // picker). See SETTINGS_SEARCH_INDEX at the bottom of this file.
+    var searchQuery by remember { mutableStateOf("") }
+    // SK12 (2026-09-26): settings restore — importJson (schema-validating, typed)
+    // was reachable from NO UI since the day it was written; this picker wires it.
+    val settingsImportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
+                if (text != null && JsonSettingsStore.importJson(text)) {
+                    savedMsg = "✓ Settings restored from backup"
+                } else {
+                    savedMsg = "✗ Could not restore — invalid settings backup"
+                }
+            } catch (e: Exception) {
+                savedMsg = "✗ Could not restore: ${e.message}"
+            }
+        }
+    }
 
     // ── App lock state ──────────────────────────────────────────────────────
     var biometricEnabled by remember { mutableStateOf(tokenStore.biometricLockEnabled) }
@@ -176,23 +206,46 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showClearDialog = null },
             title = { Text("Clear ${showClearDialog}?") },
-            text = { Text("This cannot be undone.") },
+            text = {
+                // SK05 (2026-09-26): the All Data button used to overclaim — it cleared
+                // only 3 prefs. The dialog now states exactly what it clears and what
+                // it deliberately does not touch.
+                if (showClearDialog == "All Data") {
+                    Text("Clears: terminal & chat history, project list, app settings, keybindings, notifications, workspace memory. NOT cleared: files on disk (projects, trash, version history), the Ubuntu container, and container backups.")
+                } else {
+                    Text("This cannot be undone.")
+                }
+            },
             confirmButton = {
                 Button(
                     onClick = {
+                        // SK06 (2026-09-26): .apply() fire-and-forget DELETED on this
+                        // screen's clear paths — commit() returns a typed Boolean that is
+                        // read back and reported honestly instead of an unconditional "✓".
+                        var clearOk = true
                         when (showClearDialog) {
-                            "Terminal History" -> context.getSharedPreferences("terminal_history", Context.MODE_PRIVATE).edit().clear().apply()
+                            "Terminal History" -> clearOk = context.getSharedPreferences("terminal_history", Context.MODE_PRIVATE).edit().clear().commit()
                             "Workspace Memory" -> sessionStateStore?.clearAllWorkspaceMemory()
-                            "AI Chat History"  -> context.getSharedPreferences("ai_chat_history", Context.MODE_PRIVATE).edit().clear().apply()
-                            "Projects"         -> context.getSharedPreferences("projects", Context.MODE_PRIVATE).edit().clear().apply()
+                            "AI Chat History"  -> clearOk = context.getSharedPreferences("ai_chat_history", Context.MODE_PRIVATE).edit().clear().commit()
+                            "Projects"         -> clearOk = context.getSharedPreferences("projects", Context.MODE_PRIVATE).edit().clear().commit()
                             "All Data" -> {
-                                context.getSharedPreferences("terminal_history", Context.MODE_PRIVATE).edit().clear().apply()
-                                context.getSharedPreferences("ai_chat_history", Context.MODE_PRIVATE).edit().clear().apply()
-                                context.getSharedPreferences("projects", Context.MODE_PRIVATE).edit().clear().apply()
+                                // SK05 (2026-09-26): the button used to clear only 3 prefs
+                                // while claiming "All Data" — settings.json, keybindings,
+                                // notifications and workspace memory all silently survived it.
+                                // It now clears every in-app store that holds user data.
+                                val results = mutableListOf<Boolean>()
+                                results += context.getSharedPreferences("terminal_history", Context.MODE_PRIVATE).edit().clear().commit()
+                                results += context.getSharedPreferences("ai_chat_history", Context.MODE_PRIVATE).edit().clear().commit()
+                                results += context.getSharedPreferences("projects", Context.MODE_PRIVATE).edit().clear().commit()
+                                KeyBindingRegistry.resetAllBindings()      // legacy prefs + JSON overrides
+                                JsonSettingsStore.resetToDefaults()       // settings.json
+                                NotificationStore.permanentlyDeleteAll()  // notifications, undo-proof
+                                sessionStateStore?.clearAllWorkspaceMemory()
+                                clearOk = results.all { it }
                             }
                         }
                         showClearDialog = null
-                        savedMsg = "✓ Cleared!"
+                        savedMsg = if (clearOk) "✓ Cleared!" else "✗ Clear failed — restart the app and try again"
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
                 ) { Text("Clear") }
@@ -238,6 +291,24 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
+            // SK10 (2026-09-26): unified settings search — filters the whole screen and
+            // indexes settings that live on the OTHER two surfaces too (gear menu →
+            // In-Project Settings, and the shell theme picker). VS Code finds everything
+            // from one box; this is that box for this app.
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search settings…") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+            HorizontalDivider()
+
+            if (searchQuery.isBlank()) {
             // ── Appearance ───────────────────────────────────────────────────
             Text("Appearance", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             ListItem(
@@ -284,7 +355,8 @@ fun SettingsScreen(
                                 biometricEnabled = false
                                 tokenStore.biometricLockEnabled = false
                                 tokenStore.clearPin()
-                                savedMsg = "✓ App lock disabled"
+                                // SK06: read back the persisted store instead of an unconditional "✓".
+                                savedMsg = if (!tokenStore.biometricLockEnabled) "✓ App lock disabled" else "✗ Could not disable app lock — try again"
                             }
                         }
                     )
@@ -303,7 +375,8 @@ fun SettingsScreen(
                             tokenStore.githubToken = null
                             tokenStore.githubUsername = null
                             githubUsername = null
-                            savedMsg = "✓ Signed out of GitHub"
+                            // SK06: read back the persisted store instead of an unconditional "✓".
+                            savedMsg = if (tokenStore.githubToken == null) "✓ Signed out of GitHub" else "✗ Sign-out did not persist — try again"
                         }) { Text("Sign out") }
                     },
                 )
@@ -573,6 +646,15 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
             )
+            // SK14 (2026-09-26): cross-link — formatter CHOICE lives here, but Format on
+            // Save and the TypeScript version live in In-Project Settings (gear menu).
+            // The two surfaces used to contradict silently with no pointer between them.
+            Text(
+                "Format on Save and the TypeScript version are set in In-Project Settings (gear menu). This picker only chooses which formatter runs.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+            )
 
             // Show formatter pickers for languages with multiple options
             FormatterConfig.availableFormatters.entries
@@ -616,6 +698,28 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
+            // ── Settings Backup (SK12) ─────────────────────────────────────────
+            // SK12 (2026-09-26): exportJson/importJson (schema-validating, typed) had
+            // NO callers since they were written — there was no settings backup/restore
+            // path in any UI, and container backup does not cover settings.json.
+            Text("Settings Backup", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            Text(
+                "Back up app settings (incl. keybindings) as JSON, or restore from a backup file.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            Row(Modifier.padding(horizontal = 16.dp)) {
+                OutlinedButton(onClick = {
+                    val json = JsonSettingsStore.exportJson()
+                    clipboard.setText(AnnotatedString(json))
+                    savedMsg = "✓ Settings JSON copied to clipboard — paste it somewhere safe"
+                }) { Text("Export to clipboard") }
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = { settingsImportLauncher.launch("application/json") }) { Text("Import from file…") }
+            }
+            HorizontalDivider()
+
             // ── Clear Data ───────────────────────────────────────────────────
             Text("Clear Data", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
 
@@ -657,6 +761,39 @@ fun SettingsScreen(
                 color = Color(0xFF717171),
                 modifier = Modifier.padding(start = 16.dp, bottom = 16.dp),
             )
+            }
+            // SK10: search results branch — every surface indexed in one list.
+            else {
+                val q = searchQuery.lowercase()
+                val matches = SETTINGS_SEARCH_INDEX.filter {
+                    it.name.lowercase().contains(q) || it.section.lowercase().contains(q)
+                }
+                Text(
+                    "${matches.size} setting" + (if (matches.size == 1) "" else "s") + " matching \"$searchQuery\"",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF717171),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                matches.forEach { entry ->
+                    ListItem(
+                        headlineContent = { Text(entry.name) },
+                        supportingContent = {
+                            Text("Section: ${entry.section} — ${entry.surface}", style = MaterialTheme.typography.bodySmall)
+                        },
+                        modifier = Modifier.clickable { searchQuery = "" },
+                    )
+                    HorizontalDivider()
+                }
+                if (matches.isEmpty()) {
+                    ListItem(
+                        headlineContent = { Text("No settings match here") },
+                        supportingContent = {
+                            Text("In-Project Settings (gear menu) has its own search.", style = MaterialTheme.typography.bodySmall)
+                        },
+                        modifier = Modifier.clickable { searchQuery = "" },
+                    )
+                }
+            }
         }
     }
 }
@@ -842,3 +979,34 @@ private fun ContainerBackupPromptBanner(onBackupNow: () -> Unit, onDismiss: () -
         }
     }
 }
+
+// ── SK10 (2026-09-26): the unified settings index ──────────────────────────
+// Settings live on three surfaces: this screen, In-Project Settings (gear menu),
+// and the shell theme picker. This index makes all of them findable from the one
+// search box at the top of the screen. Keep it in sync when adding a setting.
+
+private data class SettingsIndexEntry(val name: String, val section: String, val surface: String)
+
+private val SETTINGS_SEARCH_INDEX = listOf(
+    SettingsIndexEntry("Dark mode", "Appearance", "Settings"),
+    SettingsIndexEntry("Theme picker (Dracula, AMOLED, Nord…)", "Appearance", "Shell gear menu"),
+    SettingsIndexEntry("App lock (PIN / biometric)", "Security", "Settings"),
+    SettingsIndexEntry("GitHub account", "Accounts", "Settings"),
+    SettingsIndexEntry("AI provider keys", "AI Providers", "Settings"),
+    SettingsIndexEntry("Container backup & restore", "Container Backup", "Settings"),
+    SettingsIndexEntry("Reinstall Ubuntu rootfs", "Ubuntu Container", "Settings"),
+    SettingsIndexEntry("Settings backup (export / import JSON)", "Settings Backup", "Settings"),
+    SettingsIndexEntry("Restore previous session on project open", "Workspace Memory", "Settings"),
+    SettingsIndexEntry("Formatter selection", "Formatter Selection", "Settings"),
+    SettingsIndexEntry("Clear data", "Clear Data", "Settings"),
+    SettingsIndexEntry("Deleted projects (recycle bin)", "Clear Data", "Settings"),
+    SettingsIndexEntry("Keybindings editor", "Keybindings", "In-Project Settings (gear menu)"),
+    SettingsIndexEntry("AI Agent Flow", "AI Agent", "In-Project Settings (gear menu)"),
+    SettingsIndexEntry("Format on Save", "Text Editor", "In-Project Settings (gear menu)"),
+    SettingsIndexEntry("TypeScript version", "Text Editor", "In-Project Settings (gear menu)"),
+    SettingsIndexEntry("Cursor blinking", "Text Editor", "In-Project Settings (gear menu)"),
+    SettingsIndexEntry("Extra coding keys toolbar", "Editor Keyboard", "In-Project Settings (gear menu)"),
+    SettingsIndexEntry("Task completion notifications", "Notifications", "In-Project Settings (gear menu)"),
+    SettingsIndexEntry("Terminal notifications", "Notifications", "In-Project Settings (gear menu)"),
+    SettingsIndexEntry("App WakeLock", "Shell", "Shell gear menu"),
+)

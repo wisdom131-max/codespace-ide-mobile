@@ -6,7 +6,12 @@ import androidx.compose.runtime.mutableStateOf
 import com.codespace.ide.editor.settings.JsonSettingsStore
 
 /**
- * P-FLOW: Settings backing the "In-Project Settings" floating page (gear menu).
+ * P-FLOW: Settings backing the "Settings (App-wide)" floating page (gear menu).
+ * SK07 (2026-09-26): the old "In-Project Settings" label was a MISNOMER — this is a
+ * global singleton store (one prefs file, one settings.json, no project keying).
+ * Per-project configuration (VS Code ConfigurationScope shape: formatter/LSP/TS
+ * divergence per project) is a recorded FUTURE FEATURE decision, not current
+ * behavior; the UI label now says what the store actually is.
  * Persisted in SharedPreferences, mirrors the FeatureToggleStore pattern.
  *
  * Expanded Aug 10 2026 to include:

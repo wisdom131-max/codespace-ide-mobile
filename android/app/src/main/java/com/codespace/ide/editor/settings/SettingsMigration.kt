@@ -49,8 +49,22 @@ object SettingsMigration {
 
         Log.i(TAG, "Migration complete: ${data.settings.size} settings, ${data.toggles.size} toggles, ${data.keybindings.size} keybindings")
 
-        migrationPrefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+        // SK13 (2026-09-26): the "migrated" flag is NO LONGER written here. It used to be
+        // set BEFORE the caller applied the migrated data and saved the JSON — a crash in
+        // that window marked migration done with nothing saved (old stores survived, so
+        // it was recoverable, but the flag lied and the migration never re-ran). The
+        // caller (JsonSettingsStore) now calls markMigrated() only after saveToJson()
+        // reports success.
         return data
+    }
+
+    /**
+     * SK13 (2026-09-26): the caller writes the migrated flag AFTER applyMigratedData +
+     * saveToJson succeed — see migrateIfNeeded's comment.
+     */
+    fun markMigrated(context: Context) {
+        context.getSharedPreferences(MIGRATION_PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_MIGRATED, true).apply()
     }
 
     private fun migrateProjectSettings(prefs: SharedPreferences, data: MigratedData) {

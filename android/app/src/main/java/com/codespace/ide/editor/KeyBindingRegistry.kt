@@ -148,14 +148,36 @@ object KeyBindingRegistry {
 
     /**
      * Set or update a key combination for an action.
+     * SK03 (2026-09-26): SINGLE WRITER — this used to write BOTH the legacy
+     * SharedPreferences and the unified JSON store while load() preferred prefs and
+     * used JSON only as fill-if-absent, so a partial write could diverge silently
+     * (split-brain: the two stores disagreed and the user's rebind silently lost or
+     * won depending on which store held the stale copy). Now the JSON store is the
+     * ONLY writer-side persistence; the legacy prefs key for this action is REMOVED
+     * (not written) so legacy residue cannot override future JSON loads. Legacy
+     * prefs remain read once at init as the migration-era source.
      */
     fun setBinding(action: EditorAction, combination: KeyCombination) {
         bindings[action] = combination
-        persistBinding(action)
-        // Sync to unified JSON store
         val value = "${combination.key.keyCode}|${combination.ctrl}|${combination.shift}|${combination.alt}"
         try { JsonSettingsStore.setKeybinding(action.name, value) }
         catch (e: Exception) { Log.e(TAG, "setBinding(${action.name}): JSON-store sync failed: ${e.message}") }
+        // SK03: scrub the legacy prefs copy so it can never override the JSON truth again.
+        try { prefs?.edit()?.remove(action.name)?.apply() } catch (_: Exception) { }
+    }
+
+    /**
+     * SK08 (2026-09-26): conflict detection — returns the OTHER action currently
+     * bound to this exact combination (if any), so the UI can ask before two actions
+     * silently shadow each other on one combo.
+     */
+    fun findConflictingAction(combination: KeyCombination, exclude: EditorAction): EditorAction? {
+        for ((other, combo) in bindings) {
+            if (other == exclude) continue
+            if (combo.key == combination.key && combo.ctrl == combination.ctrl &&
+                combo.shift == combination.shift && combo.alt == combination.alt) return other
+        }
+        return null
     }
 
     /**
@@ -163,6 +185,7 @@ object KeyBindingRegistry {
      */
     fun resetBinding(action: EditorAction) {
         defaults[action]?.let { bindings[action] = it }
+        // SK03: single writer — clear BOTH stores so no stale copy survives anywhere.
         prefs?.edit()?.remove(action.name)?.apply()
         try { JsonSettingsStore.removeKeybinding(action.name) }
         catch (e: Exception) { Log.e(TAG, "resetBinding(${action.name}): JSON-store sync failed: ${e.message}") }
@@ -213,53 +236,32 @@ object KeyBindingRegistry {
                 )
             } catch (_: Exception) { }
         }
-        // Also load any overrides from the unified JSON store that aren't in SharedPreferences
+        // SK03 (2026-09-26): the unified JSON store is AUTHORITATIVE — its overrides are
+        // applied AFTER (unconditionally replacing) the legacy prefs values above,
+        // instead of the old fill-if-absent rule that let stale legacy prefs copies
+        // silently override the user's newer JSON-persisted rebinds. Legacy prefs are
+        // only a migration-era read source; every new write scrubs the legacy key.
         try {
             for ((actionName, value) in JsonSettingsStore.getKeybindingOverrides()) {
-                if (!prefs!!.contains(actionName)) {
-                    val action = EditorAction.valueOf(actionName)
-                    val parts = value.split('|')
-                    val keyCode = parts[0].toIntOrNull() ?: continue
-                    val composeKey = Key(keyCode)
-                    bindings[action] = KeyCombination(
-                        key = composeKey,
-                        ctrl = parts.getOrNull(1) == "true",
-                        shift = parts.getOrNull(2) == "true",
-                        alt = parts.getOrNull(3) == "true",
-                    )
-                }
+                val action = EditorAction.valueOf(actionName)
+                val parts = value.split('|')
+                val keyCode = parts[0].toIntOrNull() ?: continue
+                val composeKey = Key(keyCode)
+                bindings[action] = KeyCombination(
+                    key = composeKey,
+                    ctrl = parts.getOrNull(1) == "true",
+                    shift = parts.getOrNull(2) == "true",
+                    alt = parts.getOrNull(3) == "true",
+                )
             }
         } catch (_: Exception) { }
     }
 
-    /**
-     * Persist a single binding to SharedPreferences.
-     */
-    fun persistBinding(action: EditorAction) {
-        val combo = bindings[action] ?: return
-        val value = "${combo.key.keyCode}|${combo.ctrl}|${combo.shift}|${combo.alt}"
-        prefs?.edit()?.putString(action.name, value)?.apply()
-    }
-
-    /**
-     * Persist all bindings.
-     */
-    fun persistAll() {
-        val editor = prefs?.edit() ?: return
-        for ((action, combo) in bindings) {
-            val value = "${combo.key.keyCode}|${combo.ctrl}|${combo.shift}|${combo.alt}"
-            editor.putString(action.name, value)
-        }
-        editor.apply()
-    }
-
-    /**
-     * Clear persisted overrides and reset to defaults.
-     */
-    fun clearPersisted() {
-        prefs?.edit()?.clear()?.apply()
-        resetAllBindings()
-    }
+    // SK03 (2026-09-26): persistBinding(), persistAll() and clearPersisted() are
+    // DELETED — legacy-SharedPreferences WRITERS with no remaining callers
+    // (persistBinding's last caller was setBinding; the other two had zero callers
+    // from day one). Legacy prefs are now read-only (init migration source);
+    // settings-screen "clear all data" clears the prefs file directly where needed.
 
     /**
      * Match a key event against all bindings and return the matching action, if any.

@@ -64,6 +64,12 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore, safeMode: Boolean = false) {
     fun saveTheme(name: String) {
         themeName = name
         prefs.edit().putString("theme_name", name).apply()
+        // SK11 (2026-09-26): remember the last PICKED dark theme so the dark-mode
+        // toggle can restore it instead of always forcing "Dark (Default)" — the old
+        // toggle silently destroyed Dracula/AMOLED/Nord picks.
+        if (!name.contains("Light")) {
+            prefs.edit().putString("last_dark_theme", name).apply()
+        }
     }
 
     // ── App lock gate ───────────────────────────────────────────────────────
@@ -156,7 +162,15 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore, safeMode: Boolean = false) {
                     isDark            = !themeName.contains("Light"),
                     currentTheme      = themeName,
                     onSelectTheme     = { saveTheme(it) },
-                    onToggleTheme     = { saveTheme(if (themeName.contains("Light")) "Dark (Default)" else "Light (Default)") },
+                    // SK11: light→the last picked dark theme (default Dark (Default)),
+                    // dark→Light. The toggle no longer flattens every dark theme to Default.
+                    onToggleTheme     = {
+                        if (themeName.contains("Light")) {
+                            saveTheme(prefs.getString("last_dark_theme", "Dark (Default)") ?: "Dark (Default)")
+                        } else {
+                            saveTheme("Light (Default)")
+                        }
+                    },
                     onBack            = {
                         if (!nav.popBackStack()) {
                             nav.navigate(Routes.HOME) {

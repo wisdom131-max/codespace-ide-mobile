@@ -2635,7 +2635,11 @@ private fun PssOverlays(
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("In-Project Settings", fontSize = 13.sp, color = MenuText)
+                                // SK07 (2026-09-26): honest label — these settings are
+                                // APP-WIDE (global singleton store, one settings.json), not
+                                // per-project; per-project scope (VS Code ConfigurationScope
+                                // shape) is a recorded future feature, not what this opens.
+                                Text("Settings (App-wide)", fontSize = 13.sp, color = MenuText)
                             }
                         }
                         item {

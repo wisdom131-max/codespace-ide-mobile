@@ -89,7 +89,7 @@ fun InProjectSettingsDialog(
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("In-Project Settings",
+                    Text("Settings (App-wide)",  // SK07: honest — global scope, not per-project
                         color = textPri, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     Spacer(Modifier.width(16.dp))
 
