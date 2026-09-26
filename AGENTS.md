@@ -61,6 +61,36 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 20:52 WAT] — P4j SHIPPED: VG group COMPLETE (7 rows: VG05, VG06, VG07, VG08, VG09, VG11, VG12); first push clean; file-verified tally 172/236, 64 open
+
+**Code:** 38aa3b1, CI #2987 GREEN (clean first push). **Docs:** this push.
+
+**[Why: VG05 was the last systemic memory-discipline hole — the same formats capped at 64/128MB in some viewers were read uncapped in others, so a ~1GB dex/so/pcap from Downloads OOM'd the 3GB device.]**
+
+**What was REMOVED/fixed (per row):**
+- **VG05** — the four uncapped/inconsistent readBytes() paths DELETED: new util/CappedReads.kt is the ONE shared capped-read helper. **Cap value chosen: 128MB** (CappedReads.MAX_BYTES), the codebase's shared-parser precedent (ElfParser), so no viewer is silently tightened; **consistent across all four affected viewers** — Smali (dex, was uncapped), Disassembly (ELF via ElfParser, was already 128MB, now documented as the same value), Network (pcap, was uncapped), AndroidRuntime (oat/vdex, was uncapped). Cap enforced DURING the stream copy; over-cap throws FileTooLargeException (an IOException, so existing viewer catches display it). SmaliViewer surfaces the cap message instead of an empty class list. AxmlDecoder's private readBytesStreaming prototype DELETED — it delegates to CappedReads with its tight 8MB manifest cap (behavior change: over-cap manifests now throw honestly instead of silently truncating).
+- **VG06** — raw table-name interpolation DELETED: sqlite_master names are untrusted; empty/NUL/newline/CR names refused with an honest error; backticks escaped by doubling (SQLite's only quoting rule) before the readonly query.
+- **VG07** — silent overwrite DELETED: extracting over an existing Downloads file asks first (AlertDialog: Overwrite/Cancel).
+- **VG08** — unbounded extraction DELETED: 1GB per-entry quota (zip-bombs abort, partial file removed, honest toast); sqlite readonly cache copy capped at 512MB with an honest error.
+- **VG09** — VERIFIED HONEST (no code change needed): adb is absent from the app PATH outside proot; Runtime.exec throws immediately and the catch adds the explicit "adb not available" line to the feed — no fabricated stream, no silent empty list. Contract documented in-file.
+- **VG11** — overstated label DELETED: "V1 (JAR) signature entry present — META-INF/…RSA (presence only; not verified)" — mere .RSA presence proves nothing and no longer says "signed".
+- **VG12** — the parallel format table DELETED: media dispatch lists (network-capture, ai-model, android-runtime) moved INTO FileDetector (single registry); MediaViewers keeps one-line delegates so no caller changes.
+
+**End-of-batch sweep (standing rule):** touched files swept — only the seven VG rows were anchored there; no additional closable rows found.
+
+**ROADMAP (continuity — all pending items):** File-verified 172/236 closed, 64 open (60 batchable + XG01-04 PARKED by owner ruling — own go-decision each, like F6; F6 JVM-debug decision likewise owner-gated). Remaining open groups for P4 batching: TM (6), TG (3), OG (3), IM (3), EX (2), TB02 (1, race test), TP02 re-verify note, SK (11), PG (10), IG (10), XG non-parked (11). VG + RG groups complete here. Next decision points: P5 device verification round for P4d-P4j gaps, or next MEDIUM/LOW group batch (TM recommended — terminal/Proot, 6 rows).
+
+**P5 DEVICE CHECKS (VG group — run on next APK install):**
+- VG05: open a >128MB file in Smali Viewer / Network Viewer / AndroidRuntime Viewer — each shows the honest "Too large to open in this viewer: … cap 128MB" message (no crash, no empty list). A normal small dex/pcap still opens fine. Disassembly of an ELF still works (cap unchanged).
+- VG06: open a DB with a crafted table name (e.g. containing a backtick) — the viewer refuses with "unsafe name"; normal tables still list their rows.
+- VG07: extract an archive entry whose Downloads target already exists — the Overwrite/Cancel dialog appears; Cancel changes nothing.
+- VG08: (optional) attempt to extract a >1GB entry — aborted with the quota toast and no partial file in Downloads; open a huge DB (>512MB) — honest size error.
+- VG09: open the Logcat panel — the "adb not available. Run 'adb logcat' in terminal…" line appears (not an empty silent feed).
+- VG11: APK Analyzer on any APK with an .RSA entry — the signing line reads "signature entry present … (presence only; not verified)".
+- VG12: .pcap/.har and .oat/.vdex/.apex files still dispatch to the correct viewers after the registry move (regression check).
+
+---
+
 ### [2026-09-26 19:52 WAT] — P4i SHIPPED: RG group COMPLETE (7 rows: RG05, RG06, RG08-RG12); denominator note on record; file-verified tally 165/236, 71 open
 
 **Code:** a739b8e + fixes fab2ee6/81501bb, CI #2985 GREEN (2 reds: #2983 #2984 — pullSessionFromCloud's runCatching lost its Unit shape when importSession became typed; fixed with logged verdict + explicit Unit). **Docs:** 1e720e6 (denominator note) + this push.
