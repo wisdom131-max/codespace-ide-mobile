@@ -61,6 +61,32 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 22:41 WAT] — P4m SHIPPED: TG group COMPLETE (3 rows: TG08-TG10) + G03 ledger miss caught by sweep; TALLY DENOMINATOR RECONCILED (bold-only regex was dropping 13 non-bold rows); first push clean; file-verified tally 182/249, 67 open
+
+**Code:** 44266f3, CI #2991 GREEN (clean first push). **Docs:** this push.
+
+**[Why: the audit's own test tooling was Android-first — JS/Python/Dart projects got a cryptic failing gradle wrapper from the only runnable test entry.]**
+
+**What was REMOVED/fixed (per row):**
+- **TG08** — the unconditional gradle `test` wrapper DELETED for non-gradle projects: TaskRunner's Run Unit Tests keeps gradle ONLY when a wrapper/build file exists; otherwise it routes through the REAL per-language F2/F4 pipeline (TestDiscoveryService.scanProject → TestStore targets → TestRunManager.runBatch) with an honest passed/failed/unsupported summary, PR13-style cancellation semantics, and live output streaming to the Output test channel. An empty scan gives an honest message, never a cryptic gradle failure.
+- **TG09** — the unconditional lens append DELETED: the merge now dedupes — a synthetic lens is skipped when the LSP set already covers its line (both carry range.start.line); duplicate chips on one line with an active server are gone.
+- **TG10** — the per-keystroke full-file rescan DELETED structurally: detection is debounced 500ms after the last keystroke (the pane's standard pattern — completion 150ms, hover 300ms, LSP lens 1200ms). No perf number claimed — per-keystroke rescans simply no longer exist.
+- **G03 (ledger miss, caught by the standing end-of-batch sweep)** — shipped in P3b (ae5633a) but never marked: EditorBufferStore/FileCache keys are canonical (verified in-code). Closed with the original shipping commit.
+
+**TALLY RECONCILIATION (important):** the P4j/P4k "236" denominator came from a bold-ID-only grep that silently excluded 13 non-bold rows (G03 + TP05-TP16, the terminal group). The 249 figure used through P4g was always the true denominator. Corrected count: **182/249 closed, 67 open** — the 12 newly-visible rows are TP05-TP16 (terminal, always part of the 249; they were never counted closed either, so no closed-row inflation occurred).
+
+**End-of-batch sweep (standing rule):** TaskRunner.kt + EditorPane.kt swept — caught G03 (closed above); TB02 anchors on EditorPane-adjacent ShellState but needs repeated rapid-action DEVICE testing by design, stays open.
+
+**ROADMAP (continuity — all pending items):** File-verified 182/249 closed, 67 open (67 = 63 batchable + XG01-04 PARKED by owner ruling — own go-decision each, like F6; F6 JVM-debug decision likewise owner-gated). Remaining open groups for P4 batching: TP05-TP16 (12, terminal), SK (11), PG (10), IG (10), XG non-parked (11), OG (3), IM (3), EX (2), TB02 (1, race — device testing), TP02 re-verify note. VG + RG + TM + TG groups complete here. Next decision points: P5 device verification round for P4d-P4m gaps, or next MEDIUM/LOW group batch (TP recommended — newly-visible terminal group, 12 rows, likely several already-fixed-by-P3 rows).
+
+**P5 DEVICE CHECKS (TG group — run on next APK install):**
+- TG08: in a Python or JS project (no gradle wrapper), open the Tasks panel and tap Run Unit Tests — it runs the discovered tests through the real per-language runners and reports "N passed, M failed..." in the task result; in a project with no tests it says so honestly (no gradle error). In a gradle project, the gradle test task still runs as before (regression).
+- TG09: open a Kotlin file with an active LSP server that returns code lenses — a test line shows ONE chip set, not stacked duplicates.
+- TG10: type continuously in a test file for a few seconds — lens chips refresh only after typing pauses (~0.5s), no per-keystroke flicker; chips remain correct after the pause (regression).
+- G03: covered by the existing P3b device checks (canonical buffer/cache identity).
+
+---
+
 ### [2026-09-26 21:58 WAT] — P4k SHIPPED: TM group COMPLETE (6 rows: TM01-TM06); first push clean; file-verified tally 178/236, 58 open
 
 **Code:** f2af024, CI #2989 GREEN (clean first push). **Docs:** this push.
