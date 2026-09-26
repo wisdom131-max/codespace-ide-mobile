@@ -61,6 +61,34 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 19:52 WAT] — P4i SHIPPED: RG group COMPLETE (7 rows: RG05, RG06, RG08-RG12); denominator note on record; file-verified tally 165/236, 71 open
+
+**Code:** a739b8e + fixes fab2ee6/81501bb, CI #2985 GREEN (2 reds: #2983 #2984 — pullSessionFromCloud's runCatching lost its Unit shape when importSession became typed; fixed with logged verdict + explicit Unit). **Docs:** 1e720e6 (denominator note) + this push.
+
+**[Why: RG05 was the owner-flagged highest-real-world-impact MEDIUM — every CI rebuild forces a full uninstall, and the backup was manual-only + selective: one forgotten Settings tap lost the container AND most persisted state.]**
+
+**What shipped (what was REMOVED/fixed, per row):**
+- **RG05** — manual-only + selective backup DELETED: backupPrefs now globs EVERY *.xml under shared_prefs (keybindings, session_state, project_trust, terminal_history, custom_endpoint + 15 more; the old list even contained a legacy name, com.codespace.ide_preferences, that never exists on this build) + filesDir settings.json, ssh-profiles.json, agent_scheduler tasks, agent_memory. New BackupManager.onAppStart (FIRST call in CodeSpaceApplication.onCreate, before any store init): auto prefs-backup EVERY start; fresh-install (empty live prefs + surviving backup) RESTORES instead of clobbering; container backup prompts in Settings (ContainerBackupPromptBanner, extracted composable) on version change, fresh restore, or missing/>7d-stale backup.
+- **RG06** — raw-XML-under-live-process restore DELETED: applyPrefsXml (XmlPullParser; int/long/float/boolean/string/set; unknown tags skipped; never throws) applies restored prefs THROUGH the live editor — visible immediately, survives later commits. Ordering contract: restore completes before the first prefs/JSON store load.
+- **RG08** — bookkeeping (end-of-batch sweep): already fixed in P3a; TerminalPane reads the typed RestoreResult and falls back to fresh install on failure.
+- **RG09** — opaque 401s when signed out DELETED: CloudBackupPanel states "Not signed in to CodeSpace IDE — sign in first" (connector-surface phrasing).
+- **RG10** — schema-less blob DELETED: export carries schema v1; importSession returns a typed verdict, refuses newer-schema blobs honestly, reports corrupt blobs instead of swallowing.
+- **RG11** — silent cosmetic persistence DELETED (honest absence): terminal block carries a history-only note, the import verdict says processes do not resume, SessionStateStore KDoc flags cosmetic-only.
+- **RG12** — ambiguous export affordance DELETED: snapshot success message states export-only + how to recover (unzip manually).
+
+**End-of-batch sweep (standing rule):** touched files swept — no additional closable rows found; TP12 (rootfs tar still on public storage), SK05 (Clear All Data partial), TB02 (dual-writer race) remain genuinely open and anchored on these files.
+
+**ROADMAP (continuity — all pending items):** File-verified 165/236 closed, 71 open (67 batchable + XG01-04 PARKED by owner ruling — own go-decision each, like F6; F6 JVM-debug decision likewise owner-gated). Remaining open groups for P4 batching: VG (7), TM (6), TG (3), OG (3), IM (3), EX (2), TB02 (1, race test), TP02 re-verify note, SK (11), PG (10), IG (10), XG non-parked (11). RG group complete here. Next decision points: P5 device verification round for P4d-P4i gaps, or next MEDIUM/LOW group batch (VG recommended — binary/decoder safety, 7 rows).
+
+**P5 DEVICE CHECKS (RG group — run on next APK install):**
+- RG05: after a CI-rebuild uninstall/reinstall (the forced one), open the app — keybindings, editor settings, SSH profiles, session state should all be present WITHOUT tapping anything. Check /sdcard/CodespaceIDE/prefs-backup/ contains 15-20+ XMLs + settings.json + ssh-profiles.json + agent_scheduler/. Settings should show the container-backup banner once; "Back up now" runs the full backup and clears it.
+- RG06: Settings → Restore — prefs changes (e.g. a changed binding) should be live IMMEDIATELY without a restart; verify a later prefs edit does not revert them.
+- RG09: Settings → Cloud Backup while signed out — the "Not signed in" notice appears (no 401 mystery).
+- RG10/RG11: (latent — no UI caller yet) verify SessionHandoff export JSON contains "schema":1 and the terminal "note"; import verdict text states history-only.
+- RG12: More → Create Snapshot — the saved message states export-only with the unzip-manual recovery hint.
+
+---
+
 ### [2026-09-26 19:35 WAT] — FULL LEDGER RECONCILIATION PASS (docs-only, no code): owner end-of-batch-sweep rule adopted + applied retroactively; 59 rows marked CLOSED; denominator corrected 249 → 236
 
 **[Why: the owner flagged the third same-root-cause tally correction (SK01/SK02, SR03/SR04, CH01/CH02/CH03/CH05). A full file-vs-ledger audit found the disease at scale: MASTER-GAPS carried only 99 CLOSED markers while the ledger claimed 159 closed — 59 rows were fixed-and-CI-green in earlier phases but never marked. Also: the "249 total rows" denominator never matched the file, which has 236 rows. NEW STANDING RULE (owner, 2026-09-26): at the end of EVERY batch, grep MASTER-GAPS for any row anchored on files the current commit's diff touches — even rows not fixed this batch — and mark it closed if the code confirms it. This pass applies that rule retroactively across all shipped phases.]**
@@ -69,7 +97,7 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 **Code spot-verified during the pass:** IG15 (use_connector per-call consent — chat forceApproval + headless AgentApiServer 403, AgentApiServer.kt:217-220), plus the CH-group verifications from the P4h entry.
 **File-verified tally (denominator corrected): 158/236 closed, 78 open** (74 batchable + XG01-04 parked by owner ruling). The old 159/249 ledger was wrong on both sides: 2 closure overcounts (rows never in the file) and a 13-row phantom denominator. From now on the tally is COUNTED FROM THE FILE at every batch end, not incremented by hand.
 
-**ROADMAP (continuity — all pending items):** File-verified 158/236, 78 open. XG01-04 PARKED (owner ruling — own go-decision each, like F6). Remaining batchable groups: RG (7: RG05 owner-impact anchor, RG06, RG08-RG12), VG (7), TM (6), TG (3), OG (3), IM (3), EX (2), TB02 (1, race test), TP02 (1, security), SK (11), PG (10), IG (10), XG non-parked (11). Next decision points: P5 device verification round for P4d-P4h gaps, or next MEDIUM/LOW group batch (RG recommended — RG05 is the owner's own device pain).
+**ROADMAP (continuity — all pending items):** Superseded same day by the P4i entry above — file-verified 165/236, 71 open. XG01-04 PARKED (owner ruling — own go-decision each, like F6). Remaining batchable groups: VG (7), TM (6), TG (3), OG (3), IM (3), EX (2), TB02 (1, race test), TP02 (1, security), SK (11), PG (10), IG (10), XG non-parked (11). Next decision points: P5 device verification round for P4d-P4i gaps, or next MEDIUM/LOW group batch (VG recommended — binary/decoder safety, 7 rows).
 
 ---
 
