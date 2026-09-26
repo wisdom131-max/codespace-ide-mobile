@@ -175,6 +175,8 @@ object SessionHandoffManager {
             // RG10: importSession now returns a typed verdict — log it and keep
             // this cloud-pull's own result shape Result<Unit>.
             android.util.Log.d("SessionHandoff", importSession(context, body))
+            // Log.d returns Int — explicit Unit keeps this runCatching's Result shape.
+            Unit
         }
     }
 }
