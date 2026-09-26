@@ -61,6 +61,12 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-26 13:20 WAT] — TALLY-CORRECTION PASS (docs-only, no code): SK01/SK02 stale-listing resolved
+
+**Owner query: the 2026-09-26 P4d roadmap line listed SK01/SK02 as remaining HIGH. STALE — they closed in P0 (29e80c8, CI #2905 GREEN, 2026-09-24 17:05) and were always counted in the tally (P3d's 52 included P0's 2 rows; current 121/249 is accurate). Verified in source: JsonSettingsStore atomicWrite + corrupt-parse quarantine (SK01), facade exception surfacing in FeatureToggleStore/KeyBindingRegistry (SK02). No ID reuse — the SK01-family rows IG10/IG16 (AgentMemory + 5 integration JSON stores) are distinct IDs and remain OPEN awaiting the shared atomic-write batch. MASTER-GAPS SK01/SK02 rows now carry their CLOSED annotations (annotation-lag backlog reduced by 2). The roadmap's named-HIGH list is corrected in place; remaining named HIGH: TP04, SK04, OG01, SG01, PG01, RG01, VG03.**
+
+---
+
 ### [2026-09-26 13:05 WAT] — AI Agent: Claude Sonnet 5.6, P4d Tab/Split identity group, Commits 403be7e+93bc7fc, CI #2963 GREEN
 
 **[P4d SHIPPED — the tab/split identity cluster the roadmap named next (TB04/TB06 HIGH + TB05/TB07/TB08). Revertable as 403be7e+93bc7fc. All five fixes share one theme: the EditorPane is the AUTHORITATIVE tab owner, and every identity decision now keys through P3b's canonical sameFileIdentity.]**
@@ -93,7 +99,7 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 - **TB08:** open a file via a path spelled differently than the Explorer's (e.g. go-to-definition from an LSP server that returns a relative/URL-decoded path) — NO duplicate tab for the same physical file; the existing tab activates.
 
 #### Roadmap (all pending items)
-- **P4:** 128 of 249 rows remain after this batch (TB group complete; named HIGH clusters left: TP04 install integrity, SK01/SK02/SK04 settings+PIN, OG01 recoverable index loss, SG01 staging honesty, PG01 blinkTick recomposition, RG01 verified-dead backend, VG03 untrusted-input crash).
+- **P4:** 128 of 249 rows remain after this batch (TB group complete; named HIGH clusters left (CORRECTED 2026-09-26 — SK01/SK02 were STALE in this list; they closed in P0 29e80c8 and were always counted in the tally): TP04 install integrity, SK04 PIN hardening, OG01 recoverable index loss, SG01 staging honesty, PG01 blinkTick recomposition, RG01 verified-dead backend, VG03 untrusted-input crash).
 - **Bookkeeping note (flagged 2026-09-26):** MASTER-GAPS per-row CLOSED annotations lag the changelog truth — P1/P2/P3-series and P4b-DG closures are counted in the tally but only partially annotated per row. AGENTS.md changelog remains the source of truth for closed IDs; a backfill pass is optional owner work.
 - **P5:** full device verification round (P2a-e, P3a-e, F1-F5, P4a-1/2, P4b DG + batch 2, P4c IC checks, this batch's TB checks).
 - **Backlog owner decisions:** F6 JVM debug; MK re-test after MK restructure; stdio-vs-TCP AgentApiServer; F01/F02/F09 feature decisions.
