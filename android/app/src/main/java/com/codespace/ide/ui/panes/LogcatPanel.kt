@@ -65,7 +65,11 @@ fun LogcatPanel(modifier: Modifier = Modifier) {
     // Sync UI state to atomic flag
     LaunchedEffect(pausedUi) { pausedFlag.set(pausedUi) }
 
-    // Start adb logcat stream
+    // Start adb logcat stream.
+    // VG09 (2026-09-26, verified honest): there is NO adb in the app PATH outside
+    // proot on this device — Runtime.exec("adb", ...) throws immediately and the
+    // catch adds the explicit "adb not available" line to the feed. No fabricated
+    // stream, no silent empty list; P5 device check confirms the line appears.
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             try {

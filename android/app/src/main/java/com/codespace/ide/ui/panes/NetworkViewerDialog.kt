@@ -114,7 +114,8 @@ private fun parseHar(file: java.io.File): List<NetEntry> {
 
 // ── PCAP Parser ───────────────────────────────────────────────────────────────
 private fun parsePcap(file: java.io.File): List<NetEntry> {
-    val bytes = file.readBytes()
+    // VG05: shared 128MB cap (CappedReads) — was an uncapped readBytes() OOM.
+    val bytes = com.codespace.ide.util.CappedReads.read(file)
     if (bytes.size < 24) return emptyList()
 
     // Global header: magic, major, minor, thiszone, sigfigs, snaplen, network

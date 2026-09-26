@@ -409,7 +409,8 @@ fun AndroidRuntimeViewerDialog(file: java.io.File, onDismiss: () -> Unit) {
         withContext(Dispatchers.IO) {
             try {
                 val fmt = detectArtFormat(file)
-                val bytes = if (fmt != ArtFormat.APEX) file.readBytes() else ByteArray(0)
+                // VG05: shared 128MB cap (CappedReads) — was an uncapped readBytes() OOM.
+                val bytes = if (fmt != ArtFormat.APEX) com.codespace.ide.util.CappedReads.read(file) else ByteArray(0)
                 info = when (fmt) {
                     ArtFormat.OAT  -> parseOat(bytes)
                     ArtFormat.VDEX -> parseVdex(bytes)

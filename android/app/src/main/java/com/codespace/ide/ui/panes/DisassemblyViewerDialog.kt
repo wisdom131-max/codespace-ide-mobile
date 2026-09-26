@@ -231,6 +231,8 @@ private object ArmThumbDecoder {
 // ONE parser owns the format — ElfParser, shared with ElfViewerDialog — with the
 // 128MB file cap, ELF32/64 + LE/BE support, and bounded section/symbol counts the
 // old inline walk lacked (it was ELF32-LE only with an uncapped readBytes()).
+// VG05 (2026-09-26): ElfParser's 128MB cap == CappedReads.MAX_BYTES — ONE consistent
+// binary cap across all four affected viewers (Smali/Disassembly/Network/AndroidRuntime).
 // This file now does only disassembly-specific work: .text extraction and decoding.
 private suspend fun disassembleElfFile(file: File): DisasmResult = withContext(Dispatchers.IO) {
     try {

@@ -101,6 +101,9 @@ private suspend fun loadSmaliSource(source: File): List<SmaliClass> = withContex
                         content = stub,
                     ))
                 }
+            } catch (e: com.codespace.ide.util.FileTooLargeException) {
+                // VG05: an over-cap dex must surface honestly, not read as "no classes".
+                throw e
             } catch (_: Exception) {}
         }
     }
@@ -109,7 +112,8 @@ private suspend fun loadSmaliSource(source: File): List<SmaliClass> = withContex
 
 // Extract class list from DEX binary — produces a pseudo-Smali stub per class
 private fun parseDexClassListForSmali(file: File): List<Pair<String, String>> {
-    val bytes = file.readBytes()
+    // VG05: shared 128MB cap (CappedReads) — was an uncapped readBytes() OOM.
+    val bytes = com.codespace.ide.util.CappedReads.read(file)
     val buf = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
     if (bytes.size < 112) return emptyList()
     // DEX header fields
@@ -220,6 +224,7 @@ private val SLabel  = Color(0xFFCE9178)
 @Composable
 fun SmaliViewerDialog(file: File, onDismiss: () -> Unit) {
     var classes    by remember { mutableStateOf<List<SmaliClass>>(emptyList()) }
+    var loadError  by remember { mutableStateOf<String?>(null) }
     var loading    by remember { mutableStateOf(true) }
     var selected   by remember { mutableStateOf<SmaliClass?>(null) }
     var filter     by remember { mutableStateOf("") }
@@ -227,7 +232,10 @@ fun SmaliViewerDialog(file: File, onDismiss: () -> Unit) {
 
     LaunchedEffect(file.absolutePath) {
         loading = true
-        classes = loadSmaliSource(file)
+        loadError = null
+        // VG05: over-cap files surface the cap message instead of an empty list.
+        classes = try { loadSmaliSource(file) }
+            catch (e: com.codespace.ide.util.FileTooLargeException) { loadError = e.message; emptyList() }
         loading = false
         if (classes.isNotEmpty()) selected = classes.first()
     }
@@ -272,7 +280,7 @@ fun SmaliViewerDialog(file: File, onDismiss: () -> Unit) {
 
             if (classes.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No Smali classes found", color = SDim, fontSize = 12.sp)
+                    Text(loadError ?: "No Smali classes found", color = SDim, fontSize = 12.sp)
                 }
                 return@Column
             }

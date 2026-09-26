@@ -171,6 +171,26 @@ object FileDetector {
         FileFormat.DER to "application/x-x509-cert",
     )
 
+    // ── VG12 (2026-09-26): the media-viewer dispatch checks ────────────────
+    // These used to live as a SECOND parallel table in MediaViewers.kt (drift was
+    // already visible: oat/vdex listed here in the format map, odex/apex/capex/art
+    // only there). FileDetector is now the single registry; MediaViewers delegates.
+    fun isNetworkCapture(name: String): Boolean {
+        val low = name.lowercase()
+        return low.endsWith(".pcap") || low.endsWith(".pcapng") || low.endsWith(".cap") || low.endsWith(".har")
+    }
+
+    fun isAiModel(name: String): Boolean {
+        val low = name.lowercase()
+        return low.endsWith(".gguf") || low.endsWith(".safetensors") || low.endsWith(".onnx")
+    }
+
+    fun isAndroidRuntimeFile(name: String): Boolean {
+        val low = name.lowercase()
+        return low.endsWith(".oat") || low.endsWith(".odex") || low.endsWith(".vdex") ||
+            low.endsWith(".apex") || low.endsWith(".capex") || low.endsWith(".art")
+    }
+
     // ── Code extensions for syntax highlighting detection ──────────────────
     private val codeExtensions = setOf(
         "kt", "java", "py", "c", "cpp", "h", "hpp", "js", "ts", "go", "rs", "rb",

@@ -124,7 +124,9 @@ private fun analyzeApk(file: File): ApkAnalysis {
 
         // Read signing info from META-INF
         val sigEntry = zip.entries().asSequence().firstOrNull { it.name.startsWith("META-INF/") && it.name.endsWith(".RSA") }
-        val signingInfo = if (sigEntry != null) "V1 (JAR) signed — ${sigEntry.name}" else "META-INF present"
+        // VG11 (2026-09-26): mere .RSA presence proves NOTHING — the label no longer
+        // says "signed"; it states presence, honestly (no signature verification runs).
+        val signingInfo = if (sigEntry != null) "V1 (JAR) signature entry present — ${sigEntry.name} (presence only; not verified)" else "META-INF present"
 
         // Parse AndroidManifest.xml (binary AXML)
         val manifestEntry = zip.getEntry("AndroidManifest.xml")

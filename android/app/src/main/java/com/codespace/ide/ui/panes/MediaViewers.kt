@@ -358,19 +358,11 @@ fun isEntropyViewable(name: String): Boolean =
     !name.endsWith(".yaml") && !name.endsWith(".yml") && !name.endsWith(".toml") &&
     !name.endsWith(".html") && !name.endsWith(".css") && !name.endsWith(".js")
 
-fun isNetworkCapture(name: String): Boolean {
-    val low = name.lowercase()
-    return low.endsWith(".pcap") || low.endsWith(".pcapng") || low.endsWith(".cap") || low.endsWith(".har")
-}
+// VG12 (2026-09-26): the format lists moved to FileDetector — the single registry.
+// These delegates keep the public API stable so no caller changes.
+fun isNetworkCapture(name: String): Boolean = FileDetector.isNetworkCapture(name)
 
-fun isAiModel(name: String): Boolean {
-    val low = name.lowercase()
-    return low.endsWith(".gguf") || low.endsWith(".safetensors") || low.endsWith(".onnx")
-}
+fun isAiModel(name: String): Boolean = FileDetector.isAiModel(name)
 
-fun isAndroidRuntimeFile(name: String): Boolean {
-    val low = name.lowercase()
-    return low.endsWith(".oat") || low.endsWith(".odex") || low.endsWith(".vdex") ||
-           low.endsWith(".apex") || low.endsWith(".capex") || low.endsWith(".art")
-}
+fun isAndroidRuntimeFile(name: String): Boolean = FileDetector.isAndroidRuntimeFile(name)
 

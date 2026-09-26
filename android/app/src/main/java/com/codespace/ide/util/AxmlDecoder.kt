@@ -69,7 +69,8 @@ object AxmlDecoder {
 
     /** Decodes a compiled AndroidManifest.xml (or any AXML) InputStream into pretty-printed XML text. */
     fun decodeToXmlString(input: InputStream): String {
-        val bytes = readBytesStreaming(input, maxSize = 8 * 1024 * 1024) // 8MB cap; manifests are tiny
+        // VG05: one shared capped-read helper — CappedReads with the tight 8MB manifest cap.
+        val bytes = CappedReads.read(input, 8 * 1024 * 1024) // manifests are tiny
         val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         val root = parse(buf) ?: return "(Could not decode — not a valid compiled binary XML)"
         val sb = StringBuilder()
@@ -301,18 +302,7 @@ object AxmlDecoder {
         return String(chars)
     }
 
-    /** Streaming read with a hard cap — never blindly readBytes() an unbounded stream. */
-    private fun readBytesStreaming(input: InputStream, maxSize: Int): ByteArray {
-        val buffer = java.io.ByteArrayOutputStream(minOf(maxSize, 64 * 1024))
-        val chunk = ByteArray(8192)
-        var total = 0
-        while (true) {
-            val n = input.read(chunk)
-            if (n < 0) break
-            total += n
-            if (total > maxSize) break
-            buffer.write(chunk, 0, n)
-        }
-        return buffer.toByteArray()
-    }
+    // VG05: the private readBytesStreaming prototype was DELETED — CappedReads is the
+    // one shared capped-read helper (same discipline, now throws honestly over-cap
+    // instead of silently returning truncated bytes).
 }

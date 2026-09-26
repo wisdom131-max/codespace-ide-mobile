@@ -45,6 +45,11 @@ fun SqliteViewerDialog(file: File, onDismiss: () -> Unit) {
     // Copy file to context.cacheDir and open SQLite connection
     LaunchedEffect(file) {
         try {
+            // VG08 (2026-09-26): the readonly cache copy was UNBOUNDED — a huge DB
+            // filled cacheDir silently. Refuse beyond 512MB with an honest error.
+            if (file.length() > 512L * 1024 * 1024) {
+                throw IllegalArgumentException("Database too large to open in the viewer (${file.length() / (1024 * 1024)}MB; cap is 512MB)")
+            }
             val cacheFile = File(context.cacheDir, "temp_sqlite_viewer_${System.currentTimeMillis()}.db")
             file.inputStream().use { input ->
                 cacheFile.outputStream().use { output ->
@@ -88,7 +93,14 @@ fun SqliteViewerDialog(file: File, onDismiss: () -> Unit) {
                 }
             }
             val db = SQLiteDatabase.openDatabase(cacheFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-            val cursor = db.rawQuery("SELECT * FROM `$table` LIMIT 200", null)
+            // VG06 (2026-09-26): table names come from the DB's own sqlite_master —
+            // UNTRUSTED. A crafted name could alter the readonly query. Refuse control
+            // characters; escape backticks by doubling (SQLite's only quoting rule).
+            if (table.isEmpty() || table.any { it == '\u0000' || it == '\n' || it == '\r' }) {
+                throw IllegalArgumentException("Refusing to query table with unsafe name: $table")
+            }
+            val safeTable = "`" + table.replace("`", "``") + "`"
+            val cursor = db.rawQuery("SELECT * FROM $safeTable LIMIT 200", null)
             val colList = cursor.columnNames.toList()
             columns = colList
 

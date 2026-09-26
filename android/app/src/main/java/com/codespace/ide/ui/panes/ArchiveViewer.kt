@@ -141,6 +141,8 @@ fun ArchiveViewerDialog(archivePath: String, onDismiss: () -> Unit) {
     var viewingText by remember { mutableStateOf<String?>(null) }
     var viewingBinaryInfo by remember { mutableStateOf<ArchiveNode?>(null) }
     var isLoadingEntry by remember { mutableStateOf(false) }
+    // VG07 (2026-09-26): extraction overwrites in Downloads silently — now confirmed.
+    var pendingOverwrite by remember { mutableStateOf<ArchiveNode?>(null) }
 
     LaunchedEffect(archivePath) {
         withContext(Dispatchers.IO) {
@@ -184,8 +186,9 @@ fun ArchiveViewerDialog(archivePath: String, onDismiss: () -> Unit) {
         }
     }
 
-    fun extractEntry(node: ArchiveNode) {
+    fun doExtract(node: ArchiveNode, overwrite: Boolean) {
         scope.launch {
+            var quotaExceeded = false
             val ok = withContext(Dispatchers.IO) {
                 try {
                     val downloadDir = File("/storage/emulated/0/Download")
@@ -196,10 +199,21 @@ fun ArchiveViewerDialog(archivePath: String, onDismiss: () -> Unit) {
                         zip.getInputStream(entry).use { input ->
                             FileOutputStream(outFile).use { output ->
                                 // Streamed copy — safe for large files like classes.dex on 3GB devices.
+                                // VG08 (2026-09-26): extraction size quota — a zip-bomb (or a
+                                // lying entry header) must not fill storage. 1GB per entry,
+                                // aborted with the partial file deleted and an honest toast.
                                 val buf = ByteArray(65536)
+                                var written = 0L
                                 while (true) {
                                     val n = input.read(buf)
                                     if (n < 0) break
+                                    written += n
+                                    if (written > 1024L * 1024 * 1024) {
+                                        quotaExceeded = true
+                                        output.close()
+                                        outFile.delete()
+                                        return@use false
+                                    }
                                     output.write(buf, 0, n)
                                 }
                             }
@@ -210,10 +224,20 @@ fun ArchiveViewerDialog(archivePath: String, onDismiss: () -> Unit) {
             }
             Toast.makeText(
                 context,
-                if (ok) "Extracted to Downloads/${node.name}" else "Extraction failed",
+                when {
+                    ok -> "Extracted to Downloads/${node.name}"
+                    quotaExceeded -> "Extraction aborted: entry exceeds the 1GB quota (partial file removed)"
+                    else -> "Extraction failed"
+                },
                 Toast.LENGTH_SHORT
             ).show()
         }
+    }
+
+    // VG07 (2026-09-26): silent overwrite DELETED — an existing target file is confirmed first.
+    fun extractEntry(node: ArchiveNode) {
+        val target = File("/storage/emulated/0/Download", node.name)
+        if (target.exists()) pendingOverwrite = node else doExtract(node, overwrite = false)
     }
 
     key(orientation) {
@@ -321,6 +345,27 @@ fun ArchiveViewerDialog(archivePath: String, onDismiss: () -> Unit) {
                     }
                 }
             }
+        }
+
+        // ── VG07: overwrite confirmation ────────────────────────────────
+        pendingOverwrite?.let { target ->
+            AlertDialog(
+                onDismissRequest = { pendingOverwrite = null },
+                containerColor = ArchSurface,
+                title = { Text("Overwrite existing file?", color = ArchText, fontSize = 15.sp) },
+                text = {
+                    Text("Downloads/${target.name} already exists. Extracting will overwrite it.", color = ArchMuted, fontSize = 12.sp)
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pendingOverwrite = null
+                        doExtract(target, overwrite = true)
+                    }) { Text("Overwrite") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingOverwrite = null }) { Text("Cancel") }
+                },
+            )
         }
 
         // ── Binary entry info sheet ───────────────────────────────────
