@@ -133,7 +133,8 @@ internal fun CompletionPopupOverlay(
     allCompletions: List<Completion>,
     coroutineScope: CoroutineScope,
     clipboardManager: androidx.compose.ui.platform.ClipboardManager,
-    onAiFixRequest: ((String) -> Unit)?,
+    // IC08 (P4c): onAiFixRequest param REMOVED with the dead AI-source paths; the
+    // lightbulb's real AI-fix flow uses LightbulbMenuOverlay, which keeps its own.
     lspImportProvider: ((line: Int, col: Int) -> List<ImportEdit>)? = null,
     detailDocState: MutableState<String?>,
     detailLabelState: MutableState<String?>,
@@ -241,7 +242,6 @@ internal fun CompletionPopupOverlay(
                             CompletionSource.BUFFER -> "Buf" to Color(0xFF888888)
                             CompletionSource.SNIPPET -> "Snip" to Color(0xFFDCDCAA)
                             CompletionSource.WORKSPACE -> "Wksp" to Color(0xFF4DA6FF)
-                            CompletionSource.AI -> "AI" to Color(0xFFC586C0)
                             CompletionSource.PATH -> "Path" to Color(0xFF9CDCFE)
                         }
                         FilterChip(
@@ -308,202 +308,72 @@ internal fun CompletionPopupOverlay(
                         .fillMaxWidth()
                         .background(if (idx == initialIndex) Color(0xFF04395E) else Color.Transparent)
                         .clickable {
-                            val cursor = value.selection.end
-                            val text = value.text
-                            val end = cursor.coerceAtMost(text.length)
-                            var start = end
-                            // Fix: don't cross spaces — "import o" should only replace "o", not "import o"
-                            while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_')) start--
-                            
-                            // P41-D: Check for LSP additionalTextEdits (auto-import) attached to this completion
-                            val hasAdditionalEdits = !comp.additionalTextEditsJson.isNullOrBlank()
-                            
-                            if (hasAdditionalEdits) {
-                                // P41-D: Apply additionalTextEdits (imports) FIRST, then insert completion text
-                                // LSP spec: additionalTextEdits are applied before the main edit
-                                coroutineScope.launch {
-                                    val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                        try {
-                                            val editsArray = org.json.JSONArray(comp.additionalTextEditsJson)
-                                            // IC04 (P3a): compute the cursor shift from edits that
-                                            // start ABOVE the completion position only. The old
-                                            // code applied the TOTAL length delta (correct only
-                                            // when every edit is above the cursor — the auto-import
-                                            // case); any additional edit BELOW it mislocated the
-                                            // insertion into the wrong offset.
-                                            var cursorShift = 0
-                                            for (ei in 0 until editsArray.length()) {
-                                                val te = editsArray.optJSONObject(ei) ?: continue
-                                                val rng = te.optJSONObject("range") ?: continue
-                                                val esLine = rng.optJSONObject("start")?.optInt("line", 0) ?: 0
-                                                val esChar = rng.optJSONObject("start")?.optInt("character", 0) ?: 0
-                                                val eeLine = rng.optJSONObject("end")?.optInt("line", 0) ?: 0
-                                                val eeChar = rng.optJSONObject("end")?.optInt("character", 0) ?: 0
-                                                val editStart = positionMapper.lspToOffset(esLine, esChar)
-                                                val editEnd = positionMapper.lspToOffset(eeLine, eeChar)
-                                                if (editEnd > start) continue  // edit is below/at the cursor — no shift
-                                                cursorShift += te.optString("newText", "").length - (editEnd - editStart)
-                                            }
-                                            // Apply additional edits to the full text first
-                                            val textWithImports = applyLspTextEdits(text, editsArray)
-                                            // Then insert completion text at cursor position
-                                            val adjustedStart = start + cursorShift
-                                            val adjustedEnd = end + cursorShift
-                                            // P41-I: If snippet, parse and replace insertText with cleaned version
-                                            val (textToInsert, snippetParsed) = if (comp.insertTextFormat == 2) {
-                                                val parsed = parseSnippet(comp.insertText, SnippetContext(
-                                                    lineNumber = positionMapper.offsetToLine(start) + 1,
-                                                    lineIndex = positionMapper.offsetToLine(start),
-                                                    currentLine = positionMapper.getLineText(value.text, positionMapper.offsetToLine(start)),
-                                                    selectedText = if (start != end) value.text.substring(start, end) else "",
-                                                ))
-                                                Pair(parsed.cleanedText, parsed)
-                                            } else {
-                                                Pair(comp.insertText, null)
-                                            }
-                                            val finalText = textWithImports.substring(0, adjustedStart) + textToInsert + textWithImports.substring(adjustedEnd.coerceAtMost(textWithImports.length))
-                                            val finalCursor = if (snippetParsed != null) {
-                                                val session = createSnippetSession(adjustedStart, snippetParsed)
-                                                snippetSession = session
-                                                showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
-                                                val firstStop = session.tabStops.firstOrNull()
-                                                if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
-                                                    firstStop.startOffset
-                                                } else {
-                                                    firstStop?.startOffset ?: session.finalCursorOffset
-                                                }
-                                            } else {
-                                                adjustedStart + textToInsert.length
-                                            }
-                                            Pair(finalText, finalCursor)
-                                        } catch (e: Exception) {
-                                            // IC04 (P3a): the auto-import path failed silently — log
-                                            // it so the Output tab shows WHY the import is missing,
-                                            // then fall back to a plain insert (still honest: the
-                                            // completion itself inserts).
-                                            com.codespace.ide.diagnostics.AppOutputLog.log(
-                                                "[AutoImport] additional edits failed, inserting plain completion: " +
-                                                (e.message ?: e.javaClass.simpleName), "lsp"
-                                            )
-                                            val newText = text.substring(0, start) + comp.insertText + text.substring(end)
-                                            Pair(newText, start + comp.insertText.length)
-                                        }
-                                    }
-                                    // P41-I: If snippet, select first tab-stop default text
-                                    val selRange = if (snippetSession != null) {
-                                        val session = snippetSession!!
-                                        val firstStop = session.tabStops.firstOrNull()
-                                        if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
-                                            androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
-                                        } else {
-                                            androidx.compose.ui.text.TextRange(result.second)
-                                        }
-                                    } else {
-                                        androidx.compose.ui.text.TextRange(result.second)
-                                    }
-                                    programmaticTextChange(result.first, selRange, "format_result")
+                            // IC01/IC02/IC03 (P4c): tap routes through the ONE shared accept
+                            // computation (CompletionAccept) — same word scan (never crosses '.'),
+                            // same server textEdit/import/snippet handling as Tab, Enter and
+                            // commit characters.
+                            coroutineScope.launch {
+                                val outcome = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    CompletionAccept.compute(comp, value.text, value.selection.end, positionMapper)
                                 }
-                            } else {
-                                // P41-I: Handle snippet insertTextFormat == 2
-                                val (rawInsert, snipParsed) = if (comp.insertTextFormat == 2) {
-                                    val parsed = parseSnippet(comp.insertText, SnippetContext(
-                                        lineNumber = positionMapper.offsetToLine(start) + 1,
-                                        lineIndex = positionMapper.offsetToLine(start),
-                                        currentLine = positionMapper.getLineText(value.text, positionMapper.offsetToLine(start)),
-                                        selectedText = if (start != end) value.text.substring(start, end) else "",
-                                    ))
-                                    Pair(parsed.cleanedText, parsed)
+                                if (outcome.error != null) {
+                                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                                        "[Completion] tap accept: " + outcome.error, "lsp")
+                                }
+                                var finalText = outcome.newText
+                                var finalSel = if (outcome.selectionStart >= 0) {
+                                    androidx.compose.ui.text.TextRange(outcome.selectionStart, outcome.selectionEnd)
                                 } else {
-                                    Pair(comp.insertText, null)
+                                    androidx.compose.ui.text.TextRange(outcome.newCursor)
                                 }
-                                var newText = text.substring(0, start) + rawInsert + text.substring(end)
-                                var newCursor = start + rawInsert.length
-                                // P22-J: Fall back to lspImportProvider for auto-import via code actions
-                                if (lspImportProvider != null) {
-                                    val cPos = positionMapper.offsetToPosition(cursor)
-                                    val cLine = cPos.line
-                                    val cCol = cPos.column
-                                    coroutineScope.launch {
-                                        val imports = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                            try { lspImportProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
-                                        }
-                                        if (imports.isNotEmpty()) {
-                                            val patched = applyImportEdits(newText, imports)
-                                            val importDelta = patched.length - newText.length
-                                            if (snipParsed != null) {
-                                                // P41-I: Snippet mode after import
-                                                val session = createSnippetSession(start + importDelta, snipParsed)
-                                                snippetSession = session
-                                                showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
-                                                val firstStop = session.tabStops.firstOrNull()
-                                                val sel = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
-                                                    androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
-                                                } else {
-                                                    androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
-                                                }
-                                                programmaticTextChange(patched, sel, "auto_import_patched")
-                                            } else {
-                                                programmaticTextChange(patched, androidx.compose.ui.text.TextRange(newCursor + importDelta), "auto_import_delta")
-                                            }
-                                            onContentChange(patched)
-                                        } else {
-                                            if (snipParsed != null) {
-                                                // P41-I: Snippet mode, no imports needed
-                                                val session = createSnippetSession(start, snipParsed)
-                                                snippetSession = session
-                                                showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
-                                                val firstStop = session.tabStops.firstOrNull()
-                                                val sel = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
-                                                    androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
-                                                } else {
-                                                    androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
-                                                }
-                                                programmaticTextChange(newText, sel, "ai_fix_applied")
-                                            } else {
-                                                programmaticTextChange(newText, androidx.compose.ui.text.TextRange(newCursor), "ai_fix_newcursor")
-                                            }
-                                            onContentChange(newText)
-                                        }
+                                var appliedSnippet = false
+                                // P22-J fallback: when the server did NOT attach auto-import
+                                // edits, ask code actions for import edits and patch them in.
+                                if (!outcome.usedAdditionalEdits && lspImportProvider != null) {
+                                    val cLine = positionMapper.offsetToLine(value.selection.end)
+                                    val cCol = positionMapper.offsetToPosition(value.selection.end).column
+                                    val imports = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        try { lspImportProvider.invoke(cLine, cCol) } catch (_: Exception) { emptyList() }
                                     }
-                                } else {
-                                    // P41-I: If this is a snippet (insertTextFormat == 2), parse and enter snippet mode
-                                    if (comp.insertTextFormat == 2) {
-                                        val parsed = parseSnippet(comp.insertText, SnippetContext(
-                                        fileName = "",
-                                        lineNumber = positionMapper.offsetToLine(start) + 1,
-                                        lineIndex = positionMapper.offsetToLine(start),
-                                        currentLine = positionMapper.getLineText(value.text, positionMapper.offsetToLine(start)),
-                                        selectedText = if (start != end) value.text.substring(start, end) else "",
-                                    ))
-                                        val snippetText = parsed.cleanedText
-                                        newText = text.substring(0, start) + snippetText + text.substring(end)
-                                        val session = createSnippetSession(start, parsed)
-                                        snippetSession = session
-                                        showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
-                                        // Place cursor at first tab-stop, or final cursor if no stops
-                                        val firstStop = session.tabStops.firstOrNull()
-                                        val cursorPos = if (firstStop != null) {
-                                            firstStop.startOffset
+                                    if (imports.isNotEmpty()) {
+                                        val patched = com.codespace.ide.lsp.applyImportEdits(finalText, imports)
+                                        val importDelta = patched.length - finalText.length
+                                        if (outcome.snippetParsed != null) {
+                                            val session = createSnippetSession(outcome.insertStart + importDelta, outcome.snippetParsed)
+                                            snippetSession = session
+                                            showSnippetChoices = session.tabStops.firstOrNull()?.choices?.isNotEmpty() == true
+                                            val firstStop = session.tabStops.firstOrNull()
+                                            finalSel = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
+                                                androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
+                                            } else {
+                                                androidx.compose.ui.text.TextRange(firstStop?.startOffset ?: session.finalCursorOffset)
+                                            }
+                                            appliedSnippet = true
                                         } else {
-                                            session.finalCursorOffset
+                                            finalSel = androidx.compose.ui.text.TextRange(outcome.newCursor + importDelta)
                                         }
-                                        // If first stop has default text, select it
-                                        val selectionRange = if (firstStop != null && firstStop.defaultText.isNotEmpty()) {
-                                            androidx.compose.ui.text.TextRange(firstStop.startOffset, firstStop.endOffset)
-                                        } else {
-                                            androidx.compose.ui.text.TextRange(cursorPos)
-                                        }
-                                        programmaticTextChange(newText, selectionRange, "ai_result")
-                                    } else {
-                                        programmaticTextChange(newText, androidx.compose.ui.text.TextRange(newCursor), "ai_result_cursor")
+                                        finalText = patched
                                     }
                                 }
+                                if (!appliedSnippet && outcome.snippetSession != null) {
+                                    snippetSession = outcome.snippetSession
+                                    showSnippetChoices = outcome.showSnippetChoices
+                                }
+                                programmaticTextChange(finalText, finalSel, "completion_tap")
+                                // P22-J parity: content-sync after import-provider involvement
+                                if (lspImportProvider != null) onContentChange(finalText)
+                                // P41 Phase B: Record accepted completion for MRU/usage ranking
+                                CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
+                                // IC03 (P4c): execute the completion's LSP command after accept
+                                if (comp.command != null) {
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        CompletionAccept.executeCommand(language, comp.command)
+                                    }
+                                }
+                                showCompletions = false
+                                selectedLabel = null
+                                completionFilter = null
                             }
-                            // P41 Phase B: Record accepted completion for MRU/usage ranking
-                            CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
-                            showCompletions = false
-                            selectedLabel = null
-                            completionFilter = null
                         }
                         .padding(horizontal = 8.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -565,7 +435,6 @@ internal fun CompletionPopupOverlay(
                         CompletionSource.BUFFER -> "Buf" to Color(0xFF888888)
                         CompletionSource.SNIPPET -> "Snip" to Color(0xFFDCDCAA)
                         CompletionSource.WORKSPACE -> "Wksp" to Color(0xFF4DA6FF)
-                        CompletionSource.AI -> "AI" to Color(0xFFC586C0)
                         CompletionSource.PATH -> "Path" to Color(0xFF9CDCFE)
                     }
                     Text(badgeText, color = badgeColor, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
@@ -573,39 +442,9 @@ internal fun CompletionPopupOverlay(
                 }
             }
             
-            // P41-L: "?" Explain affordance for AI-sourced completions
-            if (initialIndex < filteredCompletions.size) {
-                val highlighted = filteredCompletions[initialIndex]
-                if (highlighted.source == CompletionSource.AI && onAiFixRequest != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        Text(
-                            text = "? Explain",
-                            color = Color(0xFFC586C0),
-                            fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier
-                                .clickable {
-                                    val cursor = value.selection.end
-                                    val text = value.text
-                                    val lineStart = positionMapper.lineStart(positionMapper.offsetToLine(cursor))
-                                    val lineEnd = text.indexOf('\n', cursor)
-                                    val lineText = text.substring(lineStart, if (lineEnd < 0) text.length else lineEnd)
-                                    val prompt = "Explain why you suggested \"" + highlighted.label + "\" here.\n" +
-                                        "Current line: " + lineText + "\n" +
-                                        "File type: " + language.name
-                                    onAiFixRequest?.invoke(prompt)
-                                    showCompletions = false
-                                },
-                        )
-                    }
-                }
-            }
-            // P41-J: Detail panel — modern: expand + copy + scroll (matches HoverPopup)
+            // IC08 (P4c): the AI-source "? Explain" affordance was REMOVED — no producer
+            // ever created AI-source completion items, so this block could never render.
+                        // P41-J: Detail panel — modern: expand + copy + scroll (matches HoverPopup)
             var detailExpanded by remember { mutableStateOf(false) }
             val detailScrollState = rememberScrollState()
             if (detailDoc != null && detailDoc!!.isNotBlank()) {

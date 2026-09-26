@@ -98,14 +98,24 @@ object CompletionHistoryStore {
         save(context)
     }
 
-    /** Get MRU map (label → lastUsedEpochMs) for CompletionEngine.rank(). */
-    fun mruMap(): Map<String, Long> {
-        return entries.mapValues { it.value.lastUsedEpochMs }
+    /**
+     * IC12 (P4c): MRU map SCOPED to the active language. The old map was global
+     * by label, so accepting "size" in Kotlin boosted it while typing Python —
+     * the last-recorded language silently won every cross-language collision.
+     * Entries recorded for OTHER languages no longer contribute boosts;
+     * legacy entries with a blank language stay visible everywhere.
+     */
+    fun mruMap(language: String? = null): Map<String, Long> {
+        return entries
+            .filter { language == null || it.value.contextLanguage.isBlank() || it.value.contextLanguage == language }
+            .mapValues { it.value.lastUsedEpochMs }
     }
 
-    /** Get usage frequency map (label → count) for CompletionEngine.rank(). */
-    fun usageMap(): Map<String, Int> {
-        return entries.mapValues { it.value.count }
+    /** Usage frequency map (label → count), scoped like mruMap (IC12). */
+    fun usageMap(language: String? = null): Map<String, Int> {
+        return entries
+            .filter { language == null || it.value.contextLanguage.isBlank() || it.value.contextLanguage == language }
+            .mapValues { it.value.count }
     }
 
     /** Persist to disk. Called from recordAccepted (debounced naturally — only on accept). */
@@ -124,8 +134,12 @@ object CompletionHistoryStore {
             val file = File(context.filesDir, FILE_NAME)
             file.writeText(json.toString())
             dirty = false
-        } catch (_: Exception) {
-            // Silent failure — completion history is best-effort, not critical
+        } catch (e: Exception) {
+            // IC12/S01 (P4c): best-effort, but no longer INVISIBLE — the Output tab
+            // shows why the MRU history stopped persisting.
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[CompletionHistory] save FAILED (history stays in-memory for this session): " +
+                (e.message ?: e.javaClass.simpleName), "lsp")
         }
     }
 

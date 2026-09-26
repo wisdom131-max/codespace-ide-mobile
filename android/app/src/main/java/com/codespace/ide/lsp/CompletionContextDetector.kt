@@ -226,12 +226,35 @@ object CompletionContextDetector {
     // ── Call parentheses detection ─────────────────────────────
 
     private fun isInsideCallParens(text: String, pos: Int): Boolean {
+        // IC14 (P4c): lexical-aware — parentheses inside strings, comments and
+        // escapes no longer count. The old raw counter let a quoted '(' flip
+        // call-argument context on and off wrongly.
         var depth = 0
-        for (i in 0 until pos.coerceAtMost(text.length)) {
-            when (text[i]) {
-                '(' -> depth++
-                ')' -> depth--
+        var i = 0
+        val limit = pos.coerceAtMost(text.length)
+        var inString = false
+        var stringChar = ' '
+        var inLineComment = false
+        var inBlockComment = false
+        while (i < limit) {
+            val ch = text[i]
+            val next = text.getOrElse(i + 1) { ' ' }
+            when {
+                inLineComment -> { if (ch == '\n') inLineComment = false }
+                inBlockComment -> { if (ch == '*' && next == '/') { inBlockComment = false; i++ } }
+                inString -> {
+                    if (ch == '\\' && next != '\n') i++
+                    else if (ch == stringChar) inString = false
+                }
+                else -> when {
+                    ch == '/' && next == '/' -> { inLineComment = true; i++ }
+                    ch == '/' && next == '*' -> { inBlockComment = true; i++ }
+                    ch == '"' || ch == '\'' -> { inString = true; stringChar = ch }
+                    ch == '(' -> depth++
+                    ch == ')' -> depth--
+                }
             }
+            i++
         }
         return depth > 0
     }

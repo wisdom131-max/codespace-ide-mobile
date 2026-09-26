@@ -280,7 +280,9 @@ private val HOVER_DOCS: Map<String, String> = mapOf(
     "switch" to "Multi-way branch — compares a value against multiple cases and executes the matching branch.",
 )
 
-private fun hoverDocFor(word: String): String? = HOVER_DOCS[word]
+// IC10 (P4c): internal so EditorPane's hover effect can fall back to curated docs
+// when no LSP server is running (hover used to render NOTHING outside LSP).
+internal fun hoverDocFor(word: String): String? = HOVER_DOCS[word]
 
 // ── Language-aware snippets with insert text ───────────────────────────────
 private fun snippetsFor(lang: Language): List<Completion> = when (lang) {
@@ -1392,16 +1394,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         lspIsIncompleteState = lspIsIncompleteState,
         lspLastPrefixState = lspLastPrefixState,
     )
+    // IC13 (P4c): document-word suggestions — one snapshot scan per popup OPEN
+    // (never per keystroke), extracted state so the composable body gains no effect.
+    val documentWords = rememberDocumentWords(
+        popupVisible = showCompletions,
+        enabled = !completionContext.lspOnly && !isDotContext && !disableBuiltinCompletion && pathContext == null,
+        content = value.text,
+        prefixAtOpen = prefix,
+    )
     // P41 Phase A: Use CompletionEngine for fuzzy matching + ranking
-    val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix, completionContext, smartCompletion, lspHasResponded, lspTimedOut) {
+    val allCompletions = remember(completions, lspCompletions, workspaceCompletions, pathCompletions, pathContext, prefix, completionContext, smartCompletion, lspHasResponded, lspTimedOut, documentWords) {
         // P41-V: Context-aware filtering
         // In member-access or after-keyword context, suppress keyword/buffer completions
         val suppressKeywords = completionContext.lspOnly || disableBuiltinCompletion
         // Smart completion: when LSP has responded, suppress local/regex completions
         // But if LSP timed out or hasn't responded yet, show local as fallback
         val suppressLocalSmart = smartCompletion && lspHasResponded && lspCompletions.isNotEmpty() || disableBuiltinCompletion
+        // IC13 (P4c): words from the open document itself (VS Code word-based
+        // suggestions) — deduped against curated/local items by label.
+        val documentWordItems = if (suppressKeywords || suppressLocalSmart) emptyList() else
+            DocumentWordCompletions.currentWords(documentWords, prefix, prefix)
+                .filterNot { dw -> completions.any { it.label.equals(dw, ignoreCase = true) } }
+                .map { w -> Completion(w, CompletionKind.TYPE, w, "word from this document") }
         // Convert local completions to RankedCompletionItem (filtered by context)
-        val localRanked = (if (suppressKeywords || suppressLocalSmart) emptyList() else completions).map { c ->
+        val localRanked = (if (suppressKeywords || suppressLocalSmart) emptyList() else completions + documentWordItems).map { c ->
             val kind = when (c.kind) {
                 CompletionKind.SNIPPET -> CompletionItemKind.SNIPPET
                 CompletionKind.TYPE -> CompletionItemKind.CLASS
@@ -1455,7 +1471,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val key = Triple(item.label, item.kind, item.detail)
             if (key in seen) false else { seen.add(key); true }
         }
-        var ranked = rank(merged, prefix, CompletionHistoryStore.mruMap(), CompletionHistoryStore.usageMap())
+        // IC12 (P4c): MRU/usage boosts scoped to the ACTIVE language — accepting
+        // "size" in Kotlin no longer boosts it while typing Python.
+        var ranked = rank(merged, prefix, CompletionHistoryStore.mruMap(language.name), CompletionHistoryStore.usageMap(language.name))
         // P41-V: Context-aware kind boosting
         if (completionContext.boostKind > 0 || completionContext.nonMatchKindPenalty > 0f) {
             ranked = ranked.map { item ->
@@ -1473,7 +1491,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
         // P41-V: In lspOnly context (member access, after keyword), suppress non-LSP items
         if (completionContext.lspOnly) {
-            ranked = ranked.filter { it.source == com.codespace.ide.lsp.CompletionSource.LSP || it.source == com.codespace.ide.lsp.CompletionSource.AI }
+            ranked = ranked.filter { it.source == com.codespace.ide.lsp.CompletionSource.LSP }
         }
         // Map back to Completion for the existing dropdown UI
         // D3/D1-EXPANSION: raised from 15 to 60 to match VS Code parity (scrollable list, not truncated)
@@ -1522,19 +1540,25 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // P41-K: Lazy resolve — when user highlights an LSP item, resolve its full docs/detail (150ms debounce)
     LaunchedEffect(selectedLabel, showCompletions) {
         if (!showCompletions || selectedLabel == null) { lastResolvedLabel = null; return@LaunchedEffect }
-        // Only resolve LSP-sourced items not already in cache
-        if (resolveCache.containsKey(selectedLabel)) { return@LaunchedEffect }
+        // IC11 (P4c): cache/lookup keyed by label#lspKind — the old label-only key
+        // could resolve the WRONG same-label item (dedupe keys on label+kind+detail,
+        // so two can legitimately coexist).
+        val highlightedComp = allCompletions.find { it.label == selectedLabel }
+        val resolveKey = (selectedLabel ?: "") + "#" + (highlightedComp?.lspKind ?: -1)
+        if (resolveCache.containsKey(resolveKey)) { return@LaunchedEffect }
         if (lspCompletionResolver == null) { return@LaunchedEffect }
 
-        // Find the LSP item matching the selected label
-        val lspItem = lspCompletions.find { it.label == selectedLabel } ?: return@LaunchedEffect
+        // Find the LSP item matching the selected label (and kind when known)
+        val lspItem = lspCompletions.find {
+            it.label == selectedLabel && (highlightedComp == null || highlightedComp.lspKind <= 0 || it.kind == highlightedComp.lspKind)
+        } ?: return@LaunchedEffect
 
         kotlinx.coroutines.delay(150)  // debounce — only resolve after user pauses on an item
         val resolved = kotlinx.coroutines.withContext(Dispatchers.IO) {
             try { lspCompletionResolver.invoke(lspItem) } catch (_: Exception) { null }
         }
         if (resolved != null) {
-            resolveCache = resolveCache + (selectedLabel!! to resolved)
+            resolveCache = resolveCache + (resolveKey to resolved)
             lastResolvedLabel = selectedLabel
             // Update detail panel if still showing this item
             if (selectedLabel == resolved.label && resolved.documentation?.isNotBlank() == true) {
@@ -2395,24 +2419,50 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 allCompletions.indexOfFirst { it.label == selectedLabel }
                             )
                             if (typedChar != null && selectedComp != null && selectedComp.commitCharacters.contains(typedChar)) {
-                                // Commit the selected completion, then insert the typed char
-                                val cursor = value.selection.end
-                                val text = value.text
-                                val end = cursor.coerceAtMost(text.length)
-                                var start = end
-                                while (start > 0 && (text[start - 1].isLetterOrDigit() || text[start - 1] == '_')) start--
-                                val insertTxt = selectedComp.insertText
-                                val committedText = text.substring(0, start) + insertTxt + typedChar.toString() + text.substring(end)
-                                val committedCursor = start + insertTxt.length + 1
-                                programmaticTextChange(committedText, TextRange(committedCursor), "completion_commit_char")
+                                // IC01 (P4c): commit chars route through the ONE shared accept
+                                // computation — same word scan, textEdit and import handling as
+                                // every other accept route.
+                                val outcome = CompletionAccept.compute(selectedComp, value.text, value.selection.end, positionMapper, commitChar = typedChar)
+                                if (outcome.error != null) {
+                                    com.codespace.ide.diagnostics.AppOutputLog.log("[Completion] commit-char accept: " + outcome.error, "lsp")
+                                }
+                                programmaticTextChange(outcome.newText, TextRange(outcome.newCursor), "completion_commit_char")
                                 CompletionHistoryStore.recordAccepted(selectedComp.label, language.name, context)
+                                if (selectedComp.command != null) coroutineScope.launch {
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { CompletionAccept.executeCommand(language, selectedComp.command) }
+                                }
                                 showCompletions = false
                                 selectedLabel = null
                                 completionFilter = null
                                 true
                             } else false
                         } else false
-                        if (!commitCharMatch) {
+
+                        // IC06 (P4c): Enter ACCEPTS the selected completion while the popup is
+                        // visible (VS Code behavior) — the IME Enter used to always insert a
+                        // newline, so the popup could never be confirmed with Enter.
+                        val enterAccept = if (!commitCharMatch && showCompletions && allCompletions.isNotEmpty() &&
+                                              newValue.text.length == value.text.length + 1 &&
+                                              newValue.text.getOrNull(newValue.selection.end - 1) == '\n') {
+                            val comp = if (selectedLabel != null) allCompletions.find { it.label == selectedLabel } ?: allCompletions[0] else allCompletions[0]
+                            val outcome = CompletionAccept.compute(comp, value.text, value.selection.end, positionMapper)
+                            if (outcome.error != null) {
+                                com.codespace.ide.diagnostics.AppOutputLog.log("[Completion] Enter accept: " + outcome.error, "lsp")
+                            }
+                            if (outcome.snippetSession != null) snippetSession = outcome.snippetSession
+                            if (outcome.showSnippetChoices) showSnippetChoices = true
+                            val enterSel = if (outcome.selectionStart >= 0) TextRange(outcome.selectionStart, outcome.selectionEnd) else TextRange(outcome.newCursor)
+                            programmaticTextChange(outcome.newText, enterSel, "completion_enter")
+                            CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
+                            if (comp.command != null) coroutineScope.launch {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { CompletionAccept.executeCommand(language, comp.command) }
+                            }
+                            showCompletions = false
+                            selectedLabel = null
+                            completionFilter = null
+                            true
+                        } else false
+                        if (!commitCharMatch && !enterAccept) {
                         // R2-5: Surround selection — when text is selected and user types
                         // a bracket/quote, wrap the selection instead of replacing it.
                         if (newValue.text.length == value.text.length + 1 &&
@@ -2738,20 +2788,23 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 } else {
                                     allCompletions[0]
                                 }
-                                val text = value.text
-                                val cursor = value.selection.end
-                                // Compute prefix the same way as the rest of the code
-                                var wordStart = cursor
-                                while (wordStart > 0 && (text[wordStart - 1].isLetterOrDigit() || text[wordStart - 1] == '_' || text[wordStart - 1] == '.')) {
-                                    wordStart--
+                                // IC01 (P4c): Tab routes through the ONE shared accept
+                                // computation. The old inline splice scanned '.' as a word char,
+                                // so accepting "method" over "obj.m|" replaced the whole
+                                // "obj.m"; snippets also inserted raw $1 text instead of
+                                // entering a snippet session; server textEdit was ignored.
+                                val outcome = CompletionAccept.compute(comp, value.text, value.selection.end, positionMapper)
+                                if (outcome.error != null) {
+                                    com.codespace.ide.diagnostics.AppOutputLog.log("[Completion] Tab accept: " + outcome.error, "lsp")
                                 }
-                                val start = wordStart
-                                val end = cursor
-                                val insertText = comp.insertText
-                                val newText = text.substring(0, start) + insertText + text.substring(end)
-                                val newCursor = start + insertText.length
-                                programmaticTextChange(newText, TextRange(newCursor), "completion_commit")
+                                if (outcome.snippetSession != null) snippetSession = outcome.snippetSession
+                                if (outcome.showSnippetChoices) showSnippetChoices = true
+                                val tabSel = if (outcome.selectionStart >= 0) TextRange(outcome.selectionStart, outcome.selectionEnd) else TextRange(outcome.newCursor)
+                                programmaticTextChange(outcome.newText, tabSel, "completion_commit")
                                 CompletionHistoryStore.recordAccepted(comp.label, language.name, context)
+                                if (comp.command != null) coroutineScope.launch {
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { CompletionAccept.executeCommand(language, comp.command) }
+                                }
                                 showCompletions = false
                                 selectedLabel = null
                                 completionFilter = null
@@ -2955,6 +3008,22 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 } else {
                                     false
                                 }
+                            } else if (showCompletions && allCompletions.isNotEmpty() && event.type == KeyEventType.KeyDown &&
+                                       (event.key == Key.DirectionUp || event.key == Key.DirectionDown)) {
+                                // IC05 (P4c): selectNext/selectPrevious over the popup list —
+                                // selectedLabel was only ever RESET before, so the highlight was
+                                // stuck on index 0 and Tab always accepted the first item.
+                                val visible = if (completionFilter != null) allCompletions.filter { it.source == completionFilter } else allCompletions
+                                if (visible.isNotEmpty()) {
+                                    val cur = if (selectedLabel != null) visible.indexOfFirst { it.label == selectedLabel } else 0
+                                    val nextIdx = if (event.key == Key.DirectionDown) {
+                                        (if (selectedLabel == null && cur == 0) 1 else cur + 1).coerceAtMost(visible.size - 1)
+                                    } else {
+                                        (cur - 1).coerceAtLeast(0)
+                                    }
+                                    selectedLabel = visible[nextIdx].label
+                                    true
+                                } else false
                             } else if (activeSignature != null && activeSignature!!.allSignatures.size > 1 &&
                                        event.type == KeyEventType.KeyDown) {
                                 // P41-OV: Up/Down arrow to cycle through signature overloads
@@ -4837,9 +4906,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         )
 
         // P2-12 Signature help popup — shown above the current line, one line up so it
-        // doesn't cover what's being typed. Hidden while the autocomplete dropdown is open
-        // to avoid stacking two popups on the same spot.
-        if (!showCompletions && activeSignature != null) {
+        // doesn't cover what's being typed.
+        // IC09 (P4c): no longer hidden while the autocomplete dropdown is open — the two
+        // anchor at different heights (hints one line up, completions below the cursor);
+        // suppressing them made parameter hints unusable whenever a completion popup
+        // was visible, which on mobile is most of the time while typing a call.
+        if (activeSignature != null) {
             SignatureHelpPopup(
                 activeSignature = activeSignature!!, 
                 positionMapper = positionMapper,
@@ -5007,7 +5079,6 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             allCompletions = allCompletions,
             coroutineScope = coroutineScope,
             clipboardManager = clipboardManager,
-            onAiFixRequest = onAiFixRequest,
             lspImportProvider = lspImportProvider,
             detailDocState = detailDocState,
             detailLabelState = detailLabelState,

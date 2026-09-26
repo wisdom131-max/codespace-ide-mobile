@@ -21,7 +21,8 @@ package com.codespace.ide.lsp
 /** Where a completion item came from — used for UI labeling and scoring. */
 enum class CompletionSource {
     LSP,        // Language server (tsserver, pyright, etc.)
-    AI,         // AI inline completion source (Phase E)
+    // IC08 (P4c): AI source REMOVED — no producer ever created AI-source items;
+    // the chip, boost and detail Ask-AI path were dead code (never renderable).
     SNIPPET,    // Curated snippet
     WORKSPACE,  // workspace/symbol LSP call (Phase F)
     BUFFER,     // Local keyword/type from LanguageSpecs
@@ -258,18 +259,19 @@ fun rank(
             CompletionSource.LSP -> 0f
             CompletionSource.SNIPPET -> 0f
             CompletionSource.BUFFER -> -5f
-            CompletionSource.AI -> 5f // P41-O: AI completions are context-aware, boost them
             CompletionSource.WORKSPACE -> -15f
             CompletionSource.PATH -> -20f
         }
 
-        // Phase U-2: sortText from server — when present, use as PRIMARY sort key
-        // LSP spec: lower sortText string = higher priority. Convert to a strong boost.
+        // IC07 (P4c): sortText from server — PRIMARY among server items. The first
+        // char maps to a 0..-100 penalty ("a"=0, "z"=-100, unknown chars ~-100) so it
+        // DOMINATES the fuzzy tier (0..-50): two server items sort by sortText before
+        // fuzzy score can reorder them, matching VS Code's server-priority ordering.
+        // The old comment claimed "+50f" while the code computed 0..-50 — comment now
+        // describes what is actually computed.
         val sortTextScore = item.sortTextFromServer?.let { st ->
-            // Map first char to a penalty range: "a" = 50f boost, "z" = -25f penalty
-            // This ensures server sortText dominates fuzzy score differences
             val charScore = -(st.firstOrNull()?.code?.minus(97)?.toFloat() ?: 50f)
-            charScore * 2f  // Scale to dominate fuzzy score tier differences
+            (charScore * 2f).coerceIn(-100f, 0f)
         } ?: 0f
 
         val totalScore = fuzzy + mruBoost + usageBoost + sourcePenalty + sortTextScore
@@ -277,16 +279,10 @@ fun rank(
         item.copy(score = totalScore, matchIndices = indices)
     }
     .filter { it.score >= 0f || q.isBlank() }
-    // Phase U-2: When any items have sortText, sort by (sortText, score) for server priority
-    .let { ranked ->
-        val hasSortText = ranked.any { !it.sortTextFromServer.isNullOrBlank() }
-        if (hasSortText) {
-            ranked.sortedWith(compareByDescending<RankedCompletionItem> { it.score }
-                .thenBy { it.sortTextFromServer ?: "z" })
-        } else {
-            ranked.sortedByDescending { it.score }
-        }
-    }
+    // IC07 (P4c): sort by total score (in which sortText dominates fuzzy for server
+    // items), with the raw sortText string as tiebreak among equal-scored items.
+    .sortedWith(compareByDescending<RankedCompletionItem> { it.score }
+        .thenBy { it.sortTextFromServer ?: "z" })
 }
 
 // ── Conversion Helpers ─────────────────────────────────────────────────────

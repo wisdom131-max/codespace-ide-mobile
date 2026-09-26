@@ -1846,10 +1846,21 @@ fun EditorPane(
         // (previously only fired on keyboard via onCursorChange). Stale-response protection
         // via hoverRequestGen ensures a slow hover from position A cannot overwrite position B.
         LaunchedEffect(lspCursorLine, lspCursorCol, showLspHover) {
-            if (showLspHover && active != null && LspManager.isServerRunning(active.language)) {
+            // IC10 (P4c): hover no longer REQUIRES an LSP server — with no server (or a
+            // null LSP hover) it falls back to the curated doc table, so hovering works
+            // in files/languages without a server instead of rendering nothing.
+            if (showLspHover && active != null) {
                 // Skip if this position was already queried — prevents idle spam
                 if (lspCursorLine == lastHoverLine && lspCursorCol == lastHoverCol) return@LaunchedEffect
                 delay(300)
+                if (!LspManager.isServerRunning(active.language)) {
+                    val snap = active
+                    val fallbackWord = extractWordAtContent(snap.content, lspCursorLine, lspCursorCol)
+                    lspHoverContent = fallbackWord?.let { w ->
+                        com.codespace.ide.editor.hoverDocFor(w)?.let { doc -> w + ": " + doc }
+                    }
+                    return@LaunchedEffect
+                }
                 // Phase X-8: Increment generation for stale-response protection
                 hoverRequestGen++
                 val myGen = hoverRequestGen
@@ -1875,7 +1886,14 @@ fun EditorPane(
                         com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for hover", "lsp")
                         return@LaunchedEffect
                     }
-                    lspHoverContent = hover?.let { parseHoverContent(it) }
+                    lspHoverContent = if (hover != null) parseHoverContent(hover) else {
+                        // IC10 (P4c): server returned no hover — curated fallback
+                        val snap = active
+                        val fallbackWord = extractWordAtContent(snap.content, lspCursorLine, lspCursorCol)
+                        fallbackWord?.let { w ->
+                            com.codespace.ide.editor.hoverDocFor(w)?.let { doc -> w + ": " + doc }
+                        }
+                    }
                 }
             }
         }
