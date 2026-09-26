@@ -2136,6 +2136,13 @@ fun EditorPane(
         // P41-T: Also generate synthetic test lenses for Run/Test CodeLens
         LaunchedEffect(active?.path, active?.content) {
             if (active != null) {
+                // TG10 (2026-09-26): detectTestLenses used to rescan the FULL file on
+                // every keystroke (per-content-change IO, no pause). Structural fix —
+                // the same debounce pattern this pane already uses everywhere (the LSP
+                // branch below waits 1200ms; hover 300ms; completion 150ms): detection
+                // now waits 500ms after the last keystroke. No perf number is claimed —
+                // per-keystroke rescans simply no longer exist.
+                delay(500)
                 // P41-T: Generate synthetic test lenses (works even without LSP server)
                 var testLenses = withContext(Dispatchers.IO) {
                     // F1 (TG05 v2): annotation/framework-driven detection + TestId path strings.
@@ -2176,15 +2183,31 @@ fun EditorPane(
                             com.codespace.ide.diagnostics.AppOutputLog.log("LSP result discarded: stale version for code-lens", "lsp")
                             return@LaunchedEffect
                         }
-                        // Merge LSP lenses with synthetic test lenses
+                        // Merge LSP lenses with synthetic test lenses.
+                        // TG09 (2026-09-26): dedupe — an active server may return its
+                        // OWN run/test codelenses, and appending synthetic ones
+                        // unconditionally stacked DUPLICATE chips on the same line.
+                        // A synthetic lens is skipped when the LSP set already covers
+                        // its line.
                         val merged = org.json.JSONArray()
                         if (lspLenses != null) {
                             for (i in 0 until lspLenses.length()) {
                                 merged.put(lspLenses.optJSONObject(i))
                             }
                         }
+                        val lspLensLines = HashSet<Int>()
+                        if (lspLenses != null) {
+                            for (i in 0 until lspLenses.length()) {
+                                val l = lspLenses.optJSONObject(i)
+                                val line = l?.optJSONObject("range")?.optJSONObject("start")?.optInt("line", -1) ?: -1
+                                if (line >= 0) lspLensLines.add(line)
+                            }
+                        }
                         for (i in 0 until testLenses.length()) {
-                            merged.put(testLenses.optJSONObject(i))
+                            val lens = testLenses.optJSONObject(i) ?: continue
+                            val lensLine = lens.optJSONObject("range")?.optJSONObject("start")?.optInt("line", -1) ?: -1
+                            if (lensLine >= 0 && lensLine in lspLensLines) continue
+                            merged.put(lens)
                         }
                         lspCodeLenses = merged
                         // P41-K: Fetch document colors for inline swatches

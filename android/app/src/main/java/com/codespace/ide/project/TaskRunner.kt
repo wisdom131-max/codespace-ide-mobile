@@ -90,6 +90,89 @@ object TaskRunner {
             markDone(taskId, refused)
             return refused
         }
+        // TG08 (2026-09-26): "Run Unit Tests" no longer assumes a gradle project.
+        // JS/Python/Dart projects previously got a cryptic failing gradle wrapper —
+        // the entry was Android-first in a multi-language IDE. The gradle `test`
+        // invocation is now kept ONLY when a gradle wrapper/build file is present;
+        // otherwise the task routes through the REAL per-language runners (the
+        // F2/F4 pipeline: project scan -> TestStore targets -> TestRunManager.runBatch),
+        // with an honest summary in the task result. Live per-test output streams to
+        // the Output tab "test" channel exactly as in the Testing pane.
+        if (taskId == TaskId.TEST) {
+            val dir = java.io.File(projectPath)
+            val isGradleProject = java.io.File(dir, "gradlew").exists() ||
+                java.io.File(dir, "build.gradle").exists() ||
+                java.io.File(dir, "build.gradle.kts").exists()
+            if (!isGradleProject) {
+                markRunning(taskId)
+                try {
+                    com.codespace.ide.testing.TestDiscoveryService.scanProject(context, dir)
+                    val targets = com.codespace.ide.testing.TestStore.items.value.values
+                        .filter { !it.suite }
+                        .sortedWith(compareBy({ it.filePath }, { it.lineIndex }))
+                        .map {
+                            com.codespace.ide.testing.TestRunManager.BatchTarget(
+                                it.testId, it.filePath, it.language, it.suite, it.lineIndex)
+                        }
+                    if (targets.isEmpty()) {
+                        val none = BuildRunner.BuildResult(
+                            status = BuildRunner.BuildStatus.FAILED,
+                            output = "Run Unit Tests: no tests discovered in this project. (Gradle projects use the gradle test task; JS/Python/Dart projects run through their real per-language runners — the scan found no test files here.)",
+                            durationMs = 0,
+                            errorCount = 0,
+                        )
+                        markDone(taskId, none)
+                        return none
+                    }
+                    val results = com.codespace.ide.testing.TestRunManager.runBatch(
+                        context, projectPath, targets) { false }
+                    val passed = results.count { it.status == com.codespace.ide.testing.TestRunManager.TestRunStatus.PASSED }
+                    val failed = results.count {
+                        it.status == com.codespace.ide.testing.TestRunManager.TestRunStatus.FAILED ||
+                        it.status == com.codespace.ide.testing.TestRunManager.TestRunStatus.TIMED_OUT ||
+                        it.status == com.codespace.ide.testing.TestRunManager.TestRunStatus.LAUNCH_FAILED
+                    }
+                    val skipped = results.count {
+                        it.status == com.codespace.ide.testing.TestRunManager.TestRunStatus.UNTRUSTED ||
+                        it.status == com.codespace.ide.testing.TestRunManager.TestRunStatus.UNSUPPORTED ||
+                        it.status == com.codespace.ide.testing.TestRunManager.TestRunStatus.BUSY ||
+                        it.status == com.codespace.ide.testing.TestRunManager.TestRunStatus.CANCELLED
+                    }
+                    val summary = "Run Unit Tests — " + targets.size + " tests via per-language runners: " +
+                        passed + " passed, " + failed + " failed/errored, " + skipped +
+                        " unsupported/untrusted/cancelled. (Gradle projects use the gradle test task.)"
+                    val result = BuildRunner.BuildResult(
+                        status = if (failed > 0) BuildRunner.BuildStatus.FAILED else BuildRunner.BuildStatus.SUCCESS,
+                        output = summary,
+                        durationMs = results.sumOf { it.durationMs },
+                        errorCount = failed,
+                    )
+                    markDone(taskId, result)
+                    return result
+                } catch (ce: CancellationException) {
+                    // Mirror PR13: a cancelled UI scope marks the run FAILED honestly, then rethrows.
+                    withContext(NonCancellable) {
+                        markDone(taskId, BuildRunner.BuildResult(
+                            status = BuildRunner.BuildStatus.FAILED,
+                            output = "Task interrupted: the UI that started this run was closed mid-run.",
+                            durationMs = 0,
+                            errorCount = 1,
+                        ))
+                    }
+                    throw ce
+                } catch (e: Exception) {
+                    val failedResult = BuildRunner.BuildResult(
+                        status = BuildRunner.BuildStatus.FAILED,
+                        output = "Run Unit Tests error: ${e.message}",
+                        durationMs = 0,
+                        errorCount = 1,
+                    )
+                    markDone(taskId, failedResult)
+                    return failedResult
+                }
+            }
+        }
+
         markRunning(taskId)
         return try {
             val result = BuildRunner.runBuild(
