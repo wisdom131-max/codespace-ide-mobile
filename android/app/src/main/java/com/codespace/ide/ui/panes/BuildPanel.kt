@@ -68,10 +68,17 @@ fun BuildPanel(
                     Icon(Icons.Default.ArrowDropDown, null, Modifier.size(16.dp))
                 }
                 DropdownMenu(expanded = taskExpanded, onDismissRequest = { taskExpanded = false }) {
-                    listOf("assembleDebug", "assembleRelease", "build", "clean", "lint", "test").forEach { task ->
+                    // PR12 (P4a-2): single source of truth — the dropdown reads
+                    // TaskRunner.CATALOGUE's gradleTask values. WAS: a second
+                    // hardcoded list (6 entries) that had already drifted from
+                    // the runner's 8-entry catalogue (missing installDebug,
+                    // bundleRelease, assemble; "build" existed in NEITHER gradle
+                    // semantics nor the runner). Every runnable task now appears
+                    // exactly once, in both places, by construction.
+                    com.codespace.ide.project.TaskRunner.CATALOGUE.forEach { t ->
                         DropdownMenuItem(
-                            text = { Text(task, fontSize = 12.sp) },
-                            onClick = { selectedTask = task; taskExpanded = false },
+                            text = { Text(t.gradleTask, fontSize = 12.sp) },
+                            onClick = { selectedTask = t.gradleTask; taskExpanded = false },
                         )
                     }
                 }

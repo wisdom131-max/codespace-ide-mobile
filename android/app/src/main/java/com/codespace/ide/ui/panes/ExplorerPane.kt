@@ -1403,7 +1403,9 @@ fun ExplorerSidePanel(
                                     color = if (bpIsError) Color(0xFFE51400) else Color(0xFFCCA700),
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
-                                        .clickable { onShowProblems?.invoke(node.file.name) }
+                                        // PR09 (P4a-2): pass the FULL path — a bare
+                                        // filename also cross-matches sibling files.
+                                        .clickable { onShowProblems?.invoke(node.file.absolutePath) }
                                         .padding(horizontal = 6.dp, vertical = 2.dp),
                                 )
                                 Spacer(Modifier.width(4.dp))

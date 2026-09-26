@@ -46,7 +46,13 @@ import com.codespace.ide.diagnostics.DiagnosticManager
  * stale indicators, source health display, and click-to-navigate.
  */
 
-/** CW5: preset applied to the search box when an explorer problem badge opens the panel. */
+/** CW5/PR09 (P4a-2): preset applied when an explorer problem badge opens the
+ *  panel. WAS: a bare filename dropped into the SUBSTRING search — "Main.kt"
+ *  also matched MainViewModel.kt and every message containing "main". NOW:
+ *  the preset is a file path consumed as an EXACT-FILE filter (path equality
+ *  or basename-end match), never as message text. Accepts full paths (from
+ *  the explorer badge) and degrades a bare filename to basename-end matching.
+ *  Empty string = no preset. */
 internal var ProblemsPreset by mutableStateOf("")
 
 /** PR07 (P4a-1): the bottom-tab PROBLEMS menu commands, made REAL — the old
@@ -83,12 +89,16 @@ fun AdvancedProblemsPanel(
     var sourceFilter by remember { mutableStateOf<DiagnosticManager.DiagnosticSource?>(null) }
     var expandedFile by remember { mutableStateOf<String?>(null) }
 
-    // CW5: consume the explorer-badge preset one-shot (user typing is never clobbered)
+    // CW5/PR09: consume the explorer-badge preset one-shot as an EXACT-FILE
+    // filter (not search text — the user's search box is never touched).
+    var fileFilter by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(ProblemsPreset) {
         if (ProblemsPreset.isNotEmpty()) {
-            searchQuery = ProblemsPreset
+            fileFilter = ProblemsPreset
             showErrors = true
             showWarnings = true
+            showInfo = true
+            showHints = true
             ProblemsPreset = ""
         }
     }
@@ -117,10 +127,18 @@ fun AdvancedProblemsPanel(
     // PR14: derived keys on the CONTENT (see above); severity/search/source
     // keys keep the derived lambda recreated when THOSE change.
     val filteredDiagnostics by remember(
-        showErrors, showWarnings, showInfo, showHints, showStale, searchQuery, sourceFilter
+        showErrors, showWarnings, showInfo, showHints, showStale, searchQuery, sourceFilter, fileFilter
     ) { derivedStateOf { DiagnosticManager.diagnostics.filter { d ->
             // Stale filter
             if (!showStale && d.isStale) return@filter false
+
+            // PR09: exact-file preset filter — path equality or basename-end
+            // match; message text is NEVER matched (that was the old bug).
+            if (fileFilter != null) {
+                val ff = fileFilter!!
+                val pathMatch = d.filePath == ff || d.filePath.endsWith("/" + ff.substringAfterLast('/'))
+                if (!pathMatch) return@filter false
+            }
 
             // Severity filter
             val severityOk = when (d.severity) {
@@ -226,6 +244,26 @@ fun AdvancedProblemsPanel(
                 unfocusedBorderColor = dividerColor,
             ),
         )
+        // PR09: dismissible exact-file filter chip (from the explorer badge preset).
+        if (fileFilter != null) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "File: " + fileFilter!!.substringAfterLast('/'),
+                    fontSize = 10.sp, color = tabTextActive,
+                    modifier = Modifier
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(tabTextActive.copy(alpha = 0.08f))
+                        .clickable { fileFilter = null }
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                )
+                Text("  (tap to clear)", fontSize = 9.sp, color = tabTextInactive)
+            }
+        }
         HorizontalDivider(color = dividerColor)
 
         // ── Problem list ──────────────────────────────────────────────────
@@ -239,7 +277,11 @@ fun AdvancedProblemsPanel(
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 sortedGroups.forEach { (filePath, diags) ->
-                    val fileName = filePath.substringAfterLast("/")
+                    // PR08 (P4a-2): task-FAILED and "What went wrong" rows arrive
+                    // with file="" — the header previously rendered an EMPTY file
+                    // name for them. Honest label: they are build-output rows, not
+                    // file rows; their rows stay but never enter the jump chain.
+                    val fileName = if (filePath.isEmpty()) "(build output)" else filePath.substringAfterLast("/")
                     val fileErrors = diags.count { it.severity == DiagnosticManager.Severity.ERROR && !it.isStale }
                     val fileWarnings = diags.count { it.severity == DiagnosticManager.Severity.WARNING && !it.isStale }
 
@@ -282,7 +324,15 @@ fun AdvancedProblemsPanel(
                         items(diags, key = { it.id }) { diag ->
                             DiagnosticRow(
                                 diagnostic = diag,
-                                onClick = { onJumpToSource(diag.filePath, diag.range.startLine, diag.range.startColumn) },
+                                // PR08: pathless rows (Task FAILED / What went wrong)
+                                // render but never jump — the old behavior sent ""
+                                // into the jump chain, which matched no tab and
+                                // opened a broken empty-path tab (BUG-A family).
+                                onClick = {
+                                    if (diag.filePath.isNotEmpty()) {
+                                        onJumpToSource(diag.filePath, diag.range.startLine, diag.range.startColumn)
+                                    }
+                                },
                                 // PR05 (P4a-1): related locations finally render —
                                 // each taps through to its own file:line.
                                 onJumpRelated = { rel ->
@@ -314,8 +364,10 @@ private fun DiagnosticRow(
     }
 
     Column(
-        Modifier.fillMaxWidth()
-            .clickable { onClick() }
+        Modifier
+            .fillMaxWidth()
+            // PR08: a pathless row is not clickable — there is nothing to jump to.
+            .let { m -> if (diagnostic.filePath.isNotEmpty()) m.clickable { onClick() } else m }
             .padding(start = 28.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

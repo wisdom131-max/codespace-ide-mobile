@@ -4766,7 +4766,10 @@ private fun PssEditorColumn(
             buildProblems = buildProblems,
             onBuildProblemsChange = { problems -> buildProblems = problems },
             onJumpToSource = { line -> scrollTargetLine = line; showBottomPanel = false },
-            onJumpToSourceWithPath = { filePath, line ->
+            onJumpToSourceWithPath = jtp@{ filePath, line ->
+                // PR08 (P4a-2): defense in depth — an empty/blank path can never
+                // enter the tab chain, whatever the calling surface sends.
+                if (filePath.isBlank()) return@jtp
                 val targetCanon = canonicalPathOrSelf(filePath)
                 val existingTab = editorTabs.firstOrNull { canonicalPathOrSelf(it) == targetCanon }
                 val resolvedPath = existingTab ?: filePath

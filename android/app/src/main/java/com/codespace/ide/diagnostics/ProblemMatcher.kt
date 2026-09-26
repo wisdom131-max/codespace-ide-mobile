@@ -20,10 +20,25 @@ object ProblemMatcher {
 
     private val ANSI = Regex("\u001B\\[[0-9;?]*[A-Za-z]|\u001B\\][^\u0007\u001B]*(\u0007|\u001B\\\\)")
 
-    /** Only build-ish commands get scanned (VS Code: matchers are opt-in per task). */
-    private val BUILDISH = Regex(
-        "(^|[\\s;/])(gradlew?|make|gcc|g\\+\\+|clang\\+\\+|clang|cc|javac|kotlinc|python3?|node|npm|npx|yarn|tsc|cargo|dotnet|cmake)([\\s;|$]|$)"
+    // PR06 (P4a-2): per-tool matcher selection — VS Code matchers are OPT-IN
+    // per task; the old single gate ran ALL compiler formats against ANY
+    // build-ish command, so python/npm/node runtime output produced false BUILD
+    // rows (e.g. a script log line "server.py:42: error: retry failed" matched
+    // the javac format and published a build problem that was not one).
+    // Formats now apply only to tools that actually emit them:
+    //  - build tools/compilers (gradle, make, gcc/clang, javac, kotlinc, tsc,
+    //    cargo, dotnet, cmake) -> full compiler scan (GCC / KT_PROC / TSC / JAVAC)
+    //  - python/python3 -> TRACEBACK pairing ONLY (real navigable errors; the
+    //    compiler formats no longer run against script output)
+    //  - npm/npx/yarn -> TSC format ONLY (build scripts wrap tsc; the strict
+    //    "error TSxxxx" prefix cannot false-positive on package-manager output)
+    //  - node -> REMOVED from the gate entirely: it is a pure runtime with no
+    //    stable compiler format — scanning its output was all false-positive risk.
+    private val COMPILER_TOOLS = Regex(
+        "(^|[\\s;/])(gradlew?|make|gcc|g\\+\\+|clang\\+\\+|clang|cc|javac|kotlinc|tsc|cargo|dotnet|cmake)([\\s;|$]|$)"
     )
+    private val PY_TOOLS = Regex("(^|[\\s;/])(python3?)([\\s;|$]|$)")
+    private val TSC_WRAPPERS = Regex("(^|[\\s;/])(npm|npx|yarn)([\\s;|$]|$)")
 
     data class MatchedProblem(
         val file: String,
@@ -53,7 +68,9 @@ object ProblemMatcher {
 
     fun isBuildishCommand(command: String?): Boolean {
         if (command.isNullOrBlank()) return false
-        return BUILDISH.containsMatchIn(command)
+        return COMPILER_TOOLS.containsMatchIn(command) ||
+            PY_TOOLS.containsMatchIn(command) ||
+            TSC_WRAPPERS.containsMatchIn(command)
     }
 
     private fun sev(word: String): DiagnosticManager.Severity {
@@ -65,39 +82,55 @@ object ProblemMatcher {
         }
     }
 
-    /** One line against the static compiler patterns (null when no match). */
-    private fun matchLine(line: String): MatchedProblem? {
-        GCC.find(line)?.let { m ->
-            return MatchedProblem(
-                m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3].toInt(),
-                sev(m.groupValues[4]), m.groupValues[5],
-            )
+    /**
+     * One line against the static compiler patterns (null when no match).
+     * PR06: [allowCompiler] gates GCC/KT_PROC/JAVAC (true only for build
+     * tools/compilers); [allowTsc] gates TSC (true for compilers and the
+     * npm/npx/yarn wrapper class). A command class that disables a format
+     * can never match with it — that is the whole per-task opt-in.
+     */
+    private fun matchLine(line: String, allowCompiler: Boolean, allowTsc: Boolean): MatchedProblem? {
+        if (allowCompiler) {
+            GCC.find(line)?.let { m ->
+                return MatchedProblem(
+                    m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3].toInt(),
+                    sev(m.groupValues[4]), m.groupValues[5],
+                )
+            }
+            KT_PROC.find(line)?.let { m ->
+                return MatchedProblem(
+                    m.groupValues[2], m.groupValues[3].toInt(), m.groupValues[4].toInt(),
+                    if (m.groupValues[1] == "e") DiagnosticManager.Severity.ERROR
+                    else DiagnosticManager.Severity.WARNING,
+                    m.groupValues[5],
+                )
+            }
+            JAVAC.find(line)?.let { m ->
+                return MatchedProblem(
+                    m.groupValues[1], m.groupValues[2].toInt(), 1,
+                    sev(m.groupValues[3]), m.groupValues[4],
+                )
+            }
         }
-        KT_PROC.find(line)?.let { m ->
-            return MatchedProblem(
-                m.groupValues[2], m.groupValues[3].toInt(), m.groupValues[4].toInt(),
-                if (m.groupValues[1] == "e") DiagnosticManager.Severity.ERROR
-                else DiagnosticManager.Severity.WARNING,
-                m.groupValues[5],
-            )
-        }
-        TSC.find(line)?.let { m ->
-            return MatchedProblem(
-                m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3].toInt(),
-                sev(m.groupValues[4]), m.groupValues[5] + ": " + m.groupValues[6],
-            )
-        }
-        JAVAC.find(line)?.let { m ->
-            return MatchedProblem(
-                m.groupValues[1], m.groupValues[2].toInt(), 1,
-                sev(m.groupValues[3]), m.groupValues[4],
-            )
+        if (allowTsc) {
+            TSC.find(line)?.let { m ->
+                return MatchedProblem(
+                    m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3].toInt(),
+                    sev(m.groupValues[4]), m.groupValues[5] + ": " + m.groupValues[6],
+                )
+            }
         }
         return null
     }
 
-    /** ANSI-strips then scans full tool output; deduped, capped at 200 problems. */
-    fun scan(output: String?): List<MatchedProblem> {
+    /** ANSI-strips then scans full tool output; deduped, capped at 200 problems.
+     *  PR06: the format flags select which patterns apply — never all of them. */
+    fun scan(
+        output: String?,
+        allowCompiler: Boolean = true,
+        allowPy: Boolean = true,
+        allowTsc: Boolean = true,
+    ): List<MatchedProblem> {
         if (output.isNullOrBlank()) return emptyList()
         val out = ArrayList<MatchedProblem>()
         val seen = HashSet<String>()
@@ -107,19 +140,22 @@ object ProblemMatcher {
             if (out.size >= 200) break
             val line = raw.trimEnd()
             if (line.isBlank()) continue
-            val fm = PY_FILE.find(line)
-            if (fm != null) {
-                pyFile = fm.groupValues[1]
-                pyLine = fm.groupValues[2].toInt()
-                continue
+            if (allowPy) {
+                val fm = PY_FILE.find(line)
+                if (fm != null) {
+                    pyFile = fm.groupValues[1]
+                    pyLine = fm.groupValues[2].toInt()
+                    continue
+                }
             }
-            val direct = matchLine(line)
+            val direct = matchLine(line, allowCompiler, allowTsc)
             if (direct != null) {
                 if (seen.add(direct.file + ":" + direct.line + ":" + direct.column + ":" + direct.message)) {
                     out.add(direct)
                 }
                 continue
             }
+            if (!allowPy) continue
             val exc = PY_EXC.find(line.trim())
             if (exc != null && pyFile != null) {
                 val msg = exc.groupValues[1] + exc.groupValues[2]
@@ -174,7 +210,11 @@ object ProblemMatcher {
 
     fun publishFromCommand(command: String?, output: String?, workdir: String? = null) {
         if (!isBuildishCommand(command)) return
-        val problems = scan(output).map { m ->
+        // PR06: the command class decides which formats may run (opt-in per task).
+        val compiler = COMPILER_TOOLS.containsMatchIn(command!!)
+        val py = PY_TOOLS.containsMatchIn(command)
+        val tsc = compiler || TSC_WRAPPERS.containsMatchIn(command)
+        val problems = scan(output, allowCompiler = compiler, allowPy = py, allowTsc = tsc).map { m ->
             MatchedProblem(bugaResolve(m.file, workdir), m.line, m.column, m.severity, m.message)
         }
         if (problems.isEmpty()) {

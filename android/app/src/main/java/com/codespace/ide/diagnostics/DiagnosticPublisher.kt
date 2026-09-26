@@ -15,28 +15,71 @@ import com.codespace.ide.domain.Language
  */
 object DiagnosticPublisher {
 
+    // PR11 (P4a-2): lint previously ran SYNCHRONOUSLY ON THE MAIN THREAD three
+    // times over the same content — file open, every tab switch, and every
+    // save — a full string scan each pass, identical output every time. Two
+    // fixes, both honest:
+    //  (1) CONTENT-HASH DEDUPE: a file whose content hash matches the last
+    //      PUBLISHED lint is skipped outright — the rows are already in the
+    //      store, so a re-run with identical input would republish identical
+    //      rows. Open/switch/save of UNCHANGED content now costs zero.
+    //  (2) BACKGROUND SCAN: the scan itself runs on Dispatchers.Default via
+    //      the app-scope worker; DiagnosticManager publishes through its own
+    //      mainHandler post, so callers of this method never block the UI
+    //      thread on a lint pass again. Single-flight per file: while a lint
+    //      is in flight, newer content is parked as the pending request and
+    //      re-runs when the worker frees up (never dropped silently).
+    private val lastLintHash = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val pendingLint = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val inFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val scope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.Dispatchers.Default + kotlinx.coroutines.SupervisorJob()
+    )
+
+    /** True when the new content is byte-identical to the last PUBLISHED lint for this file. */
+    private fun alreadyLinted(filePath: String, content: String): Boolean =
+        lastLintHash[filePath] == content.hashCode() && content.hashCode() != 0
+
     /**
      * Run LintChecker on a file and publish results to DiagnosticManager.
      * Replaces previous lint diagnostics for this file (publish pattern).
+     * PR11: dedupes unchanged content and scans off the main thread.
      */
     fun publishLintDiagnostics(filePath: String, content: String, context: Context? = null) {
-        val uri = "file://$filePath"
+        if (filePath.isEmpty()) return
+        if (alreadyLinted(filePath, content)) return
+        pendingLint[filePath] = content
+        maybeStartLint(filePath)
+    }
 
-        // Run unified lint (LintChecker + LintAnalyzer merged)
-        val problems = LintChecker.unified(filePath, content)
-
-        if (problems.isEmpty()) {
-            // Clear lint diagnostics for this file
-            DiagnosticManager.clearDiagnostics(DiagnosticManager.DiagnosticSource.LINTER, "lintchecker", uri)
-            DiagnosticManager.clearDiagnostics(DiagnosticManager.DiagnosticSource.STATIC_ANALYZER, "lintanalyzer", uri)
-            return
+    private fun maybeStartLint(filePath: String) {
+        val content = pendingLint[filePath] ?: return
+        if (!inFlight.add(filePath)) return  // busy: the finally-block below re-checks pending
+        scope.launch {
+            try {
+                val problems = LintChecker.unified(filePath, content)
+                val uri = "file://$filePath"
+                if (problems.isEmpty()) {
+                    // Clear lint diagnostics for this file
+                    DiagnosticManager.clearDiagnostics(DiagnosticManager.DiagnosticSource.LINTER, "lintchecker", uri)
+                    DiagnosticManager.clearDiagnostics(DiagnosticManager.DiagnosticSource.STATIC_ANALYZER, "lintanalyzer", uri)
+                } else {
+                    // Convert and publish
+                    val diagnostics = DiagnosticConverter.fromLint(problems, filePath, uri, "lintchecker")
+                    DiagnosticManager.publishDiagnostics(
+                        DiagnosticManager.DiagnosticSource.LINTER, "lintchecker", uri, filePath, diagnostics
+                    )
+                }
+                lastLintHash[filePath] = content.hashCode()
+            } catch (_: Exception) {
+                // Lint is best-effort diagnostics: a scan failure must not
+                // crash the app or poison the dedupe map — leave the old hash.
+            } finally {
+                inFlight.remove(filePath)
+                pendingLint.remove(filePath, content)
+                if (pendingLint.containsKey(filePath)) maybeStartLint(filePath)
+            }
         }
-
-        // Convert and publish
-        val diagnostics = DiagnosticConverter.fromLint(problems, filePath, uri, "lintchecker")
-        DiagnosticManager.publishDiagnostics(
-            DiagnosticManager.DiagnosticSource.LINTER, "lintchecker", uri, filePath, diagnostics
-        )
     }
 
     /**

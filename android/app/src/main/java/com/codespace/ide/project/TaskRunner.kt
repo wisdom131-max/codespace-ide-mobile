@@ -3,9 +3,12 @@ package com.codespace.ide.project
 import android.content.Context
 import com.codespace.ide.build.BuildRunner
 import com.codespace.ide.build.GradleErrorParser
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 
 /**
  * Phase 12-G — Task Runner
@@ -104,6 +107,25 @@ object TaskRunner {
                 com.codespace.ide.diagnostics.DiagnosticPublisher.publishBuildDiagnostics(gradleProblems)
             }
             result
+        } catch (ce: CancellationException) {
+            // PR13 (P4a-2): UI-scope cancellation (the task panel's composition
+            // scope dying mid-run) previously fell into the generic catch and
+            // then returned "normally" from a cancelled coroutine — worse, if
+            // the cancellation landed between markRunning and the try, the
+            // RUNNING entry stayed FOREVER in this process-lifetime singleton
+            // while nothing could ever clear it. Mark FAILED honestly and
+            // rethrow so the caller's scope observes the cancellation.
+            // NOTE: the gradle process itself may keep running (BuildRunner's
+            // process handle) — that orphan is the TP06/DG13 family, not PR13.
+            withContext(NonCancellable) {
+                markDone(taskId, BuildRunner.BuildResult(
+                    status = BuildRunner.BuildStatus.FAILED,
+                    output = "Task interrupted: the UI that started this run was closed mid-run.",
+                    durationMs = 0,
+                    errorCount = 1,
+                ))
+            }
+            throw ce
         } catch (e: Exception) {
             val failed = BuildRunner.BuildResult(
                 status = BuildRunner.BuildStatus.FAILED,
@@ -116,19 +138,56 @@ object TaskRunner {
         }
     }
 
+    /**
+     * PR13 (P4a-2): restore last-known run states from TaskRunStore at app
+     * startup. A persisted RUNNING state means the app died mid-run — it is
+     * converted to FAILED with an honest interruption message (a zombie tile
+     * must never claim a run is still going). Terminal states restore as-is
+     * (result details are not persisted — the tile shows the state, the log
+     * area shows nothing until the next real run). IDLE is never persisted.
+     */
+    fun restorePersistedState(context: android.content.Context) {
+        TaskRunStore.init(context)
+        val restored = mutableMapOf<TaskId, TaskRun>()
+        for ((id, state) in TaskRunStore.savedStates()) {
+            val restoredRun = when (state) {
+                RunState.RUNNING -> TaskRun(
+                    id, RunState.FAILED,
+                    BuildRunner.BuildResult(
+                        status = BuildRunner.BuildStatus.FAILED,
+                        output = "Run interrupted: the app restarted while this task was running. " +
+                            "The gradle process may have been orphaned — check the terminal before re-running.",
+                        durationMs = 0,
+                        errorCount = 1,
+                    ),
+                )
+                RunState.SUCCESS -> TaskRun(id, RunState.SUCCESS)
+                RunState.FAILED -> TaskRun(id, RunState.FAILED)
+                RunState.IDLE -> null
+            } ?: continue
+            restored[id] = restoredRun
+            // Write the swept state back so the interruption is durable.
+            TaskRunStore.saveState(id, restoredRun.state, System.currentTimeMillis())
+        }
+        if (restored.isNotEmpty()) _runs.value = restored
+    }
+
     /** Reset a task's state back to IDLE. */
     fun reset(taskId: TaskId) {
         _runs.value = _runs.value - taskId
+        TaskRunStore.saveState(taskId, RunState.IDLE, System.currentTimeMillis())
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────
 
     private fun markRunning(id: TaskId) {
         _runs.value = _runs.value + (id to TaskRun(id, RunState.RUNNING))
+        TaskRunStore.saveState(id, RunState.RUNNING, System.currentTimeMillis())
     }
 
     private fun markDone(id: TaskId, result: BuildRunner.BuildResult) {
         val state = if (result.status == BuildRunner.BuildStatus.SUCCESS) RunState.SUCCESS else RunState.FAILED
         _runs.value = _runs.value + (id to TaskRun(id, state, result))
+        TaskRunStore.saveState(id, state, System.currentTimeMillis())
     }
 }

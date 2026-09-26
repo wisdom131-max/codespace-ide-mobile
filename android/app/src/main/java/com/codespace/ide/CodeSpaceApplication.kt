@@ -79,6 +79,10 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         // swallowed here the same way surrounding init is: startup must not die on
         // a corrupt tasks.json (readTasks already degrades bad JSON to an empty task set).
         try { com.codespace.ide.agent.AgentScheduler.restoreAll(this) } catch (_: Exception) { }
+        // PR13 (P4a-2): restore last-known TaskRunner states; any entry persisted
+        // as RUNNING died with the old process — swept to FAILED with an honest
+        // interruption message. Swallowed like the surrounding init calls.
+        try { com.codespace.ide.project.TaskRunner.restorePersistedState(this) } catch (_: Exception) { }
         // CRITICAL: Do NOT acquire WakeLocks or start foreground service here.
         //
         // TECNO HiOS power management kills apps that acquire WakeLocks + start FGS
