@@ -206,7 +206,7 @@ fun SettingsScreen(
     if (showPinRegistration) {
         PinRegistrationDialog(
             onPinSet = { pin ->
-                tokenStore.pinHash = tokenStore.hashPin(pin)
+                tokenStore.setPin(pin) // SK04 (P4f): PBKDF2 + per-install salt
                 tokenStore.biometricLockEnabled = true
                 biometricEnabled = true
                 showPinRegistration = false
@@ -281,7 +281,7 @@ fun SettingsScreen(
                                 // Disabling — just turn it off
                                 biometricEnabled = false
                                 tokenStore.biometricLockEnabled = false
-                                tokenStore.pinHash = null
+                                tokenStore.clearPin()
                                 savedMsg = "✓ App lock disabled"
                             }
                         }

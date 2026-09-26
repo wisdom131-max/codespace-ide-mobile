@@ -45,10 +45,10 @@ class SecureTokenStore @Inject constructor(
         get() = prefs.getBoolean(KEY_BIOMETRIC_LOCK, false)
         set(value) = prefs.edit().putBoolean(KEY_BIOMETRIC_LOCK, value).apply()
 
-    /** SHA-256 hash of the user's PIN (null = no PIN registered) */
+    /** PBKDF2 (v2) or legacy SHA-256 (v1) hash of the user's PIN (null = no PIN registered) */
     var pinHash: String?
         get() = prefs.getString(KEY_PIN_HASH, null)
-        set(value) {
+        private set(value) {
             if (value != null) prefs.edit().putString(KEY_PIN_HASH, value).apply()
             else prefs.edit().remove(KEY_PIN_HASH).apply()
         }
@@ -56,18 +56,100 @@ class SecureTokenStore @Inject constructor(
     /** Whether the user has registered a PIN */
     val hasPinRegistered: Boolean get() = pinHash != null
 
-    /** Verify a PIN against the stored hash */
-    fun verifyPin(pin: String): Boolean {
-        val stored = pinHash ?: return false
-        val inputHash = this.hashPin(pin)
-        return stored == inputHash
+    /**
+     * SK04 (P4f): register (or re-register) a PIN under the hardened scheme —
+     * per-install random salt + PBKDF2-HMAC-SHA256 + constant-time comparison.
+     * Replaces the legacy static-salt SHA-256 that was brute-forceable from a
+     * prefs backup in seconds.
+     */
+    fun setPin(pin: String) {
+        var salt = prefs.getString(KEY_PIN_SALT, null)
+        if (salt == null) {
+            val bytes = ByteArray(16)
+            java.security.SecureRandom().nextBytes(bytes)
+            salt = bytes.joinToString("") { "%02x".format(it) }
+        }
+        prefs.edit()
+            .putString(KEY_PIN_SALT, salt)
+            .putString(KEY_PIN_HASH, pbkdf2Base64(pin, salt))
+            .putInt(KEY_PIN_SCHEME, PIN_SCHEME_PBKDF2)
+            .putInt(KEY_PIN_FAILS, 0)
+            .putLong(KEY_PIN_LOCKOUT_UN, 0L)
+            .apply()
     }
 
-    /** Hash a PIN with SHA-256 + salt for secure storage */
-    fun hashPin(pin: String): String {
-        val salt = "codespace_ide_2026"  // app-specific salt
+    /** Clears the PIN and its hardening state (lock disable path). */
+    fun clearPin() {
+        prefs.edit()
+            .remove(KEY_PIN_HASH).remove(KEY_PIN_SALT)
+            .remove(KEY_PIN_SCHEME).remove(KEY_PIN_FAILS).remove(KEY_PIN_LOCKOUT_UN)
+            .apply()
+    }
+
+    /**
+     * Verify a PIN against the stored hash. Constant-time compare, scheme-aware:
+     * a successful LEGACY verify transparently UPGRADES the stored hash to
+     * PBKDF2 + per-install salt. Every failed verify records a PERSISTED
+     * failure (drives the escalating lockout) — the counter no longer lives in
+     * a composable's remember{} that rotation resets.
+     */
+    fun verifyPin(pin: String): Boolean {
+        val stored = pinHash ?: return false
+        val scheme = prefs.getInt(KEY_PIN_SCHEME, 1)
+        val ok = if (scheme >= PIN_SCHEME_PBKDF2) {
+            val salt = prefs.getString(KEY_PIN_SALT, null)
+            if (salt == null) false
+            else constantTimeEquals(pbkdf2Base64(pin, salt), stored)
+        } else {
+            // Legacy static-salt SHA-256 (verify + in-place upgrade)
+            val legacyOk = constantTimeEquals(legacyHashPin(pin), stored)
+            if (legacyOk) setPin(pin)
+            legacyOk
+        }
+        if (ok) resetPinFailures() else recordPinFailure()
+        return ok
+    }
+
+    /** Current persisted failed-attempt count (resets on success). */
+    fun pinFailureCount(): Int = prefs.getInt(KEY_PIN_FAILS, 0)
+
+    /** Attempts allowed before the lock disables itself (SK04 anti-lockout valve). */
+    val maxPinAttempts: Int get() = PIN_MAX_FAILURES
+
+    /** ms remaining in the active lockout window (0 = not locked out). */
+    fun pinLockoutRemainingMs(): Long =
+        (prefs.getLong(KEY_PIN_LOCKOUT_UN, 0L) - System.currentTimeMillis()).coerceAtLeast(0L)
+
+    private fun recordPinFailure() {
+        val fails = pinFailureCount() + 1
+        val editor = prefs.edit().putInt(KEY_PIN_FAILS, fails)
+        if (fails >= 3) {
+            val step = (fails - 3).coerceAtMost(PIN_LOCKOUT_STEPS_MS.size - 1)
+            editor.putLong(KEY_PIN_LOCKOUT_UN, System.currentTimeMillis() + PIN_LOCKOUT_STEPS_MS[step])
+        }
+        editor.apply()
+    }
+
+    private fun resetPinFailures() {
+        prefs.edit().putInt(KEY_PIN_FAILS, 0).putLong(KEY_PIN_LOCKOUT_UN, 0L).apply()
+    }
+
+    private fun pbkdf2Base64(pin: String, salt: String): String {
+        val spec = javax.crypto.spec.PBEKeySpec(
+            pin.toCharArray(), salt.toByteArray(Charsets.UTF_8), PBKDF2_ITERATIONS, 256,
+        )
+        val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        return android.util.Base64.encodeToString(factory.generateSecret(spec).encoded, android.util.Base64.NO_WRAP)
+    }
+
+    /** Constant-time comparison — never early-exits on the first differing byte. */
+    private fun constantTimeEquals(a: String, b: String): Boolean =
+        MessageDigest.isEqual(a.toByteArray(Charsets.UTF_8), b.toByteArray(Charsets.UTF_8))
+
+    /** Legacy static-salt SHA-256 (pre-P4f) — kept ONLY to migrate existing hashes. */
+    private fun legacyHashPin(pin: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        val input = (salt + pin).toByteArray(Charsets.UTF_8)
+        val input = ("codespace_ide_2026" + pin).toByteArray(Charsets.UTF_8)
         return digest.digest(input).joinToString("") { "%02x".format(it) }
     }
 
@@ -117,5 +199,28 @@ class SecureTokenStore @Inject constructor(
         const val KEY_GITHUB_TOKEN   = "github_oauth_token"
         const val KEY_GITHUB_USER    = "github_username"
         const val KEY_PIN_HASH       = "pin_hash"
+        // SK04 (P4f): PIN hardening — scheme version, per-install salt,
+        // PERSISTED failure counter + escalating lockout deadline.
+        const val KEY_PIN_SCHEME     = "pin_hash_scheme"
+        const val KEY_PIN_SALT       = "pin_salt"
+        const val KEY_PIN_FAILS      = "pin_fail_count"
+        const val KEY_PIN_LOCKOUT_UN = "pin_lockout_until"
+
+        /** PIN hash scheme: 1 = legacy static-salt SHA-256 (pre-P4f), 2 = PBKDF2 + per-install salt. */
+        const val PIN_SCHEME_PBKDF2 = 2
+
+        /** PBKDF2-HMAC-SHA256 iteration count. 100k keeps on-device unlock
+         *  under ~300ms on a low-end device while making offline brute-force
+         *  of the <=8-digit space cost GPU-hours instead of seconds. */
+        const val PBKDF2_ITERATIONS = 100_000
+
+        /** Escalating lockout (ms) applied at failures 3, 4, 5, 6 — PERSISTED,
+         *  so rotating the screen or restarting the app does NOT reset it. */
+        val PIN_LOCKOUT_STEPS_MS = longArrayOf(30_000L, 120_000L, 600_000L, 3_600_000L)
+
+        /** Failures before the lock disables itself (deliberate anti-lockout
+         *  valve, unchanged in spirit from the original design — but it now
+         *  comes only AFTER the escalating lockouts above have run). */
+        const val PIN_MAX_FAILURES = 7
     }
 }

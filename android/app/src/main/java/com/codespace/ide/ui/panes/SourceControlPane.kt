@@ -98,6 +98,9 @@ fun SourceControlPane(
     var repoState by remember { mutableStateOf<ScmRepoState?>(null) }
     var operation by remember { mutableStateOf<ScmOperation>(ScmOperation.Idle) }
     var commitMessage by remember { mutableStateOf("") }
+    // SG01 (P4f): smart-commit confirmation — Commit now commits STAGED files
+    // only; sweeping every change requires this explicit ask (VS Code semantics).
+    var showSmartCommitConfirm by remember { mutableStateOf(false) }
     var showBranchDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var showMergeDialog by remember { mutableStateOf(false) }
@@ -406,19 +409,67 @@ fun SourceControlPane(
             },
             onCommit = {
                 if (commitMessage.isNotBlank()) {
-                    scope.launch {
-                        operation = ScmOperation.Committing(commitMessage)
-                        val (ok, msg) = scmState.stageAllAndCommit(hostPath, commitMessage)
-                        snackbarMsg = msg
-                        operation = if (ok) ScmOperation.Idle else ScmOperation.Error(GitError.Unknown(msg))
-                        if (ok) {
-                            commitMessage = ""
-                            refresh()
+                    val st = repoState
+                    if (st != null && st.staged.isNotEmpty()) {
+                        // SG01 (P4f): SCOPED commit — commits exactly what the
+                        // per-file stage/unstage UI shows. The old path always
+                        // called stageAllAndCommit, so every commit silently
+                        // swept ALL modified+untracked files into history
+                        // regardless of what the user staged.
+                        scope.launch {
+                            operation = ScmOperation.Committing(commitMessage)
+                            val (ok, msg) = scmState.commit(hostPath, commitMessage)
+                            snackbarMsg = msg
+                            operation = if (ok) ScmOperation.Idle else ScmOperation.Error(GitError.Unknown(msg))
+                            if (ok) {
+                                commitMessage = ""
+                                refresh()
+                            }
                         }
+                    } else if (st != null && (st.unstaged.isNotEmpty() || st.untracked.isNotEmpty())) {
+                        // Nothing staged but changes exist — ASK before sweeping
+                        // (VS Code asks before smart-committing; never silently).
+                        showSmartCommitConfirm = true
+                    } else {
+                        snackbarMsg = "Nothing to commit — no staged changes"
                     }
                 }
             },
         )
+
+        // SG01 (P4f): smart-commit ask — shown when Commit is pressed with NO
+        // staged files but pending changes. Replaces the silent stage-all sweep.
+        if (showSmartCommitConfirm && repoState != null) {
+            val pendingCount = repoState.unstaged.size + repoState.untracked.size
+            AlertDialog(
+                onDismissRequest = { showSmartCommitConfirm = false },
+                title = { Text("Stage all and commit?", fontSize = 14.sp) },
+                text = {
+                    Text(
+                        "No files are staged. Stage all $pendingCount pending file(s) and commit them?",
+                        fontSize = 12.sp,
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showSmartCommitConfirm = false
+                        scope.launch {
+                            operation = ScmOperation.Committing(commitMessage)
+                            val (ok, msg) = scmState.stageAllAndCommit(hostPath, commitMessage)
+                            snackbarMsg = msg
+                            operation = if (ok) ScmOperation.Idle else ScmOperation.Error(GitError.Unknown(msg))
+                            if (ok) {
+                                commitMessage = ""
+                                refresh()
+                            }
+                        }
+                    }) { Text("Stage All & Commit", fontSize = 12.sp) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSmartCommitConfirm = false }) { Text("Cancel", fontSize = 12.sp) }
+                },
+            )
+        }
 
         HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
 
@@ -957,7 +1008,7 @@ private fun CommitInputSection(
             contentPadding = PaddingValues(vertical = 6.dp),
         ) {
             Text(
-                if (stagedCount > 0) "Commit ($stagedCount staged)" else "Stage All & Commit",
+                if (stagedCount > 0) "Commit ($stagedCount staged)" else "Commit",
                 fontSize = 11.sp,
             )
         }
@@ -1860,6 +1911,17 @@ private fun PublishDialog(
                     )
                     Text("Private repo", fontSize = 12.sp, color = TextColor)
                 }
+                // SG01 (P4f): publish keeps VS Code "Publish Branch" semantics —
+                // the initial commit stages ALL pending files. Shown here so it
+                // is a stated action, not a silent sweep. Stage/unstage-scoped
+                // commits happen in the main Commit flow; if you need something
+                // excluded from the initial public commit, stage/commit it
+                // (or discard) BEFORE publishing.
+                Text(
+                    "Publish stages ALL pending file(s) as the initial commit.",
+                    fontSize = 10.sp,
+                    color = MutedColor,
+                )
                 if (publishing) {
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {

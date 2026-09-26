@@ -59,11 +59,16 @@ fun PinLockScreen(
     var pinInput by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
-    var attemptsLeft by remember { mutableStateOf(3) }
+    // SK04 (P4f): failure count + lockout are PERSISTED in SecureTokenStore —
+    // the old remember { mutableStateOf(3) } reset on rotation, giving an
+    // attacker unlimited tries by rotating the screen.
+    var attemptsMade by remember { mutableStateOf(tokenStore.pinFailureCount()) }
+    var lockoutRemainingMs by remember { mutableStateOf(tokenStore.pinLockoutRemainingMs()) }
     var showPin by remember { mutableStateOf(false) }
     var biometricTried by remember { mutableStateOf(false) }
 
     // Check if biometric is available on this device
+    PinLockoutTicker(tokenStore, lockoutRemainingMs) { remaining -> lockoutRemainingMs = remaining }
     val biometricManager = remember { BiometricManager.from(context) }
     val biometricAvailable = remember {
         biometricManager.canAuthenticate(
@@ -151,27 +156,41 @@ fun PinLockScreen(
                         showError = true
                         return@Button
                     }
+                    // SK04 (P4f): lockout gate — attempts are persisted and the
+                    // window is enforced even across restarts; the count display
+                    // and gate both read the SAME store, so they cannot diverge.
+                    val lock = tokenStore.pinLockoutRemainingMs()
+                    if (lock > 0) {
+                        lockoutRemainingMs = lock
+                        errorMessage = "Too many attempts — try again in ${lock / 1000}s"
+                        showError = true
+                        return@Button
+                    }
                     if (tokenStore.verifyPin(pinInput)) {
                         onUnlocked()
                     } else {
-                        attemptsLeft--
-                        if (attemptsLeft <= 0) {
+                        attemptsMade = tokenStore.pinFailureCount()
+                        lockoutRemainingMs = tokenStore.pinLockoutRemainingMs()
+                        if (attemptsMade >= tokenStore.maxPinAttempts) {
                             errorMessage = "Too many wrong attempts. PIN lock disabled."
                             showError = true
                             // Don't permanently lock the user out — disable the lock
                             tokenStore.biometricLockEnabled = false
+                            tokenStore.clearPin()
                             // Auto-unlock after a brief delay
                             onUnlocked()
                         } else {
-                            errorMessage = "Wrong PIN. $attemptsLeft attempt(s) left."
+                            val left = tokenStore.maxPinAttempts - attemptsMade
+                            errorMessage = "Wrong PIN. $left attempt(s) left."
                             showError = true
                             pinInput = ""
                         }
                     }
                 },
+                enabled = lockoutRemainingMs == 0L,
                 modifier = Modifier.width(200.dp),
             ) {
-                Text("Unlock")
+                Text(if (lockoutRemainingMs > 0) "Locked (${lockoutRemainingMs / 1000}s)" else "Unlock")
             }
 
             if (biometricAvailable) {
@@ -334,4 +353,28 @@ private fun showBiometricPrompt(
         .build()
 
     prompt.authenticate(promptInfo)
+}
+
+
+/**
+ * SK04 (P4f): extracted (64KB rule) — counts the persisted lockout window down
+ * live while one is active. Event-driven, not a poll: the effect only runs
+ * while a window is open (keyed on remainingMs > 0) and stops at zero.
+ */
+@Composable
+private fun PinLockoutTicker(
+    tokenStore: SecureTokenStore,
+    remainingMs: Long,
+    onRemaining: (Long) -> Unit,
+) {
+    LaunchedEffect(remainingMs > 0L) {
+        if (remainingMs > 0L) {
+            while (true) {
+                kotlinx.coroutines.delay(1000L)
+                val r = tokenStore.pinLockoutRemainingMs()
+                onRemaining(r)
+                if (r == 0L) break
+            }
+        }
+    }
 }

@@ -227,6 +227,19 @@ object AxmlDecoder {
         buf.int // stylesStart, unused
 
         val isUtf8 = (flags and (1 shl 8)) != 0
+        // VG03 (P4f): BOTH counts come from file bytes and fed the allocation
+        // sizes directly — a malformed APK with a huge stringCount caused
+        // OutOfMemoryError (an Error, so the per-chunk Exception catch never
+        // fired) = hard crash. Bounds-validate against the REAL buffer BEFORE
+        // allocating: each offset is 4 bytes, so the counts can never exceed
+        // remaining/4 in a well-formed pool.
+        val offsetsRemaining = buf.limit() - buf.position()
+        if (stringCount < 0 || stringCount.toLong() * 4L > offsetsRemaining) {
+            throw IllegalArgumentException("string pool count out of bounds: $stringCount")
+        }
+        if (styleCount < 0 || styleCount.toLong() * 4L > offsetsRemaining - stringCount.toLong() * 4L) {
+            throw IllegalArgumentException("style pool count out of bounds: $styleCount")
+        }
         val offsets = IntArray(stringCount) { buf.int }
         repeat(styleCount) { buf.int } // skip style offsets, we don't render styled spans
 
@@ -257,6 +270,11 @@ object AxmlDecoder {
         }
         readLen() // char length, unused
         val byteLen = readLen()
+        // VG03 (P4f): validate against the buffer before allocating — never
+        // trust a file-controlled length.
+        if (byteLen < 0 || byteLen > buf.limit() - pos) {
+            throw IllegalArgumentException("utf8 string length out of bounds: $byteLen")
+        }
         val bytes = ByteArray(byteLen)
         for (i in 0 until byteLen) bytes[i] = buf.get(p + i)
         return String(bytes, Charsets.UTF_8)
@@ -272,6 +290,12 @@ object AxmlDecoder {
             } else u0
         }
         val len = readLen()
+        // VG03 (P4f): the 2-byte varint form can encode ~2.1 BILLION — a
+        // malformed APK used that directly as CharArray(len) = OutOfMemoryError
+        // = hard crash opening the file. Validate BEFORE allocating.
+        if (len < 0 || len.toLong() * 2L > buf.limit() - pos) {
+            throw IllegalArgumentException("utf16 string length out of bounds: $len")
+        }
         val chars = CharArray(len)
         for (i in 0 until len) { chars[i] = buf.getShort(p).toInt().toChar(); p += 2 }
         return String(chars)

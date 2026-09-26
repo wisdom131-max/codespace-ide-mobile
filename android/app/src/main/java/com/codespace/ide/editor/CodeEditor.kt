@@ -761,20 +761,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     // where the problem is after the bottom panel closes. Auto-clears after 2.5s.
     var highlightTargetLine by remember { mutableStateOf(0) }
     var highlightBlinkStart by remember { mutableStateOf(0L) }
-    var blinkTick by remember { mutableStateOf(0) }
     val coroutineScope = rememberCoroutineScope()
     // DEBUG: Visual indicator for Go to Line and Multi-cursor
     var debugJumpMsg by remember { mutableStateOf("") }
     var debugDoubleTapMsg by remember { mutableStateOf("") }
-    // Blink animation: tick every 150ms while highlight is active
-    LaunchedEffect(highlightBlinkStart) {
-        if (highlightBlinkStart > 0) {
-            while (System.currentTimeMillis() - highlightBlinkStart < 6000) {
-                blinkTick++
-                kotlinx.coroutines.delay(150)
-            }
-        }
-    }
+    // PG01 (P4f): the 150ms blinkTick state + loop were DELETED from here —
+    // they recomposed this ENTIRE editor scope ~7Hz for up to 6s per jump.
+    // The tick now lives inside the extracted EditorHighlightBlinkBand, which
+    // recomposes only the two Boxes it draws. Auto-dismiss (5s) and jump-time
+    // writers below are once-per-jump writes and stay (bounded, not churn).
     // GOLDBAND-AUTO-DISMISS (2026-09-12, user request): the gold highlight band
     // clears itself 5s after appearing instead of lingering at low alpha forever.
     LaunchedEffect(highlightTargetLine, highlightBlinkStart) {
@@ -3385,45 +3380,23 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     .zIndex(2.5f),
             )
         }
-        // BLINKING highlight on the target line — blinks for 6s then fades
+        // BLINKING highlight on the target line — blinks for 6s then fades.
+        // PG01 (P4f): extracted to EditorHighlightBlink.kt — the 150ms blink tick
+        // recomposes ONLY the band now, not this entire editor scope.
         if (highlightTargetLine > 0) {
-            // Read blinkTick to trigger recomposition for blink animation
-            @Suppress("UNUSED_VARIABLE") val tick = blinkTick
-            val lineHeightPxHl = lineHeightDp.value
-            val gutterDpHl = GUTTER_WIDTH
-            val scrollOffsetPxHl = vScrollDp
             val layoutHl = textLayoutResult
             val visualLineHl = visualLineMapper.docToVisualLine(highlightTargetLine - 1)
             val topDpHl = if (layoutHl != null && visualLineHl >= 0 && visualLineHl < layoutHl.lineCount) {
                 ((layoutHl.getLineTop(visualLineHl) - vScroll.value + (if (stickyPadActive) stickyPadPx else 0f)).coerceAtLeast(0f)) / androidx.compose.ui.platform.LocalDensity.current.density
             } else {
-                ((highlightTargetLine - 1) * lineHeightPxHl - scrollOffsetPxHl + (if (stickyPadActive) stickyPadPx else 0f)).coerceAtLeast(0f)
+                ((highlightTargetLine - 1) * lineHeightDp.value - vScrollDp + (if (stickyPadActive) stickyPadPx else 0f)).coerceAtLeast(0f)
             }
-            // Compute blink alpha from elapsed time
-            val blinkElapsed = if (highlightBlinkStart > 0) (System.currentTimeMillis() - highlightBlinkStart) / 1000f else 0f
-            val isBlinking = blinkElapsed < 6f
-            val phase = (blinkElapsed * 1000f) % 600f / 600f
-            val blinkAlpha = if (isBlinking) {
-                if (phase < 0.5f) 0.45f - (phase * 2f * 0.35f) else 0.10f + ((phase - 0.5f) * 2f * 0.35f)
-            } else 0.12f
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .fillMaxWidth()
-                    .offset(x = gutterDpHl.dp, y = topDpHl.dp)
-                    .height(lineHeightDp)
-                    .background(Color(0xFFFFD700).copy(alpha = blinkAlpha))
-                    .zIndex(3.5f),
-            )
-            // Thin gold bar on the left edge of the highlighted line
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .offset(x = gutterDpHl.dp, y = topDpHl.dp)
-                    .width(3.dp)
-                    .height(lineHeightDp)
-                    .background(Color(0xFFFFD700).copy(alpha = if (isBlinking) 0.9f else 0.4f))
-                    .zIndex(4.5f),
+            EditorHighlightBlinkBand(
+                highlightTargetLine = highlightTargetLine,
+                highlightBlinkStartMs = highlightBlinkStart,
+                topDp = topDpHl,
+                lineHeight = lineHeightDp,
+                gutterWidthDp = GUTTER_WIDTH,
             )
         }
 
