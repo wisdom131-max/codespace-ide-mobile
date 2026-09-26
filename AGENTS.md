@@ -29,7 +29,7 @@
 
 | Field | Value |
 |---|---|
-| Latest commit | P4a-2 SHIPPED (code dfbccc0 + fixes ee5ff84/8e7c778, CI #2950 GREEN): PR06 per-tool matchers; PR08 honest build rows; PR09 exact-file preset; PR11 deduped off-main lint; PR12 one task catalogue; PR13 durable run state. Tally: 72/249 closed. Next: P4b (proposed: DG group) awaiting owner go |
+| Latest commit | P4b batch 2 SHIPPED (code a806566 + fix d69e358, CI #2956 GREEN; one red #2955 self-fixed): SR05-SR12 search group + G02, G04-G08, G10 editor group + PSS save placebo. Tally: 87/249 closed. Next: P4b continuation (remaining SR/LS/G rows) awaiting owner go |
 | CI build | GREEN: #2862 (5f4ac90, C5 multi-select trash; batch: #2859 fc2dc40 C2 terminal span + C-4 workdir, #2860 9fcc895 C3 line-convention, #2861 e4a9ceb C4 restore-guard — all GREEN; C1 = already-green cbabf03) — was: #2849 (fbf39bd: Timeline layer-1 keyed state; earlier #2847 2f24361 stale-state audit F1/F2/F3, #2845 2bc8d7f CW7 dotfile fix, #2844 bbd6567 BUG-A/MK/Mistral) — was: #2835 (e123490, CW7 COMPLETE: p1 snippet packs + p2 language-config; earlier #2832: CW3 + CW5). APK artifact: codespace-ide-arm64-v8a | (1ce9f1d, CHEAP-WINS BATCH: CW3 conditional breakpoints + CW5 explorer problem badges + CW7p1 snippet packs; 64KB gutter extraction after #2826-#2831 red). APK artifact: codespace-ide-arm64-v8a |
 | On-device verified | #2700: squiggle PASS, band PASS, PAT Railway/Render PASS, ANR PASS, terminal tap PASS, OAuth flow opens/consents (row-flip bug found -> fixed in d01f288) |
 | Backend | Render LIVE + recovered 2026-09-07 (Supabase restored, schema created, keep-alive daily) |
@@ -60,6 +60,52 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 ---
 
 ## CHANGE LOG
+
+### [2026-09-26 10:40 WAT] — AI Agent: Claude Sonnet 5.6, P4b batch 2 (Search group + Editor G-series), Commits a806566+d69e358, CI #2956 GREEN
+
+**[P4b batch 2 SHIPPED, CI #2956 GREEN, code a806566 + fix d69e358 — one red, #2955, self-caught from CI logs, both errors the documented pitfall classes] Search-surface honesty fixes + the editor-architecture G-series. Revertable as a806566+d69e358.**
+
+**Closed:** SR05, SR06, SR07, SR08, SR09, SR10, SR11, SR12, G02, G04, G05, G06, G07, G08, G10 (15 rows). Tally: 87/249.
+**Files:** ProjectShellScreen.kt, SymbolSearchPanel.kt, ProjectFileSearchPanel.kt, ExplorerPane.kt, EditorPane.kt, CodeEditor.kt, EditorFindState.kt, EditorViewStateEffects.kt, EditorDecorations.kt, PendingChangesStore.kt, TimelinePanel.kt, LspManager.kt, LspDocumentSync.kt, JsonRpcClient.kt, SearchResultsAttach.kt, undo/SharedFileUndo.kt (new)
+
+#### What shipped (code a806566)
+
+- **SR05:** workspace-symbol overlay carries the line through the shell navigation seam (was dropped — file opened, viewport never moved).
+- **SR06/SR07/SR11 (SymbolSearchPanel):** LSP readiness signal-driven (no stale remember-by-language); fallback re-keys on indexer completion so the same query re-runs; workspace-symbol path decoding no longer URLDecodes a literal `+` into a space.
+- **SR08:** the existing-but-never-started FileIndexer incremental watcher now starts at project open.
+- **SR09:** palette state flipped BEFORE navigation so >Go to File keeps the palette open; the shadowing save arm (unreachable code) removed and >Save File routes to the REAL Save handler.
+- **SR10:** modal search 5000-file indexed walk moved off the UI thread (palette scan moved in a prior commit).
+- **SR12:** scope notes + aligned exclusion sets across sidebar, modal/palette and chat-attached search.
+- **G02 (restored-path refresh channel):** checkpoint undo recorded only FAILED pairs (retry-shaped) and external restores ticked with no path at all — successfully restored files never refreshed open tabs. New restoredTick/restoredPaths channel: both restore paths (chat checkpoint undo + TimelinePanel/ExplorerPane .versionhistory) record their paths; open tabs refresh with disk content.
+- **G04:** resolved by construction since PLAN A (P3b per-file store) + LS06 killed the basename fallback; the remaining work was documenting the per-view vs per-file decoration contract in EditorDecorations.kt (per-view = folds/tokens/visual mapping by design; per-file = squiggles/bookmarks/highlight).
+- **G05 (line-convention audit):** the scrollTargetLine seam is 1-BASED; DAP call-stack frames and breakpoint rows wrote 0-BASED lines raw (taps landed one line early) — both convert at the seam now. TodoExplorer dropped its line entirely — routed through onJumpToSourceWithPath. Verified the base of every remaining writer (Problems/Output/build rows +1 at source; Todo/DeadCode/Complexity/Duplicate items 1-based; nav back/forward stores seam values).
+- **G06:** new undo/SharedFileUndo.kt — SnapshotUndoManager keyed by canonical path, every CodeEditor on one file resolves the SAME manager (VS Code per-model undo semantics across split views); untitled buffers keep a view-local stack. No cross-session persistence (documented out of scope).
+- **G07:** FileCache explicitly invalidated at all three disk-write seams — chat Apply (both apply paths), checkpoint restore, external snapshot restore (lastModified-second rename could previously serve PRE-write content to non-editor readers).
+- **G08:** EditorFindState gains per-file entries (prefs keyed field@canonicalKey); CodeEditor seeds find query/toggles per currentFilePath and re-seeds on tab switch; the global slot remains as untitled default + last-used seed.
+- **G10:** File>Save announces NOTHING up front — the instant "File saved ✓" lie removed; the EditorPane typed save reports honestly (error notification on a failed disk write, dirty clears only on verified persistence).
+
+#### CI (#2955 red, #2956 GREEN)
+- #2955 red, self-caught from downloadable logs: (1) `startServerLocked` projectId widened to String? (the public startServer default is nullable). (2) ExplorerPane SR01 when-branch lambdas: the expected function type does NOT propagate into if/else branches of lambdas, and a `{` on the line after the Regex constructor parsed as a TRAILING-LAMBDA argument. Fix: every lambda assigned to an explicitly-typed local val first; the local is the branch value. New pitfall class logged.
+- #2956 GREEN on d69e358. APK artifact: codespace-ide-arm64-v8a.
+
+#### P5 device checks (owner, add to the round)
+- **SR05/SR11:** symbol search (Ctrl+T style panel) — tap a workspace symbol: the file opens AND jumps to the symbol line; a symbol with `+` in its path resolves to the right file.
+- **SR07:** search a symbol while the indexer is still warming; when indexing completes the results populate WITHOUT retyping the query.
+- **SR09:** command palette > Go to File — palette stays open; Edit-menu > Save File actually saves (dirty dot clears, content on disk changes).
+- **G02:** with a file open in a tab, Apply a chat change, then chat panel Undo last Apply — the tab visibly reverts (no stale buffer). Same check via a .versionhistory snapshot restore (TimelinePanel AND Explorer history dialog).
+- **G05:** while paused at a breakpoint, tap a DIFFERENT stack frame — jump lands ON the frame's line (not one early). Tap a breakpoint row — same. Tap a TODO row — the file opens AND jumps to the TODO line.
+- **G06:** split the editor on one file, type in view A, tap undo in view B — A's edit steps back (shared history); undo behaves identically from either view.
+- **G07:** Apply a chat change to file X, then view X through an Explorer preview — content is post-apply, never pre-apply.
+- **G08:** search "foo" in file A, close the bar, switch to file B, reopen find — B shows ITS last query (or empty), not A's.
+- **G10:** with a read-only/unwritable file open, File > Save shows an ERROR notification and the dirty marker stays (no false success).
+
+#### Roadmap (all pending items)
+- **P4b continuation:** remaining SR (SR01-SR04), LS and G rows; next group proposal awaiting owner go.
+- **P4:** 162 of 249 rows remain after this batch.
+- **P5:** full device verification round (P2a-e, P3a-e, F1-F5, P4a-1/2, P4b DG checks, this batch's checks).
+- **Backlog owner decisions:** F6 JVM debug; MK re-test after MK restructure; stdio-vs-TCP AgentApiServer; F01/F02/F09 feature decisions.
+
+---
 
 ### [2026-09-26 09:40 WAT] — AI Agent: Claude Sonnet 5.6, P4b DG group (Debug), Commits dd5c975+d21b4ca, CI #2953 GREEN
 **Closed:** DG01, DG03, DG05, DG06, DG07, DG09, DG10, DG12, DG13, DG14 (10 of 10 rows in the MASTER-GAPS DG group).
