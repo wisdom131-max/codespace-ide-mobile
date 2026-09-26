@@ -888,6 +888,7 @@ internal fun TerminalPane(
         TerminalService.start(ctx, "Setting up Ubuntu...")
         ProotInstaller.installingTabId = id
         Thread {
+            var installFailed = false
             try {
                 // Ensure Termux proot binaries are extracted from assets
                 writeToDisplay(progressSession, "[Ubuntu] Preparing proot runtime...\r\n")
@@ -985,10 +986,20 @@ internal fun TerminalPane(
                     android.util.Log.d("TerminalPane", "EXIT9-MEM-DIAG failed: ${e.message}")
                 }
                 writeToDisplay(progressSession, "[Ubuntu] Launching proot...\r\n\r\n")
+            } catch (e: Exception) {
+                // TP04 (P4e): install() now fails HONESTLY (checksum mismatch, zero files
+                // written, unresolved symlink census) instead of marking a broken rootfs
+                // as installed — this catch is the user-visible surface for that verdict.
+                // The thread previously had NO catch at all: any thrown failure died
+                // silently on the thread and the progress tab just sat there.
+                installFailed = true
+                writeToDisplay(progressSession, "\r\n[Ubuntu] \u2717 Installation FAILED: ${e.message}\r\n[Ubuntu] The rootfs was NOT marked installed — re-open the Ubuntu tab to retry.\r\n\r\n")
+                TerminalService.updateProgress(ctx, "Ubuntu setup failed")
+                android.util.Log.e("TerminalPane", "Ubuntu install failed", e)
             } finally {
                 // Do NOT stop TerminalService here — it must stay alive for the proot session.
                 // TerminalService is stopped only when TerminalPane is disposed (all tabs closed).
-                TerminalService.updateProgress(ctx, "Ubuntu terminal active")
+                if (!installFailed) TerminalService.updateProgress(ctx, "Ubuntu terminal active")
             }
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 // Replace the progress tab with real Ubuntu proot session

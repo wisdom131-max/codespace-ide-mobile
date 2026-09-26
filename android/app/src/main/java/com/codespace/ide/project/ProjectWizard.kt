@@ -334,9 +334,23 @@ fun ProjectWizardDialog(
 
                     Spacer(Modifier.height(12.dp))
 
+                    // OG01 (P4e): adoption path — visible exactly in the case that
+                    // used to be a dead end (existing non-empty folder).
+                    val showAdopt = remember(name, currentDir) {
+                        isNonEmptyExistingFolder(currentDir, name)
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = { step = 2; createError = "" }) { Text("Back") }
                         Spacer(Modifier.width(8.dp))
+                        if (showAdopt) {
+                            OutlinedButton(
+                                onClick = {
+                                    adoptExistingFolder(currentDir, name, onProjectCreated)
+                                },
+                                enabled = !creating,
+                            ) { Text("Register Existing Folder") }
+                            Spacer(Modifier.width(8.dp))
+                        }
                         Button(
                             onClick = {
                                 // OG04 (P2a): reject "."/".." here too — this button
@@ -348,7 +362,10 @@ fun ProjectWizardDialog(
                                 val parentDir = currentDir
                                 val targetDir = File(parentDir, name)
                                 if (targetDir.exists() && targetDir.listFiles()?.isNotEmpty() == true) {
-                                    createError = "Folder already exists and is not empty"
+                                    // OG01 (P4e): honest error — and the Register
+                                    // Existing Folder button (shown below) now offers
+                                    // adoption instead of a dead end.
+                                    createError = "Folder already exists and is not empty — register it instead?"
                                     return@Button
                                 }
                                 creating = true
@@ -466,4 +483,38 @@ private fun StepDot(active: Boolean, done: Boolean, label: String) {
         }
         Text(label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+// ── OG01 (P4e): "add existing folder" re-registration path ─────────────────────
+// The audit found NO import-existing entry point anywhere: the wizard blocked
+// re-registration with "Directory already exists and is not empty", so a project
+// whose cloud index entry was lost (or whose folder survived on disk after an
+// index wipe) was effectively unreachable through normal UI — the files were
+// intact but could never be opened again. These helpers power the Register
+// Existing Folder button shown exactly in that blocked case.
+
+private fun isNonEmptyExistingFolder(parentDir: File, name: String): Boolean {
+    if (name.isBlank() || name == "." || name == "..") return false
+    val d = File(parentDir, name)
+    return d.exists() && d.listFiles()?.isNotEmpty() == true
+}
+
+/** Registers an ALREADY-EXISTING folder as a project — no scaffolding, no
+ *  overwrite; the wizard's own onProjectCreated callback then adds it to the
+ *  local index, persists it, pushes it to the cloud, and opens it. */
+private fun adoptExistingFolder(
+    parentDir: File,
+    name: String,
+    onProjectCreated: (Project, File) -> Unit,
+) {
+    val targetDir = File(parentDir, name)
+    // LOCAL kind on purpose: pathOrUrl already points at an existing local
+    // folder, and a GIT kind can trigger clone-flows elsewhere for pathOrUrl.
+    val project = Project(
+        id = System.currentTimeMillis().toString(),
+        name = name,
+        kind = ProjectKind.LOCAL,
+        pathOrUrl = targetDir.absolutePath,
+    )
+    onProjectCreated(project, targetDir)
 }

@@ -213,7 +213,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
      * crash we can't otherwise see (no ADB/logcat access to this device).
      */
     private fun reportCrashOverNetwork(threadName: String, stamp: String, stackTrace: String) {
-        val url = URL("https://superagent-4a7af576.base44.app/functions/reportCrash")
+        val url = URL(CRASH_SINK_URL)
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.doOutput = true
@@ -252,8 +252,16 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         }
 
         OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
-        conn.responseCode // triggers the request; we don't care about the response body
+        // RG01 (P4e): the response used to be read and IGNORED -- a dead endpoint
+        // 404'd silently while the pipeline claimed to be working. The crash-time
+        // POST stays best-effort (it races process death by design; the RELIABLE
+        // path is MainActivity's next-launch retry of the persisted local file),
+        // but a failure is now at least RECORDED instead of vanishing.
+        val code = conn.responseCode
         conn.disconnect()
+        if (code !in 200..299) {
+            Log.e("CodeSpaceApp", "reportCrash POST failed with HTTP $code (best-effort; MainActivity will retry the persisted local file)")
+        }
     }
 
 }

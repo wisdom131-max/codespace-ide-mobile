@@ -89,9 +89,33 @@ object ProjectPathResolver {
             // If pathOrUrl is explicitly blank (e.g. Empty Project), return null.
             if (pathOrUrl != null && pathOrUrl.isBlank()) return null
 
-            // 3. Legacy fallback: filesDir/projects/$projectId
-            // Only reached when pathOrUrl key is missing entirely (old project).
-            return File(context.filesDir, "projects/$projectId").absolutePath
+            // 3. Legacy fallback: filesDir/projects/$projectId — BUT wizard-created
+            //    projects put their folder at filesDir/projects/<NAME> (see the
+            //    wizard scaffold and HomeScreen's trash-move), while this fallback
+            //    resolved by ID ONLY, so the session-restore fallback chain missed
+            //    every wizard-created project whose pathOrUrl metadata was absent.
+            //    OG01 (P4e): try the ID path first, then a NAME-keyed lookup from
+            //    the local project index. Both must EXIST on disk to win.
+            val byId = File(context.filesDir, "projects/$projectId")
+            if (byId.exists()) return byId.absolutePath
+            try {
+                val raw = context.getSharedPreferences("projects", Context.MODE_PRIVATE)
+                    .getString("list", null)
+                if (raw != null) {
+                    val arr = org.json.JSONArray(raw)
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        if (obj.optString("id") == projectId) {
+                            val byName = File(context.filesDir, "projects/" + obj.optString("name"))
+                            if (byName.exists()) return byName.absolutePath
+                            break
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "Legacy NAME fallback lookup failed for projectId=$projectId: ${e.message}")
+            }
+            return byId.absolutePath
         } catch (e: Exception) {
             android.util.Log.e(TAG, "resolveProjectRoot threw for projectId=$projectId", e)
             return null

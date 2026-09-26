@@ -54,6 +54,15 @@ import java.util.Locale
 import javax.inject.Inject
 
 @AndroidEntryPoint
+/**
+ * RG01 (P4e): the ONE crash-report sink URL -- the deployed reportCrash backend
+ * function on the current Superagent. BOTH call sites use it (the crash-time
+ * best-effort POST in CodeSpaceApplication and this activity's next-launch
+ * retry of the persisted local file). The previous pinning to a dead instance
+ * (superagent-4bfc55af) produced ZERO records for months. Verified live 2026-09-26.
+ */
+const val CRASH_SINK_URL = "https://superagent-4a7af576.base44.app/functions/reportCrash"
+
 class MainActivity : FragmentActivity() {
 
     @Inject
@@ -237,9 +246,14 @@ class MainActivity : FragmentActivity() {
     /** Same reportCrash endpoint the JVM crash logger POSTs to -- this is the path that
      *  actually gets a native-signal crash (which has no Java stack trace) to the agent.
      *  BLOCKING by design now (see readLastCrashLog) -- throws on any failure so the
-     *  caller knows NOT to delete the local copy yet. */
+     *  caller knows NOT to delete the local copy yet.
+     *  RG01 (P4e): this was pinned to the PREVIOUS Superagent instance
+     *  (superagent-4bfc55af), which no longer exists -- every next-launch retry 404'd
+     *  silently, the local files were never deleted, and the pipeline produced ZERO
+     *  records for months. Now points at the CURRENT deployed sink (same URL
+     *  CodeSpaceApplication uses), verified live 2026-09-26 with real CrashLog records. */
     private fun uploadCrashLogToAgent(text: String) {
-        val url = URL("https://superagent-4bfc55af.base44.app/functions/reportCrash")
+        val url = URL(CRASH_SINK_URL)
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.doOutput = true

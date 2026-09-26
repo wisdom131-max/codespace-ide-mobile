@@ -52,6 +52,21 @@ private fun saveProjectsLocal(context: Context, projects: List<Project>) {
         .edit().putString("list", arr.toString()).apply()
 }
 
+/**
+ * OG01 (P4e): merge-not-replace. Both sync sites were cloud-authoritative
+ * REPLACE-ALL (projects.clear(); addAll(cloud); saveProjectsLocal(cloud)) —
+ * locally-created-but-unpushed projects were dropped from the list AND the
+ * persisted index on the next successful sync, silently. The cloud stays
+ * authoritative for what it CONTAINS; local-only entries (created while
+ * offline, or whose push failed) are preserved until they land in the cloud.
+ * This also covers the fresh/emptied-cloud-account edge: an empty cloud list
+ * no longer wipes the visible list.
+ */
+private fun mergeCloudProjects(local: List<Project>, cloud: List<Project>): List<Project> {
+    val cloudIds = cloud.map { it.id }.toHashSet()
+    return cloud + local.filter { it.id !in cloudIds }
+}
+
 private fun loadProjectsLocal(context: Context): List<Project> {
     val str = context.getSharedPreferences("projects", Context.MODE_PRIVATE)
         .getString("list", null) ?: return emptyList()
@@ -167,10 +182,17 @@ fun HomeScreen(
             syncStatus = "Syncing projects…"
             val cloud = fetchProjectsFromCloud(accessToken)
             if (cloud != null) {
+                // OG01 (P4e): merge — a successful sync no longer deletes
+                // local-only projects from the list and the persisted index.
+                val merged = mergeCloudProjects(projects.toList(), cloud)
                 projects.clear()
-                projects.addAll(cloud)
-                saveProjectsLocal(context, cloud)
-                syncStatus = "Synced (${cloud.size} project${if (cloud.size == 1) "" else "s"})"
+                projects.addAll(merged)
+                saveProjectsLocal(context, merged)
+                val localOnly = merged.size - cloud.size
+                syncStatus = if (localOnly > 0)
+                    "Synced (${cloud.size} + $localOnly local-only)"
+                else
+                    "Synced (${cloud.size} project${if (cloud.size == 1) "" else "s"})"
             } else {
                 syncStatus = "Offline — showing local projects"
             }
@@ -208,10 +230,14 @@ fun HomeScreen(
                                 syncStatus = "Syncing…"
                                 val cloud = fetchProjectsFromCloud(accessToken)
                                 if (cloud != null) {
+                                    // OG01 (P4e): merge — manual refresh no longer
+                                    // deletes local-only projects either.
+                                    val merged = mergeCloudProjects(projects.toList(), cloud)
                                     projects.clear()
-                                    projects.addAll(cloud)
-                                    saveProjectsLocal(context, cloud)
-                                    syncStatus = "Synced ✓"
+                                    projects.addAll(merged)
+                                    saveProjectsLocal(context, merged)
+                                    val localOnly = merged.size - cloud.size
+                                    syncStatus = if (localOnly > 0) "Synced ✓ (+$localOnly local-only)" else "Synced ✓"
                                 } else {
                                     syncStatus = "Offline"
                                 }

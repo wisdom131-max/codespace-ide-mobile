@@ -38,6 +38,30 @@ object ProotInstaller {
         "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
     const val VERSION = "ubuntu-questing-v4.30.1-r7"  // internal: used by LspManager marker repair
 
+    // TP04 (P4e): pinned-asset integrity. The v4.30.1 release asset is stable, so its
+    // exact size and SHA-256 are recorded here. The download path previously verified
+    // NOTHING: a corrupted resume prefix or a broken byte was extracted anyway, and the
+    // old 250 MB expected-size estimate was itself stale (the real asset is ~58 MB).
+    private const val EXPECTED_ROOTFS_SHA256 =
+        "5ab35b90cd9a9f180656261ba400a135c4c01c2da4b74522118342f985c2d328"
+    private const val EXPECTED_ROOTFS_BYTES = 57_831_960L
+
+    /** TP04 (P4e): a tar symlink entry whose creation had to be deferred to the
+     *  install-end census pass (create failed mid-loop, or the target file was not
+     *  extracted yet — tar does not guarantee a link comes after its target). */
+    private data class PendingSymlink(val outFile: File, val name: String, val linkName: String)
+
+    /** TP04 (P4e): stream-hash a file (~1-2s for the 58 MB tarball). */
+    private fun sha256OfFile(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            var n: Int
+            while (input.read(buf).also { n = it } != -1) digest.update(buf, 0, n)
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
     // XZ memory limit in KiB — caps decoder RAM to 96 MB. Ubuntu .xz needs ~80 MB peak.
     // Without this, XZCompressorInputStream allocates whatever XZ blocks request (up to 800 MB).
     private const val XZ_MEMORY_LIMIT_KIB = 96 * 1024  // 96 MB
@@ -314,7 +338,8 @@ object ProotInstaller {
 
         try {
             val tarXzFile = File(context.cacheDir, "ubuntu.tar.xz")
-            val expectedSize = 250L * 1024 * 1024
+            // TP04 (P4e): the real pinned-asset size — the old 250 MB estimate was a lie.
+            val expectedSize = EXPECTED_ROOTFS_BYTES
             var attempts = 0
             while (attempts < 3) {
                 attempts++
@@ -354,6 +379,25 @@ object ProotInstaller {
                             }
                         }
                     }
+                    // TP04 (P4e): verify the WHOLE file before extracting. This is what
+                    // makes a lying resume honest — existing bytes were trusted blindly,
+                    // so a corrupted prefix was extracted as a "successful" install.
+                    if (tarXzFile.length() != EXPECTED_ROOTFS_BYTES) {
+                        tarXzFile.delete()
+                        if (attempts >= 3) throw IllegalStateException(
+                            "Rootfs download failed integrity check: expected $EXPECTED_ROOTFS_BYTES bytes. The cached file was discarded; retrying the install will re-download.")
+                        onProgress("Rootfs size check failed — discarding download and restarting from scratch...")
+                        continue
+                    }
+                    onProgress("Verifying rootfs checksum...")
+                    val actualSha = sha256OfFile(tarXzFile)
+                    if (actualSha != EXPECTED_ROOTFS_SHA256) {
+                        tarXzFile.delete()
+                        if (attempts >= 3) throw IllegalStateException(
+                            "Rootfs checksum mismatch (got $actualSha). The cached file was discarded; retrying the install will re-download.")
+                        onProgress("Rootfs checksum failed — discarding download and restarting from scratch...")
+                        continue
+                    }
                     break
                 } catch (e: Exception) {
                     if (attempts >= 3) throw e
@@ -373,6 +417,12 @@ object ProotInstaller {
 
             var filesWritten = 0
             var totalBytes   = 0L
+            // TP04 (P4e): symlink census — creation failures were Log.w-skipped with NO
+            // fallback and NO census, so a half-broken rootfs was still marked installed
+            // (version + bash check only). The install-end census pass below fixes that.
+            var symlinksTotal = 0
+            var symlinksCreated = 0
+            val pendingSymlinks = mutableListOf<PendingSymlink>()
             // memoryLimitInKb caps XZ decoder RAM to 96 MB.
             // Without this, XZCompressorInputStream has no limit and can allocate up to
             // ~800 MB on large .xz files, causing OOM kills on devices with 3 GB RAM.
@@ -385,17 +435,28 @@ object ProotInstaller {
                         if (!entry.name.contains("/dev/") || entry.name.endsWith("/dev/")) {
                             val stripped = entry.name.split("/", limit = 2)
                                 .let { if (it.size > 1) it[1] else entry.name }
-                            val outFile = File(rootfs, stripped)
+                            // TP04 (P4e): install-time containment (the TP05/EX05 family
+                            // boundary) — a tar entry can never escape the rootfs.
+                            val outFile = com.codespace.ide.util.CanonicalPaths.safeEntryDestination(rootfs, stripped)
+                            if (outFile == null) {
+                                Log.w(TAG, "Rejected unsafe tar entry: ${entry.name}")
+                                entry = tar.nextEntry
+                                continue
+                            }
                             when {
                                 entry.isDirectory -> outFile.mkdirs()
                                 entry.isSymbolicLink -> {
+                                    symlinksTotal++
+                                    var made = false
                                     runCatching {
                                         val link   = outFile.toPath()
                                         val target = java.nio.file.Paths.get(entry.linkName)
                                         if (java.nio.file.Files.exists(link))
                                             java.nio.file.Files.delete(link)
                                         java.nio.file.Files.createSymbolicLink(link, target)
+                                        made = true
                                     }.onFailure { Log.w(TAG, "Symlink failed ${entry.name}: ${it.message}") }
+                                    if (!made) pendingSymlinks.add(PendingSymlink(outFile, entry.name, entry.linkName))
                                 }
                                 else -> {
                                     outFile.parentFile?.mkdirs()
@@ -428,6 +489,85 @@ object ProotInstaller {
             tarXzFile.delete()
             System.gc() // Free rootfs extraction memory before DNS config
             Thread.sleep(500) // Give GC time to run
+
+            // TP04 (P4e): install-end symlink census + Termux-lesson copy fallbacks.
+            // The recorded device lesson (AGENTS.md: kernels that block
+            // symlinkat()/linkat() at extraction time, SYMLINKS.txt post-pass in
+            // Termux bootstrap) says a failed link must become an explicit file copy,
+            // not a Log.w line. A link whose target is still missing here means the
+            // target itself never extracted — genuine corruption, not a syscall block.
+            var symlinksCopied = 0
+            val symlinksUnresolved = mutableListOf<String>()
+            for (pLink in pendingSymlinks) {
+                // Retry the real symlink once more — tar does not guarantee the target
+                // was extracted before this link entry, so a first-pass failure may
+                // simply have been ordering.
+                var made = false
+                runCatching {
+                    val link = pLink.outFile.toPath()
+                    val target = java.nio.file.Paths.get(pLink.linkName)
+                    if (java.nio.file.Files.exists(link))
+                        java.nio.file.Files.delete(link)
+                    pLink.outFile.parentFile?.mkdirs()
+                    java.nio.file.Files.createSymbolicLink(link, target)
+                    made = true
+                }.onFailure { Log.w(TAG, "Symlink retry failed ${pLink.name}: ${it.message}") }
+                if (made) { symlinksCreated++; continue }
+                // Copy fallback: resolve the target INSIDE the rootfs — absolute guest
+                // path, or relative to the link's parent directory.
+                val targetFile = if (pLink.linkName.startsWith("/"))
+                    File(rootfs, pLink.linkName.removePrefix("/"))
+                else
+                    File(pLink.outFile.parentFile ?: rootfs, pLink.linkName)
+                if (targetFile.isFile || targetFile.isDirectory) {
+                    runCatching {
+                        if (pLink.outFile.exists()) pLink.outFile.delete()
+                        pLink.outFile.parentFile?.mkdirs()
+                        if (targetFile.isFile) {
+                            targetFile.copyTo(pLink.outFile, overwrite = true)
+                            if (targetFile.canExecute() ||
+                                pLink.outFile.path.contains("/bin/") ||
+                                pLink.outFile.path.contains("/sbin/"))
+                                pLink.outFile.setExecutable(true, false)
+                            pLink.outFile.setReadable(true, false)
+                        } else {
+                            targetFile.copyRecursively(pLink.outFile, overwrite = true)
+                        }
+                        symlinksCopied++
+                    }.onFailure {
+                        symlinksUnresolved.add("${pLink.name} -> ${pLink.linkName}")
+                        Log.w(TAG, "Symlink copy-fallback failed ${pLink.name}: ${it.message}")
+                    }
+                } else {
+                    symlinksUnresolved.add("${pLink.name} -> ${pLink.linkName}")
+                    Log.w(TAG, "Symlink target missing for ${pLink.name}: ${pLink.linkName}")
+                }
+            }
+
+            // TP04 (P4e): install-end verdict. An install that cannot produce a working
+            // rootfs must FAIL here — BEFORE the version marker is written — instead of
+            // being marked installed on the strength of a version + bash check.
+            if (filesWritten == 0) throw IllegalStateException(
+                "Rootfs extraction wrote no files — install aborted instead of being marked installed")
+            if (symlinksUnresolved.isNotEmpty()) throw IllegalStateException(
+                "Rootfs extraction left ${symlinksUnresolved.size} unresolved symlink(s); first: ${symlinksUnresolved.first()}. Install aborted instead of being marked installed")
+            onProgress("Rootfs verified: $filesWritten files, $symlinksTotal symlinks ($symlinksCreated created, $symlinksCopied file-copy fallbacks)")
+
+            // TP04 (P4e): diagnostics report next to the version marker — the P5 device
+            // checks for this gap read it after a real install.
+            try {
+                File(context.filesDir, ".ubuntu_install_report").writeText(
+                    "timestamp=" + java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date()) + "\n" +
+                    "version=" + VERSION + "\n" +
+                    "files_written=$filesWritten\n" +
+                    "bytes_written=$totalBytes\n" +
+                    "sha256=" + EXPECTED_ROOTFS_SHA256 + "\n" +
+                    "symlinks_total=$symlinksTotal\n" +
+                    "symlinks_created=$symlinksCreated\n" +
+                    "symlinks_copied=$symlinksCopied\n" +
+                    "symlinks_unresolved=0\n")
+            } catch (_: Throwable) { /* report only — never blocks an install */ }
+
             // Install static busybox into rootfs for dpkg/tar support
             try {
                 val busyboxDest = File(rootfs, "usr/local/bin/busybox")
@@ -446,6 +586,13 @@ object ProotInstaller {
                     if (!link.exists()) {
                         runCatching {
                             java.nio.file.Files.createSymbolicLink(link.toPath(), java.nio.file.Paths.get("/usr/local/bin/busybox"))
+                        }.onFailure {
+                            // TP04 (P4e): explicit copy fallback — the same Termux lesson;
+                            // a blocked link was previously left as a MISSING tool silently.
+                            runCatching {
+                                busyboxDest.copyTo(link, overwrite = true)
+                                link.setExecutable(true, false)
+                            }.onFailure { f -> Log.w(TAG, "Busybox tool '$tool' unavailable: ${f.message}") }
                         }
                     }
                 }
@@ -885,6 +1032,11 @@ object ProotInstaller {
         } catch (e: Exception) {
             Log.e(TAG, "Rootfs install failed: ${e.message}", e)
             onProgress("Failed: ${e.message}")
+            // TP04 (P4e): RE-THROW — callers (TerminalPane's install thread,
+            // LspManager's auto-install) catch and surface this honestly.
+            // Swallowing here made every caller's catch dead code and let a
+            // failed install read as a quiet early return.
+            throw e
         } finally {
             // Release the concurrent-install guard so any thread waiting on installLock
             // (see top of this function) wakes up and re-checks isInstalled().
