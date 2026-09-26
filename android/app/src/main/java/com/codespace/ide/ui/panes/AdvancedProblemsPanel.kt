@@ -256,8 +256,10 @@ fun AdvancedProblemsPanel(
                     "File: " + fileFilter!!.substringAfterLast('/'),
                     fontSize = 10.sp, color = tabTextActive,
                     modifier = Modifier
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                        .background(tabTextActive.copy(alpha = 0.08f))
+                        .background(
+                            tabTextActive.copy(alpha = 0.08f),
+                            androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        )
                         .clickable { fileFilter = null }
                         .padding(horizontal = 8.dp, vertical = 3.dp),
                 )
