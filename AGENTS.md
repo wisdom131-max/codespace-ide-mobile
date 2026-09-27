@@ -61,6 +61,38 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-27 07:15 WAT] — P4r SHIPPED: XG package-manager/MCP group COMPLETE (XG06-XG16, 11 rows, ZERO ledger misses — verify-before-code confirmed XG14 already closed in code by 3126411); tally 236/249, 13 open (9 batchable + XG01-04 PARKED)
+
+**Code:** fa50856 (CI #36295816705 GREEN, first push clean). **Docs:** this push.
+
+**[Why: the package manager could not see its own refreshes, lost its ops on tab switches, deleted git without a word, showed zero MCP tools, and kept a category field no UI ever used.]**
+
+**What was REMOVED/deleted (per row):**
+- **XG06:** the silent `catch {}` around apt-get update — the discarded result. Refresh now rides the SAME typed op strip as installs (visible success/fail/lock-busy per run) and lands in History.
+- **XG09:** the name-substring split that counted ZERO on the real .agent.json (no name keys at all — worse than the ledger claimed). Replaced with a JSON tools-ARRAY parse.
+- **XG11:** the panel-`remember` scope of activeOperation — a side-tab switch dropped the visible strip while the IO kept running. Op state is process-level now; the SAME op reappears on recompose.
+- **XG12:** the prose-missed dpkg lock failure — lock contention is CLASSIFIED with an honest retry hint ("another install holds the lock (e.g. an LSP bootstrap). Retry when it finishes.").
+- **XG13/XG15:** the silent destructive Remove — every Remove now opens a confirm dialog fed by an apt SIMULATION that states how many packages (incl. dependencies) go away; removing git can no longer silently break SCM/LSP/debugger.
+- **XG10:** the Remove-only Installed view — real dpkg versions (name→version from dpkg --list col 3) and a per-package Update path from the apt list --upgradable set replace it.
+- **XG08:** the bare x history mark — failed installs carry the first E:/Err: line into the History entry (shared detail param, also used by XG07's LSP entries).
+- **XG16:** the unused PkgInfo.category — category filter chips (All/db/dev/editor/lang/media/net/search/sys/util/vcs) above the browse list.
+- **XG07:** the invisibility of language-server installs — LspManager.installServer records every install (and failed install, with detail) into the Extensions tab's History.
+- **XG14:** verified ALREADY CLOSED by 3126411 (CW batch): head -40 cap + virtualized LazyColumn — bookkeeping close, no code.
+
+**ROADMAP (continuity — all pending items):** 236/249 closed, 13 open = 9 batchable + XG01-04 PARKED (owner go-decision each, like F6; F6 JVM-debug likewise owner-gated). Remaining batchable rows: OG03 (template name-reuse deleteRecursively), OG05 (fallback stores raw Firebase ID token), OG06 (doc-vs-code "memory only" claim), IM01 (Gemini key as URL query param), IM02 (uncapped Base64.decode→writeBytes), IM03 (hardcoded image model id), EX03 (Cut/Paste clipboard drop on renameTo fail), EX08 (multi-select All duplicates), TB02 (race — needs repeated rapid-action device testing). COMPLETE groups: VG RG TM TG SG TP SK PG IG XG SR TB04-08 CH. Next: OG+IM+EX small sweep (8 rows, one session) or P5 device round P4d-P4r.
+
+### P5 device checks (per gap ID, XG group)
+- **XG06:** tap ⟳ in Extensions — the op strip shows UPDATE-LISTS with live output and a done/failed dot; the run appears in History.
+- **XG07:** trigger an LSP install (open a TS file with the server missing) — a "lsp-install TypeScript" entry lands in Extensions → History; break the install (airplane mode) and the entry shows the error detail.
+- **XG08:** with detail visible in History after any failed op, confirm the E: line is present and the entry is one readable line.
+- **XG09:** open Extensions → MCP/AGENT TOOLS — tool count shows 32 (was 0).
+- **XG10:** Installed tab shows versions per row; hold a package update back (e.g. pin via apt-mark hold) or wait for an upgradable one — an Update button appears next to OK and `apt-get upgrade -y <pkg>` runs via the op strip.
+- **XG11:** start an install, switch to Terminal side-tab mid-run, switch back — the SAME op strip is still there, still live (not reset).
+- **XG12:** trigger two installs at once (LSP bootstrap + an apt op) — the loser shows the BUSY/lock hint, not a bare failure.
+- **XG13/XG15:** tap Remove on git — confirm dialog appears with a package count from the simulation; Cancel does nothing; Remove proceeds only after the explicit tap.
+- **XG14:** search a broad term (e.g. "lib") — results cap at 40 and scroll smoothly.
+- **XG16:** Browse tab with empty search — category chips filter the featured list; "All" resets; typing searches everything (chips no longer filter).
+
 ### [2026-09-27 06:05 WAT] — P4q SHIPPED: IG integrations group COMPLETE (IG07-IG16 minus pre-closed, 9 rows, zero ledger misses — 7 pre-closed rows re-verified live first); file-verified tally 225/249, 24 open (tally correction: P4p was 216/249, recorded 215 — one-row undercount found by the any-format recount)
 
 **Code:** af07ceb (CI #36294732809 GREEN, first push clean). **Docs:** this push.
