@@ -1100,6 +1100,16 @@ object LspManager {
         }
         val installOutput = ProotInstaller.execOnce(context, config.installCommand, timeoutSeconds = config.installTimeout, logToOutput = true)
         AppOutputLog.log("[LSP] Install output for ${language.displayName}: ${installOutput.take(200).trim()}", "lsp")
+        // XG07 (2026-09-27): language-server installs are no longer invisible to the
+        // Extensions/PackageManager tab — every install (or failed install) lands in
+        // the SAME install history as apt operations, with the failure detail (XG08).
+        // NodeSource chains ARE the flagship migration case for onLanguage: activation.
+        val installVerified = isServerInstalled(context, language, resolvedConfig = config)
+        com.codespace.ide.ui.panes.appendHistory(
+            context, "lsp-install", language.displayName, installVerified,
+            if (!installVerified) installOutput.lineSequence().map { it.trim() }
+                .firstOrNull { it.isNotBlank() }?.take(120) else null,
+        )
         // P-NOTIFY: Task completion notification — fire system notification if threshold allows
         notifyTaskComplete(context, "${language.displayName} LSP server installed")
         return installOutput

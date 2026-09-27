@@ -2,6 +2,7 @@ package com.codespace.ide.ui.panes
 
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -105,12 +106,17 @@ private const val PREFS_HISTORY = "pkg_install_history"
 private const val KEY_HISTORY   = "log"
 private const val MAX_HISTORY   = 200
 
-private fun appendHistory(context: Context, action: String, pkg: String, success: Boolean) {
+// internal (XG07, 2026-09-27): LspManager records language-server installs here too —
+// installs are no longer invisible to this tab's History view.
+internal fun appendHistory(context: Context, action: String, pkg: String, success: Boolean, detail: String? = null) {
     val prefs    = context.getSharedPreferences(PREFS_HISTORY, Context.MODE_PRIVATE)
     val existing = prefs.getString(KEY_HISTORY, "") ?: ""
     val stamp    = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
     val mark     = if (success) "+" else "x"
-    val entry    = "[$mark] $action $pkg — $stamp"
+    // XG08 (2026-09-27): a failed install leaves a TRACE — the first error line rides
+    // into the entry instead of the old bare "x" mark with no context once the op
+    // strip closed.
+    val entry    = "[$mark] $action $pkg — $stamp" + (detail?.let { " — $it" } ?: "")
     val lines    = existing.split("\n").filter { it.isNotBlank() }.toMutableList()
     lines.add(0, entry)
     if (lines.size > MAX_HISTORY) lines.subList(MAX_HISTORY, lines.size).clear()
@@ -124,28 +130,53 @@ private fun loadHistory(context: Context): List<String> {
 }
 
 // ─── ExtensionsPanel ─────────────────────────────────────────────────────────
+
+// XG11 (2026-09-27): the op strip used to be panel `remember` state — a side-tab
+// switch dropped the visible strip while the apt IO kept running, so the user lost
+// the progress and the result of an in-flight operation. Process-level state keeps
+// the SAME op visible whenever the panel recomposes.
+private val activeOpState = mutableStateOf<PkgOperation?>(null)
+
 @Composable
 internal fun ExtensionsPanel() {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
 
     var searchQuery     by remember { mutableStateOf("") }
-    var installedPkgs   by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // XG10 (2026-09-27): name -> installed VERSION (dpkg --list col 3) + the
+    // upgradable set (apt list --upgradable) — the Installed view now shows real
+    // versions and a per-package Update path instead of Remove-only.
+    var installedPkgs   by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var upgradablePkgs  by remember { mutableStateOf<Set<String>>(emptySet()) }
     var searchResults   by remember { mutableStateOf<List<PkgInfo>>(FEATURED_PACKAGES) }
-    var activeOperation by remember { mutableStateOf<PkgOperation?>(null) }
+    var activeOperation by activeOpState // XG11: process-level, see declaration above
     var showInstalled   by remember { mutableStateOf(false) }
     var showHistory     by remember { mutableStateOf(false) }
     var installHistory  by remember { mutableStateOf<List<String>>(emptyList()) }
     var isSearching     by remember { mutableStateOf(false) }
+    // XG16: category filter (PkgInfo.category finally used by UI)
+    var selectedCategory by remember { mutableStateOf<String?>(null) }
+    // XG13/XG15: destructive-Remove confirm with a dependency preview
+    var pendingRemove   by remember { mutableStateOf<String?>(null) }
+    var removeInfo      by remember { mutableStateOf<String?>(null) }
+    var removeSimLoading by remember { mutableStateOf(false) }
 
     // ── apt runner ────────────────────────────────────────────────────────────
     // ── load installed via dpkg ───────────────────────────────────────────────
     fun loadInstalled() {
         scope.launch(Dispatchers.IO) {
             try {
-                val out = ProotInstaller.execOnce(context, "dpkg --list 2>/dev/null | awk '/^ii/{print \$2}'")
-                val pkgs = out.lines().filter { it.isNotBlank() }.toSet()
-                withContext(Dispatchers.Main) { installedPkgs = pkgs }
+                // XG10: read name AND version columns; then the upgradable set.
+                val out = ProotInstaller.execOnce(context, "dpkg --list 2>/dev/null | awk '/^ii/{print \$2\" \"\$3}'")
+                val map = out.lines().mapNotNull { l ->
+                    val parts = l.trim().split(' ', limit = 2)
+                    if (parts.size == 2) parts[0] to parts[1].trim() else null
+                }.toMap()
+                val upg = try {
+                    ProotInstaller.execOnce(context, "apt list --upgradable 2>/dev/null | tail -n +2 | cut -d/ -f1", timeoutSeconds = 45L)
+                        .lines().map { it.trim() }.filter { it.isNotBlank() }.toSet()
+                } catch (_: Exception) { emptySet() }
+                withContext(Dispatchers.Main) { installedPkgs = map; upgradablePkgs = upg }
             } catch (_: Exception) {}
         }
     }
@@ -161,6 +192,9 @@ internal fun ExtensionsPanel() {
                     "remove"      -> "apt-get remove -y $pkg 2>&1"
                     "update"      -> "apt-get upgrade -y $pkg 2>&1"
                     "upgrade-all" -> "apt-get upgrade -y 2>&1"
+                    // XG06: package-list refresh rides the SAME typed op strip as
+                    // installs — the user finally sees refresh/skip/fail per run.
+                    "update-lists" -> "apt-get update -y 2>&1"
                     else          -> "apt-get install -y $pkg 2>&1"
                 }
                 val cancelRef = java.util.concurrent.atomic.AtomicReference<Process?>(null)
@@ -180,8 +214,20 @@ internal fun ExtensionsPanel() {
                 if (result.truncated) op.output.add("(output truncated)")
                 if (result.timedOut) op.output.add("Timed out after 120s")
                 op.success = result.succeeded
+                // XG12 (2026-09-27): dpkg lock contention (LspManager bootstrap vs
+                // this tab's ops) is CLASSIFIED, not prose-missed — the retry hint is
+                // honest about WHY the op failed.
+                if (!op.success && (result.stdout.contains("could not get lock", ignoreCase = true) ||
+                        result.stdout.contains("dpkg lock", ignoreCase = true))) {
+                    op.output.add("apt/dpkg is BUSY — another install holds the lock (e.g. an LSP bootstrap). Retry when it finishes.")
+                }
                 op.done    = true
-                appendHistory(context, action, pkg, op.success)
+                // XG08: failure detail rides into the history entry.
+                val failDetail = if (!op.success) result.stdout.lineSequence()
+                    .map { it.trim() }
+                    .firstOrNull { it.startsWith("E:") || it.startsWith("Err:") }
+                    ?.take(120) else null
+                appendHistory(context, action, pkg, op.success, failDetail)
                 // XG05: verify the real dpkg state instead of assuming the op worked.
                 if (op.success && (action == "install" || action == "remove")) loadInstalled()
                 scope.launch(Dispatchers.Main) {
@@ -198,6 +244,32 @@ internal fun ExtensionsPanel() {
 
     // ── upgrade-all ───────────────────────────────────────────────────────────
     fun upgradeAll() { runPkg("(all)", "upgrade-all") }
+
+    // ── XG13/XG15 (2026-09-27): destructive Remove confirm with dependency awareness
+    // apt-get remove used to fire with NO confirm, and a remove of git would silently
+    // break SCM/LSP/debugger flows at next use. The confirm dialog runs an apt
+    // SIMULATION first and states how many packages (incl. dependencies) go away.
+    fun confirmRemove(name: String) {
+        if (activeOperation?.done == false) return
+        if (pendingRemove != null) return
+        removeSimLoading = true; removeInfo = null
+        scope.launch(Dispatchers.IO) {
+            var count = -1
+            try {
+                val out = ProotInstaller.execOnce(context, "apt-get remove -s \"$name\" 2>&1 | grep -c '^Remv'", timeoutSeconds = 20L)
+                count = out.trim().toIntOrNull() ?: -1
+            } catch (_: Exception) {}
+            withContext(Dispatchers.Main) {
+                removeInfo = when {
+                    count > 1  -> "Will remove $count packages (including dependencies)."
+                    count == 1 -> "Removes just this package."
+                    else       -> "Dependency preview unavailable (apt simulation failed)."
+                }
+                removeSimLoading = false
+                pendingRemove = name
+            }
+        }
+    }
 
 
     // ── apt-cache search ──────────────────────────────────────────────────────
@@ -270,15 +342,11 @@ internal fun ExtensionsPanel() {
                 Icon(Icons.Default.SystemUpdate, "Upgrade all",
                     tint = PkgMuted, modifier = Modifier.size(16.dp))
             }
-            // Refresh package lists
+            // Refresh package lists — XG06 (2026-09-27): the result is no longer
+            // discarded into a silent catch; refresh rides the typed op strip, so
+            // refreshed/failed/stale is VISIBLE, and the run lands in History.
             IconButton(
-                onClick = {
-                    scope.launch(Dispatchers.IO) {
-                        try {
-                            ProotInstaller.execOnce(context, "apt-get update -y 2>&1", timeoutSeconds = 60L)
-                        } catch (_: Exception) {}
-                    }
-                },
+                onClick = { runPkg("(package lists)", "update-lists") },
                 modifier = Modifier.size(28.dp),
             ) {
                 Icon(Icons.Default.Refresh, "Update lists",
@@ -319,12 +387,16 @@ internal fun ExtensionsPanel() {
                     }
                 } else {
                     LazyColumn(Modifier.weight(1f)) {
-                        items(installedPkgs.sorted(), key = { it }) { name ->
+                        items(installedPkgs.keys.sorted(), key = { it }) { name ->
                             val isBusy = activeOperation?.packageName == name && activeOperation?.done == false
                             val pkg = FEATURED_PACKAGES.firstOrNull { it.name == name }
                                 ?: PkgInfo(name, "Installed package", "installed")
+                            // XG10: version shown, per-package Update when apt marks
+                            // it upgradable (was Remove-only). XG13/XG15: Remove confirms.
                             PkgRow(pkg, isInstalled = true, isBusy = isBusy,
-                                onInstall = {}, onRemove = { runPkg(name, "remove") })
+                                version = installedPkgs[name],
+                                onUpdate = if (name in upgradablePkgs) { { runPkg(name, "update") } } else null,
+                                onInstall = {}, onRemove = { confirmRemove(name) })
                             HorizontalDivider(color = PkgBorder, thickness = 0.5.dp)
                         }
                     }
@@ -359,14 +431,34 @@ internal fun ExtensionsPanel() {
                     if (isSearching) CircularProgressIndicator(
                         modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = PkgAccent)
                 }
+                // XG16 (2026-09-27): the category filter PkgInfo.category always
+                // implied — chips above the browse list. Search results stay
+                // unfiltered (apt-cache has no category metadata).
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                    TextButton(
+                        onClick = { selectedCategory = null },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                    ) { Text("All", fontSize = 10.sp, color = if (selectedCategory == null) PkgAccent else PkgMuted) }
+                    remember { FEATURED_PACKAGES.map { it.category }.distinct().sorted() }
+                        .forEach { cat ->
+                            TextButton(
+                                onClick = { selectedCategory = if (selectedCategory == cat) null else cat },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                            ) { Text(cat, fontSize = 10.sp, color = if (selectedCategory == cat) PkgAccent else PkgMuted) }
+                        }
+                }
+                val displayResults = if (searchQuery.isBlank() && selectedCategory != null)
+                    searchResults.filter { it.category == selectedCategory } else searchResults
                 LazyColumn(Modifier.weight(1f)) {
-                    items(searchResults, key = { it.name }) { pkg ->
+                    items(displayResults, key = { it.name }) { pkg ->
                         val isInstalled = pkg.name in installedPkgs
                         val isBusy = activeOperation?.packageName == pkg.name &&
                             activeOperation?.done == false
                         PkgRow(pkg, isInstalled, isBusy,
+                            version = installedPkgs[pkg.name],
+                            onUpdate = if (isInstalled && pkg.name in upgradablePkgs) { { runPkg(pkg.name, "update") } } else null,
                             onInstall = { runPkg(pkg.name, "install") },
-                            onRemove  = { runPkg(pkg.name, "remove") })
+                            onRemove  = { confirmRemove(pkg.name) })
                         HorizontalDivider(color = PkgBorder, thickness = 0.5.dp)
                     }
                 }
@@ -430,6 +522,36 @@ internal fun ExtensionsPanel() {
             }
         }
     }
+
+    // ── XG13/XG15 (2026-09-27): destructive-Remove confirm dialog ───────────
+    pendingRemove?.let { name ->
+        AlertDialog(
+            onDismissRequest = { pendingRemove = null },
+            title = { Text("Remove $name?") },
+            text = {
+                Column {
+                    if (removeSimLoading) {
+                        Text("Checking dependencies…")
+                    } else {
+                        Text(removeInfo ?: "")
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Tools that depend on it (source control, LSP, debugger) may stop working at next use.",
+                        fontSize = 11.sp, color = PkgMuted,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { pendingRemove = null; runPkg(name, "remove") }) {
+                    Text("Remove", color = PkgRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemove = null }) { Text("Cancel") }
+            },
+        )
+    }
 }
 
 // ─── Package row ──────────────────────────────────────────────────────────────
@@ -440,6 +562,9 @@ private fun PkgRow(
     isBusy: Boolean,
     onInstall: () -> Unit,
     onRemove: () -> Unit,
+    // XG10: installed version display + per-package update affordance.
+    version: String? = null,
+    onUpdate: (() -> Unit)? = null,
 ) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -450,7 +575,13 @@ private fun PkgRow(
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(pkg.name, fontSize = 13.sp, color = PkgText, fontWeight = FontWeight.Medium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(pkg.name, fontSize = 13.sp, color = PkgText, fontWeight = FontWeight.Medium)
+                if (version != null) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(version, fontSize = 10.sp, color = PkgMuted, fontFamily = FontFamily.Monospace)
+                }
+            }
             Text(pkg.description, fontSize = 11.sp, color = PkgMuted,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -461,6 +592,12 @@ private fun PkgRow(
             isInstalled -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("OK", fontSize = 10.sp, color = PkgGreen, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(4.dp))
+                if (onUpdate != null) {
+                    TextButton(onClick = onUpdate,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+                        Text("Update", fontSize = 11.sp, color = PkgAccent)
+                    }
+                }
                 TextButton(onClick = onRemove,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
                     Text("Remove", fontSize = 11.sp, color = PkgRed)
@@ -505,7 +642,13 @@ internal fun McpPanel() {
                     if (stamp != lastAgentJsonStamp) {
                         lastAgentJsonStamp = stamp
                         if (stamp != 0L)
-                            toolCount = agentJson.readText().split("\"name\"").size - 1
+                            // XG09 (2026-09-27): the count is parsed from the JSON
+                            // tools ARRAY — the old name-substring split returned
+                            // ZERO on the real file (no name keys at all) and would
+                            // have inflated on nested keys.
+                            toolCount = try {
+                                org.json.JSONObject(agentJson.readText()).optJSONArray("tools")?.length() ?: 0
+                            } catch (_: Exception) { 0 }
                     }
                 } catch (_: Exception) {}
                 // bashrc check (stat-gated; stamp 0L = file absent -> not installed)
