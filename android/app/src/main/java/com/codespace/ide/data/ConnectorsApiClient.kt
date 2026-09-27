@@ -1,5 +1,7 @@
 package com.codespace.ide.data
 
+import com.codespace.ide.BuildConfig
+
 import android.content.Context
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -25,7 +27,11 @@ import java.util.concurrent.TimeUnit
  */
 object ConnectorsApiClient {
 
-    const val API_BASE = "https://codespace-ide-backend.onrender.com/api/v1"
+    // IG12 (2026-09-27): single source of truth — the backend URL was hardcoded in
+    // SIX places and the Railway→Render migration already proved that drifts silently.
+    // BuildConfig.API_BASE_URL (per-flavor: dev points at the emulator, prod at Render)
+    // is now the ONLY authority; the other copies were deleted or now derive from it.
+    val API_BASE = BuildConfig.API_BASE_URL
 
     data class ConnectorStatus(
         val id: String,
@@ -124,18 +130,10 @@ object ConnectorsApiClient {
      * Returns the backend's {ok, message} so the Hub can toast real failures
      * instead of silently showing a still-disconnected row.
      */
-    fun completeOAuthCallback(callbackUrl: String): Result<String> = runCatching {
-        val req = Request.Builder().url(callbackUrl).get().build()
-        client.newCall(req).execute().use { resp ->
-            val bodyStr = resp.body?.string().orEmpty()
-            val ok = runCatching { JSONObject(bodyStr).optBoolean("ok", false) }.getOrNull() ?: resp.isSuccessful
-            val msg = runCatching { JSONObject(bodyStr).optString("message") }.getOrNull()
-            if (!ok) error(msg?.takeIf { it.isNotBlank() } ?: "OAuth failed (HTTP ${resp.code}): ${bodyStr.take(300)}")
-            msg ?: "Connected"
-        }
-    }
+    // IG07 (2026-09-27): completeOAuthCallback DELETED — it existed ONLY to deliver
+    // the callback URL the in-app WebView canceled; the external-browser flow delivers
+    // the callback to the backend directly. Zero callers remain.
 
-    /** GET /connectors/{service}/auth-url — mint the provider's OAuth consent URL. */
     fun fetchAuthUrl(accessToken: String, service: String, context: Context? = null): Result<String> = runCatching {
         val req = Request.Builder()
             .url("$API_BASE/connectors/$service/auth-url")

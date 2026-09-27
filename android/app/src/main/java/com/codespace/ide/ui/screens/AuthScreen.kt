@@ -44,7 +44,8 @@ import java.util.concurrent.TimeUnit
 private const val WEB_CLIENT_ID =
     "872673459882-v8qfuree46s2c3rs4lsrq6psf8alads1.apps.googleusercontent.com"
 
-private const val AUTH_API_BASE = "https://codespace-ide-backend.onrender.com/api/v1"
+// IG12: single source of truth — BuildConfig.API_BASE_URL (per-flavor), not a copy.
+private val AUTH_API_BASE = com.codespace.ide.BuildConfig.API_BASE_URL
 private val AUTH_JSON_MEDIA = "application/json".toMediaType()
 private val authHttpClient by lazy {
     OkHttpClient.Builder()

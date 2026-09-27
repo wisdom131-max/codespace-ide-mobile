@@ -27,11 +27,19 @@ object AgentEntityManager {
         val dir = entityDir(entity, context)
             ?: return "Invalid entity name: '$entity' (must be a single name — no paths)"
         val json = JSONObject(data)
-        val id = System.currentTimeMillis().toString()
+        // IG11 (2026-09-27): plain currentTimeMillis ids OVERWRITE each other when two
+        // records are created in the same millisecond — the second create silently
+        // replaces the first. A collision now bumps the id until it is unique.
+        var id = System.currentTimeMillis().toString()
+        var file = File(dir, "$id.json")
+        while (file.exists()) { id = "${id}_${System.nanoTime()}"; file = File(dir, "$id.json") }
         json.put("id", id)
         json.put("created_date", System.currentTimeMillis())
-        val file = File(dir, "$id.json")
-        file.writeText(json.toString(2))
+        // IG16 (2026-09-27): non-atomic writeText DELETED — entity records go through
+        // the shared SK01-family atomic write.
+        if (!com.codespace.ide.util.AtomicJson.write(file, json.toString(2))) {
+            return "Failed to create $entity record (write error — storage full?)"
+        }
         return "Created $entity record: $id\n${json.toString(2).take(2000)}"
     }
 
@@ -68,6 +76,7 @@ object AgentEntityManager {
         val filterJson = JSONObject(filter)
         val updateJson = JSONObject(data)
         var updated = 0
+        var skipped = 0
         for (file in files) {
             try {
                 val record = JSONObject(file.readText())
@@ -78,12 +87,16 @@ object AgentEntityManager {
                 if (matches) {
                     for (key in updateJson.keys()) record.put(key, updateJson.get(key))
                     record.put("updated_date", System.currentTimeMillis())
-                    file.writeText(record.toString(2))
-                    updated++
+                    // IG11: write failures and corrupt records no longer vanish — they
+                    // count as skipped and the caller is told. IG16: atomic write.
+                    if (com.codespace.ide.util.AtomicJson.write(file, record.toString(2))) updated++
+                    else skipped++
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) { skipped++ }
         }
-        return "Updated $updated $entity record(s)."
+        // IG11 (2026-09-27): the loop used to swallow every per-record exception — a
+        // corrupt file was silently skipped and the count under-reported with no signal.
+        return "Updated $updated $entity record(s)." + if (skipped > 0) " Skipped $skipped unreadable/unwritable record(s)." else ""
     }
 
     fun delete(entity: String, filter: String, context: Context): String {

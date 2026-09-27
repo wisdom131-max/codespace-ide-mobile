@@ -87,7 +87,8 @@ private fun loadProjectsLocal(context: Context): List<Project> {
 
 // ── Cloud sync helpers ─────────────────────────────────────────────────────────
 
-private const val API_BASE = "https://codespace-ide-backend.onrender.com/api/v1"
+// IG12: single source of truth — BuildConfig.API_BASE_URL (per-flavor), not a copy.
+private val API_BASE = com.codespace.ide.BuildConfig.API_BASE_URL
 
 private suspend fun fetchProjectsFromCloud(accessToken: String): List<Project>? =
     withContext(Dispatchers.IO) {

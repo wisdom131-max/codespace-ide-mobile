@@ -94,14 +94,14 @@ object ToolchainManager {
     // ── Detectors ─────────────────────────────────────────────────────────────
 
     private suspend fun detectJdk(ctx: Context): ToolStatus {
-        val out = exec(ctx, "java -version 2>&1 | head -1")
+        val out = exec(ctx, "java -version 2>&1 | head -1") ?: return unknown(ToolId.JDK, "JDK")
         return when {
             out.contains("version") -> ToolStatus(
                 id = ToolId.JDK,
                 displayName = "JDK",
                 health = ToolHealth.OK,
                 version = extractQuoted(out) ?: out.trim(),
-                path = exec(ctx, "which java").trim().ifEmpty { null },
+                path = exec(ctx, "which java")?.trim()?.ifEmpty { null },
             )
             out.contains("not found") || out.isBlank() -> ToolStatus(
                 id = ToolId.JDK, displayName = "JDK",
@@ -118,16 +118,16 @@ object ToolchainManager {
     }
 
     private suspend fun detectGradle(ctx: Context): ToolStatus {
-        val out = exec(ctx, "gradle --version 2>&1 | grep '^Gradle' | head -1")
+        val out = exec(ctx, "gradle --version 2>&1 | grep '^Gradle' | head -1") ?: return unknown(ToolId.GRADLE, "Gradle")
         return when {
             out.contains("Gradle") -> ToolStatus(
                 id = ToolId.GRADLE, displayName = "Gradle",
                 health = ToolHealth.OK,
                 version = out.trim().removePrefix("Gradle").trim(),
-                path = exec(ctx, "which gradle").trim().ifEmpty { null },
+                path = exec(ctx, "which gradle")?.trim()?.ifEmpty { null },
             )
             else -> {
-                val which = exec(ctx, "which gradle 2>&1").trim()
+                val which = exec(ctx, "which gradle 2>&1")?.trim() ?: ""
                 if (which.startsWith("/")) {
                     ToolStatus(
                         id = ToolId.GRADLE, displayName = "Gradle",
@@ -148,14 +148,14 @@ object ToolchainManager {
 
     private suspend fun detectAndroidSdk(ctx: Context): ToolStatus {
         // Check ANDROID_HOME or common paths
-        val home = exec(ctx, "echo \$ANDROID_HOME || echo \$ANDROID_SDK_ROOT").trim()
+        val home = exec(ctx, "echo \$ANDROID_HOME || echo \$ANDROID_SDK_ROOT")?.trim() ?: return unknown(ToolId.ANDROID_SDK, "Android SDK")
         val paths = listOf(home, "/opt/android-sdk", "/root/Android/Sdk", "/usr/local/android-sdk")
             .filter { it.isNotBlank() }
 
         for (path in paths) {
-            val exists = exec(ctx, "test -d \"$path\" && echo yes || echo no").trim()
+            val exists = exec(ctx, "test -d \"$path\" && echo yes || echo no")?.trim() ?: return unknown(ToolId.ANDROID_SDK, "Android SDK")
             if (exists == "yes") {
-                val platforms = exec(ctx, "ls \"$path/platforms\" | head -3").trim()
+                val platforms = (exec(ctx, "ls \"$path/platforms\" | head -3") ?: "").trim()
                 return ToolStatus(
                     id = ToolId.ANDROID_SDK, displayName = "Android SDK",
                     health = ToolHealth.OK,
@@ -174,13 +174,13 @@ object ToolchainManager {
     }
 
     private suspend fun detectAndroidBuildTools(ctx: Context): ToolStatus {
-        val out = exec(ctx, "aapt version 2>&1").trim()
+        val out = exec(ctx, "aapt version 2>&1")?.trim() ?: return unknown(ToolId.ANDROID_BUILD_TOOLS, "Build Tools (aapt)")
         return if (out.contains("Android Asset Packaging Tool")) {
             ToolStatus(
                 id = ToolId.ANDROID_BUILD_TOOLS, displayName = "Build Tools (aapt)",
                 health = ToolHealth.OK,
                 version = out.lines().firstOrNull()?.trim(),
-                path = exec(ctx, "which aapt").trim().ifEmpty { null },
+                path = exec(ctx, "which aapt")?.trim()?.ifEmpty { null },
             )
         } else {
             ToolStatus(
@@ -193,13 +193,13 @@ object ToolchainManager {
     }
 
     private suspend fun detectPlatformTools(ctx: Context): ToolStatus {
-        val out = exec(ctx, "adb version 2>&1 | head -1").trim()
+        val out = exec(ctx, "adb version 2>&1 | head -1")?.trim() ?: return unknown(ToolId.PLATFORM_TOOLS, "Platform Tools (adb)")
         return if (out.contains("Android Debug Bridge")) {
             ToolStatus(
                 id = ToolId.PLATFORM_TOOLS, displayName = "Platform Tools (adb)",
                 health = ToolHealth.OK,
                 version = out.substringAfter("version").trim().ifEmpty { null },
-                path = exec(ctx, "which adb").trim().ifEmpty { null },
+                path = exec(ctx, "which adb")?.trim()?.ifEmpty { null },
             )
         } else {
             ToolStatus(
@@ -212,13 +212,13 @@ object ToolchainManager {
     }
 
     private suspend fun detectFlutter(ctx: Context): ToolStatus {
-        val out = exec(ctx, "flutter --version 2>&1 | head -2").trim()
+        val out = exec(ctx, "flutter --version 2>&1 | head -2")?.trim() ?: return unknown(ToolId.FLUTTER, "Flutter")
         return if (out.contains("Flutter")) {
             ToolStatus(
                 id = ToolId.FLUTTER, displayName = "Flutter",
                 health = ToolHealth.OK,
                 version = out.lines().firstOrNull()?.trim(),
-                path = exec(ctx, "which flutter").trim().ifEmpty { null },
+                path = exec(ctx, "which flutter")?.trim()?.ifEmpty { null },
             )
         } else {
             ToolStatus(
@@ -231,13 +231,13 @@ object ToolchainManager {
     }
 
     private suspend fun detectDart(ctx: Context): ToolStatus {
-        val out = exec(ctx, "dart --version 2>&1").trim()
+        val out = exec(ctx, "dart --version 2>&1")?.trim() ?: return unknown(ToolId.DART, "Dart")
         return if (out.contains("Dart")) {
             ToolStatus(
                 id = ToolId.DART, displayName = "Dart",
                 health = ToolHealth.OK,
                 version = out.trim(),
-                path = exec(ctx, "which dart").trim().ifEmpty { null },
+                path = exec(ctx, "which dart")?.trim()?.ifEmpty { null },
             )
         } else {
             ToolStatus(
@@ -249,12 +249,12 @@ object ToolchainManager {
     }
 
     private suspend fun detectNode(ctx: Context): ToolStatus {
-        val out = exec(ctx, "node --version 2>&1").trim()
+        val out = exec(ctx, "node --version 2>&1")?.trim() ?: return unknown(ToolId.NODEJS, "Node.js")
         return if (out.startsWith("v")) {
             ToolStatus(
                 id = ToolId.NODEJS, displayName = "Node.js",
                 health = ToolHealth.OK, version = out,
-                path = exec(ctx, "which node").trim().ifEmpty { null },
+                path = exec(ctx, "which node")?.trim()?.ifEmpty { null },
             )
         } else {
             ToolStatus(
@@ -267,12 +267,12 @@ object ToolchainManager {
     }
 
     private suspend fun detectNpm(ctx: Context): ToolStatus {
-        val out = exec(ctx, "npm --version 2>&1").trim()
+        val out = exec(ctx, "npm --version 2>&1")?.trim() ?: return unknown(ToolId.NPM, "npm")
         return if (out.matches(Regex("\\d+\\.\\d+.*"))) {
             ToolStatus(
                 id = ToolId.NPM, displayName = "npm",
                 health = ToolHealth.OK, version = out,
-                path = exec(ctx, "which npm").trim().ifEmpty { null },
+                path = exec(ctx, "which npm")?.trim()?.ifEmpty { null },
             )
         } else {
             ToolStatus(
@@ -284,13 +284,13 @@ object ToolchainManager {
     }
 
     private suspend fun detectPython(ctx: Context): ToolStatus {
-        val out = exec(ctx, "python3 --version 2>&1").trim()
+        val out = exec(ctx, "python3 --version 2>&1")?.trim() ?: return unknown(ToolId.PYTHON3, "Python 3")
         return if (out.startsWith("Python")) {
             ToolStatus(
                 id = ToolId.PYTHON3, displayName = "Python 3",
                 health = ToolHealth.OK,
                 version = out.removePrefix("Python").trim(),
-                path = exec(ctx, "which python3").trim().ifEmpty { null },
+                path = exec(ctx, "which python3")?.trim()?.ifEmpty { null },
             )
         } else {
             ToolStatus(
@@ -303,13 +303,13 @@ object ToolchainManager {
     }
 
     private suspend fun detectPip(ctx: Context): ToolStatus {
-        val out = exec(ctx, "pip3 --version 2>&1").trim()
+        val out = exec(ctx, "pip3 --version 2>&1")?.trim() ?: return unknown(ToolId.PIP, "pip")
         return if (out.contains("pip")) {
             ToolStatus(
                 id = ToolId.PIP, displayName = "pip",
                 health = ToolHealth.OK,
                 version = out.substringBefore(" from").trim(),
-                path = exec(ctx, "which pip3").trim().ifEmpty { null },
+                path = exec(ctx, "which pip3")?.trim()?.ifEmpty { null },
             )
         } else {
             ToolStatus(
@@ -322,8 +322,21 @@ object ToolchainManager {
 
     // ── Util ──────────────────────────────────────────────────────────────────
 
-    private suspend fun exec(ctx: Context, cmd: String): String =
-        try { ProotInstaller.execOnce(ctx, cmd) } catch (e: Exception) { "" }
+    /** IG08: a FAILED probe (hung proot, permission error, timeout) is UNKNOWN — it
+     *  is not MISSING. The tool may be perfectly installed; detection just could
+     *  not run, and the honest report says exactly that. */
+    private fun unknown(id: ToolId, name: String): ToolStatus = ToolStatus(
+        id = id, displayName = name,
+        health = ToolHealth.UNKNOWN, version = null, path = null,
+        note = "Probe failed — the toolchain check could not run (proot/permission). Retry.",
+    )
+
+    // IG08 (2026-09-27): exec used to catch ALL exceptions to "" — a hung proot, a
+    // permission failure, and a genuinely missing binary all rendered as MISSING and
+    // ToolHealth.UNKNOWN was unreachable. Now an exception surfaces as null (detectors
+    // report UNKNOWN with a note); "" still means the command RAN and produced nothing.
+    private suspend fun exec(ctx: Context, cmd: String): String? =
+        try { ProotInstaller.execOnce(ctx, cmd) } catch (e: Exception) { null }
 
     private fun extractQuoted(s: String): String? =
         Regex("\"([^\"]+)\"").find(s)?.groupValues?.getOrNull(1)

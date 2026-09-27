@@ -209,11 +209,11 @@ dependencies {
     implementation("com.github.luben:zstd-jni:1.5.6-4")
 
     // Network
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
-    implementation("com.squareup.retrofit2:converter-kotlinx-serialization:2.11.0")
+    // IG09 (2026-09-27): retrofit + its kotlinx converter DELETED from the build —
+    // the dead ApiService surface was the last Kotlin consumer (zero imports remain).
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

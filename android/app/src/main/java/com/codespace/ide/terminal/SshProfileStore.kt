@@ -26,7 +26,11 @@ object SshProfileStore {
         return try {
             val arr = JSONArray()
             profiles.forEach { arr.put(it.toJson()) }
-            file(ctx).writeText(arr.toString(2))
+            // IG16 (2026-09-27): non-atomic writeText DELETED — SSH profiles now go
+            // through the shared SK01-family atomic write (temp + rename).
+            if (!com.codespace.ide.util.AtomicJson.write(file(ctx), arr.toString(2))) {
+                throw IOException("Atomic write failed for SSH profiles")
+            }
             Result.success(Unit)
         } catch (e: IOException) {
             Result.failure(e)

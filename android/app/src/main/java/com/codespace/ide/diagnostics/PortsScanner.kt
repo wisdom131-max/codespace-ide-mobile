@@ -32,10 +32,37 @@ object PortsScanner {
     )
 
     suspend fun scan(extraPorts: List<Int> = emptyList()): List<ForwardedPort> = withContext(Dispatchers.IO) {
-        val candidates = (WELL_KNOWN.keys + extraPorts).distinct()
+        // IG14 (2026-09-27): candidates are no longer ONLY the static well-known list —
+        // the kernel's actual LISTEN sockets (from /proc/net/tcp + tcp6; guest dev
+        // servers share the kernel network namespace) join the probe, so a server on
+        // any port is visible instead of invisible-by-default.
+        val candidates = (WELL_KNOWN.keys + listeningPorts() + extraPorts).distinct()
         candidates.map { port ->
-            async { if (isOpen(port)) ForwardedPort(port, WELL_KNOWN[port] ?: "Custom") else null }
+            async { if (isOpen(port)) ForwardedPort(port, WELL_KNOWN[port] ?: "Listening") else null }
         }.awaitAll().filterNotNull().sortedBy { it.port }
+    }
+
+    /**
+     * IG14: real candidate discovery. Parses the kernel's LISTEN sockets from
+     * /proc/net/tcp and /proc/net/tcp6 (state 0A; ports in hex). Proot guest servers
+     * share the kernel network namespace, so dev servers hosted in the guest appear
+     * here. Unreadable /proc degrades to an empty list — the static probe still runs.
+     */
+    fun listeningPorts(): List<Int> {
+        val found = sortedSetOf<Int>()
+        for (path in listOf("/proc/net/tcp", "/proc/net/tcp6")) {
+            try {
+                val lines = java.io.File(path).readLines()
+                for (i in 1 until lines.size) { // skip the header line
+                    val cols = lines[i].trim().split(Regex("\\s+"))
+                    if (cols.size > 3 && cols[3].equals("0A", ignoreCase = true)) {
+                        val port = cols[1].substringAfterLast(":").toIntOrNull(16) ?: continue
+                        found.add(port)
+                    }
+                }
+            } catch (_: Exception) { /* proc unreadable — static list only */ }
+        }
+        return found.toList()
     }
 
     internal fun isOpen(port: Int, timeoutMs: Int = 200): Boolean = try {

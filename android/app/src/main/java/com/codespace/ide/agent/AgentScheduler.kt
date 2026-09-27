@@ -31,7 +31,9 @@ object AgentScheduler {
     }
 
     private fun writeTasks(tasks: JSONObject, context: Context) {
-        tasksFile(context).writeText(tasks.toString(2))
+        // IG16 (2026-09-27): non-atomic writeText DELETED — scheduled tasks go through
+        // the shared SK01-family atomic write (temp + rename).
+        com.codespace.ide.util.AtomicJson.write(tasksFile(context), tasks.toString(2))
     }
 
     // Schedule a task. Cron expression format: minute hour day month dayOfWeek
@@ -49,6 +51,16 @@ object AgentScheduler {
      * one-time migration ruling that pre-update state is not disrupted).
      */
     fun schedule(name: String, cron: String, command: String, projectPath: String?, context: Context): String {
+        // IG13 (2026-09-27): validate BEFORE persisting — an unsupported cron form
+        // must not enter the store at all (the old code persisted it and then ran it
+        // every 60 seconds). Same supported forms as the parser below.
+        val cronOk = cron == "@once" ||
+            (cron.startsWith("*/") && cron.contains("* * * *")) ||
+            (cron.startsWith("0 ") && cron.contains("* * *"))
+        if (!cronOk) {
+            return "Unsupported cron form '$cron'. Supported: @once, every-N-minutes " +
+                "(*/N * * * *), or daily at H:00 (0 H * * *). Task '$name' was NOT scheduled."
+        }
         val tasks = readTasks(context)
         val task = JSONObject()
             .put("name", name)
@@ -91,11 +103,9 @@ object AgentScheduler {
                 scheduledFutures[name] = future
             }
             else -> {
-                // Default: treat as every-N-minutes
-                val future = executor.scheduleAtFixedRate({
-                    runCommand(command, projectPath, context)
-                }, 60, 60, TimeUnit.SECONDS)
-                scheduledFutures[name] = future
+                // IG13: unreachable in practice (validated above) — kept as a fail-closed
+                // guard: never fall back to a guessed schedule.
+                return "Unsupported cron form '$cron' — task '$name' was NOT scheduled."
             }
         }
 

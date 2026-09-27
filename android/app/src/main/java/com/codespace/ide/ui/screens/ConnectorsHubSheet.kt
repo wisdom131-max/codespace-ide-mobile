@@ -3,8 +3,6 @@ package com.codespace.ide.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,7 +19,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.rememberScrollState
@@ -54,12 +51,14 @@ internal fun ConnectorsHubSheet(
     var statuses by remember { mutableStateOf<List<ConnectorsApiClient.ConnectorStatus>>(emptyList()) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
-    // In-app OAuth WebView dialog — avoids returning to external browser flow
-    var oauthWebViewUrl by remember { mutableStateOf<String?>(null) }
-    // OAUTH-CALLBACK-FIX (2026-09-10): captured callback URL - the app itself hits
-    // it via ConnectorsApiClient.completeOAuthCallback (the WebView cancels the
-    // navigation, so the backend would otherwise NEVER receive the code).
-    var oauthCallbackUrl by remember { mutableStateOf<String?>(null) }
+    // IG07 (2026-09-27): the in-app OAuth WebView + its callback-capture machinery
+    // (oauthWebViewUrl / oauthCallbackUrl / completeOAuthCallback delivery) were
+    // DELETED — AgentConnectorManager's own docs say Google/Slack BLOCK embedded
+    // WebViews for OAuth ("disallowed_useragent"), and the chat path already opens
+    // the external browser. The Hub now uses the SAME external-browser transport; the
+    // browser follows the callback to the backend directly, so no capture exists to
+    // deliver. pendingOAuthId drives a status poll that flips the row when the user
+    // finishes signing in.
     // Phase 1: PAT paste-token dialog target (Sentry/Vercel/Cloudflare/PostHog/Stripe/Railway/Render)
     var patDialogStatus by remember { mutableStateOf<ConnectorsApiClient.ConnectorStatus?>(null) }
     var pendingOAuthId by remember { mutableStateOf<String?>(null) }
@@ -228,8 +227,20 @@ internal fun ConnectorsHubSheet(
                                         busyService = null
                                         result.fold(
                                             onSuccess = { authUrl ->
-                                                pendingOAuthId = s.id
-                                                oauthWebViewUrl = authUrl
+                                                // IG07: external browser — the transport
+                                                // Google/Slack actually allow (the in-app
+                                                // WebView got "disallowed_useragent").
+                                                try {
+                                                    val intent = android.content.Intent(
+                                                        android.content.Intent.ACTION_VIEW,
+                                                        android.net.Uri.parse(authUrl),
+                                                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    context.startActivity(intent)
+                                                    pendingOAuthId = s.id
+                                                    toast = "Finish signing in to ${s.name} in your browser — this row updates itself when you're done."
+                                                } catch (e: Exception) {
+                                                    toast = "Got the sign-in link but couldn't open a browser: ${e.message}\n$authUrl"
+                                                }
                                             },
                                             onFailure = { toast = it.message ?: "Failed to start connecting ${s.name}" },
                                         )
@@ -348,90 +359,28 @@ internal fun ConnectorsHubSheet(
         )
     }
 
-    // ── In-app OAuth WebView dialog ───────────────────────────────────────────
-    val callbackBase = "https://codespace-ide-backend.onrender.com/api/v1/connectors/callback"
-    oauthWebViewUrl?.let { authUrl ->
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = { oauthWebViewUrl = null; pendingOAuthId = null },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-        ) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF1E1E1E))
-            ) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF252526))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "Connect ${pendingOAuthId?.replaceFirstChar { it.uppercase() } ?: "Account"}",
-                        color = Color(0xFFCCCCCC),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(
-                        Icons.Default.Close, null, tint = Color(0xFFCCCCCC),
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clickable { oauthWebViewUrl = null; pendingOAuthId = null },
-                    )
-                }
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            webViewClient = object : WebViewClient() {
-                                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                                    val url = request.url.toString()
-                                    if (url.startsWith(callbackBase)) {
-                                        // OAUTH-CALLBACK-FIX (2026-09-10): returning true here CANCELS
-                                        // the navigation - the backend never received the code, the exchange
-                                        // never ran, and the row never flipped to Connected. Capture, close,
-                                        // and the effect below delivers the URL to the backend.
-                                        oauthCallbackUrl = url
-                                        oauthWebViewUrl = null
-                                        pendingOAuthId = null
-                                        return true
-                                    }
-                                    return false
-                                }
-                            }
-                            loadUrl(authUrl)
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+    // ── IG07 (2026-09-27): OAuth completion poll ──────────────────────────────
+    // The external browser delivers the callback to the backend directly; the app
+    // polls the service status every 3s (up to 3 min) while a sign-in is pending, so
+    // the row flips to Connected without the user re-opening the sheet.
+    LaunchedEffect(pendingOAuthId) {
+        val service = pendingOAuthId ?: return@LaunchedEffect
+        var waited = 0
+        while (waited < 180_000) {
+            kotlinx.coroutines.delay(3_000)
+            waited += 3_000
+            val result = withContext(Dispatchers.IO) { ConnectorsApiClient.fetchStatus(accessToken, context) }
+            val connected = result.getOrNull()?.any { it.id == service && it.connected } == true
+            if (connected) {
+                pendingOAuthId = null
+                toast = "\u2713 Connected"
+                refreshKey++
+                return@LaunchedEffect
             }
         }
-    }
-
-    // OAUTH-CALLBACK-FIX: deliver the captured callback to the backend - the WebView
-    // cancels the callback navigation, so the app GETs the URL itself and toasts the
-    // backend's {ok, message} (previously a failed exchange was indistinguishable
-    // from success - the row just silently stayed 'Tap to connect').
-    oauthCallbackUrl?.let { cbUrl ->
-        LaunchedEffect(cbUrl) {
-            oauthCallbackUrl = null
-            val result = withContext(Dispatchers.IO) {
-                ConnectorsApiClient.completeOAuthCallback(cbUrl)
-            }
-            result.fold(
-                onSuccess = { msg ->
-                    toast = "\u2713 " + msg
-                    refreshKey++
-                },
-                onFailure = { e ->
-                    toast = "Connect failed: " + (e.message ?: "unknown error")
-                    refreshKey++
-                },
-            )
-        }
+        // Timed out — refresh once anyway; the user may still be mid-flow.
+        refreshKey++
+        pendingOAuthId = null
     }
 }
 

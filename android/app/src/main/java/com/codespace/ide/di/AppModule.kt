@@ -1,7 +1,6 @@
 package com.codespace.ide.di
 
 import com.codespace.ide.BuildConfig
-import com.codespace.ide.data.ApiService
 import com.codespace.ide.data.SecureTokenStore
 import dagger.Module
 import dagger.Provides
@@ -13,8 +12,6 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
-import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -104,14 +101,11 @@ object AppModule {
             .build()
     }
 
-    @Provides @Singleton
-    fun retrofit(client: OkHttpClient, json: Json): Retrofit =
-        Retrofit.Builder()
-            .baseUrl(BuildConfig.API_BASE_URL.let { if (it.endsWith("/")) it else "$it/" })
-            .client(client)
-            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
-            .build()
-
-    @Provides @Singleton
-    fun apiService(retrofit: Retrofit): ApiService = retrofit.create(ApiService::class.java)
+    // IG09 (2026-09-27): the Retrofit surface was DELETED — ApiService (login/refresh/
+    // listRepos/createPr) and its retrofit/apiService providers had ZERO callers: auth
+    // is Firebase + GitHub device flow, and every live backend call goes through
+    // ConnectorsApiClient on the shared OkHttpClient above. A dead auth interface is
+    // a surface someone eventually trusts; it is gone instead. AuthResponse (the
+    // kotlinx-serialization shape of the refresh response this interceptor parses)
+    // STAYS — it is live code used right above.
 }

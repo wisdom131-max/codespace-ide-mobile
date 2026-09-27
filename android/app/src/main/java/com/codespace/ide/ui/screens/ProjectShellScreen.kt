@@ -3765,7 +3765,9 @@ private fun PssBottomPanelContent(
             BottomTab.BACKUP -> {
                 CloudBackupPanel(
                     projectId  = projectId,
-                    backendUrl = "https://codespace-ide-backend.onrender.com",
+                    // IG12: single source of truth — derived from BuildConfig.API_BASE_URL
+                    // (strip /api/v1; CloudBackupPanel wants the bare host).
+                    backendUrl = com.codespace.ide.BuildConfig.API_BASE_URL.removeSuffix("/api/v1"),
                     onDismiss  = { onActiveBottomTabChange(BottomTab.TERMINAL) },
                 )
             }
@@ -4254,12 +4256,22 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
     var showAddDialog by remember { mutableStateOf(false) }
     var addPortText by remember { mutableStateOf("") }
 
-    suspend fun rescan() {
-        scanning = true
+    suspend fun rescan(showSpinner: Boolean = true) {
+        if (showSpinner) scanning = true
         ports = PortsScanner.scan(customPorts)
         scanning = false
     }
     LaunchedEffect(customPorts) { rescan() }
+    // IG14 (2026-09-27): a dev server started AFTER the last rescan used to stay
+    // invisible until the user manually tapped the refresh icon — the panel now
+    // silently rescans every 5 s while it is open (no spinner churn; discovery
+    // reads the kernel's LISTEN sockets, so new servers appear on the next tick).
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(5_000)
+            rescan(showSpinner = false)
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -4275,7 +4287,7 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
         HorizontalDivider(color = Color(0xFFE0E0E0))
         if (ports.isEmpty() && !scanning) {
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-                Text("No forwarded ports detected. Start a dev server (e.g. a dev server on :3000) then tap ⟳, or tap + to check a specific port.", fontSize = 13.sp, color = Color(0xFF717171))
+                Text("No listening ports detected yet. Start a dev server — this list updates itself every few seconds (or tap ⟳, or + to check a specific port).", fontSize = 13.sp, color = Color(0xFF717171))
             }
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
