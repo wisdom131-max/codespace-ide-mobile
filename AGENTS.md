@@ -61,6 +61,18 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-27 08:05 WAT] — P5 CONSOLIDATED DEVICE CHECKLIST committed (P5-DEVICE-CHECKLIST.md, docs-only); 245-row code-verification pass recorded
+
+**Docs:** this push (checklist file + this entry). No code changes.
+
+**What shipped:**
+- **P5-DEVICE-CHECKLIST.md** — the ONE consolidated device verification round, 203 tap-by-tap steps covering all 245 closed rows (P0 → P4s), grouped by setup so state builds once. TP02's batched security verification is its own early step (Step 0) per owner ruling. Steps 1-30 confirmed unchanged from the chat delivery; steps 31-203 complete the file. Same standing as the GROUP-*.md docs.
+- **Code-verification pass (2026-09-27, recorded for the trail):** every one of the 245 closed rows re-checked against the code on disk (not commit messages) at e765ddb — 245/245 confirmed, ZERO regressions, zero inaccurate removal claims. 4 notes on record: (1) IG05's closure mechanism (DownloadCenter cancel-loop fix) was superseded by IG04's full Download Center removal — end state correct, note's file no longer exists; (2) SG14's fabricatedIdentity constants remain as DETECTION values (writer deleted) — do not re-flag on grep; (3) PR02's LintChecker class remains as the live lint engine (the RUN-badge 3s disk poll is gone); (4) LS11's "GEN-WATCH" string survives only as a log label in the new central watcher. VS Code comparison citations stand as recorded in the group docs (line-level READ cites at audit time); the vscode-src reference clone is no longer in the repo tree, so a line-level re-walk was not possible this pass — flagged, not fixed.
+
+**ROADMAP (continuity — all pending items):** P4 batchable work DONE, tally 245/249; ONLY XG01-04 remain, PARKED per owner ruling (never batch-propose; each needs its own go-decision; the XG01-04 full design/build plan was delivered at F-TRACK depth in chat 2026-09-27 — sub-phase XG01-a is the pure-data carve-out, everything touching existing seams waits until the P5 device round is reported). NEXT: owner runs P5-DEVICE-CHECKLIST.md on-device and reports results; RG01's standing note closes when step 187-189 produce a real CrashLog record.
+
+---
+
 ### [2026-09-27 07:50 WAT] — P4s SHIPPED: FINAL SWEEP — all 9 remaining batchable rows (OG03 OG05 OG06 IM01 IM02 IM03 EX03 EX08 TB02); tally 245/249, ONLY XG01-04 (PARKED, owner-gated) remain open
 
 **Code:** 72869ae + fix 545f1a8 (CI #36297682561 GREEN, one red). **Docs:** this push. **Every row verified live in code BEFORE patching — zero stale rows this time.**
