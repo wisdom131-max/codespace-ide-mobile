@@ -447,7 +447,10 @@ fun SettingsScreen(
                         backupRunning = true
                         scope.launch {
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                BackupManager.backupPrefs(context)
+                                val prefsBackup = BackupManager.backupPrefs(context)
+                                if (!prefsBackup.ok) {
+                                    backupStatus = "Prefs backup failed for ${prefsBackup.failedNames.size} file(s) — see logcat (BackupManager)"
+                                }
                                 BackupManager.createBackup(context) { msg -> backupStatus = msg }
                             }
                             backupInfo = BackupManager.backupInfo()
@@ -478,7 +481,10 @@ fun SettingsScreen(
                         backupRunning = true
                         scope.launch {
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                BackupManager.backupPrefs(context)
+                                val prefsBackup = BackupManager.backupPrefs(context)
+                                if (!prefsBackup.ok) {
+                                    backupStatus = "Prefs backup failed for ${prefsBackup.failedNames.size} file(s) — see logcat (BackupManager)"
+                                }
                                 BackupManager.createBackup(context) { msg -> backupStatus = msg }
                             }
                             backupInfo = BackupManager.backupInfo()

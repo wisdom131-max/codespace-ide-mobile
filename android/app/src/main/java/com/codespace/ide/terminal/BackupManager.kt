@@ -298,7 +298,10 @@ object BackupManager {
             restorePrefs(context)
             setContainerPrompt(context, true)
         } else {
-            backupPrefs(context)
+            val prefsBackup = backupPrefs(context)
+            if (!prefsBackup.ok) {
+                Log.w(TAG, "RG05 onAppStart: prefs backup reported ${prefsBackup.failedNames.size} failure(s) — launch continues; see the ERROR line above")
+            }
             if (previousVersion != currentVersion) setContainerPrompt(context, true)
             val rootfs = ProotInstaller.rootfsDir(context)
             val stale = !hasBackup() ||
@@ -306,7 +309,13 @@ object BackupManager {
             if (rootfs.exists() && stale) setContainerPrompt(context, true)
         }
         marker.parentFile?.mkdirs()
-        marker.writeText(currentVersion.toString())
+        try {
+            marker.writeText(currentVersion.toString())
+        } catch (e: java.io.IOException) {
+            // The version marker only arms the Settings prompt banner — a failed write
+            // is an honest WARNING, never a launch crash (same RG05 hotfix discipline).
+            Log.w(TAG, "RG05 version marker not written: ${e.message}")
+        }
     }
 
     /** RG05: the Settings prompt flag (survives restarts). */
@@ -344,27 +353,90 @@ object BackupManager {
      *   - filesDir/agent_memory/memory.json
      * Also runs on every app start via [onAppStart], not just the Settings button.
      */
-    fun backupPrefs(context: Context) {
+    fun backupPrefs(context: Context): PrefsBackupResult {
         val dest = File(backupDir(), "prefs-backup")
         dest.mkdirs()
+        var copied = 0
+        var skippedMissing = 0
+        val failed = mutableListOf<String>()
+        // Local tally must sit ABOVE its first call site (local-fn-before-call rule).
+        fun tally(v: CopyVerdict, name: String) {
+            when (v) {
+                CopyVerdict.COPIED -> copied++
+                CopyVerdict.SKIPPED_MISSING -> skippedMissing++
+                CopyVerdict.FAILED -> failed += name
+            }
+        }
+        // EVERY shared_prefs XML — the Firebase heartbeat files are created/rewritten
+        // LAZILY by the Firebase process, so a listed file can be absent at open time.
         val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
-        prefsXmlFiles(prefsDir).forEach { it.copyTo(File(dest, it.name), overwrite = true) }
+        prefsXmlFiles(prefsDir).forEach { f -> tally(copyStoreFileOrSkip(f, File(dest, f.name)), f.name) }
         // JSON stores under filesDir (re-read at store init on next process start)
         listOf("settings.json", "ssh-profiles.json").forEach { name ->
-            val src = File(context.filesDir, name)
-            if (src.exists()) src.copyTo(File(dest, name), overwrite = true)
+            tally(copyStoreFileOrSkip(File(context.filesDir, name), File(dest, name)), name)
         }
         // Scheduler tasks
         val schedSrc = File(context.filesDir, "agent_scheduler")
         if (schedSrc.exists()) {
             val schedDest = File(dest, "agent_scheduler")
             schedDest.mkdirs()
-            schedSrc.listFiles()?.forEach { it.copyTo(File(schedDest, it.name), overwrite = true) }
+            schedSrc.listFiles()?.forEach { f -> tally(copyStoreFileOrSkip(f, File(schedDest, f.name)), "agent_scheduler/" + f.name) }
         }
         // Agent memory JSON
-        val memFile = File(context.filesDir, "agent_memory/memory.json")
-        if (memFile.exists()) memFile.copyTo(File(dest, "agent_memory.json"), overwrite = true)
-        Log.d(TAG, "Prefs backup written to ${dest.absolutePath}")
+        tally(copyStoreFileOrSkip(File(context.filesDir, "agent_memory/memory.json"), File(dest, "agent_memory.json")), "agent_memory.json")
+        val result = PrefsBackupResult(copied, skippedMissing, failed)
+        if (failed.isEmpty()) {
+            Log.d(TAG, "RG05 prefs backup ok (${result.summary()}) -> ${dest.absolutePath}")
+        } else {
+            // S01 discipline: real IO failures are NOT swallowed — logged at ERROR and
+            // carried in the typed result so callers surface them. But a backup failure
+            // NEVER kills the launch (this runs first in Application.onCreate).
+            Log.e(TAG, "RG05 prefs backup FAILED for ${failed.size} file(s): ${failed.joinToString()} (other files: ${result.summary()})")
+        }
+        return result
+    }
+
+    /** RG05 hotfix (2026-09-27): honest per-file outcome of one store-file copy. */
+    enum class CopyVerdict { COPIED, SKIPPED_MISSING, FAILED }
+
+    /** RG05 hotfix (2026-09-27): typed, surfaced backup result (S01 — never silently lost). */
+    data class PrefsBackupResult(val copied: Int, val skippedMissing: Int, val failedNames: List<String>) {
+        val ok: Boolean get() = failedNames.isEmpty()
+        fun summary(): String = "copied $copied, skipped $skippedMissing (not present), failed ${failedNames.size}"
+    }
+
+    /**
+     * RG05 hotfix (2026-09-27): copies ONE prefs/JSON store file. A source that is not
+     * present — or vanishes between the directory listing and the open (Firebase
+     * heartbeat prefs are created and rewritten lazily by the Firebase process) — is
+     * NOTHING-TO-BACK-UP, not a failure. Real IO failures (unwritable destination,
+     * permissions, disk full) are logged at ERROR and returned as FAILED; they are
+     * never thrown from here, because the callers run before the app has a UI.
+     *
+     * Crash context: File.copyTo THROWS FileNotFoundException when the source cannot
+     * be opened; the old unguarded loop in backupPrefs let that exception escape into
+     * Application.onCreate and killed the app on EVERY launch (crash loop) whenever the
+     * heartbeat file had not been created yet.
+     */
+    private fun copyStoreFileOrSkip(src: File, dest: File): CopyVerdict {
+        if (!src.exists()) return CopyVerdict.SKIPPED_MISSING
+        return try {
+            src.copyTo(dest, overwrite = true)
+            CopyVerdict.COPIED
+        } catch (e: java.io.FileNotFoundException) {
+            if (!src.exists()) {
+                // Vanished between listing and open (heartbeat rewrite) — skip it.
+                CopyVerdict.SKIPPED_MISSING
+            } else {
+                // The FileNotFoundException points at the DESTINATION (or something
+                // else genuinely broken) — a real failure, surfaced not swallowed.
+                Log.e(TAG, "RG05 backup copy FAILED for ${src.name}: ${e.message}")
+                CopyVerdict.FAILED
+            }
+        } catch (e: java.io.IOException) {
+            Log.e(TAG, "RG05 backup copy FAILED for ${src.name}: ${e.message}")
+            CopyVerdict.FAILED
+        }
     }
 
     /**
