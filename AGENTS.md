@@ -61,6 +61,14 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-27 19:05 WAT] — P5-FULL-WALKTHROUGH.md committed (docs-only): the fully-explained 203-test walkthrough, tap by tap, copy-paste ready
+
+**Docs:** this push. Third companion to P5-DEVICE-CHECKLIST.md: every test (T1-T203) explained in plain language (what it is about, what the command means), with paste-ready boxes, step-by-step taps from app open, expected screens, PASS/FAIL criteria, edge cases and the per-test report line. Device-restricted checks marked NOT RUN-able. The owner runs tests one by one and pastes T#-lines back for per-test analysis.
+
+**ROADMAP (continuity — all pending items):** unchanged — P4 245/249, XG01-04 PARKED (plan delivered, device round first). NEXT: owner runs the walkthrough (Phase 1 TP02 first), pastes results; analysis + ledger updates per batch; RG01 standing note closes at T188.
+
+---
+
 ### [2026-09-27 12:40 WAT] — P5-TEST-GUIDE.md committed (docs-only): the full 203-test walk-through, copy-paste ready
 
 **Docs:** this push. The expanded companion to P5-DEVICE-CHECKLIST.md, built for running the round hands-on: every test (T1-T203, same numbering as the checklist) carries exact paste-ready commands and fixtures (zip-slip bomb, tar-escape bomb, quoting-attack DB, over-cap file, deep-path tree), step-by-step tap instructions, expected screens, PASS/FAIL criteria, edge cases, and the report format (T#-lines the owner pastes back for per-test analysis). Device-restricted tests (app-internal storage reads, second-device LAN checks) are explicitly marked NOT RUN-able instead of faked. T7 fresh-install is folded into T8's substitute (device has a live rootfs). Owner runs tests one by one and pastes results; analysis against expected behavior follows per batch.
