@@ -61,6 +61,14 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-27 12:40 WAT] — P5-TEST-GUIDE.md committed (docs-only): the full 203-test walk-through, copy-paste ready
+
+**Docs:** this push. The expanded companion to P5-DEVICE-CHECKLIST.md, built for running the round hands-on: every test (T1-T203, same numbering as the checklist) carries exact paste-ready commands and fixtures (zip-slip bomb, tar-escape bomb, quoting-attack DB, over-cap file, deep-path tree), step-by-step tap instructions, expected screens, PASS/FAIL criteria, edge cases, and the report format (T#-lines the owner pastes back for per-test analysis). Device-restricted tests (app-internal storage reads, second-device LAN checks) are explicitly marked NOT RUN-able instead of faked. T7 fresh-install is folded into T8's substitute (device has a live rootfs). Owner runs tests one by one and pastes results; analysis against expected behavior follows per batch.
+
+**ROADMAP (continuity — all pending items):** unchanged — P4 245/249, XG01-04 PARKED (plan delivered, device round first per the sequencing call). NEXT: owner runs the guide (Phase 1 TP02 security round first), pastes T#-results; analysis + ledger updates per batch; RG01 standing note closes at T188.
+
+---
+
 ### [2026-09-27 11:45 WAT] — RG05 hotfix VERIFIED ON DEVICE (owner): P5 step 0.0 PASSED — build 9235b43 opens normally, 3 consecutive cold starts, no crash; P5 round STARTED
 
 Owner-confirmed on the real device: the 9235b43 APK opens normally, tested 3 cold starts in a row, zero crashes. The launch crash loop is closed end-to-end (code CI #36307436090 GREEN + device-verified). P5 DEVICE ROUND IS NOW IN PROGRESS per P5-DEVICE-CHECKLIST.md: step 0.0 PASSED; next is Step 0 (TP02 security round), then the 203 steps in order. Standing items to watch during the round: step 97's [perf] lines (send back for ranking), steps 187-189 (the forced-crash check that closes RG01's standing note — report when the CrashLog record lands), step 186 TB02 race protocol (repeat twice). XG01-04 remain PARKED (owner-gated); XG01-a starts when round results are reported.
