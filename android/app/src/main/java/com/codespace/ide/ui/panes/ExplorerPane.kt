@@ -676,8 +676,14 @@ fun ExplorerSidePanel(
     }
 
     val nodes = remember(workspacePath, expanded.toMap(), refresh, filterQuery, sortMode, showHidden) {
-        val root = workspaceRoot ?: return@remember emptyList()
-        if (!root.exists()) return@remember emptyList()
+        // PG08 (2026-09-27): first-render/expansion cost was UNMEASURED — a 3866-line
+        // pane building per-entry composables for every expansion of a big project.
+        // Timed here so the cost shows as a [perf] line in the Output tab instead of
+        // staying invisible to the fix plan.
+        val buildT0 = System.currentTimeMillis()
+        val built = run {
+        val root = workspaceRoot ?: return@run emptyList()
+        if (!root.exists()) return@run emptyList()
         val children = root.listFiles()
             ?.filter { showHidden || !isDefaultHidden(it.name) }
             ?.sortedWith(
@@ -693,6 +699,11 @@ fun ExplorerSidePanel(
             if (f.isDirectory) buildNodes(f, 0)
             else listOf(FsNode(f, 0))
         }
+        }
+        AppOutputLog.log(
+            "[perf] explorer: tree built in ${System.currentTimeMillis() - buildT0}ms " +
+                "(${built.size} top nodes, ${expanded.size} expanded)", "perf")
+        built
     }
 
     Column(Modifier.fillMaxSize().background(BgColor)) {
@@ -1537,14 +1548,38 @@ fun ExplorerSidePanel(
                 if (roots.isEmpty()) return@withContext
                 for (wsPath in roots) {
                 val projectDir = File(wsPath)
+                // PG14 (2026-09-27): the first REAL low-RAM degradation consumer — when
+                // available RAM drops below MemoryMonitor's floor, this 20s snapshot
+                // pass is skipped entirely (one /proc/meminfo read instead of a tree
+                // walk); snapshots resume automatically once RAM recovers. isLowRam
+                // previously had no consumer beyond the status-bar color.
+                if (com.codespace.ide.diagnostics.MemoryMonitor.getMemInfo().isLowRam) continue
                 val cutoff = System.currentTimeMillis() - 5 * 60 * 1000L
-                projectDir.walkTopDown()
+                // PG03 (2026-09-27): the walk PRUNES instead of stat-ing everything.
+                // It used to descend into .git / .versionhistory / .ide-trash /
+                // node_modules and filter only AFTER stat-ing every file inside them —
+                // O(all project files) disk I/O every 20s per mounted pane. onEnter now
+                // skips hidden and dependency/build trees at the DESCENT decision, so
+                // the walk only ever visits source files.
+                val skipDirs = setOf("node_modules", "build", "out", "vendor", "target", "dist")
+                projectDir.walkTopDown(
+                    onEnter = { dir ->
+                        dir == projectDir || (!dir.name.startsWith(".") && dir.name !in skipDirs)
+                    }
+                )
                     .filter { it.isFile && !it.path.contains(".versionhistory") && !it.path.contains(".ide-trash") && it.lastModified() > cutoff && it.length() < 1_048_576L }
                     .take(20)
                     .forEach { file ->
                         // V2 (plan v3): canonical rel-path dir — same-named files never
                         // share a snapshot dir. Out-of-root/unsafe = skip (fail closed).
                         val vhDir = com.codespace.ide.util.VersionHistoryV2.v2DirFor(projectDir, file.absolutePath) ?: return@forEach
+                        // PG03 dedup gate: the old loop re-copied an unchanged-but-recent
+                        // file every 20s for its whole 5-minute window (a new timestamped
+                        // .bak each pass, then trim churn to evict them). If the newest
+                        // snapshot already matches this file's length and was taken after
+                        // its last edit, it is already captured — skip the copy.
+                        val existing = vhDir.listFiles()?.filter { it.name.endsWith(".bak") }?.maxByOrNull { it.name }
+                        if (existing != null && existing.length() == file.length() && existing.lastModified() >= file.lastModified()) return@forEach
                         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(Date())
                         vhDir.mkdirs()
                         file.copyTo(File(vhDir, "$stamp.bak"), overwrite = true)

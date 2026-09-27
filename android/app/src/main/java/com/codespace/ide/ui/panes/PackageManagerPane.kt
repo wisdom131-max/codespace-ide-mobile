@@ -411,7 +411,16 @@ internal fun ExtensionsPanel() {
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                val scroll = rememberScrollState(Int.MAX_VALUE)
+                // PG11 (2026-09-27): the op-strip used to seed the scroll state with
+                // Int.MAX_VALUE (autoscroll-by-overflow-hack) — that makes every
+                // re-render rebuild the whole visible window at a fake coordinate and
+                // keeps maxValue permanently pinned. Now a normal scroll state scrolls
+                // to the bottom once per APPEND, so re-renders only happen when output
+                // actually grows; the takeLast(60) render cap stays (bounded).
+                val scroll = rememberScrollState()
+                LaunchedEffect(op.output.size) {
+                    scroll.scrollTo(scroll.maxValue)
+                }
                 Column(Modifier.fillMaxWidth().verticalScroll(scroll)) {
                     op.output.takeLast(60).forEach { line ->
                         Text(line, fontSize = 10.sp, color = PkgMuted,

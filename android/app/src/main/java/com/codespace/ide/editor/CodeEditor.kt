@@ -778,6 +778,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             highlightTargetLine = 0
         }
     }
+    // PG12 (2026-09-27): the three OVERLAPPING highlight timers (per-jump blink 6s
+    // launches at both jump sites + this auto-dismiss) used to each run their own
+    // countdown writing the same state — a second jump while the first timer was
+    // live churned extra effects and the earlier reset could kill the later blink
+    // early. ONE effect keyed on the jump timestamp owns the 6s blink reset now;
+    // the per-site launch blocks are DELETED at their call sites.
+    LaunchedEffect(highlightBlinkStart) {
+        if (highlightBlinkStart > 0) {
+            kotlinx.coroutines.delay(6000)
+            highlightBlinkStart = 0L
+        }
+    }
     val hScroll = rememberScrollState()
     // HSCROLL-FIX: Paint-based per-line width measurer (Sora Editor pattern).
     // Replaces the unreliable TextLayoutResult.getLineRight() approach.
@@ -1138,12 +1150,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 kotlinx.coroutines.delay(50)
                 attempts++
             }
-            // Use coroutineScope so highlight cleanup survives scrollToLine being reset to 0
-            coroutineScope.launch {
-                kotlinx.coroutines.delay(6000)
-                highlightTargetLine = 0
-                highlightBlinkStart = 0L
-            }
+            // PG12 (2026-09-27): the inline delay(6000) highlight-cleanup launch was
+            // DELETED — the single LaunchedEffect(highlightBlinkStart) at the state
+            // declarations owns the 6s reset; this duplicate countdown overlapped the
+            // other jump site's timer whenever two jumps landed within 6s of each other.
         }
     }
     val _lineCount = remember(value.text) { value.text.count { it == '\n' } + 1 }
@@ -4777,10 +4787,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     val scrollTarget = ((line - 1) * localLineHeightPx).toInt()
                     val maxScroll = vScroll.maxValue
                     vScroll.animateScrollTo(scrollTarget.coerceAtMost(maxScroll))
-                    // Auto-clear highlight after 6s (blink animation)
-                    kotlinx.coroutines.delay(6000)
-                    highlightTargetLine = 0
-                    highlightBlinkStart = 0L
+                    // PG12 (2026-09-27): the inline delay(6000) blink-cleanup countdown was
+                    // DELETED — the single keyed LaunchedEffect owns the 6s reset, so two
+                    // jumps within 6s of each other no longer run overlapping timers.
                 }
                 goToLineInput = ""
                 onGoToLineClose()

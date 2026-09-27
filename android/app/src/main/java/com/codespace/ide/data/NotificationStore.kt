@@ -251,6 +251,21 @@ object NotificationStore {
         p.getString("history", null)?.let { deserializeHistory(it) }
     }
 
+    // PG07 (2026-09-27): every add()/update() used to serialize the full 50-item
+    // history JSON inline on the notification write path — during a build burst
+    // that is dozens of full-history serializations + prefs applies. The history
+    // write is now DEBOUNCED (2s trailing): a burst coalesces into ONE write.
+    // Settings toggles (rare, user-initiated) keep the immediate full persist().
+    private val historyPersistRunnable = Runnable {
+        prefs?.edit()?.putString("history", serializeHistory())?.apply()
+    }
+
+    /** Debounced history-only persistence for burst paths (add/update). */
+    private fun scheduleHistoryPersist() {
+        mainHandler.removeCallbacks(historyPersistRunnable)
+        mainHandler.postDelayed(historyPersistRunnable, 2_000L)
+    }
+
     private fun persist() {
         prefs?.edit()
             ?.putBoolean("enabled", settings.enabled)
@@ -655,7 +670,9 @@ object NotificationStore {
                 toastHandler.postDelayed(clearToastRunnable, duration)
             }
             if (!(settings.doNotDisturb && severity != Severity.ERROR)) playSound()
-            persist()
+            // PG07: burst path — debounced history write instead of the inline
+            // 50-item serialize + apply that fired on every single notification.
+            scheduleHistoryPersist()
         }
     }
 
@@ -763,7 +780,8 @@ object NotificationStore {
     fun add(title: String, body: String, type: Type) =
         add(title, body, type.toSeverity(), type.toSource())
 
-    fun dismiss(id: Long) = post { items.removeAll { it.id == id }; persist() }
+    // PG07: dismiss is a burst path too (auto-dismissals) — debounced history write.
+    fun dismiss(id: Long) = post { items.removeAll { it.id == id }; scheduleHistoryPersist() }
 
     fun markRead(id: Long) = post {
         val idx = items.indexOfFirst { it.id == id }

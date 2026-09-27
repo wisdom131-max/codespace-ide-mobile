@@ -42,7 +42,12 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         // BEFORE any store init — the first load of each prefs/JSON store then sees the
         // restored state (restores through the prefs API; never overwrites a surviving
         // backup with empty data).
+        // PG10 (2026-09-27): startup phase marks at every init boundary — the
+        // remaining chain's duration is now visible per-subsystem in the Output tab
+        // ([perf] lines; PerfProbe.startupSummary() for the whole attributed chain).
+        com.codespace.ide.editor.PerfProbe.markStartupPhase("app-create")
         com.codespace.ide.terminal.BackupManager.onAppStart(this)
+        com.codespace.ide.editor.PerfProbe.markStartupPhase("prefs-backup-restore")
         // Initialize unified JSON settings store first — other stores delegate to it
         JsonSettingsStore.init(this)
         FeatureToggleStore.init(this)
@@ -55,8 +60,10 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         // R7-PLAN: per-session structured plans (plan tool + ChatPlanCard)
         com.codespace.ide.chat.ChatPlanStore.init(this)
         com.codespace.ide.chat.ChatImageAttachments.pruneOldImages(this) // R8-VISION: 7-day image hygiene
+        com.codespace.ide.editor.PerfProbe.markStartupPhase("stores-init")
         // Initialize TextMate engine (loads bundled grammars from assets)
         TextMateEngineHolder.get(this)
+        com.codespace.ide.editor.PerfProbe.markStartupPhase("textmate-init")
         NotificationStore.init(this) // P-NOTIF-RESTRUCTURE: persisted settings + sound
         // Phase N: Register notification action handlers
         NotificationStore.registerActionHandler("view_logs") { _, _ ->
@@ -88,6 +95,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         // as RUNNING died with the old process — swept to FAILED with an honest
         // interruption message. Swallowed like the surrounding init calls.
         try { com.codespace.ide.project.TaskRunner.restorePersistedState(this) } catch (_: Exception) { }
+        com.codespace.ide.editor.PerfProbe.markStartupPhase("onCreate-end")
         // CRITICAL: Do NOT acquire WakeLocks or start foreground service here.
         //
         // TECNO HiOS power management kills apps that acquire WakeLocks + start FGS

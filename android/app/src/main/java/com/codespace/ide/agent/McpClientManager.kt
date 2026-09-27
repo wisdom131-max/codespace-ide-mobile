@@ -288,6 +288,10 @@ object McpClientManager {
 
     /** Force re-discovery (UI Refresh button). Also re-runs the MCP handshake. */
     suspend fun refreshTools(context: Context) {
+        // PG10 (2026-09-27): discovery is process-once but its duration was never
+        // reported — startup attribution ended at "MCP: ?". Timed here so the
+        // first-chat discovery cost shows up as its own [perf] phase.
+        val t0 = System.currentTimeMillis()
         withContext(Dispatchers.IO) {
             val errs = mutableMapOf<String, String>()
             for (cfg in loadConfig(context)) {
@@ -301,6 +305,9 @@ object McpClientManager {
             }
             lastDiscoveryErrors.value = errs
         }
+        // PG10: report the discovery chain's duration (per-phase startup attribution).
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[perf] mcp: discovery pass took ${System.currentTimeMillis() - t0}ms", "perf")
     }
 
     private suspend fun refreshServerTools(context: Context, cfg: McpServerConfig) {

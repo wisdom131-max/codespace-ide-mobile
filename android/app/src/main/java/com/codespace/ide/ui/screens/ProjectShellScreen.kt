@@ -703,6 +703,15 @@ fun ProjectShellScreen(
             com.codespace.ide.diagnostics.AppOutputLog.log("[DIAG] crash-context.log $label path: $logPath", "lsp")
         }
     }
+    // PG09 (2026-09-27): the shell's first-composition cost was unmeasured — a
+    // 5254-line single screen whose wide recomposition scopes were "structurally
+    // likely" but invisible. This mark lands once per process at the FIRST frame
+    // after the nav host composes the shell, completing the startup chain
+    // (app-create → onCreate-end → shell-first-frame) in the Output tab's [perf]
+    // lines; per-expansion/per-pane costs now have a baseline to compare against.
+    LaunchedEffect(Unit) {
+        com.codespace.ide.editor.PerfProbe.markStartupPhase("shell-first-frame")
+    }
     val density = LocalDensity.current
     // Rotation fix (#8): key on orientation so raw AlertDialog windows get a fresh,
     // correctly-sized window on rotate.

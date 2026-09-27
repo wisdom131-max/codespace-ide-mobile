@@ -44,6 +44,34 @@ object PerfProbe {
     private var worstFrameAtMs = 0L
     private var idleNoted = false
 
+    // ── PG10/PG13 (2026-09-27): startup phase marks — the VS Code performance.ts
+    // analog. The probe previously covered ONLY editor keystroke/frames, so the
+    // startup init chain's cost was invisible and the fix plan could not rank what
+    // it could not see. markStartupPhase() is called at each boundary of the
+    // Application init chain (and first shell frame); every mark logs a [perf] line
+    // to the Output tab, and startupSummary() returns the whole attributed chain.
+    private val startupMarks = LinkedHashMap<String, Long>()
+    private var startupT0 = 0L
+
+    /** Record a startup phase boundary. First call anchors t0. */
+    fun markStartupPhase(label: String) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (startupT0 == 0L) startupT0 = now
+        val ms = now - startupT0
+        val prevMs = startupMarks.entries.lastOrNull()?.value
+        val phaseMs = if (prevMs != null) " (+${ms - prevMs}ms)" else ""
+        startupMarks[label] = ms
+        AppOutputLog.log("[perf] startup: $label at +${ms}ms$phaseMs", "perf")
+    }
+
+    /** All startup marks, one line — per-phase attribution for the fix plan. */
+    fun startupSummary(): String {
+        if (startupMarks.isEmpty()) return "no startup marks recorded"
+        val phases = startupMarks.entries.joinToString(" ") { "${it.key}=${it.value}ms" }
+        val total = startupMarks.entries.last().value
+        return "startup total ${total}ms | $phases"
+    }
+
     /** Call at the top of onValueChange when the text actually changed. */
     fun onEdit() {
         editAtNanos = System.nanoTime()

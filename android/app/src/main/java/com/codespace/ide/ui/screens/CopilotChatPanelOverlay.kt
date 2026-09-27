@@ -224,25 +224,34 @@ private fun msgFromJson(o: JSONObject): ChatMsg {
  */
 private val sessionBlobCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-private fun saveSessions(ctx: Context, sessions: List<ChatSession>) {
+// PG06 (2026-09-27): whole-sessions re-serialization DELETED from the per-send
+// path. saveSessions used to rebuild EVERY session's 50-message blob on every chat
+// send/rating/command (the blob cache only avoided the prefs WRITE, not the
+// SERIALIZE). With dirtyIds, only the changed session's blob is rebuilt; unchanged
+// sessions reuse the blob that is already on disk (loaded into the cache at startup)
+// and skip straight to the cheap index-metadata entry.
+private fun saveSessions(ctx: Context, sessions: List<ChatSession>, dirtyIds: Set<String>? = null) {
     val editor = ctx.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE).edit()
     val idx = JSONArray()
     val live = mutableSetOf<String>()
     sessions.forEach { s ->
         live.add(s.id)
-        val msgsArr = JSONArray()
-        s.messages.takeLast(50).forEach { m -> msgsArr.put(msgToJson(m)) }
-        val blob = JSONObject()
-            .put("id", s.id)
-            .put("title", s.title)
-            .put("mode", s.mode.name)
-            .put("updatedAt", s.updatedAt)
-            .put("customModeId", s.customModeId ?: "")
-            .put("messages", msgsArr)
-            .toString()
-        if (sessionBlobCache[s.id] != blob) {
-            editor.putString(sessionKey(s.id), blob)
-            sessionBlobCache[s.id] = blob
+        val mustSerialize = dirtyIds == null || s.id in dirtyIds || sessionBlobCache[s.id] == null
+        if (mustSerialize) {
+            val msgsArr = JSONArray()
+            s.messages.takeLast(50).forEach { m -> msgsArr.put(msgToJson(m)) }
+            val blob = JSONObject()
+                .put("id", s.id)
+                .put("title", s.title)
+                .put("mode", s.mode.name)
+                .put("updatedAt", s.updatedAt)
+                .put("customModeId", s.customModeId ?: "")
+                .put("messages", msgsArr)
+                .toString()
+            if (sessionBlobCache[s.id] != blob) {
+                editor.putString(sessionKey(s.id), blob)
+                sessionBlobCache[s.id] = blob
+            }
         }
         idx.put(
             JSONObject()
@@ -1118,7 +1127,8 @@ internal fun CopilotChatPanelInline(
         if (activeSession.title == "New chat") {
             messages.firstOrNull { it.role == "user" }?.let { activeSession.title = it.text.take(30) }
         }
-        saveSessions(context, sessions)
+        // PG06: only the active session changed — serialize it alone, not every session.
+        saveSessions(context, sessions, dirtyIds = setOf(activeSessionId))
     }
 
     fun switchSession(id: String) {
@@ -1196,7 +1206,8 @@ internal fun CopilotChatPanelInline(
             "rename" -> {
                 if (arg.isNotBlank()) {
                     activeSession.title = arg.take(40)
-                    saveSessions(context, sessions)
+                    // PG06: the blob carries the title — the renamed session is the dirty one.
+                    saveSessions(context, sessions, dirtyIds = setOf(activeSessionId))
                 } else {
                     renameTargetId = activeSessionId
                 }
@@ -2123,7 +2134,8 @@ internal fun CopilotChatPanelInline(
                     onDismiss = { renameTargetId = null },
                     onConfirm = { nt ->
                         target.title = nt
-                        saveSessions(context, sessions)
+                        // PG06: the blob carries the title — mark the renamed session dirty.
+                        saveSessions(context, sessions, dirtyIds = setOf(target.id))
                         renameTargetId = null
                     },
                 )
