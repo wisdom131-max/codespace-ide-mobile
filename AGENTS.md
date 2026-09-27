@@ -61,6 +61,12 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-27 11:45 WAT] — RG05 hotfix VERIFIED ON DEVICE (owner): P5 step 0.0 PASSED — build 9235b43 opens normally, 3 consecutive cold starts, no crash; P5 round STARTED
+
+Owner-confirmed on the real device: the 9235b43 APK opens normally, tested 3 cold starts in a row, zero crashes. The launch crash loop is closed end-to-end (code CI #36307436090 GREEN + device-verified). P5 DEVICE ROUND IS NOW IN PROGRESS per P5-DEVICE-CHECKLIST.md: step 0.0 PASSED; next is Step 0 (TP02 security round), then the 203 steps in order. Standing items to watch during the round: step 97's [perf] lines (send back for ranking), steps 187-189 (the forced-crash check that closes RG01's standing note — report when the CrashLog record lands), step 186 TB02 race protocol (repeat twice). XG01-04 remain PARKED (owner-gated); XG01-a starts when round results are reported.
+
+---
+
 ### [2026-09-27 10:10 WAT] — RG05 HOTFIX: launch crash loop fixed (backupPrefs unguarded File.copyTo killed Application.onCreate on EVERY start); code 9235b43, CI #36307436090 GREEN first push
 
 **[CRASH] Real device bugreport, confirmed on-device.** `java.lang.RuntimeException: Unable to create application com.codespace.ide.CodeSpaceApplication: java.io.FileNotFoundException: /storage/emulated/0/CodespaceIDE/prefs-backup/FirebaseHeartBeat[...].xml` at BackupManager.backupPrefs(:351) → onAppStart(:301) → CodeSpaceApplication.onCreate(:49). A full crash loop: every single launch.
