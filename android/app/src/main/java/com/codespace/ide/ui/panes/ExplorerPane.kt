@@ -1562,11 +1562,13 @@ fun ExplorerSidePanel(
                 // skips hidden and dependency/build trees at the DESCENT decision, so
                 // the walk only ever visits source files.
                 val skipDirs = setOf("node_modules", "build", "out", "vendor", "target", "dist")
-                projectDir.walkTopDown(
-                    onEnter = { dir ->
+                // P4p red fix (build #36292875965): onEnter is a BUILDER method on
+                // FileTreeWalk, not a walkTopDown parameter — the walk itself takes no
+                // arguments. Same pruning, correct shape.
+                projectDir.walkTopDown()
+                    .onEnter { dir ->
                         dir == projectDir || (!dir.name.startsWith(".") && dir.name !in skipDirs)
                     }
-                )
                     .filter { it.isFile && !it.path.contains(".versionhistory") && !it.path.contains(".ide-trash") && it.lastModified() > cutoff && it.length() < 1_048_576L }
                     .take(20)
                     .forEach { file ->
