@@ -1720,7 +1720,12 @@ fun ExplorerSidePanel(
                                                 } else if (src.isDirectory) {
                                                     src.copyRecursively(dest, overwrite = false)
                                                 } else {
+                                                    // copyTo returns the target File (it
+                                                    // throws on failure, incl. existing
+                                                    // dest with overwrite=false) — success
+                                                    // is simply not having thrown.
                                                     src.copyTo(dest, overwrite = false)
+                                                    true
                                                 }
                                                 if (ok) {
                                                     clipboardFile = null

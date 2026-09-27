@@ -302,5 +302,45 @@ class SessionStateStore(private val context: Context) {
 
         // ── Encoders ──────────────────────────────────────────────────────
 
+        // TB02 (2026-09-27): the legacy single-blob SHELL encoder is deleted — the
+        // two split writers serialize their own groups inline, and the decoder
+        // below survives only as the legacy-blob migration reader.
+        fun decodeShellState(raw: String): ShellState? = try {
+            val obj = JSONObject(raw)
+            fun strList(key: String): List<String> = buildList {
+                val arr = obj.optJSONArray(key) ?: JSONArray()
+                for (i in 0 until arr.length()) {
+                    val s = arr.optString(i, "")
+                    if (s.isNotBlank()) add(s)
+                }
+            }
+            ShellState(
+                projectId      = obj.optString("projectId", ""),
+                activePanel    = obj.optString("activePanel").takeIf { !it.isNullOrBlank() },
+                bottomTab      = obj.optString("bottomTab").takeIf { !it.isNullOrBlank() },
+                showBottomPanel = obj.optBoolean("showBottomPanel", true),
+                activeFilePath = obj.optString("activeFilePath").takeIf { !it.isNullOrBlank() },
+                openFilePaths  = strList("openFilePaths"),
+                pinnedFilePaths = strList("pinnedFilePaths"),
+                editorFontSize = obj.optInt("editorFontSize", 13),
+            )
+        } catch (_: Exception) { null }
+
+        private fun encodeTerminalState(state: TerminalMemory): String = JSONObject().apply {
+            put("workingDirectory", state.workingDirectory)
+            put("recentCommands",   JSONArray(state.recentCommands.takeLast(50)))
+        }.toString()
+
+        private fun decodeTerminalState(raw: String): TerminalMemory {
+            val obj = JSONObject(raw)
+            val cmds = buildList<String> {
+                val arr = obj.optJSONArray("recentCommands") ?: JSONArray()
+                for (i in 0 until arr.length()) { val s = arr.optString(i); if (s.isNotBlank()) add(s) }
+            }
+            return TerminalMemory(
+                workingDirectory = obj.optString("workingDirectory").takeIf { !it.isNullOrBlank() },
+                recentCommands   = cmds,
+            )
+        }
     }
 }
