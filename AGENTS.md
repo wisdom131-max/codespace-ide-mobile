@@ -61,6 +61,26 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-27 10:10 WAT] — RG05 HOTFIX: launch crash loop fixed (backupPrefs unguarded File.copyTo killed Application.onCreate on EVERY start); code 9235b43, CI #36307436090 GREEN first push
+
+**[CRASH] Real device bugreport, confirmed on-device.** `java.lang.RuntimeException: Unable to create application com.codespace.ide.CodeSpaceApplication: java.io.FileNotFoundException: /storage/emulated/0/CodespaceIDE/prefs-backup/FirebaseHeartBeat[...].xml` at BackupManager.backupPrefs(:351) → onAppStart(:301) → CodeSpaceApplication.onCreate(:49). A full crash loop: every single launch.
+
+**Root cause:** RG05's backup-every-start globs ALL *.xml under shared_prefs, then copied each with a bare `File.copyTo` — which THROWS FileNotFoundException when the source cannot be opened. The Firebase heartbeat prefs files are created/rewritten LAZILY by the Firebase process, not guaranteed to exist (or to still exist between the directory listing and the open) at backup time. The throw escaped into Application.onCreate = dead app on every start. Same unguarded shape in the agent_scheduler files loop; settings.json/ssh-profiles.json/memory.json had exists() guards but the same TOCTOU window.
+
+**Fix (S01-shaped — skip is NOT a swallow):**
+- ONE guarded helper `copyStoreFileOrSkip(src, dest): CopyVerdict` — source not present, or vanishes between listing and open → SKIPPED_MISSING (nothing to back up for this file, continue). Any OTHER IOException (unwritable destination, permissions, disk) → logged at ERROR + returned as FAILED, never thrown: a backup failure must not kill the launch, but it is never silently lost either.
+- `backupPrefs` now returns a typed `PrefsBackupResult(copied, skippedMissing, failedNames)`; onAppStart logs a WARNING when failures are reported; BOTH Settings "Back up now" call sites surface failed copies into the backup status line.
+- The RG05 audit (item 2 of the fix order): ALL RG05 sources now route through the same helper — shared_prefs glob, settings.json, ssh-profiles.json, agent_scheduler files, agent_memory.json. No file in the backup list assumes existence any more.
+- Version-marker writeText also guarded (failed write = honest WARNING, not a launch crash — same discipline; the marker only arms the Settings prompt).
+
+**REMOVED:** the unguarded `forEach { it.copyTo(...) }` loop; the raw exists()-then-copyTo TOCTOU pairs; the unguarded marker write. Nothing relied on them — they were the crash.
+
+**RE-LAUNCH TEST (add to the P5 round, runs FIRST):** install the 9235b43 APK over the crashing build (same data dir) → app OPENS normally on the very first launch. Repeat cold-start 3x — no crash. Logcat (BackupManager tag): one "RG05 prefs backup ok (copied N, skipped M (not present), failed 0)" line per start, no exceptions. Then force the disk-full/read-only case: make /storage/emulated/0/CodespaceIDE read-only → relaunch → app STILL opens, logcat shows the ERROR line naming the failed file(s) + the WARNING from onAppStart — failures surfaced, not swallowed, launch alive.
+
+**ROADMAP (continuity — all pending items):** P4 tally unchanged 245/249 (XG01-04 PARKED, owner-gated; XG01-04 full design/build plan delivered at F-TRACK depth, awaiting plan approval — device round first per the sequencing call). NEXT: P5 device round per P5-DEVICE-CHECKLIST.md — now UNBLOCKED; run the RE-LAUNCH TEST above as step 0.0 before TP02's Step 0, then the 203 steps as written. RG05 itself re-verifies at steps 147-151.
+
+---
+
 ### [2026-09-27 08:05 WAT] — P5 CONSOLIDATED DEVICE CHECKLIST committed (P5-DEVICE-CHECKLIST.md, docs-only); 245-row code-verification pass recorded
 
 **Docs:** this push (checklist file + this entry). No code changes.
