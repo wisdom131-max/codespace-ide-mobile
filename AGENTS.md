@@ -61,6 +61,36 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-27 06:05 WAT] — P4q SHIPPED: IG integrations group COMPLETE (IG07-IG16 minus pre-closed, 9 rows, zero ledger misses — 7 pre-closed rows re-verified live first); file-verified tally 225/249, 24 open (tally correction: P4p was 216/249, recorded 215 — one-row undercount found by the any-format recount)
+
+**Code:** af07ceb (CI #36294732809 GREEN, first push clean). **Docs:** this push.
+
+**[Why: the integrations family carried an OAuth transport the codebase's own docs call blocked, detection that lied about its confidence, a dead auth surface, five non-atomic stores, a cron catch-all that turned typos into once-a-minute loops, six copies of the backend URL, and a ports panel blind to any server not on its static list.]**
+
+**What was REMOVED/deleted (per row):**
+- **IG07:** the in-app OAuth WebView + ALL its machinery — dialog, oauthWebViewUrl/oauthCallbackUrl states, the OAUTH-CALLBACK-FIX deliverer, and ConnectorsApiClient.completeOAuthCallback (it existed ONLY to re-deliver the callback the WebView canceled; the external-browser flow delivers it to the backend directly). The Hub now uses the SAME external-browser transport as the chat path, which the codebase's own docs say is required (Google/Slack block embedded WebViews: "disallowed_useragent").
+- **IG08:** exec's catch-all-to-"" (all 24 detector sites) — a hung proot, a permission failure, and a genuinely missing binary all rendered as MISSING; ToolHealth.UNKNOWN was unreachable. Now a failed probe is null → UNKNOWN with an honest note (ToolchainPanel already renders it); "" still means the command RAN (real MISSING/BROKEN).
+- **IG09:** the dead Retrofit auth surface — ApiService interface, LoginRequest/RefreshRequest/RepoDto/CreatePrRequest/PullRequestDto DTOs, retrofit + apiService providers in AppModule, and BOTH retrofit gradle deps. Zero Kotlin retrofit imports remain. AuthResponse KEPT (live: parsed by the OkHttp token-refresh interceptor).
+- **IG10:** AgentMemory's non-atomic writeText (one truncated write + empty-catch = total silent memory loss) + the unbounded store. Now atomic + 256KB cap + honest failure strings on save/delete.
+- **IG11:** same-millisecond silent id overwrite + the swallowed per-record exceptions in read/update/delete loops. Now bump-until-unique ids and skipped-count reporting ("Skipped N unreadable/unwritable record(s)").
+- **IG12:** SIX hardcoded backend URLs (ConnectorsApiClient, AuthScreen, HomeScreen, ProjectShellScreen backup URL, ConnectorsHubSheet — that copy removed entirely by IG07). Single source: BuildConfig.API_BASE_URL (per-flavor: dev→emulator, prod→Render). ProotInstaller occurrence is KDoc prose, left as documentation.
+- **IG13:** the every-60-seconds catch-all — any unmatched cron form (a "daily backup" typo) silently became a once-a-minute loop while schedule() echoed the original cron back. Unsupported forms now FAIL CLOSED BEFORE persisting, listing the supported forms; restoreAll inherits the guard.
+- **IG14:** the static-list-only blindness — the ports panel now discovers candidates from the kernel's actual LISTEN sockets (/proc/net/tcp + tcp6, state 0A; guest dev servers share the kernel netns) and silently rescans every 5s while open (no spinner churn). A server started after the last rescan appears on the next tick.
+
+**What was ADDED:**
+- **IG16:** util/AtomicJson.kt — the ONE shared atomic-write utility (SK01 family: temp + rename + copy fallback, same shape as the JsonSettingsStore original) now backing the SSH profile store, scheduled tasks, agent memory, and entity records. The known-hosts JSON store no longer exists (P3d moved known_hosts to the rootfs + ssh-keygen), so all four remaining stores are atomic.
+
+**ROADMAP (continuity — all pending items):** File-verified 225/249 closed, 24 open = 20 batchable + XG01-04 (owner-gated enablers, one go-decision each like F6; F6 JVM-debug decision likewise owner-gated). Remaining batchable rows: XG non-parked (11, package-manager/MCP family), OG (3: OG03 template delete, OG05 fallback token, OG06 doc-vs-code claim), IM (3: ImageGen query-param key, unbounded decode, hardcoded model), EX (2: EX03 cut/paste clipboard, EX08 multi-select dupes), TB02 (1, race — repeated rapid-action device testing), TP02 re-verify note. COMPLETE groups now: VG, RG, TM, TG, SG, TP, SK, PG, IG, Problems, Search (SR), Tabs (TB04-08), CH. Next decision points: P5 device verification round for P4d-P4q gaps, or next batch (recommend XG — 11 rows, one pane family, highest row count left).
+
+### P5 device checks (per gap ID, IG group)
+- **IG07:** Hub → connect a REAL Google/Slack connector — external browser opens (not in-app); finish sign-in there; return WITHOUT reopening the sheet and confirm the row flips to Connected within ~5s of finishing (the poll); toast "✓ Connected". Repeat a disconnect → reconnect.
+- **IG08:** Build Environment panel → refresh toolchain: statuses render; to hit UNKNOWN honestly, run the check while a heavy install (apt-get in Package Manager) holds the proot — rows should show the gray "?" UNKNOWN with "Probe failed" note, then return to real values after the install finishes.
+- **IG10/IG16 (atomic writes):** force-stop the app mid-chat-save (during a busy memory burst) and relaunch — agent memory and scheduled tasks intact, not wiped to empty.
+- **IG11:** via the agent, create two entity records in quick succession (same command, twice, fast) — BOTH exist afterward (no silent overwrite). Corrupt one record file (edit in JSON) → update-all should report "Skipped 1 unreadable record(s)".
+- **IG12:** cloud backup panel + auth still work (no URL drift); emulator/dev build would point at its local backend if ever used.
+- **IG13:** ask the agent to schedule a task with a bogus cron (e.g. "hourly" or "0 9 *") — honest "Unsupported cron form … NOT scheduled" and the task does NOT appear in listTasks.
+- **IG14:** start a dev server on a NON-standard port (e.g. `python3 -m http.server 7777` in the guest terminal), open the Ports panel — it appears within ~5s WITHOUT a manual refresh; close it, confirm it disappears on a later tick.
+
 ### [2026-09-27 05:30 WAT] — P4p SHIPPED: PG editor-perf group COMPLETE (PG03 + PG06-PG14, 10 rows, zero ledger misses — every row verified live before code, verify-before-code held again); file-verified tally 215/249, 34 open
 
 **Code:** 2848b42 + fix 42bedba (CI #36293365471 GREEN; one red — #36292875965, onEnter is a FileTreeWalk BUILDER method, not a walkTopDown parameter: the walk takes no arguments, prune via `.walkTopDown().onEnter { ... }`). **Docs:** this push.
