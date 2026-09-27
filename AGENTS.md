@@ -61,6 +61,47 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-27 07:50 WAT] — P4s SHIPPED: FINAL SWEEP — all 9 remaining batchable rows (OG03 OG05 OG06 IM01 IM02 IM03 EX03 EX08 TB02); tally 245/249, ONLY XG01-04 (PARKED, owner-gated) remain open
+
+**Code:** 72869ae + fix 545f1a8 (CI #36297682561 GREEN, one red). **Docs:** this push. **Every row verified live in code BEFORE patching — zero stale rows this time.**
+
+**[Why: the last small-sweep rows were the kind of quiet rot the audit exists for — a shell-state race, a paste that lied about success, an offline login that stored a doomed token, comments claiming the opposite of what the code does, and a Gemini key riding in a URL.]**
+
+**What was REMOVED/deleted (per row):**
+- **OG03:** the `deleteRecursively()` of the soft-deleted predecessor's whole dir in template name-reuse cleanup.
+- **OG05:** the raw Firebase ID token stored as refreshToken in the offline-login fallback + the doomed `getIdToken(true)` network call it required.
+- **OG06:** the false "Access tokens are kept in memory only" comments (SecureTokenStore KDoc, CodeSpaceApp routing note) — `lastAccessToken` IS persisted (encrypted, Keystore-backed).
+- **IM03:** the hardcoded image-model constant + its "bump this" comment.
+- **TB02:** the shared single-blob ShellState write path — `saveShellState(projectId, ShellState-with-defaults)` calls in EditorPane + ProjectShellScreen (each writer default-filled the fields it did not own, so the last partial writer erased the other's), and the now-dead `encodeShellState` companion encoder.
+
+**What was fixed (per row):**
+- **EX03:** Paste keeps the clipboard on a FAILED move/copy with an honest error notification (renameTo's false was silently ignored before); directories copy RECURSIVELY (File.copyTo on a dir copies no children — now copyRecursively); a successful Cut-move rekeys open tabs via the same `onFileRenamed` callback the Rename dialog uses.
+- **EX08:** multi-select All now walks the whole non-hidden tree instead of only EXPANDED directories (the result no longer depends on UI expansion state), dedupes, and writes the state once (collected into a plain list, then clear+addAll — no per-file SnapshotStateList churn).
+- **OG03:** the dir (trash included) is renamed aside as `<name>.deleted-<timestamp>`; if the rename fails the scaffold refuses with "restore or permanently delete it from Trash first" — no silent data destruction for a name collision.
+- **OG05:** fallback stores the `LOCAL_FALLBACK_REFRESH_TOKEN` sentinel; ConnectorsApiClient recognizes it, SKIPS the doomed /auth/refresh call, and throws the actionable message "Signed in OFFLINE ... sign out, then sign in again" (surfaces through the Hub's runCatching as a readable error).
+- **IM01:** Gemini key moved from `?key=` query param to the `x-goog-api-key` header.
+- **IM02:** Base64 decode capped at 20M chars (~15 MB decoded) with an honest refusal message.
+- **IM03:** model id is a per-project setting — `ProjectSettingsStore.geminiImageModel` ("gemini_image_model") + In-Project Settings (AI Agent) "Gemini Image Model" input row + Settings search index entry; empty falls back to `DEFAULT_IMAGE_MODEL` (gemini-2.5-flash-image).
+- **TB02:** ShellState split into two keys with DISJOINT writers — `shell_panel_*` (ProjectShellScreen: panel, bottom tab, visibility, font size) and `shell_editor_*` (EditorPane: tabs/pins); interleaved updates can no longer erase each other; session-import full-state writes go through saveShellState writing both groups; legacy single-blob saves still decode (migration path); clearProjectState removes all keys.
+
+**Red fixed same-session (CI #36297201194 → #36297682561):** (1) my `encodeShellState` deletion regex over-ate the companion block — `decodeShellState`, `encodeTerminalState`, `decodeTerminalState` all vanished; restored from the last green tree (encodeShellState stays deleted). LESSON: never delete a range with a greedy-ish regex around sibling functions — diff against HEAD after. (2) `File.copyTo` returns **File**, not Boolean — assigning its result to `val ok: Boolean` failed; copyTo THROWS on failure, so the success branch is `true`. (Same class as #2724/#2756: verify an API's return type before assigning it.)
+
+### P5 device checks (per gap ID)
+- **TB02:** the row's own protocol — rapidly alternate tab selection, panel switches and font-size changes in one session, then force-close, relaunch and reopen the project: ALL fields restore (active file, pins, panel, bottom tab, font size). Repeat twice. Also open a project saved by the PREVIOUS app version (legacy blob) → still restores once.
+- **EX03:** copy a FOLDER, paste it → children present; cut a file into a folder where the same name already exists → error toast AND clipboard still usable (paste elsewhere works); cut a file while its tab is open → tab follows to the new path (content + dirty state intact, no duplicate tab).
+- **EX08:** with all top-level folders COLLAPSED, tap multi-select → All → the list contains files from inside those folders (previously it silently returned only root-level files); select some files manually first, then All → no duplicate entries.
+- **OG03:** create a project, delete it (soft), then create a NEW project with the same name → succeeds; check the workspace dir: a `<name>.deleted-<ts>` sibling exists containing the old `.ide-trash` (restorable).
+- **OG05:** sign in with the backend unreachable (airplane mode + Wi-Fi only, or a wrong API_BASE) → app works; open Connectors Hub → readable "Sign in OFFLINE ... sign in again" message (not a bare 401); sign out, restore connectivity, sign in → Hub works.
+- **IM01-03:** generate an image with a valid Gemini key → works as before (header auth + default model); set In-Project Settings → AI Agent → Gemini Image Model to a valid newer model id (e.g. gemini-3.1-flash-image) → generation uses it; enter garbage → honest API error surfaces in the dialog.
+- **OG06:** no behavior change — comments only; verify build (already green).
+
+### Roadmap
+- **P4 BATCHABLE WORK IS DONE.** Tally 245/249. The ONLY open rows are XG01-04 (extension-architecture enablers: manifest/contribution registry, scoped caller-identity API, extension discovery, activation model) — PARKED per the 2026-09-26 owner ruling: never batch-proposed; each needs its own future go-decision like F6.
+- **P5 (next, awaiting owner go):** the full device verification round for P4d-P4s — TP02 batch checks, P2a-e checks, F1-F5 checks, and every batch's P5 sections as recorded (P4a-1 PR checks through this entry's OG/IM/EX/TB02 checks).
+- **XG01-04:** parked, owner-gated. If the owner gives a go, GROUP-EXTENSIONS.md holds the recorded plan (manifest-only first, no extension host process).
+
+---
+
 ### [2026-09-27 07:15 WAT] — P4r SHIPPED: XG package-manager/MCP group COMPLETE (XG06-XG16, 11 rows, ZERO ledger misses — verify-before-code confirmed XG14 already closed in code by 3126411); tally 236/249, 13 open (9 batchable + XG01-04 PARKED)
 
 **Code:** fa50856 (CI #36295816705 GREEN, first push clean). **Docs:** this push.
