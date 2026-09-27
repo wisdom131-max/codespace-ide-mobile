@@ -61,6 +61,37 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-09-27 05:30 WAT] — P4p SHIPPED: PG editor-perf group COMPLETE (PG03 + PG06-PG14, 10 rows, zero ledger misses — every row verified live before code, verify-before-code held again); file-verified tally 215/249, 34 open
+
+**Code:** 2848b42 + fix 42bedba (CI #36293365471 GREEN; one red — #36292875965, onEnter is a FileTreeWalk BUILDER method, not a walkTopDown parameter: the walk takes no arguments, prune via `.walkTopDown().onEnter { ... }`). **Docs:** this push.
+
+**[Why: the perf family carried an every-20s full-tree stat walk, an all-sessions re-serialize per chat send, an inline history serialize per notification, three overlapping highlight timers, an Int.MAX_VALUE scroll hack, an unread RAM flag, and a probe that could not see any of it.]**
+
+**What was REMOVED/deleted (per row):**
+- **PG03:** the full walk-then-filter pattern — the loop now PRUNES (onEnter skips hidden dirs + node_modules/build/out/vendor/target/dist at the descent decision; the old path filter ran only AFTER stat-ing every file inside .git/.versionhistory/.ide-trash/node_modules) + the re-copy churn (an unchanged-but-recent file with a matching newer snapshot is skipped; the old loop copied the same file every 20s for 5 minutes, then trim evicted real checkpoints to make room).
+- **PG06:** whole-sessions blob re-serialization on the per-send path — saveSessions(ctx, sessions, dirtyIds): persistSessions rebuilds ONLY the active session's blob; rename paths mark the renamed session dirty (the blob carries the title); deleteSession keeps the full pass (rare, needs the purge).
+- **PG07:** the inline 50-item history serialize in add()/dismiss() — 2s debounced trailing write coalesces bursts; user-initiated toggles keep the immediate full persist. (updateProgress/completeProgress never persisted at all — unchanged, noted.)
+- **PG11:** rememberScrollState(Int.MAX_VALUE) autoscroll-by-overflow hack — normal ScrollState + one scrollTo per append.
+- **PG12:** BOTH per-jump inline delay(6000) cleanup launches (go-to-line site entirely; problems-jump site keeps only its scroll) — ONE LaunchedEffect keyed on highlightBlinkStart owns the 6s blink reset; the 5s auto-dismiss stays (different state, user-requested GOLDBAND behavior).
+
+**What was ADDED (all measurement rows landed, nothing invented):**
+- **PG08:** explorer tree-build timing — [perf] line per build (duration + top-node count + expanded count) on the primary nodes remember block.
+- **PG09:** shell-first-frame startup mark — the attributed chain completes (app-create → prefs-backup-restore → stores-init → textmate-init → onCreate-end → shell-first-frame) as [perf] lines; wide-recomposition ranking now has a baseline. Structural refactor of the 5254-line screen stays a future decision.
+- **PG10:** PerfProbe.markStartupPhase at every Application init boundary + MCP discovery pass duration as its own [perf] line (first chat + manual refresh).
+- **PG13:** the startup-marks API in PerfProbe (VS Code performance.ts analog): markStartupPhase(label) logs elapsed + per-phase delta; startupSummary() returns the whole attributed chain.
+- **PG14:** the first REAL low-RAM degradation consumer — the 20s snapshot pass skips entirely when MemoryMonitor.isLowRam (one /proc read vs a tree walk + copies), resumes automatically when RAM recovers.
+
+**ROADMAP (continuity — all pending items):** File-verified 215/249 closed, 34 open (30 batchable + XG01-04 PARKED by owner ruling — own go-decision each, like F6; F6 JVM-debug decision likewise owner-gated). Remaining open rows: IG (10, incl. IG10/IG16 SK01-family atomic-store batch), XG non-parked (11), OG (3), IM (3), EX (2), TB02 (1, race — repeated rapid-action device testing), TP02 re-verify note. COMPLETE groups now: VG, RG, TM, TG, SG, TP, SK, PG, Problems, Search (SR), Tabs (TB04-08), CH. Next decision points: P5 device verification round for P4d-P4p gaps, or next group batch (recommend IG — 10 rows, integrations).
+
+### P5 device checks (per gap ID, PG group)
+- **PG03:** open a large multi-root project, leave the editor idle 2+ minutes — confirm .versionhistory gains ONE snapshot per recent edit (not a new .bak every 20s); confirm snapshots still capture edits in nested source dirs but NOT inside hidden/dependency dirs.
+- **PG04 already verified live (P3c).** **PG06:** send several chat messages + rate one reply in a multi-session project — sessions switch/rename/restore correctly; other sessions' transcripts untouched.
+- **PG07:** trigger a build (notification burst) — history persists after a few seconds; dismiss a notification — it reappears after app restart; toggles write immediately.
+- **PG11:** start a long install (apt-get in Package Manager) — op-strip scrolls to bottom per line, stays scrollable; after completion, close + reopen the strip.
+- **PG12:** trigger two line-jumps within ~2s (Go to Line, then an outline entry) — gold band blinks for the SECOND jump the full 6s (earlier timer no longer kills it); band auto-clears at ~5s.
+- **PG14:** with a heavy project open + terminal running, confirm the status bar RAM readout turns red when low and snapshots pause (no new .versionhistory files), then resume when RAM recovers.
+- **PG08/PG09/PG10/PG13 (measurement reads):** cold-start the app, open the Output tab → [perf] lines: startup chain phases with deltas, shell-first-frame total, MCP discovery duration on first chat; expand a big folder in the Explorer — tree-build [perf] line with duration + node count. Send back the [perf] lines for ranking.
+
 ### [2026-09-26 23:59 WAT] — P4o SHIPPED: SK settings group COMPLETE (SK03-SK14, 11 rows, zero ledger misses — every row verified live before code); file-verified tally 205/249, 44 open
 
 **Code:** 17b336b + fix e4f8fd4 (CI #36272641464 GREEN). **Docs:** this push.
