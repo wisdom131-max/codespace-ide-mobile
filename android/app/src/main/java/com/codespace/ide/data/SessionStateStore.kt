@@ -49,21 +49,75 @@ class SessionStateStore(private val context: Context) {
 
     // ── Shell / workspace state ──────────────────────────────────────────
 
-    fun saveShellState(projectId: String, state: ShellState) {
+    // TB02 (2026-09-27): split ownership. The editor pane and the shell screen used
+    // to REPLACE one shared JSON blob, each default-filling the fields it does NOT
+    // own — whichever partial writer ran last silently erased the other's fields
+    // (rapid tab/panel/font updates could race; a happy-path launch never showed it).
+    // Each writer now persists ONLY its own group under its own key. The two keys
+    // have disjoint writers, so interleaved updates cannot lose fields.
+    fun saveShellPanelState(projectId: String, activePanel: String?, bottomTab: String?, showBottomPanel: Boolean, editorFontSize: Int) {
         if (!workspaceRestoreEnabled) return
-        prefs.edit { putString(shellKey(projectId), encodeShellState(state)) }
+        prefs.edit {
+            putString(shellPanelKey(projectId), JSONObject().apply {
+                put("activePanel", activePanel)
+                put("bottomTab", bottomTab)
+                put("showBottomPanel", showBottomPanel)
+                put("editorFontSize", editorFontSize)
+            }.toString())
+        }
+    }
+
+    fun saveShellEditorState(projectId: String, activeFilePath: String?, openFilePaths: List<String>, pinnedFilePaths: List<String>) {
+        if (!workspaceRestoreEnabled) return
+        prefs.edit {
+            putString(shellEditorKey(projectId), JSONObject().apply {
+                put("activeFilePath", activeFilePath)
+                put("openFilePaths", JSONArray(openFilePaths))
+                put("pinnedFilePaths", JSONArray(pinnedFilePaths))
+            }.toString())
+        }
+    }
+
+    /** Full-state write — only for writers that legitimately own ALL fields (session import). */
+    fun saveShellState(projectId: String, state: ShellState) {
+        saveShellPanelState(projectId, state.activePanel, state.bottomTab, state.showBottomPanel, state.editorFontSize)
+        saveShellEditorState(projectId, state.activeFilePath, state.openFilePaths, state.pinnedFilePaths)
     }
 
     fun loadShellState(projectId: String): ShellState? {
         if (!workspaceRestoreEnabled) return null
-        val raw = prefs.getString(shellKey(projectId), null) ?: return null
-        return decodeShellState(raw)
+        val panelRaw = prefs.getString(shellPanelKey(projectId), null)
+        val editorRaw = prefs.getString(shellEditorKey(projectId), null)
+        // Legacy migration: pre-TB02 single-blob saves still restore.
+        if (panelRaw == null && editorRaw == null)
+            return prefs.getString(shellKey(projectId), null)?.let { decodeShellState(it) }
+        val panel = panelRaw?.let { runCatching { JSONObject(it) }.getOrNull() }
+        val editor = editorRaw?.let { runCatching { JSONObject(it) }.getOrNull() }
+        fun str(o: JSONObject?, k: String): String? = o?.takeIf { it.has(k) }?.optString(k)
+        fun bool(o: JSONObject?, k: String): Boolean = o?.takeIf { it.has(k) }?.optBoolean(k) ?: true
+        fun int(o: JSONObject?, k: String): Int = o?.takeIf { it.has(k) }?.optInt(k, 13) ?: 13
+        fun strList(o: JSONObject?, k: String): List<String> = buildList {
+            val a = o?.optJSONArray(k) ?: return@buildList
+            for (i in 0 until a.length()) { val e = a.optString(i, ""); if (e.isNotBlank()) add(e) }
+        }
+        return ShellState(
+            projectId = projectId,
+            activePanel = str(panel, "activePanel"),
+            bottomTab = str(panel, "bottomTab"),
+            showBottomPanel = bool(panel, "showBottomPanel"),
+            activeFilePath = str(editor, "activeFilePath"),
+            openFilePaths = strList(editor, "openFilePaths"),
+            pinnedFilePaths = strList(editor, "pinnedFilePaths"),
+            editorFontSize = int(panel, "editorFontSize"),
+        )
     }
 
     /** Clear workspace memory for a specific project. */
     fun clearProjectState(projectId: String) {
         prefs.edit {
             remove(shellKey(projectId))
+            remove(shellPanelKey(projectId))
+            remove(shellEditorKey(projectId))
             remove(cursorKey(projectId))
             remove(scrollKey(projectId))
             remove(terminalKey(projectId))
@@ -236,6 +290,8 @@ class SessionStateStore(private val context: Context) {
         private const val KEY_RESTORE_ENABLED = "workspace_restore_enabled"
 
         private fun shellKey(id: String)    = "shell_state_$id"
+        private fun shellPanelKey(id: String) = "shell_panel_$id"
+        private fun shellEditorKey(id: String) = "shell_editor_$id"
         private fun cursorKey(id: String)   = "cursors_$id"
         private fun scrollKey(id: String)   = "scrolls_$id"
         private fun terminalKey(id: String) = "terminal_$id"
@@ -246,53 +302,5 @@ class SessionStateStore(private val context: Context) {
 
         // ── Encoders ──────────────────────────────────────────────────────
 
-        fun encodeShellState(state: ShellState): String = JSONObject().apply {
-            put("projectId",       state.projectId)
-            put("activePanel",     state.activePanel)
-            put("bottomTab",       state.bottomTab)
-            put("showBottomPanel", state.showBottomPanel)
-            put("activeFilePath",  state.activeFilePath)
-            put("openFilePaths",   JSONArray(state.openFilePaths))
-            put("pinnedFilePaths", JSONArray(state.pinnedFilePaths))
-            put("editorFontSize",  state.editorFontSize)
-        }.toString()
-
-        fun decodeShellState(raw: String): ShellState? = try {
-            val obj = JSONObject(raw)
-            fun strList(key: String): List<String> = buildList {
-                val arr = obj.optJSONArray(key) ?: JSONArray()
-                for (i in 0 until arr.length()) {
-                    val s = arr.optString(i, "")
-                    if (s.isNotBlank()) add(s)
-                }
-            }
-            ShellState(
-                projectId      = obj.optString("projectId", ""),
-                activePanel    = obj.optString("activePanel").takeIf { !it.isNullOrBlank() },
-                bottomTab      = obj.optString("bottomTab").takeIf { !it.isNullOrBlank() },
-                showBottomPanel = obj.optBoolean("showBottomPanel", true),
-                activeFilePath = obj.optString("activeFilePath").takeIf { !it.isNullOrBlank() },
-                openFilePaths  = strList("openFilePaths"),
-                pinnedFilePaths = strList("pinnedFilePaths"),
-                editorFontSize = obj.optInt("editorFontSize", 13),
-            )
-        } catch (_: Exception) { null }
-
-        private fun encodeTerminalState(state: TerminalMemory): String = JSONObject().apply {
-            put("workingDirectory", state.workingDirectory)
-            put("recentCommands",   JSONArray(state.recentCommands.takeLast(50)))
-        }.toString()
-
-        private fun decodeTerminalState(raw: String): TerminalMemory {
-            val obj = JSONObject(raw)
-            val cmds = buildList<String> {
-                val arr = obj.optJSONArray("recentCommands") ?: JSONArray()
-                for (i in 0 until arr.length()) { val s = arr.optString(i); if (s.isNotBlank()) add(s) }
-            }
-            return TerminalMemory(
-                workingDirectory = obj.optString("workingDirectory").takeIf { !it.isNullOrBlank() },
-                recentCommands   = cmds,
-            )
-        }
     }
 }

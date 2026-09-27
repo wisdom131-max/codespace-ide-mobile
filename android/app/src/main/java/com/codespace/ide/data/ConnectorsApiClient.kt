@@ -27,6 +27,15 @@ import java.util.concurrent.TimeUnit
  */
 object ConnectorsApiClient {
 
+    /**
+     * OG05 (2026-09-27): sentinel stored in the refresh-token slot when login fell
+     * back to a raw Firebase ID token because the backend was unreachable. Such a
+     * session can NEVER refresh — /auth/refresh only accepts real backend refresh
+     * tokens. Recognized by [executeWithRefresh] to skip the doomed call and give
+     * the one hint that actually fixes it: sign in again.
+     */
+    const val LOCAL_FALLBACK_REFRESH_TOKEN = "local-fallback-offline-login"
+
     // IG12 (2026-09-27): single source of truth — the backend URL was hardcoded in
     // SIX places and the Railway→Render migration already proved that drifts silently.
     // BuildConfig.API_BASE_URL (per-flavor: dev points at the emulator, prod at Render)
@@ -69,6 +78,11 @@ object ConnectorsApiClient {
         try {
             val store = SecureTokenStore(context)
             val refreshToken = store.refreshToken?.takeIf { it.isNotBlank() } ?: return client.newCall(request).execute()
+            // OG05: sentinel check — see LOCAL_FALLBACK_REFRESH_TOKEN. Skips the
+            // doomed /auth/refresh call and surfaces the fix instead of a bare 401.
+            if (refreshToken == LOCAL_FALLBACK_REFRESH_TOKEN) {
+                error("Signed in OFFLINE (backend unreachable at login) — Connectors need a fresh sign-in. Sign out, then sign in again.")
+            }
             val refreshReq = Request.Builder()
                 .url("$API_BASE/auth/refresh")
                 .post("{\"refreshToken\":\"$refreshToken\"}".toRequestBody(JSON))

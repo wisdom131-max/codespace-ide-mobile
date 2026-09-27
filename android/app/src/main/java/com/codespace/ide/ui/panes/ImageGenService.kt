@@ -20,15 +20,23 @@ import java.util.concurrent.TimeUnit
 // well-labeled prompt fine).
 //
 // Uses the classic generateContent endpoint (not the newer Interactions API) so the
-// request/response shape matches callGemini() in CopilotChatPanelOverlay.kt exactly —
-// same auth (?key= query param), same JSON parsing conventions, minimal new surface
-// area. Default model is the legacy-but-still-supported "gemini-2.5-flash-image"
-// (aka Nano Banana) rather than the newer gemini-3.1-flash-image / Nano Banana 2,
-// which Google's docs currently frame around their newer Interactions API — bump this
-// string once that's confirmed to work identically via generateContent.
+// request/response shape matches callGemini() in CopilotChatPanelOverlay.kt —
+// same JSON parsing conventions, minimal new surface area.
+// IM01 (2026-09-27): auth now uses the x-goog-api-key HEADER, not a ?key= query
+// param — query strings surface in HTTP logging layers and server access logs.
+// IM03 (2026-09-27): the model id is no longer a hardcoded bump-this constant —
+// it defaults to the legacy-but-still-supported "gemini-2.5-flash-image" (aka
+// Nano Banana) and can be overridden per-project from In-Project Settings
+// (ProjectSettingsStore.geminiImageModel, "gemini_image_model").
 // ─────────────────────────────────────────────────────────────────────────────
 
-private const val DEFAULT_IMAGE_MODEL = "gemini-2.5-flash-image"
+// IM03: internal so the Settings dialog can display it as the placeholder default.
+internal const val DEFAULT_IMAGE_MODEL = "gemini-2.5-flash-image"
+
+// IM02 (2026-09-27): decode cap — server responses are image-bounded in practice,
+// but a huge or attacker-influenced payload must not balloon the heap on a 3GB
+// device. 20M base64 chars ~= 15 MB decoded.
+private const val MAX_IMAGE_B64_CHARS = 20_000_000
 
 private val imageHttp = OkHttpClient.Builder()
     .connectTimeout(30, TimeUnit.SECONDS)
@@ -60,10 +68,12 @@ suspend fun generateGeminiImage(
         )
         .toString()
 
-    val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+    // IM01: key in the x-goog-api-key header, never in the URL.
+    val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
     val resp = imageHttp.newCall(
         Request.Builder()
             .url(url)
+            .header("x-goog-api-key", apiKey)
             .header("Content-Type", "application/json")
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
@@ -92,6 +102,10 @@ suspend fun generateGeminiImage(
             val mime = inline.optString("mimeType", inline.optString("mime_type", "image/png"))
             val b64 = inline.optString("data")
             if (b64.isNotBlank()) {
+                // IM02: cap before decode.
+                if (b64.length > MAX_IMAGE_B64_CHARS) {
+                    throw Exception("Gemini returned an image larger than ~15 MB — refusing to decode on this device.")
+                }
                 val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
                 return@withContext GeneratedImage(bytes, mime)
             }

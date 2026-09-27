@@ -156,14 +156,20 @@ fun AuthScreen(onAuthenticated: (AuthResult) -> Unit) {
                 )
             } else {
                 // Backend unreachable (rare — e.g. mobile data drop mid-login). Fall back
-                // to the Firebase token so the user isn't hard-locked-out of the app; the
-                // Connectors Hub will show its existing "sign in first" error until the
-                // NEXT successful login exchanges a real backend pair. Projects/editor/
-                // terminal all work fine on this fallback since they don't call the backend.
+                // to the Firebase token so the user isn't hard-locked-out of the app;
+                // projects/editor/terminal all work fine on this fallback since they
+                // don't call the backend.
+                // OG05 (2026-09-27): the old code stored a SECOND raw Firebase ID token
+                // as the refreshToken — a value /auth/refresh can never accept, so the
+                // Hub burned a doomed network call on every 401 and its error gave no
+                // hint that re-login fixes it. The refresh slot now carries an explicit
+                // SENTINEL; ConnectorsApiClient recognizes it and skips straight to the
+                // honest "sign in again" message. The NEXT successful login (backend
+                // reachable) exchanges a real backend pair as normal.
                 onAuthenticated(
                     AuthResult(
                         accessToken  = firebaseIdToken,
-                        refreshToken = firebaseAuth.currentUser?.getIdToken(true)?.await()?.token ?: firebaseIdToken,
+                        refreshToken = com.codespace.ide.data.ConnectorsApiClient.LOCAL_FALLBACK_REFRESH_TOKEN,
                         role         = "owner",
                     )
                 )

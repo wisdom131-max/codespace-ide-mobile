@@ -11,7 +11,10 @@ import java.security.MessageDigest
 /**
  * Encrypted, Keystore-backed storage for tokens, role, BYOK AI API keys,
  * and app-level security preferences (biometric lock).
- * Access tokens are kept in memory only.
+ * OG06 (2026-09-27): the last access token IS persisted here (encrypted,
+ * Keystore-backed) so a restored session can call the backend before the
+ * first re-auth completes. Earlier text claimed "memory only" — that was
+ * false and misled two audits; the storage is fine, the comment was not.
  */
 @Singleton
 class SecureTokenStore @Inject constructor(

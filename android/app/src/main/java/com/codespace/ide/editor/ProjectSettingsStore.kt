@@ -121,6 +121,10 @@ object ProjectSettingsStore {
     /** Node.js CLI args for pyright (e.g. --max-old-space-size=8192). */
     val pyrightNodeArgs: MutableState<String> = mutableStateOf("--max-old-space-size=8192")
 
+    // IM03 (2026-09-27): per-project Gemini image-model override for the AI Image
+    // Generation dialog — empty string = default (gemini-2.5-flash-image).
+    val geminiImageModel: MutableState<String> = mutableStateOf("")
+
     // ── Item 4: TS/JS + Accessibility settings (from vscode.dev screenshots) ──
 
     // Accessibility Signals
@@ -194,6 +198,7 @@ object ProjectSettingsStore {
             TypeScriptVersion.valueOf(prefs.getString("typescript_version", TypeScriptVersion.TS7.name) ?: TypeScriptVersion.TS7.name)
         } catch (_: Exception) { TypeScriptVersion.TS7 }
         pyrightVersion.value = prefs.getString("pyright_version", "") ?: ""
+        geminiImageModel.value = prefs.getString("gemini_image_model", "") ?: ""
         pyrightNodeArgs.value = prefs.getString("pyright_node_args", "--max-old-space-size=8192") ?: "--max-old-space-size=8192"
         extraKeysEnabled.value = prefs.getBoolean("extra_keys_enabled", true)
         zenModeExitButtonEnabled.value = prefs.getBoolean("zen_mode_exit_button", true)
@@ -327,6 +332,11 @@ object ProjectSettingsStore {
         pyrightVersion.value = version
         prefs.edit().putString("pyright_version", version).apply()
         syncToJson("pyright_version", version)
+    }
+    fun setGeminiImageModel(model: String) {
+        geminiImageModel.value = model
+        prefs.edit().putString("gemini_image_model", model).apply()
+        syncToJson("gemini_image_model", model)
     }
     fun setPyrightNodeArgs(args: String) {
         pyrightNodeArgs.value = args

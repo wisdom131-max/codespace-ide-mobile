@@ -942,17 +942,19 @@ fun ProjectShellScreen(
         }
     }
 
-    LaunchedEffect(projectId, activePanel, activeBottomTab, showBottomPanel, activeEditorTab, editorFontSize) {
-        val state = SessionStateStore.ShellState(
-            projectId = projectId,
-            activePanel = activePanel?.name,
-            bottomTab = activeBottomTab.name,
-            showBottomPanel = showBottomPanel,
-            activeFilePath = activeEditorTab,
-            openFilePaths = editorTabs.toList(),
-            editorFontSize = editorFontSize,
+    LaunchedEffect(projectId, activePanel, activeBottomTab, showBottomPanel, editorFontSize) {
+        // TB02 (2026-09-27): the shell persists ONLY the fields it OWNS (panel,
+        // bottom tab, panel visibility, font size). The old whole-blob write
+        // default-filled pinnedFilePaths — erasing the editor pane's saved pins
+        // whenever a panel change followed a pin change. The tab/pin fields are
+        // written solely by EditorPane's own effect now.
+        sessionStateStore.saveShellPanelState(
+            projectId,
+            activePanel?.name,
+            activeBottomTab.name,
+            showBottomPanel,
+            editorFontSize,
         )
-        sessionStateStore.saveShellState(projectId, state)
     }
 
 

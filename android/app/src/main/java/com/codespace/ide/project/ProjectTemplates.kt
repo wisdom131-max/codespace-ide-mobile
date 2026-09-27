@@ -47,11 +47,21 @@ object ProjectTemplates {
             ?: return@withContext ScaffoldResult(false, "Invalid project name: '$projectName' (must be a single folder name)", rootParent)
         val root = File(rootParent, safeName)
         if (root.exists()) {
-            // If the directory only contains .ide-trash (soft-deleted project), clean it up
-            // so the user can reuse the name without a spurious collision.
+            // If the directory only contains .ide-trash (soft-deleted project), set it
+            // aside so the user can reuse the name without a spurious collision.
+            // OG03 (2026-09-27): this used to deleteRecursively() the whole dir —
+            // DESTROYING the soft-deleted predecessor's trash copy with no warning,
+            // purely because a NEW project wanted the same name. The dir (trash
+            // included) is now renamed aside, so the deleted project's files survive.
             val contents = root.listFiles()?.filter { it.name != ".ide-trash" } ?: emptyList()
             if (contents.isEmpty()) {
-                root.deleteRecursively()
+                val aside = File(root.parent, root.name + ".deleted-" + System.currentTimeMillis())
+                if (!root.renameTo(aside)) {
+                    return@withContext ScaffoldResult(
+                        false,
+                        "A soft-deleted project named '$safeName' exists and could not be set aside. Restore or permanently delete it from Trash first.",
+                        root)
+                }
             } else {
                 return@withContext ScaffoldResult(false, "Directory already exists: ${root.absolutePath}", root)
             }

@@ -39,6 +39,7 @@ import com.codespace.ide.editor.DiagnosticsSource
 import com.codespace.ide.editor.FeatureToggleStore
 import com.codespace.ide.editor.FlowMode
 import com.codespace.ide.ui.panes.KeybindingSettingsPanel
+import com.codespace.ide.ui.panes.DEFAULT_IMAGE_MODEL
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.editor.TypeScriptVersion
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -437,6 +438,7 @@ enum class RowType {
     FORMATTER_DROPDOWN,      // Phase R — per-language formatter selection
     DIAGNOSTICS_SOURCE_DROPDOWN,
     PYRIGHT_VERSION_INPUT,
+    GEMINI_IMAGE_MODEL_INPUT,
     PYRIGHT_NODE_ARGS_INPUT,
     LSP_SERVER_LIST,
     LSP_ENABLED_CHECKBOX,
@@ -515,6 +517,11 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
     add(SettingsRow("mcp_indicator", SettingsCategory.AI_AGENT, "Show MCP Agent Indicator",
         "Show the MCP status dot + label in the status bar — only appears while an AI agent is actively connected and running",
         RowType.MCP_INDICATOR_CHECKBOX))
+    // IM03 (2026-09-27): the AI image-generation model id is finally a setting —
+    // was a hardcoded constant with a bump-this comment.
+    add(SettingsRow("gemini_image_model", SettingsCategory.AI_AGENT, "Gemini Image Model",
+        "Model id used by Generate Image with AI (empty = gemini-2.5-flash-image)",
+        RowType.GEMINI_IMAGE_MODEL_INPUT))
 
     // ── P54-CONNECTORS: Connectors category (Hub relocated from header chip,
     // MCP/Agent Tools relocated from the Extensions panel) ──
@@ -781,6 +788,7 @@ private fun SettingsRowRenderer(
         RowType.FORMATTER_DROPDOWN -> FormatterDropdownRow(row, accent, textPri, textSec, divider)
         RowType.DIAGNOSTICS_SOURCE_DROPDOWN -> DiagnosticsSourceRow(accent, textPri, textSec, divider)
         RowType.PYRIGHT_VERSION_INPUT -> PyrightVersionRow(textPri, textSec, surface, divider)
+        RowType.GEMINI_IMAGE_MODEL_INPUT -> GeminiImageModelRow(textPri, textSec, surface, divider)
         RowType.PYRIGHT_NODE_ARGS_INPUT -> PyrightNodeArgsRow(textPri, textSec, surface, divider)
         RowType.LSP_SERVER_LIST -> LspServerListRow(accent, textPri, textSec, surface, divider)
         RowType.LSP_ENABLED_CHECKBOX -> LspEnabledRow(textPri, textSec, divider)
@@ -1521,6 +1529,30 @@ private fun PyrightVersionRow(textPri: Color, textSec: Color, surface: Color, di
             singleLine = true,
             textStyle = TextStyle(color = textPri, fontSize = 12.sp),
             placeholder = { Text("auto", color = textSec, fontSize = 12.sp) },
+        )
+    }
+    HorizontalDivider(color = divider)
+}
+
+// IM03 (2026-09-27): model-override input — same shape as PyrightVersionRow.
+@Composable
+private fun GeminiImageModelRow(textPri: Color, textSec: Color, surface: Color, divider: Color) {
+    var text by remember { mutableStateOf(ProjectSettingsStore.geminiImageModel.value) }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Gemini Image Model", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Model id for Generate Image with AI (empty = default)", color = textSec, fontSize = 11.sp)
+        }
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it; ProjectSettingsStore.setGeminiImageModel(it) },
+            modifier = Modifier.width(180.dp),
+            singleLine = true,
+            textStyle = TextStyle(color = textPri, fontSize = 12.sp),
+            placeholder = { Text(DEFAULT_IMAGE_MODEL, color = textSec, fontSize = 12.sp) },
         )
     }
     HorizontalDivider(color = divider)

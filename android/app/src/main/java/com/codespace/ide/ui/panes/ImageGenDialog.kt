@@ -54,7 +54,10 @@ internal fun AiImageGenDialog(
         if (fileName.isBlank()) fileName = prompt.take(24)
         scope.launch {
             try {
-                result = generateGeminiImage(apiKey, prompt)
+                // IM03 (2026-09-27): model is a Settings override, not a hardcoded
+                // constant — empty setting falls back to the default (Nano Banana).
+                val modelOverride = com.codespace.ide.editor.ProjectSettingsStore.geminiImageModel.value.trim()
+                result = generateGeminiImage(apiKey, prompt, model = modelOverride.ifBlank { DEFAULT_IMAGE_MODEL })
             } catch (e: Exception) {
                 error = e.message ?: "Image generation failed."
             } finally {

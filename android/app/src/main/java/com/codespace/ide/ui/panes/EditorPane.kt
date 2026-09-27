@@ -941,14 +941,16 @@ fun EditorPane(
         val store = sessionStateStore
         val pid = projectId
         if (store != null && pid != null) {
-            val state = SessionStateStore.ShellState(
-                projectId      = pid,
-                activeFilePath = resolveActiveTab(activeId, tabs)?.path,
-                openFilePaths  = tabs.map { it.path },
-                pinnedFilePaths = pinnedPaths.toList(),
-                // activePanel / bottomTab / showBottomPanel managed by ProjectShellScreen
+            // TB02 (2026-09-27): the pane persists ONLY the fields it OWNS (tabs/
+            // pins). The old whole-blob write default-filled activePanel/bottomTab/
+            // showBottomPanel — erasing the shell screen's saved fields whenever a
+            // tab changed after a panel change.
+            store.saveShellEditorState(
+                pid,
+                resolveActiveTab(activeId, tabs)?.path,
+                tabs.map { it.path },
+                pinnedPaths.toList(),
             )
-            store.saveShellState(pid, state)
             // PAD-2/PERSIST-A: persist cursor offsets from the LIVE per-view map
             // (was: tabs.associate { it.cursorOffset } — a field written ONCE at
             // restore and never updated, so saved positions were always stale).

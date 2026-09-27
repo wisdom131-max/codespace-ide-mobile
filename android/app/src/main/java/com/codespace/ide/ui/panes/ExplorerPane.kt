@@ -849,18 +849,26 @@ fun ExplorerSidePanel(
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
                     workspaceRoot?.let { root ->
-                        // CW7: "All" selects ONLY what the tree shows with Show
-                        // hidden files OFF — it deliberately IGNORES the toggle, so
-                        // .git/.versionhistory/.ide-trash/.autosave (and .chatapply.tmp
-                        // files) can never be swept into a bulk delete, even when the
-                        // user is currently showing them in the tree.
+                        // CW7: "All" still deliberately IGNORES the Show-hidden toggle —
+                        // .git/.versionhistory/.ide-trash/.autosave can never be swept
+                        // into a bulk delete, even when the user is currently showing
+                        // them in the tree.
+                        // EX08 (2026-09-27): two fixes — (1) the walk no longer depends on
+                        // which folders happen to be EXPANDED (the old "All" silently
+                        // skipped every collapsed directory, so the result changed with
+                        // UI state); it now walks the whole non-hidden tree. (2) duplicate
+                        // paths can no longer be appended when files were already
+                        // hand-selected; collection builds once and writes once.
+                        val collected = ArrayList<String>()
                         fun collectFiles(f: File) {
-                            if (!f.isDirectory) selectedFiles.add(f.absolutePath)
-                            if (expanded[f.absolutePath] == true && f.isDirectory) {
+                            if (!f.isDirectory) collected.add(f.absolutePath)
+                            if (f.isDirectory) {
                                 f.listFiles()?.filter { !isDefaultHidden(it.name) }?.forEach { collectFiles(it) }
                             }
                         }
                         root.listFiles()?.filter { !isDefaultHidden(it.name) }?.forEach { collectFiles(it) }
+                        selectedFiles.clear()
+                        selectedFiles.addAll(collected.toSet())
                     }
                 }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)) {
                     Text("All", fontSize = 11.sp, color = Color(0xFF007ACC))
@@ -1697,10 +1705,31 @@ fun ExplorerSidePanel(
                                             val targetDir = if (f.isDirectory) f else f.parentFile
                                             if (src != null && targetDir != null) {
                                                 val dest = File(targetDir, src.name)
-                                                if (clipboardCut) src.renameTo(dest)
-                                                else src.copyTo(dest, overwrite = false)
-                                                clipboardFile = null
-                                                refresh++
+                                                // EX03 (2026-09-27): the clipboard is no
+                                                // longer dropped when the move/copy FAILS
+                                                // (renameTo returns false silently — the
+                                                // old code cleared clipboard regardless);
+                                                // directories copy RECURSIVELY (File.copyTo
+                                                // never copies children); and a successful
+                                                // Cut-move rekeys open tabs via the same
+                                                // shell rename callback as Rename.
+                                                val ok = if (clipboardCut) {
+                                                    val moved = src.renameTo(dest)
+                                                    if (moved) onFileRenamed?.invoke(src.absolutePath, dest.absolutePath)
+                                                    moved
+                                                } else if (src.isDirectory) {
+                                                    src.copyRecursively(dest, overwrite = false)
+                                                } else {
+                                                    src.copyTo(dest, overwrite = false)
+                                                }
+                                                if (ok) {
+                                                    clipboardFile = null
+                                                    refresh++
+                                                    onShowNotification?.invoke("Pasted '${src.name}'", "success")
+                                                } else {
+                                                    onShowNotification?.invoke(
+                                                        "Failed to paste '${src.name}' (target exists or move failed) — clipboard kept", "error")
+                                                }
                                             }
                                         }
                                         "Duplicate" -> {

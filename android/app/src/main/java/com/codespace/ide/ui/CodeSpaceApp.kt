@@ -109,7 +109,9 @@ fun CodeSpaceApp(tokenStore: SecureTokenStore, safeMode: Boolean = false) {
         }
 
         val nav = rememberNavController()
-        // accessToken kept in memory only (not persisted — re-auth on cold start)
+        // OG06 (2026-09-27): the last accessToken IS persisted (SecureTokenStore,
+        // EncryptedSharedPreferences) — it lets the restored session reach the backend
+        // before the first re-auth. The old "memory only" comment was false.
         var accessToken by remember { mutableStateOf(tokenStore.lastAccessToken ?: "") }
         NavHost(navController = nav, startDestination = startDest) {
             composable(Routes.AUTH) {
