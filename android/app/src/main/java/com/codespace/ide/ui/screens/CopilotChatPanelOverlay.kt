@@ -126,7 +126,7 @@ private data class ChatMsg(
 private sealed interface ChatStreamEvent {
     data class IterationStart(val index: Int) : ChatStreamEvent
     data class Delta(val text: String) : ChatStreamEvent
-    data class ToolDone(val tool: String) : ChatStreamEvent
+    data class ToolDone(val tool: String, val status: String) : ChatStreamEvent
 }
 
 private const val PREFS_CHAT = "copilot_chat"
@@ -684,6 +684,11 @@ private suspend fun chat(
         com.codespace.ide.chat.ChatImageAttachments.toRequestAudios(attachments)
     } else emptyList()
 
+    val executionEvidence = com.codespace.ide.chat.ToolExecutionEvidence()
+    if (mode == ChatMode.AGENT && provider?.supportsNativeTools == true) {
+        convMsgs.getJSONObject(0).put("content", systemPrompt +
+            "\nUse the supplied native API tool definitions for function calls. Text tool tags are fallback only. Never claim an action was completed without its tool result; staged writes are not applied writes.")
+    }
     for (iteration in 0 until maxIterations) {
         onStreamEvent?.invoke(ChatStreamEvent.IterationStart(iteration))
         val deltaSink: ((String) -> Unit)? =
@@ -734,6 +739,7 @@ private suspend fun chat(
                 // R9-A: allowlist only ever RESTRICTS \u2014 a blocked tool never
                 // reaches FlowGate or execution.
                 if (cmAllow != null && toolName !in cmAllow) {
+                    executionEvidence.denied(toolName)
                     val refusal = "Not available in this custom mode (allowlist). Skipped."
                     toolResults.append("[Tool: $toolName] $refusal\n\n")
                     if (nativeCalls != null) convMsgs.put(com.codespace.ide.chat.NativeToolProtocol.resultMessage(nativeCalls, callIndex, refusal))
@@ -804,12 +810,11 @@ private suspend fun chat(
                 } else {
                     "Skipped — rejected by user in Manual Flow Mode."
                 }
-                val resultForTranscript = if (ProjectSettingsStore.verboseToolOutput.value) {
-                    result
-                } else {
-                    result.lineSequence().firstOrNull()?.take(200) ?: result.take(200)
-                }
-                onStreamEvent?.invoke(ChatStreamEvent.ToolDone(toolName))
+                // Display verbosity must NEVER shorten the result sent back to the model.
+                // Tool-level caps remain explicit (CH06 truncation markers).
+                val resultForTranscript = result
+                val evidenceStatus = executionEvidence.record(toolName, approved, stagedMsg != null, result)
+                onStreamEvent?.invoke(ChatStreamEvent.ToolDone(toolName, evidenceStatus))
                 toolResults.append("[Tool: $toolName] Result:\n$resultForTranscript\n\n")
                 if (nativeCalls != null) convMsgs.put(com.codespace.ide.chat.NativeToolProtocol.resultMessage(nativeCalls, callIndex, resultForTranscript))
                 // R7-PLAN strict halt: once a plan stages, NOTHING else in this
@@ -835,16 +840,16 @@ private suspend fun chat(
             }
 
             if (planStaged) {
-                return@withContext "Plan ready — review it in the chat panel, then tap Approve (executes the steps) or Revise (tell me what to change)."
+                return@withContext executionEvidence.finish("Plan ready. Review it in the chat panel, then tap Approve or Revise. No plan steps have executed.")
             }
             // Feed tool results back as user message
             if (nativeCalls == null) convMsgs.put(JSONObject().put("role", "user").put("content",
                 "Tool execution results:\n$toolResults\nContinue with the next step or give a final summary if done."))
         } else {
-            return@withContext content
+            return@withContext executionEvidence.finish(content)
         }
     }
-    "Agent reached maximum tool iterations (10). The task may require more steps."
+    executionEvidence.finish("Agent reached maximum tool iterations (10). The task may require more steps.")
 }
 
 // ── UI ────────────────────────────────────────────────────────────────────────
@@ -1297,9 +1302,9 @@ internal fun CopilotChatPanelInline(
                 val toolsUsed = mutableListOf<String>()
                 val sink: ((ChatStreamEvent) -> Unit) = { ev ->
                     when (ev) {
-                        is ChatStreamEvent.IterationStart -> liveStreamText = ""
+                        is ChatStreamEvent.IterationStart -> liveStreamText = "[Unverified model output. Text is not proof of execution.]\n\n"
                         is ChatStreamEvent.Delta -> liveStreamText += ev.text
-                        is ChatStreamEvent.ToolDone -> { liveStreamText += "\n⚙ " + ev.tool + " — done"; toolsUsed.add(ev.tool) }
+                        is ChatStreamEvent.ToolDone -> { liveStreamText += "\n" + ev.tool + ": " + ev.status; toolsUsed.add(ev.tool + " (" + ev.status + ")") }
                     }
                 }
                 val reply = chat(effModel, messages.toList(), mode, activeCustomModeId, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)

@@ -170,6 +170,11 @@ internal object OpenAiCompatibleTransport {
         if (!resp.isSuccessful) {
             throw classifyHttpError(resp, "API error")
         }
+        if (resp.header("Content-Type")?.contains("application/json", ignoreCase = true) == true) {
+            val json = JSONObject(resp.body?.string() ?: "")
+            return@withContext com.codespace.ide.chat.NativeToolProtocol.responseText(
+                json.getJSONArray("choices").getJSONObject(0).getJSONObject("message"))
+        }
         val sb = StringBuilder()
         val toolStream = com.codespace.ide.chat.NativeToolProtocol.StreamCalls()
         val reader = resp.body?.byteStream()?.bufferedReader()

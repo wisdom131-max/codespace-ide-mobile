@@ -5962,3 +5962,9 @@ Also this commit: FIX-PLAN.md gains the explicit PR14 STATUS block (partial — 
 - **P4:** remaining rows by group (~50 closed of 229 ledger rows + 7 F-TRACK; HIGH 21 open, MED 87 open, LOW 55 open, CRITICAL/TOP 4 open, ENABLER 2).
 - **P5:** full device verification round — TP02 batched test, P2a/b/c checks, P3a-e checks, F1/F2/F3 checks above.
 - **Backlog owner decisions:** F01 Notebooks, F02 remote-dev model, F09 tree-sitter; stdio-vs-TCP for AgentApiServer; MK re-test after MK restructure ships.
+
+### [2026-10-01 10:05 WAT] [CHAT] Round 1 item 2a: native/Qwen protocol
+
+Code `4a7ab68`, Android CI #3016 (`36839579818`) GREEN. Custom endpoints send builtin + enabled MCP tool schemas (custom-mode allowlist honored), decode native tool_calls, assemble SSE fragments by index, preserve native ids in role=tool feedback, and accept Qwen tool_call tags plus legacy tool tags. Execution still rides AgentFlowGate/TrustState. Removed: content-only parsing and proprietary-tag-only execution assumption. VS Code source checked: vscode-copilot-chat src/extension/intents/node/toolCallingLoop.ts (call ids/result pairing and no-call stop), prompts/node/panel/toolCalling.tsx (token-budget truncation marker). No blanket prose-success verifier found; our evidence labeling is deliberately stricter.
+
+ROADMAP (all pending): Round 1 2b/c evidence + full output feedback; 2d/e staging/new-file Apply; 3a-c file-owned render/jumps; device confirmation 1-3. Items 4-9 FROZEN; XG01-04 PAUSED/owner-gated; F6 JVM debug owner-gated. Full VS Code terminal comparison QUEUED after 1-3. P5 remaining tests require source-derived instructions and BLOCKED prerequisites. No device pass inferred.

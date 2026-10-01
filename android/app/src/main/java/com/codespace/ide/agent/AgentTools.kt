@@ -258,7 +258,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, guestWorkdir)
         // I2 — TERMINAL BRIDGE: last agent-run command + output are attachable in chat
         com.codespace.ide.terminal.TerminalAiBridge.recordRun(command, out, guestWorkdir)
-        return truncMark(out, 4000)  // CH06 (P4h): marked, not silent
+        return truncMark(out, 16000)  // CH06 (P4h): marked, not silent
     }
 
     /**
@@ -297,7 +297,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         if (!file.exists()) return "File not found: $path"
         if (file.isDirectory) return "Path is a directory: $path"
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
-        return truncMark(file.readText(), 8000)  // CH06 (P4h)
+        return truncMark(file.readText(), 16000)  // CH06 (P4h)
     }
 
     private fun writeFile(path: String, content: String, context: android.content.Context): String {
@@ -553,6 +553,6 @@ You can use multiple tools in sequence. When done, give a final summary.
             "apt" -> "apt-get install -y $pkg"
             else -> return "Unknown manager: $manager. Use: npm, pip, apt"
         }
-        return ProotInstaller.execOnce(context, command, projectDir).take(4000)
+        return truncMark(ProotInstaller.execOnce(context, command, projectDir), 16000)
     }
 }
