@@ -759,8 +759,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
     // PROBLEMS-TAB FIX: temporary gold highlight on the target line so the user can SEE
     // where the problem is after the bottom panel closes. Auto-clears after 2.5s.
-    var highlightTargetLine by remember { mutableStateOf(0) }
-    var highlightBlinkStart by remember { mutableStateOf(0L) }
+    var highlightTargetLine by remember(currentFilePath) { mutableStateOf(0) }
+    var highlightBlinkStart by remember(currentFilePath) { mutableStateOf(0L) }
     val coroutineScope = rememberCoroutineScope()
     // DEBUG: Visual indicator for Go to Line and Multi-cursor
     var debugJumpMsg by remember { mutableStateOf("") }
@@ -1112,7 +1112,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
 
-    LaunchedEffect(scrollToLine) {
+    LaunchedEffect(currentFilePath, scrollToLine) {
         if (scrollToLine > 0) {
             // LINE-JUMP-READY-FIX (2026-09-11): when a file is opened via `ide open
             // file:42` (OSC 7777) or a terminal path-tap, the CodeEditor REMOUNTS
@@ -1979,23 +1979,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     }
 
     // ── Lint state ───────────────────────────────────────────────────────
-    var lintErrors by remember { mutableStateOf<List<LintError>>(emptyList()) }
-    // R3-4: Diagnostic tooltip state
-    var showDiagnosticTooltip by remember { mutableStateOf(false) }
-    var diagnosticTooltipLine by remember { mutableStateOf(-1) }
-    LaunchedEffect(value.text, language) {
-        kotlinx.coroutines.delay(500)   // debounce — only lint after 500 ms idle
-        val localErrors = LintAnalyzer.analyze(value.text, language)
-        // P24-1: merge LSP diagnostics as squiggles — deduplicate by composite key (start, end, message)
-        val combined = (localErrors + lspDiagnosticErrors).distinctBy { Triple(it.start, it.end, it.message) }.sortedWith(compareBy({ it.start }, { it.severity }, { it.code ?: "" }))
-        lintErrors = combined
-    }
-
-    // P24-1: Re-merge when LSP diagnostics arrive (server push)
-    LaunchedEffect(lspDiagnosticErrors) {
-        val localErrors = LintAnalyzer.analyze(value.text, language)
-        lintErrors = (localErrors + lspDiagnosticErrors).distinctBy { Triple(it.start, it.end, it.message) }.sortedWith(compareBy({ it.start }, { it.severity }, { it.code ?: "" }))
-    }
+    val lintErrors = rememberEditorDiagnostics(currentFilePath, value.text, language, lspDiagnosticErrors)
+    // R3-4: Diagnostic tooltip state belongs to this file too.
+    var showDiagnosticTooltip by remember(currentFilePath) { mutableStateOf(false) }
+    var diagnosticTooltipLine by remember(currentFilePath) { mutableStateOf(-1) }
     // Phase F: Sync lintErrors to decoration store
     LaunchedEffect(lintErrors) { decorationStore.updateDiagnostics(lintErrors) }
 

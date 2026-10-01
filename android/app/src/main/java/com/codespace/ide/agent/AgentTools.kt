@@ -261,16 +261,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         return truncMark(out, 16000)  // CH06 (P4h): marked, not silent
     }
 
-    /**
-     * CH02 (P3b): the ONE guest->host translation choke point for the file tools.
-     * run_command already translated host->guest for its workdir (C-4); the file
-     * tools took the model's path string RAW. The model is exposed to guest paths
-     * (terminal output, run_command results, git repo_dir), so any path it sends
-     * may be either dialect. Rule: a host file at the raw path wins (old behavior
-     * unchanged); otherwise translate guest->host when the translated target EXISTS.
-     * The translation itself is ProotInstaller's — SHARED with ScmState/git (the
-     * audit's option (b)), not duplicated. Returns the path to operate on.
-     */
+    /** CH02/Round 1: one canonical host identity for direct and staged file operations. */
     private fun resolveToolPath(context: Context, path: String): String =
         ToolPathResolver.resolve(context, path)
 
@@ -281,7 +272,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         val staged = com.codespace.ide.chat.PendingChangesStore.overlayFor(path)
             ?: com.codespace.ide.chat.PendingChangesStore.overlayFor(resolvedPath)
         if (staged != null) {
-            return truncMark("[staged pending version — not yet on disk]\n" + staged, 8000)  // CH06 (P4h)
+            return truncMark("[staged pending version — not yet on disk]\n" + staged, 16000)  // CH06 (P4h)
         }
         val file = File(resolvedPath)
         if (!file.exists()) return "File not found: $path"
@@ -291,20 +282,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     private fun writeFile(path: String, content: String, context: android.content.Context): String {
-        // CH02: resolve either dialect. For NEW files (nothing exists yet) the
-        // guest translation is used when its PARENT directory exists — writing a
-        // guest path raw on the host would create /root/... on Android storage
-        // roots instead of inside the proot rootfs.
-        val trimmed = path.trim()
-        var target = File(resolveToolPath(context, trimmed))
-        if (!target.exists()) {
-            val translated = com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, trimmed)
-            if (translated.parentFile?.exists() == true) {
-                com.codespace.ide.diagnostics.AppOutputLog.log(
-                    "[CH02] write_file target translated guest->host: " + trimmed + " -> " + translated.absolutePath, "terminal")
-                target = translated
-            }
-        }
+        val target = File(resolveToolPath(context, path))
         target.parentFile?.mkdirs()
         target.writeText(content)
         return "Wrote ${content.length} chars to ${target.absolutePath}"

@@ -153,7 +153,8 @@ fun EditorPane(
     wordWrap: Boolean = false,
     showInlayHints: Boolean = true,  // P2-11
     toggles: EditorFeatureToggles = EditorFeatureToggles(),
-    scrollToLineParam: Int = 0,
+    externalJump: com.codespace.ide.editor.PendingEditorJump? = null,
+    onExternalJumpConsumed: (com.codespace.ide.editor.PendingEditorJump) -> Unit = {},
     projectId: String? = null,
     sessionStateStore: SessionStateStore? = null,
     udm: com.codespace.ide.debug.UniversalDebugManager? = null,
@@ -488,7 +489,7 @@ fun EditorPane(
     // P2: hover-evaluate — "expr = value" from the paused debug session
     var debugHoverValue by remember { mutableStateOf<String?>(null) }
     // P24-1: LSP diagnostic squiggles — updated by setDiagnosticsHandler callback
-    var lspSquiggles by remember { mutableStateOf<List<com.codespace.ide.editor.LintError>>(emptyList()) }
+    // Diagnostics are selected from the active canonical file directly at render time.
 
     // P24: visible banner shown when LSP server fails to start (not just logcat)
     var lspStatusMessage by remember { mutableStateOf<String?>(null) }
@@ -565,26 +566,15 @@ fun EditorPane(
     // list: a gutter tap where only UDM had the breakpoint toggled UDM OFF while
     // the local map turned it back ON).
     val fileBookmarks = remember { mutableStateMapOf<String, Set<Int>>() }
-    // P26-1: Scroll to line (from debug call stack click)
-    // BUG-FIX: External scrollToLineParam was being shadowed by this internal var.
-    // Now we sync the external param into the internal state so tap-to-navigate from
-    // the Problems tab, Go-to-Definition, and debug call stack all work.
-    var scrollToLine by remember { mutableStateOf(0) }
-    LaunchedEffect(scrollToLineParam) {
-        if (scrollToLineParam > 0) {
-            scrollToLine = scrollToLineParam
-            // PLAN A (P3b): persist under the ACTIVE tab's canonical identity so the
-            // highlight survives a tab round-trip and never lands on the wrong file.
-            resolveActiveTab(activeId, tabs)?.let { ap ->
-                com.codespace.ide.editor.PerFileStateStore.setLineHighlight(ap.path, scrollToLineParam)
-            }
-            kotlinx.coroutines.delay(1000)
-            scrollToLine = 0
-            resolveActiveTab(activeId, tabs)?.let { ap ->
-                com.codespace.ide.editor.PerFileStateStore.clearLineHighlight(ap.path)
-            }
+    // Pending reveals capture the canonical file at creation. Empty/mismatched files render no reveal.
+    val ownedJump = remember {
+        com.codespace.ide.editor.FileOwnedJumpState {
+            (resolveActiveTab(activeIdState.value, tabs) ?: tabs.firstOrNull())?.path
         }
     }
+    var scrollToLine by ownedJump
+    com.codespace.ide.editor.OwnedEditorJumpEffect(ownedJump, externalJump,
+        (resolveActiveTab(activeId, tabs) ?: tabs.firstOrNull())?.path, onExternalJumpConsumed)
     // P54: Track current debug line for gutter indicator
     var debugCurrentLine by remember { mutableStateOf(0) }
     LaunchedEffect(udm) {
@@ -1563,36 +1553,22 @@ fun EditorPane(
         }
 
         val active = resolveActiveTab(activeId, tabs) ?: tabs.firstOrNull()
-        // BUG-B STALE-SQUIGGLE FIX (2026-09-16): lspSquiggles previously survived
-        // tab switches — the previous file's ranges rendered on the new file until
-        // a text change or a fresh server push. Clear on every active-tab change,
-        // then re-pull the server's cached diagnostics for the NEW tab so known
-        // squiggles return instantly instead of waiting for the next edit.
-        // SPLIT-SAFE: lspSquiggles is per-EditorPane-instance state (each split
-        // view owns its own EditorPane + its own handler registration), so this
-        // effect only ever touches THIS pane's active tab.
-        LaunchedEffect(active?.id, active?.language) {
-            // PLAN A (P3b): restore THIS file's persisted state from the canonical
-            // store instead of clearing — ranges keyed to the resolved file are by
-            // construction not another file's stale squiggles (the BUG-B hazard),
-            // and they survive round-trip tab switches now.
-            val snap = active ?: run {
-                lspSquiggles = emptyList()
-                return@LaunchedEffect
-            }
+        val lspSquiggles = active?.let { com.codespace.ide.editor.PerFileStateStore.stateFor(it.path).squiggles }
+            ?: emptyList()
+        // VS Code pattern: read THIS model's markers synchronously; cache pulls only update its store.
+        LaunchedEffect(active?.id, active?.path, active?.language) {
+            // No intermediate pane-wide diagnostics list and no persisted transient highlight restore.
+            val snap = active ?: return@LaunchedEffect
             val stored = com.codespace.ide.editor.PerFileStateStore.stateFor(snap.path)
-            lspSquiggles = stored.squiggles
-            if (stored.lineHighlight > 0) scrollToLine = stored.lineHighlight
             fileBookmarks[snap.path] = stored.bookmarks
             val snapLang = snap.language ?: return@LaunchedEffect
             try {
                 if (com.codespace.ide.lsp.LspManager.isSupported(snapLang)) {
                     val uri = com.codespace.ide.lsp.LspManager.fileUriFromHostPath(context, snap.path)
                     val diags = if (uri != null) com.codespace.ide.lsp.LspManager.getDiagnostics(snapLang, uri) else null
-                    if (uri != null && diags != null && diags.length() > 0 &&
+                    if (uri != null && diags != null &&
                         com.codespace.ide.lsp.LspManager.getServerGeneration(snapLang) > 0) {
                         val restored = lspDiagnosticsToLintErrors(diags, snap.content)
-                        lspSquiggles = restored
                         com.codespace.ide.editor.PerFileStateStore.setSquiggles(snap.path, restored)
                     }
                 }
@@ -1868,7 +1844,6 @@ fun EditorPane(
                 if (normDiag == normUri || canonicalMatch) {
                     val parsed = lspDiagnosticsToLintErrors(diags, live.content)
                     AppOutputLog.log("[SQUIGGLE-DIAG] MATCHED — parsed " + parsed.size + " lint error(s) from " + diags.length() + " raw diagnostic(s); raw=" + diags.toString().take(500), "lsp")
-                    lspSquiggles = parsed
                     // PLAN A: persist under the CANONICAL identity so the ranges
                     // survive tab round-trips keyed to the right file.
                     com.codespace.ide.editor.PerFileStateStore.setSquiggles(live.path, parsed)
@@ -2418,7 +2393,7 @@ fun EditorPane(
                 // SPLIT-VIEW: key on the VIEW id (tab id OR "split::<path>") — each
                 // view gets its OWN CodeEditor instance state (cursor/scroll/selection)
                 // while both bind the same buffer via resolveActiveTab.
-                key(activeId) {
+                key(activeId, com.codespace.ide.util.CanonicalPaths.canonicalKey(active.path)) {
                     // P22-D: Detect merge conflicts in current file
                     val detectedConflicts = remember(active.content) {
                         if (MergeConflictParser.hasConflicts(active.content)) {
@@ -2583,15 +2558,7 @@ fun EditorPane(
                             // scrolling. scrollToLine is 1-BASED — this wrapper owns the single +1.
                             if (line >= 0) {
                                 scrollToLine = line + 1
-                                // PLAN A: persist the highlight under the RESOLVED tab's
-                                // canonical identity — if the tab switches before the
-                                // reveal, the target tab restores it on activation.
-                                com.codespace.ide.editor.PerFileStateStore.setLineHighlight(resolved, line + 1)
-                                kotlinx.coroutines.MainScope().launch {
-                                    kotlinx.coroutines.delay(1000)
-                                    scrollToLine = 0
-                                    com.codespace.ide.editor.PerFileStateStore.clearLineHighlight(resolved)
-                                }
+                                // File-owned expiry cancels earlier timers on each new request.
                             }
                         },
                         blameData = if (showBlame) blameData else null,
@@ -3200,14 +3167,8 @@ fun EditorPane(
                         } else null,
                         // P41-W: LSP Semantic Tokens
                         semanticTokens = lspSemanticRanges,
-                        // LINE-JUMP-RESTORE (2026-09-12): the 8ccca5e split rewrite rebuilt
-                        // this CodeEditor invocation and DROPPED the scrollToLine argument -
-                        // EditorPane's internal scrollToLine state (fed from scrollToLineParam:
-                        // OSC 7777 `ide open file:42`, terminal path taps, Problems/debug
-                        // stack) never reached CodeEditor, so the file opened with NO scroll,
-                        // gold band, or cursor move. The retry-loop fix inside CodeEditor was
-                        // correct - the wiring was missing here.
-                        scrollToLine = scrollToLine,
+                        // Resource-filtered at render time, before any asynchronous effect can run.
+                        scrollToLine = ownedJump.lineFor(active.path),
                     )
                 }
                 // P38: Hover popup now rendered inside CodeEditor as a compact overlay

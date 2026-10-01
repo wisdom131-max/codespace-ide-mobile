@@ -797,7 +797,12 @@ fun ProjectShellScreen(
     val showInlayHintsMs = remember { FeatureToggleStore.state("inlay_hints") }; var _showInlayHints by showInlayHintsMs  // P2-11
     val showGoToLineMs = remember { mutableStateOf(false) }; var showGoToLine by showGoToLineMs
     var goToLineInput      by remember { mutableStateOf("") }
-    val scrollTargetLineMs = remember { mutableStateOf(0) }; var scrollTargetLine by scrollTargetLineMs
+    val activeEditorTabMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }; var activeEditorTab by activeEditorTabMs
+    val scrollTargetLineMs = remember(projectId, activeEditorTabMs) {
+        com.codespace.ide.editor.FileOwnedJumpState {
+            activeEditorTabMs.value?.let { com.codespace.ide.editor.SplitViewStore.pathOf(it) ?: it }
+        }
+    }; var scrollTargetLine by scrollTargetLineMs
     val editorReloadTriggerMs = remember { mutableStateOf(0) }; var editorReloadTrigger by editorReloadTriggerMs
     val buildProblemsMs = remember { mutableStateOf<List<Problem>>(emptyList()) }; var buildProblems by buildProblemsMs
     val findQueryMs = remember { mutableStateOf("") }; var _findQuery by findQueryMs
@@ -851,12 +856,7 @@ fun ProjectShellScreen(
     val cursorLineMs = remember { mutableStateOf(1) }; var cursorLine by cursorLineMs
     val cursorColMs = remember { mutableStateOf(1) }; var cursorCol by cursorColMs
     // Reset scroll target after use so the same line can be re-triggered
-    LaunchedEffect(scrollTargetLine) {
-        if (scrollTargetLine > 0) {
-            kotlinx.coroutines.delay(500)
-            scrollTargetLine = 0
-        }
-    }
+    com.codespace.ide.editor.OwnedJumpExpiryEffect(scrollTargetLineMs, 10000L)
     // P15-G: heavy panels (Logcat, Variables, BuildHistory) ready after 8s startup headstart
     LaunchedEffect(projectId) {
         kotlinx.coroutines.delay(8_000L)
@@ -877,7 +877,6 @@ fun ProjectShellScreen(
     // the sync stream resurrected or never rekeyed).
     var renameFileRequest by remember(projectId) { mutableStateOf<Pair<String, String>?>(null) }
     var closeTabRequest by remember(projectId) { mutableStateOf<String?>(null) }
-    val activeEditorTabMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.activeFilePath) }; var activeEditorTab by activeEditorTabMs
     val keyInsertDispatcher = remember { com.codespace.ide.editor.KeyInsertDispatcher() }
     /** Breadcrumb: when set, ExplorerSidePanel auto-expands and scrolls to this dir. */
     val breadcrumbNavDirMs = remember { mutableStateOf<String?>(null) }; var breadcrumbNavDir by breadcrumbNavDirMs
@@ -4604,7 +4603,7 @@ private fun PssEditorColumn(
     keyInsertDispatcher: com.codespace.ide.editor.KeyInsertDispatcher,
     previewPortMs: MutableState<Int?>,
     replaceQueryMs: MutableState<String>,
-    scrollTargetLineMs: MutableState<Int>,
+    scrollTargetLineMs: com.codespace.ide.editor.FileOwnedJumpState,
     showBottomPanelMs: MutableState<Boolean>,
     showChatPanelMs: MutableState<Boolean>,
     pendingChatPromptMs: MutableState<String?>,
@@ -4780,7 +4779,8 @@ private fun PssEditorColumn(
                     wordWrap           = wordWrap,
                     showInlayHints     = showInlayHints,
                     toggles            = FeatureToggleStore.toEditorFeatureToggles(),
-                    scrollToLineParam  = scrollTargetLine,
+                    externalJump       = scrollTargetLineMs.pending,
+                    onExternalJumpConsumed = scrollTargetLineMs::clearIfCurrent,
                     onOpenFileAtLine = { path, line ->
                         if (!editorTabs.contains(path)) editorTabs.add(path)
                         pushNavEntry(activeEditorTab, scrollTargetLine)
