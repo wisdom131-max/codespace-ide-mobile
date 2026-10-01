@@ -38,12 +38,13 @@ object PendingChangesStore {
         val newContent: String,
         val baseContent: String,
         val baseWasOpenBuffer: Boolean,
+        val baseDiskExisted: Boolean,
         val stagedAt: Long,
         val sessionId: String,
         val status: Status = Status.PENDING,
         val statusNote: String = "",
     ) {
-        val isNewFile: Boolean get() = baseContent.isEmpty()
+        val isNewFile: Boolean get() = !baseDiskExisted
     }
 
     /** Result of an apply attempt — the card renders each variant. */
@@ -94,8 +95,10 @@ object PendingChangesStore {
      * is open (decision #3 buffer-centric), else current disk content.
      * Returns the tool result string for the model.
      */
-    fun stage(path: String, newContent: String): String {
+    fun stage(rawPath: String, newContent: String, context: android.content.Context, projectRoot: String? = activeProjectRoot): String {
+        val path = com.codespace.ide.agent.ToolPathResolver.resolve(context, rawPath, projectRoot)
         val session = activeSessionId ?: "default"
+        val diskExisted = File(path).exists()
         val (base, wasOpen) = try {
             val buf = com.codespace.ide.editor.EditorBufferStore.contentOf(path)
             if (buf != null) buf to true
@@ -111,6 +114,7 @@ object PendingChangesStore {
                 newContent = newContent,
                 baseContent = base,
                 baseWasOpenBuffer = wasOpen,
+                baseDiskExisted = diskExisted,
                 stagedAt = System.currentTimeMillis(),
                 sessionId = session,
             )
@@ -155,7 +159,17 @@ object PendingChangesStore {
         val entry = synchronized(pending) { pending[path] } ?: return ApplyOutcome.NotFound(path)
         return try {
             // ── Drift verification (disk-staged entries ONLY — decision #3) ──
-            if (!entry.baseWasOpenBuffer) {
+            if (!entry.baseDiskExisted) {
+                // Absent is the verified baseline for a NEW file, not a read error.
+                if (File(path).exists()) {
+                    val appeared = try { File(path).readText() } catch (e: Exception) {
+                        markBlocked(path, "Could not verify newly appeared file: " + (e.message ?: "IO error"))
+                        return ApplyOutcome.Blocked(path, e.message ?: "IO error")
+                    }
+                    markDrift(path, appeared)
+                    return ApplyOutcome.Drift(path, appeared)
+                }
+            } else if (!entry.baseWasOpenBuffer) {
                 val diskNow = try {
                     File(path).readText()
                 } catch (e: Exception) {
@@ -380,7 +394,7 @@ object PendingChangesStore {
 
     private fun markDrift(path: String, currentDisk: String) {
         synchronized(pending) {
-            pending[path]?.let { pending[path] = it.copy(status = Status.DRIFT, statusNote = "File changed on disk after this edit was staged", baseContent = currentDisk) }
+            pending[path]?.let { pending[path] = it.copy(status = Status.DRIFT, statusNote = "File changed on disk after this edit was staged", baseContent = currentDisk, baseDiskExisted = true) }
         }
         bumpRevision()
     }

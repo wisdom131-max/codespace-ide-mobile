@@ -271,18 +271,8 @@ You can use multiple tools in sequence. When done, give a final summary.
      * The translation itself is ProotInstaller's — SHARED with ScmState/git (the
      * audit's option (b)), not duplicated. Returns the path to operate on.
      */
-    private fun resolveToolPath(context: android.content.Context, rawPath: String): String {
-        val trimmed = rawPath.trim()
-        if (trimmed.isEmpty()) return rawPath
-        if (File(trimmed).exists()) return trimmed
-        val translated = com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, trimmed)
-        if (translated.exists()) {
-            com.codespace.ide.diagnostics.AppOutputLog.log(
-                "[CH02] file-tool path translated guest->host: " + trimmed + " -> " + translated.absolutePath, "terminal")
-            return translated.absolutePath
-        }
-        return trimmed
-    }
+    private fun resolveToolPath(path: String, context: Context): String =
+        ToolPathResolver.resolve(context, path)
 
     private fun readFile(path: String, context: android.content.Context): String {
         // CH02: resolve either dialect first, then look up the staged overlay under

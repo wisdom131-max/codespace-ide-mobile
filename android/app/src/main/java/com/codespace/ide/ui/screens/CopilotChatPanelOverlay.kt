@@ -753,7 +753,7 @@ private suspend fun chat(
                 val stagedMsg: String? = if (mode == ChatMode.AGENT && toolName == "write_file") {
                     try {
                         com.codespace.ide.chat.PendingChangesStore.stage(
-                            toolArgs.getString("path"), toolArgs.getString("content"))
+                            toolArgs.getString("path"), toolArgs.getString("content"), context, projectRootPath)
                     } catch (e: Exception) {
                         // CH05 (P1): staging failed → REFUSE the write outright. The old null
                         // fallthrough reached FlowGate + AgentTools.writeFile — an UNGATED
