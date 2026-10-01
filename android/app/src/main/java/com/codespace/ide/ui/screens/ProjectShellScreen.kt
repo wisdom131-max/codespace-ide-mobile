@@ -788,7 +788,7 @@ fun ProjectShellScreen(
     val indexerScope = rememberCoroutineScope()
     val isDraggingBottomPanelMs = remember { mutableStateOf(false) }; var _isDraggingBottomPanel by isDraggingBottomPanelMs
     var openMenuBar        by remember { mutableStateOf<String?>(null) }
-    var showCommandPalette by remember { mutableStateOf(false) }
+    val showCommandPaletteState = remember { mutableStateOf(false) }; var showCommandPalette by showCommandPaletteState
     var appWakeLockOn by remember { mutableStateOf(false) }
     var showColorTheme     by remember { mutableStateOf(false) }
     val showFindBarMs = remember { mutableStateOf(false) }; var showFindBar by showFindBarMs
@@ -1407,11 +1407,7 @@ fun ProjectShellScreen(
                         // Launch folder picker
                         folderPickerLauncher.launch(null)
                     },
-                    onOpenRecent = {
-                        // Open command palette showing recent files
-                        showCommandPalette = true
-                        // TODO: filter palette to show recent files
-                    },
+                    onOpenRecent = rememberOpenRecentPaletteAction(showCommandPaletteState),
                     onNewWindowProfile = {
                         // Create a new project and navigate to it
                         val newId = java.util.UUID.randomUUID().toString()
