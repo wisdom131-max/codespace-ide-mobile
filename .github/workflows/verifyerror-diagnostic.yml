@@ -158,7 +158,7 @@ jobs:
               } catch (VerifyError e) {
                 String text = e.toString();
                 e.printStackTrace();
-                if (shouldReject && text.contains("ProjectShellScreen") && text.contains("copy-cat1")) {
+                if (shouldReject && text.contains("ProjectShellScreen") && text.contains("[0x256D] copy1 v2<-v349 type=Reference") && text.contains("Composer cat=1")) {
                   System.out.println("ART_EXPECTED_PSS_VERIFYERROR_REPRODUCED");
                 } else {
                   System.err.println("ART_UNEXPECTED_VERIFYERROR");
