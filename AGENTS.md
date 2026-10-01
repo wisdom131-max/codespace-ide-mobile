@@ -6026,3 +6026,13 @@ Plan recommendation: one Models & Endpoints catalog/management UI with separate 
 Handoff mapping blocker: available uploads are 50 numbered parts (17-26 grouped) and 23 parts, not the owner's 80-section template. Requested the exact template; do not fabricate missing sections or call a partial map complete. Mapping is not yet produced.
 
 ROADMAP (all pending): owner go for this request's item 1 capability/fallback correction and approved item 2 configuration phases; exact 80-section template for item 3 mapping; existing Round 1 device verification and full P5/source-derived test rewrite. Previous items 4-9 remain FROZEN pending owner review; XG01-04 PAUSED/individually owner-gated; F6 JVM debug owner-gated; full VS Code terminal comparison retains its queued place. No implementation approval inferred from the contradictory 'fix now' wording because the owner explicitly opened with no code until go.
+
+### [2026-10-01 11:54 WAT] [DOCS][HANDOFF] Exact 80-Part template mapped
+
+Added HANDOFF-80-SECTION-MAP.md using the supplied 80-Part framework. All 80 exact numbered titles preserved once. Dispositions: 17 repo-reference, 54 partial repo-reference, 7 advisor-side-only, 2 quick factual answers. Verified 272 local links to 51 unique existing targets. This is a routing map, not 80 rewritten histories or a new runtime audit.
+
+Freshness warnings identify stale AGENTS front matter, historical FIX-PLAN and GROUP inventories, old Testing/token descriptions, and source-versus-device evidence. Literal ledger statuses are 244 explicit CLOSED + TP02 fix-shipped/device-unconfirmed + four XG enablers, across 249 primary IDs. A substring CLOSED count also matches TP02's NOT CLOSED language. No master-ledger rows or implementation status were changed by this mapping.
+
+Updated MODEL-ENDPOINT-RESEARCH-PLAN.md's handoff subsection to resolve the former missing-template blocker and link the completed map; retained the earlier upload history. Files changed: HANDOFF-80-SECTION-MAP.md, MODEL-ENDPOINT-RESEARCH-PLAN.md, AGENTS.md only. Baseline docs a031dc1; implementation b032295 remains unchanged (last code CI #3021 GREEN). Docs-only push, no docs CI waiting/polling and no device pass claimed.
+
+ROADMAP (all pending): owner go for model capability/fallback item 1 and approved model-configuration item 2 phases; existing Round 1 device verification and remaining full P5/source-derived test rewrite. Exact-template mapping task is complete; unwritten advisor history was not invented. Previous items 4-9 remain FROZEN; XG01-04 PAUSED/individually owner-gated; F6 JVM debug owner-gated; full VS Code terminal comparison retains its queued place. No implementation authority inferred from template upload.

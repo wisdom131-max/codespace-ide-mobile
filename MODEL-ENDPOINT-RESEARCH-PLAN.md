@@ -148,22 +148,15 @@ The catalog is shared; bindings retain their appropriate scope. A missing/delete
 
 **F. Verification and legacy writer removal.** Migration tests cover existing chat selection, per-mode preferences, Auto, pins, manual/live lists, image empty/nonempty values, reused IDs across endpoints, deletion/recreation and repeated migration. Test that choosing chat never changes image and vice versa. Verify same adapter URLs and key slots before/after migration. Remove old duplicate writers only after source proof, green Android CI and device checks. Each approved build phase ships its own code/CI/doc receipt; no implicit go to later phases.
 
-## 7. Handoff mapping: blocked on the exact template
+## 7. Handoff mapping: exact template supplied, mapping delivered
 
-The available uploads are:
+The owner supplied `65cb7281b_EXHAUSTIVE_PROJECT_KNOWLEDGE_HANDOFF_CONTEXT_PERSISTENCE_FRAMEWORK.md` on 2026-10-01 after this report was written. Its 80 numbered Parts are mapped in [HANDOFF-80-SECTION-MAP.md](HANDOFF-80-SECTION-MAP.md), with exact file/heading references, quick factual answers and advisor-side/partial-coverage qualifications. The earlier 50-part and 23-part uploads remain historical material; they were not mislabeled as the requested 80-Part template.
 
-- `3375f9c60_Advisor_AI_Exhaustive_Handoff.md`: 50 numbered parts, with 17-26 grouped into one section.
-- `df285e654_VN_Code_Advisor_Handoff_EXHAUSTIVE-1.md`: 23 numbered parts.
-
-Neither is the requested 80-section template. They are historical advisor documents, not proof of current implementation or current approvals. An exact 80-row mapping cannot be produced honestly without the exact section titles/questions. No sections 51-80 have been invented and no 50-part map has been mislabeled as an 80-part result.
-
-Once the template is supplied, produce one mapping document with columns: exact section number/title, disposition (repo reference / source-backed one-line answer / not applicable / advisor-side only), exact file + heading/function, and a qualification if coverage is partial or outdated. Use multiple existing references where needed rather than rewriting each answer. Mark advisor-only history honestly; shipping history that actually exists in AGENTS.md is not automatically advisor-only.
-
-Candidate source-of-truth documents already located: [MASTER-GAPS.md](MASTER-GAPS.md), [FIX-PLAN.md](FIX-PLAN.md), [MASTER-CONNECTIONS.md](MASTER-CONNECTIONS.md), the GROUP documents, [AGENTS.md](AGENTS.md), [WHERE-TO-LOOK.md](WHERE-TO-LOOK.md), [F-TRACK-PLAN.md](F-TRACK-PLAN.md), [F03-WORKSPACE-TRUST.md](F03-WORKSPACE-TRUST.md), [BUILD-FROM-PHONE.md](BUILD-FROM-PHONE.md), the vscode-parity and vscode-parity-ui indexes, and [ROUND1-REGRESSION-TESTS.md](ROUND1-REGRESSION-TESTS.md). Existence alone is not complete coverage: older README/docs architecture statements must be checked against current source before using them as authoritative.
+The mapping flags stale front matter, older audit snapshots, source-versus-runtime evidence and the explicit TP02 device gate. It is not 80 rewritten histories or a fresh implementation audit. The template blocker is resolved; model/capability and configuration implementation still require the owner's go.
 
 ## Pending work and boundaries
 
 - Owner go required for item 1 capability/fallback correction and each approved item 2 implementation phase.
-- Exact 80-section template required for item 3 mapping.
+- Item 3 mapping delivered; missing advisor-only history is not fabricated.
 - Existing Round 1 device verification is still pending; build/parser fixtures are not device proof.
 - Previous items 4-9 remain frozen pending owner review; XG01-04 remain paused/individually owner-gated; F6 JVM debug remains owner-gated. Full terminal comparison and remaining P5/source-derived test work retain their prior place in the roadmap. This research implements none of them.
