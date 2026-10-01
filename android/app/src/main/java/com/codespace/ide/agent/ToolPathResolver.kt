@@ -21,7 +21,7 @@ object ToolPathResolver {
         }
         if (file.exists()) return CanonicalPaths.canonical(file)
         // Existing and new Android paths must not be prefixed with the guest rootfs.
-        if (path == "/storage/emulated/0" || path.startsWith("/storage/emulated/0/") ||
+        if (path == "/storage" || path.startsWith("/storage/") ||
             path == context.filesDir.absolutePath || path.startsWith(context.filesDir.absolutePath + "/") ||
             path.startsWith("/data/user/0/" + context.packageName + "/") ||
             path.startsWith("/data/data/" + context.packageName + "/")) return CanonicalPaths.canonical(file)

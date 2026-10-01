@@ -271,7 +271,7 @@ You can use multiple tools in sequence. When done, give a final summary.
      * The translation itself is ProotInstaller's — SHARED with ScmState/git (the
      * audit's option (b)), not duplicated. Returns the path to operate on.
      */
-    private fun resolveToolPath(path: String, context: Context): String =
+    private fun resolveToolPath(context: Context, path: String): String =
         ToolPathResolver.resolve(context, path)
 
     private fun readFile(path: String, context: android.content.Context): String {
