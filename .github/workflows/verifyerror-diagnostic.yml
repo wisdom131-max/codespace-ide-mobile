@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   capture:
     runs-on: ubuntu-latest
@@ -13,10 +14,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: before-render-87d1f80
-            source: 87d1f80ab19b59976992243aa76df8e33370b81b
-          - label: device-reported-working-9235b43
-            source: 9235b43644b184cd2b012b4ba69d4f3df3ddd4f7
+          - label: candidate-dde79d7
+            source: dde79d7cae88dbe608d9ee63715055a40bcc80cc
     steps:
       - uses: actions/checkout@v4
         with:
@@ -107,4 +106,99 @@ jobs:
           name: verifyerror-${{ matrix.label }}
           path: diagnostic-output/
           if-no-files-found: error
+          retention-days: 7
+  art_verify:
+    needs: capture
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - name: Enable Android emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/download-artifact@v4
+        with:
+          name: verifyerror-candidate-dde79d7
+          path: candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: verifyerror-failing-b032295
+          path: bad-control
+          run-id: 36854430784
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: verifyerror-before-render-87d1f80
+          path: good-control
+          run-id: 36855011832
+          github-token: ${{ github.token }}
+      - name: Build Android runtime verifier probe
+        run: |
+          mkdir -p probe/classes probe/dex
+          cat > probe/VerifyPss.java <<'JAVA'
+          public final class VerifyPss {
+            public static void main(String[] args) {
+              boolean shouldReject = args[0].equals("reject");
+              try {
+                Class<?> cls = Class.forName("com.codespace.ide.ui.screens.ProjectShellScreenKt", true, VerifyPss.class.getClassLoader());
+                int count = cls.getDeclaredMethods().length;
+                if (shouldReject) {
+                  System.err.println("CONTROL FAILURE: known-bad class was not rejected");
+                  System.exit(2);
+                }
+                System.out.println("ART_PSS_ACCEPTED methods=" + count);
+              } catch (VerifyError e) {
+                String text = e.toString();
+                e.printStackTrace();
+                if (shouldReject && text.contains("ProjectShellScreen") && text.contains("copy-cat1")) {
+                  System.out.println("ART_EXPECTED_PSS_VERIFYERROR_REPRODUCED");
+                } else {
+                  System.err.println("ART_UNEXPECTED_VERIFYERROR");
+                  System.exit(3);
+                }
+              } catch (Throwable e) {
+                e.printStackTrace();
+                System.err.println("ART_PROBE_DEPENDENCY_OR_INITIALIZATION_FAILURE");
+                System.exit(4);
+              }
+            }
+          }
+          JAVA
+          javac --release 8 -d probe/classes probe/VerifyPss.java
+          curl -fsSL https://storage.googleapis.com/r8-releases/raw/8.5.10/r8.jar -o probe/r8.jar
+          java -cp probe/r8.jar com.android.tools.r8.D8 --min-api 26 --output probe/dex probe/classes/VerifyPss.class
+      - name: Verify original, baseline and candidate with Android 14 ART
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            mkdir -p art-results
+            adb shell getprop ro.build.fingerprint > art-results/emulator-fingerprint.txt
+            adb push probe/dex/classes.dex /data/local/tmp/verify-pss.dex
+            adb push bad-control/unchanged-source-x86_64.apk /data/local/tmp/bad-pss.apk
+            adb push good-control/unchanged-source-x86_64.apk /data/local/tmp/good-pss.apk
+            adb push candidate/unchanged-source-x86_64.apk /data/local/tmp/candidate-pss.apk
+            adb shell dalvikvm -Xverify:all -cp /data/local/tmp/verify-pss.dex:/data/local/tmp/bad-pss.apk VerifyPss reject > art-results/bad-control.txt 2>&1
+            grep ART_EXPECTED_PSS_VERIFYERROR_REPRODUCED art-results/bad-control.txt
+            adb shell dalvikvm -Xverify:all -cp /data/local/tmp/verify-pss.dex:/data/local/tmp/good-pss.apk VerifyPss accept > art-results/good-control.txt 2>&1
+            grep ART_PSS_ACCEPTED art-results/good-control.txt
+            adb shell dalvikvm -Xverify:all -cp /data/local/tmp/verify-pss.dex:/data/local/tmp/candidate-pss.apk VerifyPss accept > art-results/candidate.txt 2>&1
+            grep ART_PSS_ACCEPTED art-results/candidate.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: art-verifier-controls-and-candidate
+          path: art-results/
+          if-no-files-found: warn
           retention-days: 7
