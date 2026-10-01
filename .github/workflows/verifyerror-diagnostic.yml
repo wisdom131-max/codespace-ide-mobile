@@ -1,0 +1,112 @@
+name: VerifyError bytecode diagnostics (no application fix)
+on:
+  push:
+    branches: [diagnostics/verifyerror-b032295]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: failing-b032295
+            source: b032295363b79691aed48a563f4c61092ef0a8f9
+          - label: before-render-87d1f80
+            source: 87d1f80
+          - label: device-reported-working-9235b43
+            source: 9235b43
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.source }}
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - name: Prepare completely clean build
+        run: |
+          sudo apt-get update && sudo apt-get install -y patchelf
+          rm -rf "$HOME/.gradle/caches" "$HOME/.gradle/daemon" android/.gradle android/app/build android/build
+          chmod +x android/gradlew
+          mkdir -p diagnostic-output
+          git rev-parse HEAD > diagnostic-output/source-sha.txt
+      - name: Compile unchanged source from scratch
+        working-directory: android
+        run: ./gradlew --no-daemon --no-build-cache --rerun-tasks clean assembleProdDebug --stacktrace
+      - name: Preserve JVM inputs, dex outputs and compiler version
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil, hashlib
+          out=Path('diagnostic-output');out.mkdir(exist_ok=True)
+          matches=list(Path('android/app/build').rglob('ProjectShellScreenKt.class'))
+          rows=[]
+          for index,p in enumerate(matches):
+              dst=out/('PSS-input-'+str(index)+'.class');shutil.copy2(p,dst)
+              rows.append(str(p)+' SHA256 '+hashlib.sha256(p.read_bytes()).hexdigest()+' saved '+dst.name)
+          (out/'class-input-locations.txt').write_text('\n'.join(rows))
+          print('\n'.join(rows))
+          for p in Path('android/app/build/outputs/apk').rglob('*x86_64-debug.apk'):
+              shutil.copy2(p,out/'unchanged-source-x86_64.apk')
+          for p in Path.home().joinpath('.gradle/caches/modules-2/files-2.1/com.android.tools/r8').rglob('*.jar'):
+              shutil.copy2(p,out/'r8.jar');(out/'r8-origin.txt').write_text(str(p));print('D8 implementation',p)
+              break
+          PY
+          for f in diagnostic-output/PSS-input-*.class; do
+            [ -f "$f" ] || continue
+            javap -c -l -v "$f" > "${f%.class}.javap.txt"
+          done
+          if [ -f diagnostic-output/r8.jar ]; then
+            java -cp diagnostic-output/r8.jar com.android.tools.r8.D8 --version | tee diagnostic-output/d8-version.txt
+          fi
+      - name: Check JVM primitive/reference categories without application stubs
+        if: always()
+        run: |
+          mkdir -p /tmp/asm-check
+          for a in asm asm-tree asm-analysis; do
+            curl -fsSL "https://repo.maven.apache.org/maven2/org/ow2/asm/$a/9.6/$a-9.6.jar" -o "/tmp/asm-check/$a.jar"
+          done
+          cat > /tmp/asm-check/Check.java <<'JAVA'
+          import java.nio.file.*;
+          import org.objectweb.asm.*;
+          import org.objectweb.asm.tree.*;
+          import org.objectweb.asm.tree.analysis.*;
+          public class Check {
+            public static void main(String[] args) throws Exception {
+              for (String path: args) {
+                ClassNode cls = new ClassNode();
+                new ClassReader(Files.readAllBytes(Path.of(path))).accept(cls,0);
+                System.out.println("CLASS INPUT " + path);
+                for (MethodNode method: cls.methods) {
+                  try {
+                    new Analyzer<BasicValue>(new BasicVerifier()).analyze(cls.name,method);
+                    if (method.name.equals("ProjectShellScreen")) {
+                      System.out.println("JVM CATEGORY CHECK PASS " + method.name + method.desc + " locals=" + method.maxLocals + " instructions=" + method.instructions.size());
+                    }
+                  } catch (AnalyzerException e) {
+                    System.out.println("JVM CATEGORY CHECK FAIL " + method.name + method.desc + " " + e.toString());
+                    throw e;
+                  }
+                }
+              }
+            }
+          }
+          JAVA
+          javac -cp '/tmp/asm-check/*' /tmp/asm-check/Check.java
+          java -cp '/tmp/asm-check/*:/tmp/asm-check' Check diagnostic-output/PSS-input-*.class 2>&1 | tee diagnostic-output/jvm-category-check.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verifyerror-${{ matrix.label }}
+          path: diagnostic-output/
+          if-no-files-found: error
+          retention-days: 7
