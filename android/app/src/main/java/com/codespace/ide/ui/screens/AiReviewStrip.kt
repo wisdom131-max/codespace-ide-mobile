@@ -50,7 +50,9 @@ internal fun AiReviewStrip(path: String) {
     val revision = PendingChangesStore.revision.value
     val pending = remember(path, revision) {
         val session = PendingChangesStore.activeSessionId ?: "default"
-        PendingChangesStore.pendingFor(session).firstOrNull { it.path == path }
+        PendingChangesStore.pendingFor(session).firstOrNull {
+            com.codespace.ide.util.CanonicalPaths.canonicalKey(it.path) == com.codespace.ide.util.CanonicalPaths.canonicalKey(path)
+        }
     }
     if (pending == null) return
 

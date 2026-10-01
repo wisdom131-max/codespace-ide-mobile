@@ -105,7 +105,7 @@ Use write_file to replace round1_regression/existing.txt with exactly UPDATED_CO
 
 2. Before tapping Apply, inspect the review card's full path. It must point at the current project's real Android/host file, not the assistant process's working directory or an unmapped guest path.
 3. Read the file using the Terminal or another disk reader, not a staged read_file overlay. It must still contain `ORIGINAL_CONTENT`.
-4. Tap **Apply** on that file's review row. Read the disk file again.
+4. Open the existing file in the editor before Apply, then tap **Apply** on that file's review row. Read the disk file again and confirm the already-open tab refreshes. Tap editor Undo once to check its pre-Apply snapshot. Host path aliases must not prevent the review strip, refresh or one-shot undo gate from matching the staged file.
 
 PASS: the row is staged-only before Apply; after Apply the disk contains `UPDATED_CONTENT`. No ENOENT for a raw guest path, no unrelated file written.
 
@@ -180,7 +180,7 @@ PASS: no A diagnostic, tooltip or gold reveal appears in B. No crash during rapi
 
 ## Verification boundaries
 
-The executable harness at `tools/round1-regression/run.py` compiles actual Kotlin protocol, evidence, path, staging and request-state helpers. Android Context, Compose lifecycle, proot bridge, buffers/cache and checkpoint infrastructure are stubbed. It also compiles the file-tool forwarding helper with its actual four caller argument lists and rejects a second direct-write remapping path. The current harness passes 50 executable assertions. It exercises real temporary-file staging/Apply behavior, but not Android permission enforcement, actual HTTP servers, coroutine scheduling, Compose rendering or backup behavior.
+The executable harness at `tools/round1-regression/run.py` compiles actual Kotlin protocol, evidence, path, staging and request-state helpers. Android Context, Compose lifecycle, proot bridge, buffers/cache and checkpoint infrastructure are stubbed. It also compiles the file-tool forwarding helper with its actual four caller argument lists and rejects a second direct-write remapping path. The current harness passes 59 executable assertions. It exercises real temporary-file staging/Apply behavior, but not Android permission enforcement, actual HTTP servers, coroutine scheduling, Compose rendering or backup behavior.
 
 Source reference patterns: VS Code `src/vs/editor/common/services/markerDecorationsService.ts` reads markers for `model.uri`; `src/vs/workbench/browser/codeeditor.ts`, `RangeHighlightDecorations`, restricts reveals to the target resource and removes highlights on model changes. Copilot Chat's `src/extension/intents/node/toolCallingLoop.ts` and `src/extension/prompts/node/panel/toolCalling.tsx` provide call/result pairing and explicitly marked budget truncation. Our unverified-prose labeling is deliberately stricter, not a claim that VS Code has a universal action-success verifier.
 
@@ -194,4 +194,4 @@ With an existing Java 17+ runtime, Kotlin 1.9 compiler distribution and org.json
 python3 tools/round1-regression/run.py
 ```
 
-Expected final line: `PASS: 50 executable assertions against actual Kotlin helpers.` Additional compiler warnings from intentionally unused infrastructure stubs are not failures. The runtime/infrastructure limitations described above still apply.
+Expected final line: `PASS: 59 executable assertions against actual Kotlin helpers.` Additional compiler warnings from intentionally unused infrastructure stubs are not failures. The runtime/infrastructure limitations described above still apply.

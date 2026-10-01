@@ -255,7 +255,9 @@ fun EditorPane(
             if (appliedPaths.isNotEmpty()) {
                 tabs.indices.forEach { i ->
                     val t = tabs[i]
-                    if (t.path in appliedPaths && t.path.startsWith("/")) {
+                    if (t.path.startsWith("/") && appliedPaths.any {
+                            com.codespace.ide.util.CanonicalPaths.canonicalKey(it) == com.codespace.ide.util.CanonicalPaths.canonicalKey(t.path)
+                        }) {
                         try {
                             val refreshed = java.io.File(t.path).readText()
                             tabs[i] = t.copy(content = refreshed, isDirty = false)
@@ -277,7 +279,9 @@ fun EditorPane(
             if (restoredPaths.isNotEmpty()) {
                 tabs.indices.forEach { i ->
                     val t = tabs[i]
-                    if (t.path in restoredPaths && t.path.startsWith("/")) {
+                    if (t.path.startsWith("/") && restoredPaths.any {
+                            com.codespace.ide.util.CanonicalPaths.canonicalKey(it) == com.codespace.ide.util.CanonicalPaths.canonicalKey(t.path)
+                        }) {
                         try {
                             val refreshed = java.io.File(t.path).readText()
                             tabs[i] = t.copy(content = refreshed, isDirty = false)

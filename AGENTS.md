@@ -5996,3 +5996,13 @@ VS Code actual source, snapshot `832cf23c`: src/vs/editor/common/services/marker
 Verification before push: 50 executable Kotlin assertions PASS against actual helpers (including real temporary-file Apply/Force apply and canonical marker map); infrastructure is stubbed, so no claim of actual Android rendering, HTTP endpoint, permission, checkpoint or coroutine lifecycle coverage. 15 targeted device cases in ROUND1-REGRESSION-TESTS.md, with BLOCKED prerequisites.
 
 ROADMAP (all pending): item 3 Android CI; owner device confirmation 1-3, especially same-name tabs and sub-500ms switches. Items 4-9 FROZEN; XG01-04 PAUSED/individually owner-gated; F6 JVM debug owner-gated. Full VS Code terminal comparison QUEUED after 1-3. Remaining P5 test rewrite needs source-derived steps and BLOCKED markers. No device pass inferred from CI/harness.
+
+### [2026-10-01 10:47 WAT] [CHAT][EDITOR] Round 1 render GREEN; canonical Apply consumers
+
+Item 3 code `6d26882`, Android CI #3020 (`36843584436`) GREEN. The helper harness passed 50 assertions at that commit. Actual device rendering remains unverified.
+
+Follow-up within item 2d: staging now canonicalizes paths, so all consumers must match that same identity. PendingChangesStore overlay/membership, Apply/Force apply, Discard/Re-diff and one-shot undo gate now canonicalize host alias spellings. EditorPane applied/restored refresh and AiReviewStrip use strict canonical equality, NOT basename/suffix matching. This prevents `/data/user/0` versus `/data/data` or equivalent path spellings from hiding the review strip or leaving an already-open tab stale after Apply. Removed: raw-string equality/membership at these consumers. Files: PendingChangesStore.kt, EditorPane.kt, AiReviewStrip.kt, tools/round1-regression/run.py, ROUND1-REGRESSION-TESTS.md. No added inline effect or unrelated feature.
+
+Standalone Kotlin harness: 59 executable assertions PASS, including alias overlay, membership, Apply, Discard, Re-diff, Force apply and once-only undo gate. Four actual AgentTools caller argument lists compile, and direct write cannot remap a resolved path again. Infrastructure remains stubbed; this is not an Android permission, rendering or coroutine lifecycle pass. Targeted device guide remains 15 cases; R1-07 now also checks already-open-tab refresh and editor Undo.
+
+ROADMAP (all pending): this follow-up Android CI; owner device confirmation for Round 1 items 1-3, especially sub-500ms same-basename tab switches. Items 4-9 FROZEN; XG01-04 PAUSED/individually owner-gated; F6 JVM debug owner-gated. Full VS Code terminal comparison QUEUED after 1-3. Remaining P5 test rewrite requires source-derived steps and BLOCKED prerequisites. No device pass inferred.

@@ -1,6 +1,7 @@
 package com.codespace.ide.chat
 
 import java.io.File
+import com.codespace.ide.util.CanonicalPaths
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -125,11 +126,11 @@ object PendingChangesStore {
 
     /** Read-through overlay: the staged version of a path, or null. */
     fun overlayFor(path: String): String? =
-        synchronized(pending) { pending[path]?.newContent }
+        synchronized(pending) { pending[CanonicalPaths.canonicalKey(path)]?.newContent }
 
     /** True when the path has a staged entry (searchFiles overlay uses this). */
     fun hasPending(path: String): Boolean =
-        synchronized(pending) { pending.containsKey(path) }
+        synchronized(pending) { pending.containsKey(CanonicalPaths.canonicalKey(path)) }
 
     fun pendingFor(sessionId: String): List<PendingChange> =
         synchronized(pending) { pending.values.filter { it.sessionId == sessionId } }
@@ -137,7 +138,8 @@ object PendingChangesStore {
     fun pendingCount(sessionId: String): Int =
         synchronized(pending) { pending.values.count { it.sessionId == sessionId } }
 
-    fun discard(path: String) {
+    fun discard(rawPath: String) {
+        val path = CanonicalPaths.canonicalKey(rawPath)
         synchronized(pending) { pending.remove(path) }
         bumpRevision()
     }
@@ -155,7 +157,8 @@ object PendingChangesStore {
      * partial write. Only verified-no-drift and verified-drift-conflict are
      * distinguishable states; everything indeterminate is Blocked.
      */
-    fun apply(path: String): ApplyOutcome {
+    fun apply(rawPath: String): ApplyOutcome {
+        val path = CanonicalPaths.canonicalKey(rawPath)
         val entry = synchronized(pending) { pending[path] } ?: return ApplyOutcome.NotFound(path)
         return try {
             // ── Drift verification (disk-staged entries ONLY — decision #3) ──
@@ -229,7 +232,8 @@ object PendingChangesStore {
     }
 
     /** After a DRIFT conflict: rebase the entry's base to current disk and re-diff. */
-    fun rediff(path: String) {
+    fun rediff(rawPath: String) {
+        val path = CanonicalPaths.canonicalKey(rawPath)
         synchronized(pending) {
             val e = pending[path] ?: return
             pending[path] = e.copy(baseContent = try { File(path).readText() } catch (_: Exception) { e.baseContent }, status = Status.PENDING, statusNote = "")
@@ -242,7 +246,8 @@ object PendingChangesStore {
      * Bypasses the drift verification entirely (that is the point: the user
      * CHOSE to overwrite whatever is on disk). Still checkpoints first.
      */
-    fun forceApply(path: String): ApplyOutcome {
+    fun forceApply(rawPath: String): ApplyOutcome {
+        val path = CanonicalPaths.canonicalKey(rawPath)
         val entry = synchronized(pending) { pending[path] } ?: return ApplyOutcome.NotFound(path)
         return try {
             val checkpointFile = try { writeCheckpoint(path) } catch (_: Exception) { null }
@@ -380,7 +385,7 @@ object PendingChangesStore {
      */
     fun consumeUndoGate(path: String?): Boolean {
         if (path == null) return false
-        val wasGated = synchronized(undoGatePaths) { undoGatePaths.remove(path) }
+        val wasGated = synchronized(undoGatePaths) { undoGatePaths.remove(CanonicalPaths.canonicalKey(path)) }
         if (wasGated) bumpRevision()
         return wasGated
     }
