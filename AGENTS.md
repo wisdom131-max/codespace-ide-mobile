@@ -6006,3 +6006,13 @@ Follow-up within item 2d: staging now canonicalizes paths, so all consumers must
 Standalone Kotlin harness: 59 executable assertions PASS, including alias overlay, membership, Apply, Discard, Re-diff, Force apply and once-only undo gate. Four actual AgentTools caller argument lists compile, and direct write cannot remap a resolved path again. Infrastructure remains stubbed; this is not an Android permission, rendering or coroutine lifecycle pass. Targeted device guide remains 15 cases; R1-07 now also checks already-open-tab refresh and editor Undo.
 
 ROADMAP (all pending): this follow-up Android CI; owner device confirmation for Round 1 items 1-3, especially sub-500ms same-basename tab switches. Items 4-9 FROZEN; XG01-04 PAUSED/individually owner-gated; F6 JVM debug owner-gated. Full VS Code terminal comparison QUEUED after 1-3. Remaining P5 test rewrite requires source-derived steps and BLOCKED prerequisites. No device pass inferred.
+
+### [2026-10-01 10:56 WAT] [VERIFIED][ROUND1] Items 1-3 code and CI handover
+
+Final code `b032295`, Android CI #3021 (`36845010343`) GREEN. Final working tree was clean before this docs-only receipt. CI chain: settings `1d5ce2b` #3015 GREEN; native/Qwen `4a7ab68` #3016 GREEN; evidence/output `bd3e2f1` #3017 GREEN; Apply `e82e86a` #3018 RED (caller argument order), corrected by `87d1f80` #3019 GREEN; render ownership `6d26882` #3020 GREEN; canonical Apply consumer integration `b032295` #3021 GREEN. Exact RED compiler errors were read and fixed, not hidden.
+
+Standalone harness: 59 executable assertions PASS against actual Kotlin helpers plus four actual file-tool call-site argument lists compiled. Added actual canonical marker store and synchronous merge helpers to the harness. Android Context/Compose lifecycle/proot bridge/buffer/cache/checkpoint infrastructure are stubbed. Native server and device UI are NOT verified by that harness. ROUND1-REGRESSION-TESTS.md contains 15 targeted device cases, explicit BLOCKED prerequisites, already-open-tab Apply/Undo, new-file and appeared-target conflicts, same-basename rapid switching, and a three-launch startup preflight. No manual device pass claimed.
+
+This receipt changes AGENTS.md and the test guide only. Docs CI is not waited on or polled, per standing instruction.
+
+ROADMAP (all pending): owner device confirmation of items 1-3 using final build #3021; remaining P5 full device round and source-derived test rewrite with BLOCKED prerequisites. Items 4-9 FROZEN until owner review of 1-3. XG01-04 PAUSED/individually owner-gated; F6 JVM debug owner-gated. Full VS Code terminal comparison QUEUED after 1-3. No work on those parked items this round.

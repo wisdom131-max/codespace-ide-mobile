@@ -2,6 +2,14 @@
 
 This is a targeted regression round, not the full P5 round. Items 4-9 and XG work remain parked. Android CI and the standalone Kotlin harness are not evidence of a device pass.
 
+## Build verified
+
+Final Android code: `b032295` (includes all Round 1 fixes). Android CI [#3021](https://github.com/wisdom131-max/codespace-ide-mobile/actions/runs/36845010343) GREEN. Use this build's `codespace-ide-arm64-v8a` artifact for the usual arm64 debug installation. Update the existing debug app without uninstalling or clearing data.
+
+### Startup prerequisite
+
+After installing, open Android Settings > Apps > CodeSpace IDE > Force stop, then launch CodeSpace IDE from its icon. Repeat three times. Expected: it opens normally each time. If launch still crashes, stop this round, report the new stack trace and mark dependent cases BLOCKED. Do not erase app data to make the test appear to pass.
+
 ## Report format
 
 For each ID below, report `PASS`, `FAIL` or `BLOCKED`, plus the first incorrect behavior. Include the installed APK's commit, orientation and screenshot/log if applicable. Do not label a test PASS when its prerequisite was unavailable.
@@ -107,7 +115,7 @@ Use write_file to replace round1_regression/existing.txt with exactly UPDATED_CO
 3. Read the file using the Terminal or another disk reader, not a staged read_file overlay. It must still contain `ORIGINAL_CONTENT`.
 4. Open the existing file in the editor before Apply, then tap **Apply** on that file's review row. Read the disk file again and confirm the already-open tab refreshes. Tap editor Undo once to check its pre-Apply snapshot. Host path aliases must not prevent the review strip, refresh or one-shot undo gate from matching the staged file.
 
-PASS: the row is staged-only before Apply; after Apply the disk contains `UPDATED_CONTENT`. No ENOENT for a raw guest path, no unrelated file written.
+PASS: the row is staged-only before Apply; after Apply the disk contains `UPDATED_CONTENT`. No ENOENT for a raw guest path, no unrelated file written. The already-open tab refreshes; one editor Undo restores the pre-Apply `ORIGINAL_CONTENT`.
 
 ### R1-08: guest path resolves to the same file
 
