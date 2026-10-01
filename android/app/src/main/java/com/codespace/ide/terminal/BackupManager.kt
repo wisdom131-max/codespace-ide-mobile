@@ -287,10 +287,44 @@ object BackupManager {
      * Synchronous on purpose: it must complete before the first prefs/JSON store load.
      */
     fun onAppStart(context: Context) {
+        // Startup crash-safety (2026-10-01, second RG05 hotfix): the shared-storage
+        // backup path is only usable when THIS install holds the "All files access"
+        // grant — a full uninstall/reinstall or Android's unused-app auto-revoke
+        // removes it, and the FUSE layer then reports exists() == true while open()
+        // fails EACCES (the first RG05 hotfix only handled ENOENT, i.e. a MISSING
+        // file). Application.onCreate must NEVER crash: gate on the grant, and any
+        // storage I/O failure is an honest ERROR log, never a launch abort.
+        val hasAllFilesAccess =
+            android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R ||
+                Environment.isExternalStorageManager()
+        if (!hasAllFilesAccess) {
+            Log.w(TAG, "RG05 onAppStart: All files access NOT granted — shared-storage prefs backup/restore paused (launch continues; grant is re-requested by MainActivity)")
+            NotificationStore.add(
+                "Storage permission needed",
+                "Prefs backup is paused. Grant \"All files access\" in the Settings screen that just opened so backups and restores resume on next start.",
+                NotificationStore.Type.BACKUP
+            )
+            return
+        }
+        try {
+            onAppStartGuarded(context)
+        } catch (e: java.io.IOException) {
+            // EACCES, ENOSPC, you name it: a backup subsystem failure must never
+            // kill the app before the first frame (S01: logged, not swallowed).
+            Log.e(TAG, "RG05 onAppStart storage I/O failure — launch continues: ${e}")
+        }
+    }
+
+    private fun onAppStartGuarded(context: Context) {
         val dest = File(backupDir(), "prefs-backup")
         val marker = File(dest, "version.txt")
         val currentVersion = currentVersionCode(context)
-        val previousVersion = if (marker.exists()) marker.readText().trim().toLongOrNull() else null
+        // EACCES can hit the READ even when exists() said true — a failed marker
+        // read only means "version unknown" (previousVersion == null), which
+        // arms the container prompt; it is never fatal.
+        val previousVersion = runCatching {
+            if (marker.exists()) marker.readText().trim().toLongOrNull() else null
+        }.getOrNull()
         val backupHasData = prefsXmlFiles(dest).isNotEmpty()
         val liveHasData = context.getSharedPreferences("projects", Context.MODE_PRIVATE).all.isNotEmpty()
 
@@ -454,21 +488,47 @@ object BackupManager {
         if (!src.exists()) return
         val applied = mutableListOf<String>()
         prefsXmlFiles(src).forEach { f -> if (applyPrefsXml(context, f)) applied += f.name }
+        // Startup crash-safety (2026-10-01): EVERY file copy in the restore path is
+        // guarded — an EACCES/IO failure on one file skips that file with an honest
+        // ERROR log instead of aborting the restore (and, on the onAppStart path,
+        // crashing the launch). Applies to Settings-tap restores too.
+        var copyFailures = 0
+        fun guardedCopy(from: File, to: File) {
+            try {
+                to.parentFile?.mkdirs()
+                from.copyTo(to, overwrite = true)
+            } catch (e: java.io.IOException) {
+                copyFailures++
+                Log.e(TAG, "RG06 restore copy FAILED for ${from.name} -> ${to.name}: ${e.message}")
+            }
+        }
+        fun guardedCopyIntoDir(from: File, toDir: File) {
+            try {
+                toDir.mkdirs()
+                from.copyTo(File(toDir, from.name), overwrite = true)
+            } catch (e: java.io.IOException) {
+                copyFailures++
+                Log.e(TAG, "RG06 restore copy FAILED for ${from.name} -> ${toDir.name}: ${e.message}")
+            }
+        }
         listOf("settings.json", "ssh-profiles.json").forEach { name ->
             val f = File(src, name)
-            if (f.exists()) f.copyTo(File(context.filesDir, name), overwrite = true)
+            if (f.exists()) guardedCopy(f, File(context.filesDir, name))
         }
         val schedSrc = File(src, "agent_scheduler")
         if (schedSrc.exists()) {
-            val schedDest = File(context.filesDir, "agent_scheduler")
-            schedDest.mkdirs()
-            schedSrc.listFiles()?.forEach { it.copyTo(File(schedDest, it.name), overwrite = true) }
+            schedSrc.listFiles()?.forEach { guardedCopyIntoDir(it, File(context.filesDir, "agent_scheduler")) }
         }
         val memSrc = File(src, "agent_memory.json")
         if (memSrc.exists()) {
-            val memDir = File(context.filesDir, "agent_memory")
-            memDir.mkdirs()
-            memSrc.copyTo(File(memDir, "memory.json"), overwrite = true)
+            guardedCopy(memSrc, File(File(context.filesDir, "agent_memory"), "memory.json"))
+        }
+        if (copyFailures > 0) {
+            NotificationStore.add(
+                "Prefs restore incomplete",
+                "$copyFailures backup file(s) could not be restored — check storage permission and free space, then restore again.",
+                NotificationStore.Type.BACKUP
+            )
         }
         Log.d(TAG, "Prefs restored (via prefs API: ${applied.joinToString()})")
     }
