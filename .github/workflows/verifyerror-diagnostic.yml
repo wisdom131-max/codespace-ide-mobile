@@ -13,12 +13,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: failing-b032295
-            source: b032295363b79691aed48a563f4c61092ef0a8f9
           - label: before-render-87d1f80
-            source: 87d1f80
+            source: 87d1f80ab19b59976992243aa76df8e33370b81b
           - label: device-reported-working-9235b43
-            source: 9235b43
+            source: 9235b43644b184cd2b012b4ba69d4f3df3ddd4f7
     steps:
       - uses: actions/checkout@v4
         with:
