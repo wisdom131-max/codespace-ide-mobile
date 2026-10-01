@@ -61,6 +61,14 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-10-01 09:57 WAT] [CRASH] Round 1 item 1: ranked settings header keys
+
+Code `1d5ce2b`, Android CI #3015 (`36838725550`) GREEN. Portrait and landscape headers use category + first setting id for each contiguous section. Usage-ranked rows no longer collide when a category reappears. Removed: category-only section-key identity, no settings removed. Device check: interact with settings in two categories, reopen Commonly Used, scroll all rows in both orientations; no duplicate-key crash. Source reference: InProjectSettingsDialog.kt.
+
+ROADMAP (all pending): Round 1 2a-e AI execution and 3a-c file-owned diagnostics/jumps, then owner device confirmation of 1-3. Items 4-9 FROZEN awaiting owner; XG01-04 PAUSED and individually owner-gated; F6 JVM debug owner-gated. Full VS Code terminal comparison QUEUED after 1-3, not urgent. P5 remaining/not-run tests require source-derived instructions and BLOCKED markers for broken prerequisites. No device success inferred from CI.
+
+---
+
 ### [2026-09-27 19:05 WAT] — P5-FULL-WALKTHROUGH.md committed (docs-only): the fully-explained 203-test walkthrough, tap by tap, copy-paste ready
 
 **Docs:** this push. Third companion to P5-DEVICE-CHECKLIST.md: every test (T1-T203) explained in plain language (what it is about, what the command means), with paste-ready boxes, step-by-step taps from app open, expected screens, PASS/FAIL criteria, edge cases and the per-test report line. Device-restricted checks marked NOT RUN-able. The owner runs tests one by one and pastes T#-lines back for per-test analysis.

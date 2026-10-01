@@ -45,6 +45,7 @@ class CustomOpenAiProvider(
     // non-real so a misconfigured send fails with the SERVER's error text,
     // which names the real problem.
     override val defaultModel = "custom-model"
+    override val supportsNativeTools = true
     override val supportsAudio = true
     override val defaultModelIsPlaceholder = true
     override val isLocal = false
@@ -77,11 +78,23 @@ class CustomOpenAiProvider(
         return try {
             OpenAiCompatibleTransport.call(
                 url,
-                request.apiKey ?: "", request.model, request.convMsgs, request.images, request.audios,
+                request.apiKey ?: "", request.model, request.convMsgs, request.images, request.audios, request.tools,
             )
         } catch (e: Exception) {
             // MK-C: prefix the endpoint context so the error names WHERE it broke.
             throw Exception("[" + displayName + "] " + url + " \u2014 " + (e.message ?: e.javaClass.simpleName), e)
+        }
+    }
+
+    override suspend fun completeStreaming(request: ChatRequest, onDelta: (String) -> Unit): String {
+        val base = baseUrlOrNull() ?: throw Exception("[" + displayName + "] No endpoint URL set.")
+        val url = chatUrl(base)
+        return try {
+            OpenAiCompatibleTransport.callStreaming(url, request.apiKey ?: "", request.model,
+                request.convMsgs, onDelta, request.images, request.audios, request.tools)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            throw Exception("[" + displayName + "] " + url + " : " + (e.message ?: e.javaClass.simpleName), e)
         }
     }
 

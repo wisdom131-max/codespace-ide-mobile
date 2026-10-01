@@ -440,6 +440,12 @@ object McpClientManager {
             .sorted()
     }
 
+    fun nativeToolDefinitions(context: Context): List<JSONObject> = cachedToolNames(context).mapNotNull { name ->
+        val tool = toolsCache[name] ?: return@mapNotNull null
+        JSONObject().put("type", "function").put("function", JSONObject().put("name", name)
+            .put("description", tool.description).put("parameters", tool.inputSchema))
+    }
+
     fun cachedToolsFor(server: String): List<ExternalTool> =
         toolsCache.values.filter { it.server == server }.sortedBy { it.name }
 

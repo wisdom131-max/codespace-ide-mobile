@@ -84,6 +84,8 @@ interface ChatProvider {
      * A provider that genuinely cannot accept images overrides false — chat()
      * then refuses the send with a clear message instead of a silent API failure.
      */
+    val supportsNativeTools: Boolean get() = false
+
     val supportsImages: Boolean get() = true
 
     /**
@@ -138,6 +140,7 @@ data class ChatRequest(
      * with an audio mime_type. Providers without supportsAudio refuse via chat().
      */
     val audios: List<ChatRequestAudio> = emptyList(),
+    val tools: JSONArray? = null,
 )
 
 /**

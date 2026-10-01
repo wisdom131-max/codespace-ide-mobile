@@ -35,9 +35,12 @@ internal object OpenAiCompatibleTransport {
         url: String, apiKey: String, model: String, convMsgs: JSONArray,
         images: List<com.codespace.ide.chat.ChatRequestImage> = emptyList(),
         audios: List<com.codespace.ide.chat.ChatRequestAudio> = emptyList(),
+        tools: JSONArray? = null,
     ): String =
         withContext(Dispatchers.IO) {
-            val body = JSONObject().put("model", model).put("messages", withImages(convMsgs, images, audios)).toString()
+            val payload = JSONObject().put("model", model).put("messages", withImages(convMsgs, images, audios))
+            if (tools != null && tools.length() > 0) payload.put("tools", tools).put("tool_choice", "auto")
+            val body = payload.toString()
             val resp = http.newCall(
                 Request.Builder()
                     .url(url)
@@ -50,7 +53,7 @@ internal object OpenAiCompatibleTransport {
                 throw classifyHttpError(resp, "API error")
             }
             val json = JSONObject(resp.body?.string() ?: "")
-            json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+            com.codespace.ide.chat.NativeToolProtocol.responseText(json.getJSONArray("choices").getJSONObject(0).getJSONObject("message"))
         }
 
     /**
@@ -145,8 +148,11 @@ internal object OpenAiCompatibleTransport {
         onDelta: (String) -> Unit,
         images: List<com.codespace.ide.chat.ChatRequestImage> = emptyList(),
         audios: List<com.codespace.ide.chat.ChatRequestAudio> = emptyList(),
+        tools: JSONArray? = null,
     ): String = withContext(Dispatchers.IO) {
-        val body = JSONObject().put("model", model).put("messages", withImages(convMsgs, images, audios)).put("stream", true).toString()
+        val payload = JSONObject().put("model", model).put("messages", withImages(convMsgs, images, audios)).put("stream", true)
+        if (tools != null && tools.length() > 0) payload.put("tools", tools).put("tool_choice", "auto")
+        val body = payload.toString()
         val streamClient = http.newBuilder()
             .readTimeout(180, java.util.concurrent.TimeUnit.SECONDS)
             .build()
@@ -165,6 +171,7 @@ internal object OpenAiCompatibleTransport {
             throw classifyHttpError(resp, "API error")
         }
         val sb = StringBuilder()
+        val toolStream = com.codespace.ide.chat.NativeToolProtocol.StreamCalls()
         val reader = resp.body?.byteStream()?.bufferedReader()
         try {
             while (true) {
@@ -182,7 +189,8 @@ internal object OpenAiCompatibleTransport {
                 val choices = obj.optJSONArray("choices") ?: continue
                 if (choices.length() == 0) continue  // trailing usage chunks
                 val delta = choices.getJSONObject(0).optJSONObject("delta") ?: continue
-                val text = delta.optString("content")
+                toolStream.accept(delta)
+                val text = if (delta.isNull("content")) "" else delta.optString("content")
                 if (text.isNotEmpty()) { sb.append(text); onDelta(text) }
             }
         } finally {
@@ -190,7 +198,7 @@ internal object OpenAiCompatibleTransport {
             try { call.cancel() } catch (_: Exception) { }
             try { reader?.close() } catch (_: Exception) { }
         }
-        sb.toString()
+        toolStream.response(sb.toString())
     }
 
     /**

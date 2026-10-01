@@ -705,6 +705,8 @@ private suspend fun chat(
                     apiModel, systemPrompt, convMsgs, key,
                     if (iteration == 0) requestImages else emptyList(),
                     if (iteration == 0) requestAudios else emptyList(),
+                    tools = if (mode == ChatMode.AGENT && provider.supportsNativeTools)
+                        com.codespace.ide.chat.NativeToolProtocol.schemas(context, cmAllow) else null,
                 )
                 if (deltaSink != null) {
                     provider.completeStreaming(req) { d -> streamedAnything = true; deltaSink(d) }
@@ -716,7 +718,10 @@ private suspend fun chat(
 
         if (mode == ChatMode.AGENT && AgentTools.hasToolCalls(content)) {
             // Add assistant response to conversation
-            convMsgs.put(JSONObject().put("role", "assistant").put("content", content))
+            val nativeCalls = if (provider?.supportsNativeTools == true)
+                com.codespace.ide.chat.NativeToolProtocol.calls(content) else null
+            convMsgs.put(if (nativeCalls != null) com.codespace.ide.chat.NativeToolProtocol.assistantMessage(content, nativeCalls)
+                else JSONObject().put("role", "assistant").put("content", content))
 
             // Parse and execute all tool calls
             val toolCalls = AgentTools.parseToolCalls(content)
@@ -724,11 +729,14 @@ private suspend fun chat(
             // R7-PLAN: a staged plan ENDS this agent turn (VS Code plan_response
             // semantics) — the user reviews the card and Approve/Revise resumes.
             var planStaged = false
-            for ((toolName, toolArgs) in toolCalls) {
+            for ((callIndex, call) in toolCalls.withIndex()) {
+                val (toolName, toolArgs) = call
                 // R9-A: allowlist only ever RESTRICTS \u2014 a blocked tool never
                 // reaches FlowGate or execution.
                 if (cmAllow != null && toolName !in cmAllow) {
-                    toolResults.append("[Tool: $toolName] Not available in this custom mode (allowlist). Skipped.\n\n")
+                    val refusal = "Not available in this custom mode (allowlist). Skipped."
+                    toolResults.append("[Tool: $toolName] $refusal\n\n")
+                    if (nativeCalls != null) convMsgs.put(com.codespace.ide.chat.NativeToolProtocol.resultMessage(nativeCalls, callIndex, refusal))
                     continue
                 }
                 // R6-PENDING-EDITS (decision #1): in AGENT mode, write_file STAGES
@@ -803,6 +811,7 @@ private suspend fun chat(
                 }
                 onStreamEvent?.invoke(ChatStreamEvent.ToolDone(toolName))
                 toolResults.append("[Tool: $toolName] Result:\n$resultForTranscript\n\n")
+                if (nativeCalls != null) convMsgs.put(com.codespace.ide.chat.NativeToolProtocol.resultMessage(nativeCalls, callIndex, resultForTranscript))
                 // R7-PLAN strict halt: once a plan stages, NOTHING else in this
                 // tool round executes — no bundled tool calls ride along after it.
                 if (planStaged) break
@@ -829,7 +838,7 @@ private suspend fun chat(
                 return@withContext "Plan ready — review it in the chat panel, then tap Approve (executes the steps) or Revise (tell me what to change)."
             }
             // Feed tool results back as user message
-            convMsgs.put(JSONObject().put("role", "user").put("content",
+            if (nativeCalls == null) convMsgs.put(JSONObject().put("role", "user").put("content",
                 "Tool execution results:\n$toolResults\nContinue with the next step or give a final summary if done."))
         } else {
             return@withContext content
