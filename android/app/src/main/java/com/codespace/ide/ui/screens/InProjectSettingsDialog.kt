@@ -255,7 +255,7 @@ fun InProjectSettingsDialog(
                                 for (row in filteredRows) {
                                     val showHeader = (searchQuery.isNotEmpty() || activeCategory == SettingsCategory.COMMONLY_USED) && row.category != lastCategory
                                     if (showHeader) {
-                                        item(key = "header_p_${row.category}") {
+                                        item(key = "header_p_${row.category}_${row.id}") {
                                             SectionHeader(row.category.label, textPri)
                                         }
                                         lastCategory = row.category
@@ -372,7 +372,7 @@ fun InProjectSettingsDialog(
                                 for (row in filteredRows) {
                                     val showHeader = (searchQuery.isNotEmpty() || activeCategory == SettingsCategory.COMMONLY_USED) && row.category != lastCategory
                                     if (showHeader) {
-                                        item(key = "header_l_${row.category}") {
+                                        item(key = "header_l_${row.category}_${row.id}") {
                                             SectionHeader(row.category.label, textPri)
                                         }
                                         lastCategory = row.category
