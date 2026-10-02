@@ -7,6 +7,12 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import java.security.MessageDigest
+import android.content.SharedPreferences
+import android.util.Log
+import java.io.File
+
+private const val TAG = "SecureTokenStore"
+private const val SECURE_PREFS_NAME = "codespace_secure"
 
 /**
  * Encrypted, Keystore-backed storage for tokens, role, BYOK AI API keys,
@@ -20,17 +26,68 @@ import java.security.MessageDigest
 class SecureTokenStore @Inject constructor(
     @ApplicationContext context: Context,
 ) {
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
+    private val appContext: Context = context.applicationContext
 
-    private val prefs = EncryptedSharedPreferences.create(
-        context,
-        "codespace_secure",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    /**
+     * CRASH-SAFETY (2026-10-01): EncryptedSharedPreferences.create previously ran
+     * EAGERLY in <init> and an AEADBadTagException/KeyStoreException there killed
+     * the whole process (owner device: crash loop on the first launch after a
+     * full uninstall + RG05 prefs-backup restore — the restored file holds
+     * ciphertext under a Keystore master key that an uninstall destroys, so the
+     * data can NEVER decrypt on a fresh install). The store is now opened
+     * LAZILY, and an unreadable file is QUARANTINED and replaced with a FRESH
+     * empty store (settings/corruption discipline: quarantine and continue, the
+     * user re-enters credentials) — never a startup crash.
+     */
+    private val prefs: SharedPreferences by lazy { openSecurePrefs() }
+
+    private fun createSecure(): SharedPreferences {
+        val masterKey = MasterKey.Builder(appContext)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
+            appContext,
+            SECURE_PREFS_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+    }
+
+    private fun openSecurePrefs(): SharedPreferences {
+        return try {
+            createSecure()
+        } catch (first: Exception) {
+            Log.e(TAG, "Secure store unreadable (${first.javaClass.simpleName}: ${first.message}) — quarantining and recreating; saved tokens/keys/PIN must be re-entered")
+            quarantineUnreadableStore()
+            try {
+                val fresh = createSecure()
+                com.codespace.ide.data.NotificationStore.add(
+                    "Secure storage was reset",
+                    "Saved sign-in tokens, API keys and PIN could not be decrypted (the encryption key does not survive a full uninstall). Please re-enter them in Settings.",
+                    com.codespace.ide.data.NotificationStore.Type.INFO,
+                )
+                fresh
+            } catch (second: Exception) {
+                Log.e(TAG, "Keystore unusable even after quarantine (${second.javaClass.simpleName}: ${second.message}) — using a session-only in-memory store; credentials must be re-entered")
+                InMemorySharedPreferences()
+            }
+        }
+    }
+
+    /** Moves the undecryptable file aside (inside the app sandbox) so a fresh store can be created. */
+    private fun quarantineUnreadableStore() {
+        try {
+            val dir = File(appContext.applicationInfo.dataDir, "shared_prefs")
+            val f = File(dir, "$SECURE_PREFS_NAME.xml")
+            if (f.exists()) {
+                val q = File(dir, "$SECURE_PREFS_NAME.xml.corrupt-${System.currentTimeMillis()}")
+                if (!f.renameTo(q)) f.delete()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Quarantine of unreadable secure store failed: ${e.message}")
+        }
+    }
 
     var refreshToken: String?
         get() = prefs.getString(KEY_REFRESH, null)
@@ -226,4 +283,46 @@ class SecureTokenStore @Inject constructor(
          *  comes only AFTER the escalating lockouts above have run). */
         const val PIN_MAX_FAILURES = 7
     }
+}
+
+/**
+ * CRASH-SAFETY fallback (2026-10-01): used ONLY when the Android Keystore itself is
+ * unusable (quarantine + fresh create both failed). Session-only: values vanish on
+ * process restart, which the ERROR log and notification state honestly. Never
+ * throws, so app startup can never be taken down by this store.
+ */
+private class InMemorySharedPreferences : SharedPreferences {
+    private val map = mutableMapOf<String, Any?>()
+    private val listeners = mutableListOf<SharedPreferences.OnSharedPreferenceChangeListener>()
+    private class MemEditor(private val map: MutableMap<String, Any?>) : SharedPreferences.Editor {
+        private val pending = mutableMapOf<String, Any?>()
+        private val removals = mutableListOf<String>()
+        private var clearAll = false
+        override fun putString(key: String, value: String?): SharedPreferences.Editor { pending[key] = value; return this }
+        override fun putStringSet(key: String, values: MutableSet<String>?): SharedPreferences.Editor { pending[key] = values?.toMutableSet(); return this }
+        override fun putInt(key: String, value: Int): SharedPreferences.Editor { pending[key] = value; return this }
+        override fun putLong(key: String, value: Long): SharedPreferences.Editor { pending[key] = value; return this }
+        override fun putFloat(key: String, value: Float): SharedPreferences.Editor { pending[key] = value; return this }
+        override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor { pending[key] = value; return this }
+        override fun remove(key: String): SharedPreferences.Editor { pending.remove(key); removals.add(key); return this }
+        override fun clear(): SharedPreferences.Editor { clearAll = true; return this }
+        override fun commit(): Boolean { apply(); return true }
+        override fun apply() {
+            if (clearAll) { map.clear(); clearAll = false; pending.clear(); }
+            removals.forEach { map.remove(it) }
+            map.putAll(pending)
+            pending.clear()
+        }
+    }
+    override fun getAll(): MutableMap<String, *> = map.toMutableMap()
+    override fun getString(key: String, defValue: String?): String? = map[key] as String? ?: defValue
+    override fun getStringSet(key: String, defValue: MutableSet<String>?): MutableSet<String>? = map[key] as MutableSet<String>? ?: defValue
+    override fun getInt(key: String, defValue: Int): Int = (map[key] as Int?) ?: defValue
+    override fun getLong(key: String, defValue: Long): Long = (map[key] as Long?) ?: defValue
+    override fun getFloat(key: String, defValue: Float): Float = (map[key] as Float?) ?: defValue
+    override fun getBoolean(key: String, defValue: Boolean): Boolean = (map[key] as Boolean?) ?: defValue
+    override fun contains(key: String): Boolean = map.containsKey(key)
+    override fun edit(): SharedPreferences.Editor = MemEditor(map)
+    override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) { listeners.add(listener) }
+    override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) { listeners.remove(listener) }
 }

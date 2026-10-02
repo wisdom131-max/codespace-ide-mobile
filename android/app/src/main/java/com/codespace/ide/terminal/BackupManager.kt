@@ -372,6 +372,21 @@ object BackupManager {
         dir.listFiles { f -> f.isFile && f.name.endsWith(".xml") }?.sortedBy { it.name } ?: emptyList()
 
     /**
+     * Keystore-bound encrypted store (SecureTokenStore "codespace_secure"): its file
+     * holds ciphertext under an Android Keystore MASTER KEY that a full uninstall
+     * DESTROYS — the key lives in the OS keystore, never in the file or in this
+     * backup. Copying it back can only ever poison the fresh install with
+     * undecryptable data (owner device 2026-10-01: AEADBadTagException crash loop on
+     * the first launch after uninstall + restore). It is excluded from BOTH backup
+     * and restore. Side benefit: tokens/AI keys/PIN hash no longer land on the
+     * world-readable shared-storage backup either (SK04's brute-force concern).
+     * The SecureTokenStore itself quarantines and recreates if the live file is
+     * ever unreadable, so credentials are re-entered — never restored.
+     */
+    private fun isKeystoreBoundFile(name: String): Boolean =
+        name == "codespace_secure.xml" || name.startsWith("codespace_secure.xml.corrupt-")
+
+    /**
      * Backs up ALL app SharedPreferences files to /sdcard/CodespaceIDE/prefs-backup/
      * so they survive an app uninstall, plus the filesDir JSON stores.
      *
@@ -404,7 +419,8 @@ object BackupManager {
         // EVERY shared_prefs XML — the Firebase heartbeat files are created/rewritten
         // LAZILY by the Firebase process, so a listed file can be absent at open time.
         val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
-        prefsXmlFiles(prefsDir).forEach { f -> tally(copyStoreFileOrSkip(f, File(dest, f.name)), f.name) }
+        prefsXmlFiles(prefsDir).filterNot { isKeystoreBoundFile(it.name) }
+            .forEach { f -> tally(copyStoreFileOrSkip(f, File(dest, f.name)), f.name) }
         // JSON stores under filesDir (re-read at store init on next process start)
         listOf("settings.json", "ssh-profiles.json").forEach { name ->
             tally(copyStoreFileOrSkip(File(context.filesDir, name), File(dest, name)), name)
@@ -487,7 +503,11 @@ object BackupManager {
         val src = File(backupDir(), "prefs-backup")
         if (!src.exists()) return
         val applied = mutableListOf<String>()
-        prefsXmlFiles(src).forEach { f -> if (applyPrefsXml(context, f)) applied += f.name }
+        // Never reapply Keystore-bound ciphertext — old installs (and existing
+        // SD-card backups made before this fix) contain a codespace_secure.xml that
+        // poisons the fresh install. Skipping it here heals that class for good.
+        prefsXmlFiles(src).filterNot { isKeystoreBoundFile(it.name) }
+            .forEach { f -> if (applyPrefsXml(context, f)) applied += f.name }
         // Startup crash-safety (2026-10-01): EVERY file copy in the restore path is
         // guarded — an EACCES/IO failure on one file skips that file with an honest
         // ERROR log instead of aborting the restore (and, on the onAppStart path,
