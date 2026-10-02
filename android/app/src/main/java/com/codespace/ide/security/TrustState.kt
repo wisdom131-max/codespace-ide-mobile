@@ -65,7 +65,14 @@ object TrustState {
         if (path.isNullOrBlank()) return false
         ensureMigrated(context)
         val canonical = CanonicalPaths.canonical(File(path))
-        return prefs(context).getStringSet("trusted_paths", emptySet())?.contains(canonical) == true
+        if (prefs(context).getStringSet("trusted_paths", emptySet())?.contains(canonical) == true) return true
+        // B (2026-10-02, option 2 — owner ruling): projects are TRUSTED BY DEFAULT.
+        // The old first-use gate is opt-in: when "Confirm Project Trust" is enabled
+        // in In-Project Settings, untrusted folders return false and the interactive
+        // gate (awaitTrusted) prompts exactly as in P2c. Nothing is persisted here,
+        // so re-enabling the gate restores the pre-option-2 behavior for every
+        // folder that was never explicitly trusted.
+        return !com.codespace.ide.editor.ProjectSettingsStore.gateProjectTrust.value
     }
 
     /** Persist (or clear) trust for a folder, keyed by canonical path. */
@@ -104,6 +111,8 @@ object TrustState {
      * INTERACTIVE gate: suspend until the project is trusted. Returns false if
      * the user cancels the prompt or the path is blank (fail closed). On "Trust",
      * the choice persists — this exact prompt never fires again for this folder.
+     * B (2026-10-02): with gated mode OFF (default), isTrusted short-circuits
+     * true and this prompt never fires at all.
      */
     suspend fun awaitTrusted(context: Context, path: String?): Boolean {
         ensureMigrated(context)

@@ -404,6 +404,7 @@ enum class SettingsCategory(val label: String) {
     PYTHON_LSP("Python / LSP"),
     LSP_SERVERS("LSP Servers"),
     ACCESSIBILITY("Accessibility"),
+    SECURITY("Security & Trust"),
     TS_JS_FORMAT("JS / TS Format"),
     TS_JS_TSSERVER("JS / TS Tsserver"),
     TS_JS_INLAY_HINTS("JS / TS Inlay Hints"),
@@ -468,6 +469,8 @@ enum class RowType {
     EXTENSIONS_IGNORE_RECOMMENDATIONS_CHECKBOX,
     // ── P54-CONNECTORS: Connectors category rows ──
     CONNECTORS_HUB,            // opens the Connectors Hub sheet
+    // ── B (2026-10-02): trust gate opt-in (option 2: default-trusted) ──
+    GATE_PROJECT_TRUST_CHECKBOX,
     MCP_TOOLS_SECTION,         // MCP / Agent Tools servers section (relocated from Extensions panel)
     TASK_NOTIFY_WINDOW_ON_COMPLETION_CHECKBOX,
     MCP_INDICATOR_CHECKBOX,
@@ -525,6 +528,9 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
 
     // ── P54-CONNECTORS: Connectors category (Hub relocated from header chip,
     // MCP/Agent Tools relocated from the Extensions panel) ──
+    add(SettingsRow("gate_project_trust", SettingsCategory.SECURITY, "Confirm Project Trust",
+        "Ask once per project before running tasks, commands, or AI tools — off means projects are trusted by default",
+        RowType.GATE_PROJECT_TRUST_CHECKBOX))
     add(SettingsRow("connectors_hub", SettingsCategory.CONNECTORS, "Connectors Hub",
         "Manage GitHub, GitLab, Notion, Jira, Discord, Canva and other service connections",
         RowType.CONNECTORS_HUB))
@@ -782,6 +788,7 @@ private fun SettingsRowRenderer(
         RowType.EXTRA_KEYS_CHECKBOX -> ExtraKeysRow(textPri, textSec, divider)
         RowType.CURSOR_BLINK_DROPDOWN -> CursorBlinkRow(accent, textPri, textSec, divider)
         RowType.ZEN_MODE_EXIT_CHECKBOX -> ZenModeExitRow(textPri, textSec, divider)
+        RowType.GATE_PROJECT_TRUST_CHECKBOX -> GateProjectTrustRow(textPri, textSec, divider)
         RowType.MCP_INDICATOR_CHECKBOX -> McpIndicatorRow(textPri, textSec, divider)
         RowType.FORMAT_ON_SAVE_CHECKBOX -> FormatOnSaveRow(textPri, textSec, divider)
         RowType.TEXTMATE_HIGHLIGHT_CHECKBOX -> TextMateHighlightRow(textPri, textSec, divider)
@@ -1398,6 +1405,27 @@ private fun TerminalNotifyRow(textPri: Color, textSec: Color, divider: Color) {
         Checkbox(
             checked = enabled.value,
             onCheckedChange = { ProjectSettingsStore.setTerminalNotifications(it) },
+            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4FC3F7)),
+        )
+    }
+    HorizontalDivider(color = divider)
+}
+
+@Composable
+private fun GateProjectTrustRow(textPri: Color, textSec: Color, divider: Color) {
+    // B (2026-10-02): option 2 toggle — restores the P2c first-use trust prompt.
+    val enabled = ProjectSettingsStore.gateProjectTrust
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Confirm Project Trust", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Ask once per project before running tasks, commands, or AI tools — off means trusted by default", color = textSec, fontSize = 11.sp)
+        }
+        Checkbox(
+            checked = enabled.value,
+            onCheckedChange = { ProjectSettingsStore.setGateProjectTrust(it) },
             colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4FC3F7)),
         )
     }

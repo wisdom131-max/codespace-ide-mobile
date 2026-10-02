@@ -78,6 +78,9 @@ object ProjectSettingsStore {
     // ── Zen Mode ────────────────────────────────────────────────────────
     /** Show the floating exit button in Zen Mode. If false, use menu to exit. */
     val zenModeExitButtonEnabled: MutableState<Boolean> = mutableStateOf(true)
+    /** B (2026-10-02, option 2): opt-in gated trust. OFF (default) = projects are
+     *  trusted without the first-use prompt; ON restores the P2c gated behavior. */
+    val gateProjectTrust: MutableState<Boolean> = mutableStateOf(false)
 
     // P-MCP-INDICATOR-FIX: toggle for whether the MCP status dot + label shows in the
     // status bar at all. Even when enabled, it only actually renders while an AI agent
@@ -202,6 +205,7 @@ object ProjectSettingsStore {
         pyrightNodeArgs.value = prefs.getString("pyright_node_args", "--max-old-space-size=8192") ?: "--max-old-space-size=8192"
         extraKeysEnabled.value = prefs.getBoolean("extra_keys_enabled", true)
         zenModeExitButtonEnabled.value = prefs.getBoolean("zen_mode_exit_button", true)
+        gateProjectTrust.value = prefs.getBoolean("gate_project_trust", false)
         mcpIndicatorEnabled.value = prefs.getBoolean("mcp_indicator_enabled", true)
         formatOnSaveEnabled.value = prefs.getBoolean("format_on_save", true)
         lspEnabled.value = prefs.getBoolean("lsp_enabled", true)
@@ -255,6 +259,11 @@ object ProjectSettingsStore {
         zenModeExitButtonEnabled.value = value
         prefs.edit().putBoolean("zen_mode_exit_button", value).apply()
         syncToJson("zen_mode_exit_button", value)
+    }
+    fun setGateProjectTrust(value: Boolean) {
+        gateProjectTrust.value = value
+        prefs.edit().putBoolean("gate_project_trust", value).apply()
+        syncToJson("gate_project_trust", value)
     }
     fun setMcpIndicatorEnabled(value: Boolean) {
         mcpIndicatorEnabled.value = value

@@ -976,7 +976,9 @@ internal fun CopilotChatPanelInline(
     currentFilePath: String? = null,
     openFilePaths: List<String> = emptyList(),
     // Item3: open Connectors Hub from the chat panel overflow menu
-    onOpenConnectors: (() -> Unit)? = null,
+    // C11 (2026-10-02): the arg is the connector id to focus in the Hub
+    // (set by the inline Connect card); null opens the full Hub.
+    onOpenConnectors: ((String?) -> Unit)? = null,
     // R10-A/B: open the app Settings page (status sheet row + a11y)
     onOpenSettings: (() -> Unit)? = null,
     // R1-CHAT-PARITY: insert-at-cursor bridge for chat code blocks — routes
@@ -1666,7 +1668,7 @@ internal fun CopilotChatPanelInline(
                     Icon(
                         Icons.Default.AddLink, "Add connector",
                         tint = colors.textSecondary,
-                        modifier = Modifier.size(16.dp).clickable { onOpenConnectors() },
+                        modifier = Modifier.size(16.dp).clickable { onOpenConnectors?.invoke(null) },
                     )
                     Spacer(Modifier.width(8.dp))
                 }
@@ -1694,7 +1696,7 @@ internal fun CopilotChatPanelInline(
                             DropdownMenuItem(
                                 leadingIcon = { Icon(Icons.Default.Extension, null, tint = colors.textSecondary, modifier = Modifier.size(14.dp)) },
                                 text = { Text("Connectors Hub", fontSize = 12.sp) },
-                                onClick = { showOverflowMenu = false; onOpenConnectors() },
+                                onClick = { showOverflowMenu = false; onOpenConnectors?.invoke(null) },
                             )
                         }
                             // R8-EXPORT-IMPORT: chat transcript file round-trip
@@ -1812,7 +1814,7 @@ internal fun CopilotChatPanelInline(
                         text = colors.text,
                         textSecondary = colors.textSecondary,
                         surface = colors.surface,
-                        onConnect = { onOpenConnectors?.invoke() },
+                        onConnect = { onOpenConnectors?.invoke(msg.text) },
                     )
                 } else if (msg.kind == ChatEntryKind.TOOL) {
                     ChatToolChip(text = msg.text, colors = colors)

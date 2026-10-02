@@ -1166,12 +1166,16 @@ internal fun TerminalPane(
         }
     }
 
-    // Auto-start countdown: on reopen, wait ~8s for the app to stabilize after Activity
-    // recreation before forking proot. This replaces the manual "tap to start" button —
-    // same fix (delay the fork), but automatic instead of requiring user interaction.
+    // D13 (2026-10-02): readiness gate replaces the fixed 8s countdown — fork
+    // proot only once the Activity is resumed, the terminal service is bound,
+    // and no install is mid-flight, instead of guessing "8s should be enough".
+    // 30s safety cap falls through to start-anyway (same as the Back path).
     LaunchedEffect(showTapToStart) {
         if (showTapToStart && !autoStartCountdownDone) {
-            kotlinx.coroutines.delay(8000)
+            awaitTerminalReadiness(
+                activityResumed = { isActivityVisible },
+                serviceBound = { boundService != null },
+            )
             autoStartCountdownDone = true
             showTapToStart = false
             // Phase 4: try session restore (loop-guarded, crash-safe)

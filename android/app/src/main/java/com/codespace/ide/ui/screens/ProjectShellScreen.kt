@@ -830,6 +830,9 @@ fun ProjectShellScreen(
     var snapshotMessage    by remember { mutableStateOf<String?>(null) }
     // Connectors hub (replaces Person menu)
     var showConnectorsSheet by remember { mutableStateOf(false) }
+    // C11 (2026-10-02): connector the hub should focus (opened from a chat
+    // Connect card); null = full hub.
+    var connectorsFocusId by remember { mutableStateOf<String?>(null) }
     // Connectors Phase 3 (Group C): project-level Firebase/Supabase/n8n panel
     var showProjectServices by remember { mutableStateOf(false) }
     val terminalEnhancements = remember { TerminalEnhancementManager(context) }
@@ -1756,7 +1759,7 @@ fun ProjectShellScreen(
                 PssEditorColumn(
                     modifier = Modifier.weight(1f),
                     projectId = projectId,
-                    onOpenConnectorsHub = { showConnectorsSheet = true },
+                    onOpenConnectorsHub = { focusId -> connectorsFocusId = focusId; showConnectorsSheet = true },
                     onOpenSettings = onOpenSettings,
                     context = context,
                     tokenStore = tokenStore,
@@ -1848,7 +1851,7 @@ fun ProjectShellScreen(
 
         // ── Connectors Hub Sheet ─────────────────────────────────────────
         if (showConnectorsSheet) {
-            ConnectorsHubSheet(onDismiss = { showConnectorsSheet = false })
+            ConnectorsHubSheet(onDismiss = { showConnectorsSheet = false }, focusServiceId = connectorsFocusId)
         }
 
         // ── Connectors Phase 3: Project Services panel (Firebase/Supabase/n8n) ──
@@ -2026,7 +2029,7 @@ fun ProjectShellScreen(
             onShowGearMenuChange = { showGearMenu = it },
             showInProjectSettings = showInProjectSettings,
             onShowInProjectSettingsChange = { showInProjectSettings = it },
-            onOpenConnectorsHub = { showConnectorsSheet = true },
+            onOpenConnectorsHub = { focusId -> connectorsFocusId = focusId; showConnectorsSheet = true },
             onOpenProjectServices = { showProjectServices = true },
             commandQuery = commandQuery,
             onCommandQueryChange = { commandQuery = it },
@@ -2108,7 +2111,7 @@ private fun PssOverlays(
     showInProjectSettings: Boolean,
     onShowInProjectSettingsChange: (Boolean) -> Unit,
     // Item3: open Connectors Hub from In-Project Settings
-    onOpenConnectorsHub: () -> Unit,
+    onOpenConnectorsHub: (String?) -> Unit,
     onOpenProjectServices: () -> Unit,
     commandQuery: String,
     onCommandQueryChange: (String) -> Unit,
@@ -2711,7 +2714,7 @@ private fun PssOverlays(
                 onDismiss = { onShowInProjectSettingsChange(false) },
                 onOpenConnectors = {
                     onShowInProjectSettingsChange(false)
-                    onOpenConnectorsHub()
+                    onOpenConnectorsHub(null)
                 },
             )
         }
@@ -4541,7 +4544,7 @@ private fun PssEditorColumn(
     projectId: String,
     context: android.content.Context,
     modifier: Modifier = Modifier,
-    onOpenConnectorsHub: () -> Unit,
+    onOpenConnectorsHub: (String?) -> Unit,
     onOpenSettings: () -> Unit = {},
     tokenStore: com.codespace.ide.data.SecureTokenStore,
     editorTabs: SnapshotStateList<String>,

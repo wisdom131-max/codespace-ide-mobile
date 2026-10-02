@@ -41,6 +41,7 @@ import androidx.compose.material.icons.automirrored.filled.*
 @Composable
 internal fun ConnectorsHubSheet(
     onDismiss: () -> Unit,
+    focusServiceId: String? = null,
 ) {
     val MenuBg   = Color(0xFF252526)
     val MenuText = Color(0xFFCCCCCC)
@@ -63,6 +64,10 @@ internal fun ConnectorsHubSheet(
     var patDialogStatus by remember { mutableStateOf<ConnectorsApiClient.ConnectorStatus?>(null) }
     var pendingOAuthId by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
+    // C11 (2026-10-02): invoked-connector focus — when the chat's inline Connect
+    // card opens the hub, filter the rows to that connector id; "Show all
+    // connectors" clears it. Null = the normal full hub.
+    var focusService by remember { mutableStateOf(focusServiceId) }
     var busyService by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
     // HUB-GITHUB-PROPAGATION: live GitHub Device Flow state (SecureTokenStore keys —
@@ -205,7 +210,20 @@ internal fun ConnectorsHubSheet(
                             "canva" to Color(0xFF7D2AE8),
                             "huggingface" to Color(0xFFFFD21E),
                         )
-                        statuses.forEach { s ->
+                        if (focusService != null) {
+                            Text(
+                                "Show all connectors (opened for one service from chat)",
+                                fontSize = 12.sp,
+                                color = Color(0xFF4FC3F7),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { focusService = null }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                            )
+                        }
+                        val visibleStatuses =
+                            if (focusService != null) statuses.filter { it.id == focusService } else statuses
+                        visibleStatuses.forEach { s ->
                             ConnectorStatusRow(
                                 icon = iconFor[s.id] ?: Icons.Default.Cloud,
                                 name = s.name,
