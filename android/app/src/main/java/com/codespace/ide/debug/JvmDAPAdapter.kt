@@ -82,7 +82,7 @@ class JvmDAPAdapter : DebugAdapter {
             }
             val resp = c.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
             if (resp == null) {
-                AppOutputLog.log("[DAP] setBreakpoints (clear) failed for ${session.filePath.substringAfterLast("/")}", "lsp")
+                AppOutputLog.log("[DAP] setBreakpoints (clear) failed for ${session.filePath.substringAfterLast("/")}", "debug")
             }
             return resp != null
         }
@@ -92,10 +92,10 @@ class JvmDAPAdapter : DebugAdapter {
             val dapPath = if (ctx != null) DapPathMapper.toDapSourcePath(ctx, filePath) else filePath
             val resp = c.request("setBreakpoints", buildSetBreakpointsArgs(dapPath, bps), timeoutSeconds = 5)
             if (resp == null) {
-                AppOutputLog.log("[DAP] setBreakpoints failed for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) not sent", "lsp")
+                AppOutputLog.log("[DAP] setBreakpoints failed for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) not sent", "debug")
                 allOk = false
             } else {
-                AppOutputLog.log("[DAP] setBreakpoints OK for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) set", "lsp")
+                AppOutputLog.log("[DAP] setBreakpoints OK for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) set", "debug")
                 markVerified(filePath, resp)
             }
         }
@@ -447,7 +447,7 @@ class JvmDAPAdapter : DebugAdapter {
         // attach completes; warn-only so a missed event cannot block startup.
         if (!initializedLatch.await(10, TimeUnit.SECONDS)) {
             onOutput("[jdap] NOTE: 'initialized' event not seen within 10s - configuring anyway.\n")
-            AppOutputLog.log("[DAP] NOTE: initialized event timeout (jvm) - configuring anyway", "lsp")
+            AppOutputLog.log("[DAP] NOTE: initialized event timeout (jvm) - configuring anyway", "debug")
         }
 
         // 3. setBreakpoints (the sandbox-validated order: attach -> setBreakpoints
@@ -460,9 +460,9 @@ class JvmDAPAdapter : DebugAdapter {
                 val bpGuestPath = DapPathMapper.toDapSourcePath(context, filePath)
                 val bpResp = dapClient.request("setBreakpoints", buildSetBreakpointsArgs(bpGuestPath, bps), timeoutSeconds = 10)
                 if (bpResp == null) {
-                    AppOutputLog.log("[DAP] Initial setBreakpoints failed for ${filePath.substringAfterLast("/")}", "lsp")
+                    AppOutputLog.log("[DAP] Initial setBreakpoints failed for ${filePath.substringAfterLast("/")}", "debug")
                 } else {
-                    AppOutputLog.log("[DAP] Initial setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "lsp")
+                    AppOutputLog.log("[DAP] Initial setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "debug")
                     markVerified(filePath, bpResp)
                 }
             }

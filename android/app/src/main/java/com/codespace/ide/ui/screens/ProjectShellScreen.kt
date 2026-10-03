@@ -3940,15 +3940,12 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // P44-OUTPUT: Wire UDM output to AppOutputLog so debug output appears here.
-    // F6-d: remembered lambda + real disposal — the old LaunchedEffect added a
-    // NEW listener on every tab re-entry and never removed any (each re-entry
-    // duplicated every line in AppOutputLog). Same family as the console doubling.
-    val udmOut: (String) -> Unit = remember { { msg -> AppOutputLog.log(msg, "debug") } }
-    DisposableEffect(udmOut) {
-        com.codespace.ide.debug.UniversalDebugManager.addOnOutputListener(udmOut)
-        onDispose { com.codespace.ide.debug.UniversalDebugManager.removeOnOutputListener(udmOut) }
-    }
+    // DEBUG-CHANNEL (2026-10-03): the tab-scoped UDM -> AppOutputLog("debug")
+    // listener is DELETED. The channel write now lives in UDM.notifyOutput itself
+    // (source-level, every adapter/language, alive regardless of which bottom tab
+    // is open — this listener only existed while the Output tab was selected, so
+    // debug output on other tabs was never recorded). Keeping it here would double
+    // every line in the debug channel.
     // P31-CRASH-FIX: Read size in a snapshot so it matches the items() count.
     // P-OUTPUT-SPEED: Use snapshotFlow to properly batch rapid log changes and auto-scroll.
     // Fix: "all" channel wasn't updating because animateScrollToItem was cancelled by

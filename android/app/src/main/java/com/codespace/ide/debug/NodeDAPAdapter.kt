@@ -122,10 +122,10 @@ class NodeDAPAdapter : DebugAdapter {
             }
             val resp = c.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
             if (resp == null) {
-                AppOutputLog.log("[DAP] setBreakpoints failed for ${filePath.substringAfterLast("/")}", "lsp")
+                AppOutputLog.log("[DAP] setBreakpoints failed for ${filePath.substringAfterLast("/")}", "debug")
                 allOk = false
             } else {
-                AppOutputLog.log("[DAP] setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "lsp")
+                AppOutputLog.log("[DAP] setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "debug")
             }
         }
         return allOk
@@ -157,7 +157,7 @@ class NodeDAPAdapter : DebugAdapter {
      */
     fun installJsDebug(context: Context, workDir: String? = null): Boolean {
         if (!jsDebugInstallInFlight.compareAndSet(false, true)) {
-            AppOutputLog.log("[JS-DEBUG] staged install already running elsewhere — this call only checked status", "lsp")
+            AppOutputLog.log("[JS-DEBUG] staged install already running elsewhere — this call only checked status", "debug")
             return isJsDebugInstalled(context, workDir)
         }
         try {
@@ -166,11 +166,11 @@ class NodeDAPAdapter : DebugAdapter {
             val nodePresent = { s: String -> "NODE_READY" in s }
             val nodeProbe = "command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && echo NODE_READY || echo NODE_MISSING"
             if (nodePresent(ProotInstaller.execOnce(context, nodeProbe, workdir = workDir, timeoutSeconds = 15))) {
-                AppOutputLog.log("[JS-DEBUG] node+npm already present — skipping the apt stages (resumed or pre-installed).", "lsp")
+                AppOutputLog.log("[JS-DEBUG] node+npm already present — skipping the apt stages (resumed or pre-installed).", "debug")
             } else {
-                AppOutputLog.log("[JS-DEBUG] stage 1/3: apt-get update (1-2 min under proot)…", "lsp")
+                AppOutputLog.log("[JS-DEBUG] stage 1/3: apt-get update (1-2 min under proot)…", "debug")
                 ProotInstaller.execOnce(context, "apt-get update -qq", timeoutSeconds = 300)
-                AppOutputLog.log("[JS-DEBUG] stage 2/3: apt install nodejs+npm (largest stage — up to 10 min under proot)…", "lsp")
+                AppOutputLog.log("[JS-DEBUG] stage 2/3: apt install nodejs+npm (largest stage — up to 10 min under proot)…", "debug")
                 // dpkg --configure -a first: an install killed mid-apt can leave
                 // dpkg with pending configure/lock state that blocks the retry.
                 val aptOut = ProotInstaller.execOnce(context,
@@ -178,20 +178,20 @@ class NodeDAPAdapter : DebugAdapter {
                     "apt-get install -y --no-install-recommends nodejs npm 2>&1 | tail -5",
                     timeoutSeconds = 600)
                 if (!nodePresent(ProotInstaller.execOnce(context, nodeProbe, workdir = workDir, timeoutSeconds = 15))) {
-                    AppOutputLog.log("[JS-DEBUG] stage 2/3 FAILED — node/npm still absent after apt. Last apt lines: " + aptOut.takeLast(300), "lsp")
+                    AppOutputLog.log("[JS-DEBUG] stage 2/3 FAILED — node/npm still absent after apt. Last apt lines: " + aptOut.takeLast(300), "debug")
                     return false
                 }
             }
             // JS-DEBUG-VENDOR (npm 404 fix): @vscode/js-debug is only published as a
             // GitHub release tarball, vendored in APK assets like jdap. Stage 3 is now a
             // local bundle extraction — no registry fetch, seconds not minutes.
-            AppOutputLog.log("[JS-DEBUG] stage 3/3: provisioning @vscode/js-debug from the vendored tarball (npm-registry 404 fix)…", "lsp")
+            AppOutputLog.log("[JS-DEBUG] stage 3/3: provisioning @vscode/js-debug from the vendored tarball (npm-registry 404 fix)…", "debug")
             ProotInstaller.ensureJsDebug(context)
             val ok = isJsDebugInstalled(context, workDir)
             if (ok) {
-                AppOutputLog.log("[JS-DEBUG] install complete — js-debug is healthy at /opt/js-debug. Press Debug again.", "lsp")
+                AppOutputLog.log("[JS-DEBUG] install complete — js-debug is healthy at /opt/js-debug. Press Debug again.", "debug")
             } else {
-                AppOutputLog.log("[JS-DEBUG] stage 3/3 FAILED — vendored extraction did not yield /opt/js-debug/src/dapDebugServer.js.", "lsp")
+                AppOutputLog.log("[JS-DEBUG] stage 3/3 FAILED — vendored extraction did not yield /opt/js-debug/src/dapDebugServer.js.", "debug")
             }
             return ok
         } finally {
@@ -572,7 +572,7 @@ class NodeDAPAdapter : DebugAdapter {
         // for configuration. Without this, setBreakpoints may fail.
         if (!initializedLatch.await(15, TimeUnit.SECONDS)) {
             onOutput("[js-debug] WARNING: 'initialized' event not received within 15s\n")
-            AppOutputLog.log("[DAP] WARNING: initialized event timeout — setBreakpoints may fail", "lsp")
+            AppOutputLog.log("[DAP] WARNING: initialized event timeout — setBreakpoints may fail", "debug")
         } else {
             Log.d(TAG, "Got initialized event, sending setBreakpoints")
         }
@@ -601,9 +601,9 @@ class NodeDAPAdapter : DebugAdapter {
                 }
                 val bpResp = dapClient.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
                 if (bpResp == null) {
-                    AppOutputLog.log("[DAP] Initial setBreakpoints failed for ${filePath.substringAfterLast("/")}", "lsp")
+                    AppOutputLog.log("[DAP] Initial setBreakpoints failed for ${filePath.substringAfterLast("/")}", "debug")
                 } else {
-                    AppOutputLog.log("[DAP] Initial setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "lsp")
+                    AppOutputLog.log("[DAP] Initial setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "debug")
                     // P27-11: Extract verification status from DAP response
                     val bpBody = bpResp.optJSONObject("body")
                     val bpArray = bpBody?.optJSONArray("breakpoints")

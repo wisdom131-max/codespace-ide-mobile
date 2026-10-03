@@ -133,7 +133,7 @@ class DAPClient(private val process: Process) {
                 val reqSeq = msg.optInt("seq", -1)
                 Log.w(TAG, "DAP reverse request '$command' received — replying notSupported")
                 com.codespace.ide.diagnostics.AppOutputLog.log(
-                    "[DAP] Server requested '$command' (reverse request) — not supported, replied to server", "lsp")
+                    "[DAP] Server requested '$command' (reverse request) — not supported, replied to server", "debug")
                 writeMessage(JSONObject().apply {
                     put("seq", seq.getAndIncrement())
                     put("type", "response")

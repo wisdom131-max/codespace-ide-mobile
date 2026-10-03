@@ -53,26 +53,26 @@ object DebuggerDependencies {
 
         AppOutputLog.log(
             "[DEBUG-DEPS] Ensuring debugger dependency for ${language.displayName}: $depName (bundled with LSP install)",
-            "lsp")
+            "debug")
 
         val ok = when (language) {
             Language.PYTHON -> {
                 val adapter = PythonDAPAdapter()
                 if (adapter.isDebugpyInstalled(context, workspacePath)) {
-                    AppOutputLog.log("[DEBUG-DEPS] debugpy already installed and healthy — skipping", "lsp")
+                    AppOutputLog.log("[DEBUG-DEPS] debugpy already installed and healthy — skipping", "debug")
                     true
                 } else {
-                    AppOutputLog.log("[DEBUG-DEPS] debugpy missing — installing with LSP batch…", "lsp")
+                    AppOutputLog.log("[DEBUG-DEPS] debugpy missing — installing with LSP batch…", "debug")
                     adapter.installDebugpy(context, workspacePath)
                 }
             }
             Language.JAVASCRIPT, Language.TYPESCRIPT -> {
                 val adapter = NodeDAPAdapter()
                 if (adapter.isJsDebugInstalled(context, workspacePath)) {
-                    AppOutputLog.log("[DEBUG-DEPS] @vscode/js-debug already installed and healthy — skipping", "lsp")
+                    AppOutputLog.log("[DEBUG-DEPS] @vscode/js-debug already installed and healthy — skipping", "debug")
                     true
                 } else {
-                    AppOutputLog.log("[DEBUG-DEPS] @vscode/js-debug missing — installing with LSP batch…", "lsp")
+                    AppOutputLog.log("[DEBUG-DEPS] @vscode/js-debug missing — installing with LSP batch…", "debug")
                     adapter.installJsDebug(context, workspacePath)
                 }
             }
@@ -80,11 +80,11 @@ object DebuggerDependencies {
         }
 
         if (ok) {
-            AppOutputLog.log("[DEBUG-DEPS] Debugger dependencies ready for ${language.displayName}", "lsp")
+            AppOutputLog.log("[DEBUG-DEPS] Debugger dependencies ready for ${language.displayName}", "debug")
         } else {
             AppOutputLog.log(
                 "[DEBUG-DEPS] WARNING: debugger dependency install FAILED for ${language.displayName} — it will retry at the next debug launch (see output above)",
-                "lsp")
+                "debug")
         }
         // Mark ensured on success AND failure: never re-check on every file open.
         ensured[key] = true

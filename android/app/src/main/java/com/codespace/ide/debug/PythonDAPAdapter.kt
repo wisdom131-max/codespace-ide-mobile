@@ -82,7 +82,7 @@ class PythonDAPAdapter : DebugAdapter {
             }
             val resp = c.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
             if (resp == null) {
-                AppOutputLog.log("[DAP] setBreakpoints (clear) failed for ${session.filePath.substringAfterLast("/")}", "lsp")
+                AppOutputLog.log("[DAP] setBreakpoints (clear) failed for ${session.filePath.substringAfterLast("/")}", "debug")
             }
             return resp != null
         }
@@ -106,12 +106,12 @@ class PythonDAPAdapter : DebugAdapter {
             }
             val resp = c.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
             if (resp == null) {
-                AppOutputLog.log("[DAP] setBreakpoints failed for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) not sent", "lsp")
+                AppOutputLog.log("[DAP] setBreakpoints failed for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) not sent", "debug")
                 allOk = false
             } else {
-                AppOutputLog.log("[DAP] setBreakpoints OK for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) set", "lsp")
+                AppOutputLog.log("[DAP] setBreakpoints OK for ${filePath.substringAfterLast("/")} — ${bps.size} breakpoint(s) set", "debug")
                 // [BAND-DIAG]: the exact 1-based lines sent to the server.
-                AppOutputLog.log("[BAND-DIAG] sentLines1=" + bps.joinToString(",") { (it.line + 1).toString() } + " file=" + filePath.takeLast(40), "lsp")
+                AppOutputLog.log("[BAND-DIAG] sentLines1=" + bps.joinToString(",") { (it.line + 1).toString() } + " file=" + filePath.takeLast(40), "debug")
             }
         }
         return allOk
@@ -350,7 +350,7 @@ class PythonDAPAdapter : DebugAdapter {
         // Without this, setBreakpoints fails with "Server is not available".
         if (!initializedLatch.await(15, TimeUnit.SECONDS)) {
             onOutput("[debugpy] WARNING: 'initialized' event not received within 15s\n")
-            AppOutputLog.log("[DAP] WARNING: initialized event timeout — setBreakpoints may fail", "lsp")
+            AppOutputLog.log("[DAP] WARNING: initialized event timeout — setBreakpoints may fail", "debug")
         } else {
             Log.d(TAG, "Got initialized event, sending setBreakpoints")
         }
@@ -378,9 +378,9 @@ class PythonDAPAdapter : DebugAdapter {
             }
             val bpResp = dapClient.request("setBreakpoints", bpArgs, timeoutSeconds = 5)
             if (bpResp == null) {
-                AppOutputLog.log("[DAP] Initial setBreakpoints failed for ${filePath.substringAfterLast("/")}", "lsp")
+                AppOutputLog.log("[DAP] Initial setBreakpoints failed for ${filePath.substringAfterLast("/")}", "debug")
             } else {
-                AppOutputLog.log("[DAP] Initial setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "lsp")
+                AppOutputLog.log("[DAP] Initial setBreakpoints OK for ${filePath.substringAfterLast("/")}: ${bps.size} breakpoint(s)", "debug")
                 // P27-11: Extract verification status from DAP response
                 val bpBody = bpResp.optJSONObject("body")
                 val bpArray = bpBody?.optJSONArray("breakpoints")
@@ -556,7 +556,7 @@ class PythonDAPAdapter : DebugAdapter {
         // to pinpoint any remaining off-by-one in the band render chain.
         com.codespace.ide.diagnostics.AppOutputLog.log(
             "[BAND-DIAG] dapFrame raw: name=" + f.optString("name", "") + " rawLine1=" + f.optInt("line", 0) +
-            " file=" + path.takeLast(50), "lsp")
+            " file=" + path.takeLast(50), "debug")
         return DebugStackFrame(
             function = f.optString("name", "<unknown>"),
             file     = path,

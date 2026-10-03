@@ -380,10 +380,10 @@ object UniversalDebugManager {
         for (session in sessions.values.toList()) {
             if (session.state != DebugState.RUNNING && session.state != DebugState.PAUSED) continue
             val adapter = sessionAdapters[session.id] ?: continue
-            AppOutputLog.log("[DAP] Syncing ${all.size} breakpoint(s) to session ${session.id} ($reason)", "lsp")
+            AppOutputLog.log("[DAP] Syncing ${all.size} breakpoint(s) to session ${session.id} ($reason)", "debug")
             val sent = adapter.sendBreakpoints(session, all)
             if (!sent) {
-                AppOutputLog.log("[DAP] WARNING: sendBreakpoints returned false — adapter may not support live updates", "lsp")
+                AppOutputLog.log("[DAP] WARNING: sendBreakpoints returned false — adapter may not support live updates", "debug")
             }
         }
     }
@@ -399,9 +399,22 @@ object UniversalDebugManager {
             return
         }
         session.state = newState
+        // DEBUG-CHANNEL (2026-10-03, owner-approved): session-lifecycle markers for
+        // EVERY session (starting/paused/resumed/stopped/failed/crashed), not just
+        // crash lines — the Output tab's Debug channel previously had no way to show
+        // that a session was even running.
+        notifyOutput("[debug] Session ${session.id.take(8)} (${session.language.displayName}${if (session.testDebug) " test-debug" else ""}) -> ${newState.name.lowercase()}")
         notifySessionStateChanged(session)
     }
-    private fun notifyOutput(msg: String) = outputListeners.forEach { it(msg) }
+    // DEBUG-CHANNEL (2026-10-03, owner-approved): source-level write. The Output tab's
+    // "debug" channel is now fed HERE, for every adapter and every language — the old
+    // tab-scoped listener only existed while the Output tab was selected, so debug
+    // output produced while any other bottom tab was open was never recorded at all.
+    // Mirrors how the lsp/terminal channels are written at their sources.
+    private fun notifyOutput(msg: String) {
+        if (msg.isNotBlank()) AppOutputLog.log(msg, "debug")
+        outputListeners.forEach { it(msg) }
+    }
 
     /**
      * DG10 (P4b): ONE transcript source. The Explorer debug console and the
@@ -1230,7 +1243,7 @@ object UniversalDebugManager {
             // DG01: a corrupt store previously vanished SILENTLY — the user's
             // breakpoints just "disappeared" with no hint why. Surface it.
             Log.w(TAG, "loadBreakpoints: corrupt breakpoint store — starting empty (${e.message})")
-            AppOutputLog.log("[debug] Saved breakpoints could not be read (${e.message}) — starting with none", "lsp")
+            AppOutputLog.log("[debug] Saved breakpoints could not be read (${e.message}) — starting with none", "debug")
         }
     }
 
