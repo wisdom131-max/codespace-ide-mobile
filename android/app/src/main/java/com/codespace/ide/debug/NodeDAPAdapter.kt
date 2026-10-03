@@ -133,13 +133,14 @@ class NodeDAPAdapter : DebugAdapter {
 
     // ── Installation ──────────────────────────────────────────────────
 
-    fun isJsDebugInstalled(context: Context): Boolean {
+    fun isJsDebugInstalled(context: Context, workDir: String? = null): Boolean {
+        // JS-DEBUG-VENDOR: @vscode/js-debug is NOT on the npm registry (404 confirmed
+        // on-device twice) — health is now the vendored tarball's extracted entry
+        // point at /opt/js-debug/src/dapDebugServer.js.
         val out = ProotInstaller.execOnce(context,
-            "npm list -g @vscode/js-debug --depth=0 2>/dev/null | grep js-debug || echo NOT_FOUND",
-            timeoutSeconds = 15)
-        return "NOT_FOUND" !in out && out.isNotBlank() &&
-               !out.contains("Exit code") &&
-               !out.contains("Error")
+            "test -f /opt/js-debug/src/dapDebugServer.js && echo INSTALLED || echo NOT_FOUND",
+            workdir = workDir, timeoutSeconds = 15)
+        return "INSTALLED" in out
     }
 
     /**
@@ -154,17 +155,17 @@ class NodeDAPAdapter : DebugAdapter {
      * 300s). Progress streams to the Output tab; a concurrent call only checks
      * status (never double-runs the chain).
      */
-    fun installJsDebug(context: Context): Boolean {
+    fun installJsDebug(context: Context, workDir: String? = null): Boolean {
         if (!jsDebugInstallInFlight.compareAndSet(false, true)) {
             AppOutputLog.log("[JS-DEBUG] staged install already running elsewhere — this call only checked status", "lsp")
-            return isJsDebugInstalled(context)
+            return isJsDebugInstalled(context, workDir)
         }
         try {
             // Resume gate: if a previous partial run already delivered node+npm,
             // the two apt stages are skipped entirely.
             val nodePresent = { s: String -> "NODE_READY" in s }
             val nodeProbe = "command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && echo NODE_READY || echo NODE_MISSING"
-            if (nodePresent(ProotInstaller.execOnce(context, nodeProbe, timeoutSeconds = 15))) {
+            if (nodePresent(ProotInstaller.execOnce(context, nodeProbe, workdir = workDir, timeoutSeconds = 15))) {
                 AppOutputLog.log("[JS-DEBUG] node+npm already present — skipping the apt stages (resumed or pre-installed).", "lsp")
             } else {
                 AppOutputLog.log("[JS-DEBUG] stage 1/3: apt-get update (1-2 min under proot)…", "lsp")
@@ -176,20 +177,21 @@ class NodeDAPAdapter : DebugAdapter {
                     "dpkg --configure -a 2>/dev/null; " +
                     "apt-get install -y --no-install-recommends nodejs npm 2>&1 | tail -5",
                     timeoutSeconds = 600)
-                if (!nodePresent(ProotInstaller.execOnce(context, nodeProbe, timeoutSeconds = 15))) {
+                if (!nodePresent(ProotInstaller.execOnce(context, nodeProbe, workdir = workDir, timeoutSeconds = 15))) {
                     AppOutputLog.log("[JS-DEBUG] stage 2/3 FAILED — node/npm still absent after apt. Last apt lines: " + aptOut.takeLast(300), "lsp")
                     return false
                 }
             }
-            AppOutputLog.log("[JS-DEBUG] stage 3/3: npm install -g @vscode/js-debug (downloads from the npm registry)…", "lsp")
-            val npmOut = ProotInstaller.execOnce(context,
-                "npm install -g @vscode/js-debug 2>&1 | tail -5",
-                timeoutSeconds = 300)
-            val ok = isJsDebugInstalled(context)
+            // JS-DEBUG-VENDOR (npm 404 fix): @vscode/js-debug is only published as a
+            // GitHub release tarball, vendored in APK assets like jdap. Stage 3 is now a
+            // local bundle extraction — no registry fetch, seconds not minutes.
+            AppOutputLog.log("[JS-DEBUG] stage 3/3: provisioning @vscode/js-debug from the vendored tarball (npm-registry 404 fix)…", "lsp")
+            ProotInstaller.ensureJsDebug(context)
+            val ok = isJsDebugInstalled(context, workDir)
             if (ok) {
-                AppOutputLog.log("[JS-DEBUG] install complete — js-debug is healthy. Press Debug again.", "lsp")
+                AppOutputLog.log("[JS-DEBUG] install complete — js-debug is healthy at /opt/js-debug. Press Debug again.", "lsp")
             } else {
-                AppOutputLog.log("[JS-DEBUG] stage 3/3 FAILED — npm install did not yield a healthy js-debug. Last npm lines: " + npmOut.takeLast(300), "lsp")
+                AppOutputLog.log("[JS-DEBUG] stage 3/3 FAILED — vendored extraction did not yield /opt/js-debug/src/dapDebugServer.js.", "lsp")
             }
             return ok
         } finally {
@@ -200,8 +202,9 @@ class NodeDAPAdapter : DebugAdapter {
     /** Find the dapDebugServer.js entry point in the global npm prefix. */
     private fun findDapServerPath(context: Context): String? {
         val out = ProotInstaller.execOnce(context,
-            "node -e 'const p=require.resolve(\"@vscode/js-debug/src/dapDebugServer\"); console.log(p)' 2>/dev/null " +
-            "|| find \$(npm root -g 2>/dev/null) -name 'dapDebugServer.js' -maxdepth 5 2>/dev/null | head -1",
+            "[ -f /opt/js-debug/src/dapDebugServer.js ] && echo /opt/js-debug/src/dapDebugServer.js || " +
+            "(node -e 'const p=require.resolve(\"@vscode/js-debug/src/dapDebugServer\"); console.log(p)' 2>/dev/null " +
+            "|| find \$(npm root -g 2>/dev/null) -name 'dapDebugServer.js' -maxdepth 5 2>/dev/null | head -1)",
             timeoutSeconds = 10)
         val path = out.trim().lines().firstOrNull { it.endsWith(".js") }
         Log.d(TAG, "dapDebugServer.js path: $path")

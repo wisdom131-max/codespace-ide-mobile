@@ -119,8 +119,8 @@ class PythonDAPAdapter : DebugAdapter {
 
     // ── Installation check ─────────────────────────────────────────────────
 
-    fun isDebugpyInstalled(context: Context): Boolean {
-        val output = ProotInstaller.execOnce(context, "python3 -m debugpy --version", timeoutSeconds = 10)
+    fun isDebugpyInstalled(context: Context, workDir: String? = null): Boolean {
+        val output = ProotInstaller.execOnce(context, "python3 -m debugpy --version", workdir = workDir, timeoutSeconds = 10)
         return output.isNotBlank() &&
                !output.contains("No module named") &&
                !output.contains("Exit code") &&
@@ -136,7 +136,7 @@ class PythonDAPAdapter : DebugAdapter {
      * fallback install, pip3 -> python3 -m pip fallback, 300s timeout, output surfaced
      * (logToOutput=true) so the real failure reason is visible in the Output/Debug panels.
      */
-    fun installDebugpy(context: Context): Boolean {
+    fun installDebugpy(context: Context, workDir: String? = null): Boolean {
         Log.d(TAG, "Installing debugpy (self-heal chain)...")
         val result = ProotInstaller.execOnce(context,
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
@@ -146,10 +146,10 @@ class PythonDAPAdapter : DebugAdapter {
             "command -v pip3 >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq python3-pip); " +
             "pip3 install --break-system-packages debugpy 2>&1 || " +
             "python3 -m pip install --break-system-packages debugpy 2>&1",
-            timeoutSeconds = 300, logToOutput = true)
+            workdir = workDir, timeoutSeconds = 300, logToOutput = true)
         Log.d(TAG, "debugpy install result: $result")
         lastInstallOutput = result
-        return isDebugpyInstalled(context)
+        return isDebugpyInstalled(context, workDir)
     }
 
     // ── Launch ─────────────────────────────────────────────────────────────

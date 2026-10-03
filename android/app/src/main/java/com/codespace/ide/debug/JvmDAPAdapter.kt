@@ -191,7 +191,7 @@ class JvmDAPAdapter : DebugAdapter {
             "java -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=127.0.0.1:" + port +
             " -cp " + cp + " " + shQuote(baseName) + " 2>&1"
         val proc = spawnShellProcess(context, shellCommand, onOutput,
-            "[jdap] Failed to spawn the debuggee: ") ?: return null
+            "[jdap] Failed to spawn the debuggee: ", workDir = guestDir) ?: return null
         drainToConsole(proc, onOutput, listenLatch)
         return proc
     }
@@ -253,8 +253,12 @@ class JvmDAPAdapter : DebugAdapter {
         shellCommand: String,
         onOutput: (String) -> Unit,
         failPrefix: String,
+        // D14-FAMILY FIX (2026-10-03): thread the debuggee's REAL directory so
+        // WORKSPACE_PATH stops resolving to the "default" project fallback
+        // (was: resolveWorkspacePath projectId=default → /host-files/projects/default).
+        workDir: String? = null,
     ): Process? {
-        val prootEnv = IdeEnvironment.forSubprocess(context)
+        val prootEnv = IdeEnvironment.forSubprocess(context, workDir = workDir)
         val proot = prootEnv.proot
         val headArgs = prootEnv.args.dropLast(2).toTypedArray()
         val fullArgs = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
@@ -347,7 +351,12 @@ class JvmDAPAdapter : DebugAdapter {
 
         // Spawn the jdap DAP driver (DAP over stdin/stdout; launcher caps its
         // JVM at -Xmx256m — F6-d captures the real two-JVM numbers).
-        val prootEnv = IdeEnvironment.forSubprocess(context)
+        // D14-FAMILY FIX: same workspace threading for the jdap driver spawn —
+        // derive the debuggee's guest directory from the session file.
+        val debuggeeWorkDir = runCatching {
+            DapPathMapper.toDapSourcePath(context, session.filePath)?.substringBeforeLast('/')
+        }.getOrNull()
+        val prootEnv = IdeEnvironment.forSubprocess(context, workDir = debuggeeWorkDir)
         val proot = prootEnv.proot
         val headArgs = prootEnv.args.dropLast(2).toTypedArray()
         // P32: banner suppression — profile output must never reach the DAP stream.

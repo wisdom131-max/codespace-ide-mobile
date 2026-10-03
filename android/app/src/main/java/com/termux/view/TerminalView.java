@@ -1033,8 +1033,40 @@ public final class TerminalView extends View {
         updateSize();
     }
 
-    /** Check if the terminal size in rows and columns should be updated. */
+    // RESIZE-DEBOUNCE (2026-10-03): layout changes fire several onSizeChanged
+    // events in quick succession (sidebar toggles, rotation, IME, font change).
+    // Each one previously called session.updateSize -> SIGWINCH -> bash/readline
+    // re-wrapped and REDREW its prompt per event, stacking repeated prompt
+    // fragments (the F6-d "narrow-width garbling" — reflow preserves content;
+    // the stacking came from multiple intermediate resizes). Coalesce to ONE
+    // resize per 100ms trailing window. The FIRST-ever sizing (mEmulator ==
+    // null, view/session initialization) stays IMMEDIATE so attachSession()
+    // semantics are unchanged.
+    private boolean mResizePending = false;
+    private final Runnable mResizeRunnable = new Runnable() {
+        @Override
+        public void run() {
+            mResizePending = false;
+            updateSizeNow();
+        }
+    };
+
+    /**
+     * Check if the terminal size in rows and columns should be updated.
+     * Debounced 100ms (trailing) after the first-ever initialization — see
+     * RESIZE-DEBOUNCE above. The emulator-null path is synchronous.
+     */
     public void updateSize() {
+        if (mEmulator == null) {
+            updateSizeNow();
+            return;
+        }
+        if (mResizePending) return; // a later resize already queued — coalesced
+        mResizePending = true;
+        postDelayed(mResizeRunnable, 100);
+    }
+
+    private void updateSizeNow() {
         int viewWidth = getWidth();
         int viewHeight = getHeight();
         if (viewWidth == 0 || viewHeight == 0 || mTermSession == null) return;

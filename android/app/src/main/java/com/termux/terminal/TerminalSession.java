@@ -239,6 +239,30 @@ public final class TerminalSession extends TerminalOutput {
         notifyScreenUpdate();
     }
 
+    /** EXIT-9 FALSE-ALARM FIX (2026-10-03): expose the client so intentional
+     *  teardowns can be labeled expected before the kill. */
+    public TerminalSessionClient getClient() {
+        return mClient;
+    }
+
+    /**
+     * EXIT-9 FALSE-ALARM FIX (2026-10-03): request a GRACEFUL exit — send "exit\r"
+     * to the shell so it terminates itself with a clean exit status instead of
+     * being SIGKILLed. Every intentional placeholder teardown was SIGKILL before,
+     * so JNI reported exit=-9 and the diagnostics labeled our OWN kill as
+     * "SIGNAL-DEATH signal=9 (lmkd/OOM kill)". Pair with a delayed finishIfRunning()
+     * fallback so a shell that ignores 'exit' can never leak.
+     */
+    public void gracefulExit() {
+        if (isRunning()) {
+            try {
+                write("exit\r".getBytes(StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                Logger.logWarn(mClient, LOG_TAG, "gracefulExit write failed: " + e.getMessage());
+            }
+        }
+    }
+
     /** Finish this terminal session by sending SIGKILL to the shell. */
     public void finishIfRunning() {
         if (isRunning()) {

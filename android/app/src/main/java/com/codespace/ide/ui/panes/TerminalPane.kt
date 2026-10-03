@@ -74,6 +74,11 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     var firstFrameProbe: (() -> Unit)? = null
     var onTitleChanged: ((String?) -> Unit)? = null
     var onSessionFinished: (() -> Unit)? = null
+    /** EXIT-9 FALSE-ALARM FIX (2026-10-03): true when the APP is intentionally
+     *  closing/replacing this session — the SESSION FINISHED diag must then label
+     *  it an expected teardown, never a crash / lmkd-OOM kill. */
+    @kotlin.jvm.Volatile
+    var expectedTeardown: Boolean = false
     var onCursorStateChange: ((Boolean) -> Unit)? = null
     var appContext: Context? = null
 
@@ -99,6 +104,20 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     override fun onSessionFinished(finishedSession: TerminalSession) {
         // Phase N: Notify terminal session ended
         val exitCode = finishedSession.exitStatus
+        // EXIT-9 FALSE-ALARM FIX (2026-10-03): an INTENTIONAL teardown (placeholder
+        // replaced by the real Ubuntu session, reattach cleanup, tab close) was
+        // previously SIGKILLed -> exit=-9 -> "SIGNAL-DEATH signal=9 (lmkd/OOM kill)"
+        // + a "Terminal session crashed" notification. It was our own kill all
+        // along (proven: oomAdj=0, top-app cgroup, sysLowMemory=false on every
+        // occurrence). Label it honestly and never report it as a crash.
+        if (expectedTeardown) {
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "SESSION FINISHED (expected teardown): exit=" + exitCode +
+                " — session intentionally closed/replaced by the app; NOT a crash",
+                "terminal")
+            onSessionFinished?.invoke()
+            return
+        }
         // ── EXIT-CODE DIAGNOSTICS (2026-09-05) ──────────────────────────────
         // HISTORY: an earlier blind fix attempt for the recurring exit-code-9
         // notification BROKE the terminal entirely and was fully reverted; the
@@ -1054,7 +1073,15 @@ internal fun TerminalPane(
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 // Replace the progress tab with real Ubuntu proot session
                 val idx = tabs.indexOfFirst { it.id == id }
-                progressSession.finishIfRunning()
+                // EXIT-9 FALSE-ALARM FIX: graceful placeholder teardown instead of
+                // SIGKILL — ask the shell to exit cleanly (2s SIGKILL fallback
+                // guarantees no leak), and mark the client so the diag never calls
+                // our own intentional kill an lmkd/OOM crash.
+                progressClient.expectedTeardown = true
+                progressSession.gracefulExit()
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    try { progressSession.finishIfRunning() } catch (_: Throwable) {}
+                }, 2000)
                 // Part B: locked root wins; also keep the lock valid only while the
                 // root still exists (validated at every re-creation, per VS Code model).
                 val activeRoots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(ctx, projectId)
@@ -1128,7 +1155,15 @@ internal fun TerminalPane(
             // Kill the placeholder /system/bin/sh session created by rememberTerminalState —
             // it's not in the Service's liveSessions list, so getLiveUbuntuSessions() won't
             // clean it up. Without this, every Activity recreate leaks a sh process.
-            tabs.forEach { try { it.session.finishIfRunning() } catch (_: Throwable) {} }
+            tabs.forEach {
+                try {
+                    it.client.expectedTeardown = true
+                    it.session.gracefulExit()
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        try { it.session.finishIfRunning() } catch (_: Throwable) {}
+                    }, 2000)
+                } catch (_: Throwable) {}
+            }
             try {
                 val rebuiltTabs = existingSessions.mapIndexed { index, session ->
                     val newClient = SimpleTerminalSessionClient().apply { appContext = context }
@@ -1149,7 +1184,12 @@ internal fun TerminalPane(
                 tabs.clear()
                 try {
                     val stale = svc.getLiveUbuntuSessions(projectId)
-                    stale.forEach { try { it.finishIfRunning() } catch (_: Throwable) {} }
+                    stale.forEach {
+                        try {
+                            (it.client as? SimpleTerminalSessionClient)?.expectedTeardown = true
+                            it.finishIfRunning()
+                        } catch (_: Throwable) {}
+                    }
                 } catch (_: Throwable) {}
                 addUbuntuTab(replaceTabId = null)
             }
@@ -1233,6 +1273,9 @@ internal fun TerminalPane(
         if (tabs.size <= 1) return
         val idx = tabs.indexOfFirst { it.id == id }
         if (idx < 0) return
+        // EXIT-9 FALSE-ALARM FIX: closing a tab is an intentional teardown — label
+        // it so the SIGKILL of the closed session is never reported as a crash.
+        tabs[idx].client.expectedTeardown = true
         tabs[idx].session.finishIfRunning()
         tabs.removeAt(idx)
         sharedState.viewCache.remove(id) // P14-A: evict cached view so it can be GC'd

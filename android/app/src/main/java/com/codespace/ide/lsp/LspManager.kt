@@ -1500,7 +1500,7 @@ object LspManager {
         // same trigger point (first file open of this language), NOT deferred to
         // the first debug-button tap. Per-process memo inside DebuggerDependencies
         // guarantees it never re-checks while a healthy server is being reused.
-        com.codespace.ide.debug.DebuggerDependencies.ensure(context, language)
+        com.codespace.ide.debug.DebuggerDependencies.ensure(context, language, workspacePath)
 
         // R3-KLSP-STDLIB: Ensure Kotlin stdlib JAR + classpath script exist before
         // starting the server. This handles re-download if the JAR was deleted and
@@ -1530,7 +1530,9 @@ object LspManager {
         // ANY banner text from reaching the JSON-RPC pipe. Then exec replaces
         // bash with the LSP server, giving it a clean stdout.
         // Gap 1: Use IdeEnvironment.forSubprocess — central env config with stdio binds stripped.
-        val prootEnv = IdeEnvironment.forSubprocess(context)
+        // D14-FAMILY FIX (2026-10-03): thread the REAL workspace so WORKSPACE_PATH
+        // resolves to the open project instead of the "default" project fallback.
+        val prootEnv = IdeEnvironment.forSubprocess(context, workDir = workspacePath)
         val proot = prootEnv.proot
         val envVars = prootEnv.envVars
         val headArgs = prootEnv.args.dropLast(2).toTypedArray()  // removes "/bin/bash", "--login"
@@ -3371,7 +3373,7 @@ object LspManager {
             AppOutputLog.log("[LSP] Starting ctags-lsp secondary server...", "lsp")
 
             // Gap 1: Use IdeEnvironment.forSubprocess — central env config with stdio binds stripped.
-            val prootEnv = IdeEnvironment.forSubprocess(context)
+            val prootEnv = IdeEnvironment.forSubprocess(context, workDir = workspacePath)
             val proot = prootEnv.proot
             val envVars = prootEnv.envVars
             val headArgs = prootEnv.args.dropLast(2).toTypedArray()

@@ -29,7 +29,13 @@ object DebuggerDependencies {
     /** Per-app-process memo: language name -> already ensured (true on success or failure). */
     private val ensured = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
-    fun ensure(context: Context, language: Language) {
+    /**
+     * D14-FAMILY FIX (2026-10-03): the workspace is threaded through so debug-dep
+     * probes/installs run with the REAL project as WORKSPACE_PATH — previously every
+     * execOnce/forSubprocess in this chain defaulted to projectId="default" →
+     * /host-files/projects/default (the wrong project's env in the guest).
+     */
+    fun ensure(context: Context, language: Language, workspacePath: String? = null) {
         val key = language.name
         if (ensured.containsKey(key)) return
 
@@ -52,22 +58,22 @@ object DebuggerDependencies {
         val ok = when (language) {
             Language.PYTHON -> {
                 val adapter = PythonDAPAdapter()
-                if (adapter.isDebugpyInstalled(context)) {
+                if (adapter.isDebugpyInstalled(context, workspacePath)) {
                     AppOutputLog.log("[DEBUG-DEPS] debugpy already installed and healthy — skipping", "lsp")
                     true
                 } else {
                     AppOutputLog.log("[DEBUG-DEPS] debugpy missing — installing with LSP batch…", "lsp")
-                    adapter.installDebugpy(context)
+                    adapter.installDebugpy(context, workspacePath)
                 }
             }
             Language.JAVASCRIPT, Language.TYPESCRIPT -> {
                 val adapter = NodeDAPAdapter()
-                if (adapter.isJsDebugInstalled(context)) {
+                if (adapter.isJsDebugInstalled(context, workspacePath)) {
                     AppOutputLog.log("[DEBUG-DEPS] @vscode/js-debug already installed and healthy — skipping", "lsp")
                     true
                 } else {
                     AppOutputLog.log("[DEBUG-DEPS] @vscode/js-debug missing — installing with LSP batch…", "lsp")
-                    adapter.installJsDebug(context)
+                    adapter.installJsDebug(context, workspacePath)
                 }
             }
             else -> true // unreachable — memoized above

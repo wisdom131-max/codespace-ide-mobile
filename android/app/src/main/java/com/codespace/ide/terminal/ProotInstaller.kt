@@ -948,6 +948,10 @@ object ProotInstaller {
             runCatching { provisionJdap(context, rootfs) }
                 .onFailure { Log.w(TAG, "jdap provision failed: ${it.message}") }
 
+            // ── JS-DEBUG-VENDOR: JS/TS DAP server bundle → /opt (npm 404 fix) ──
+            runCatching { provisionJsDebug(context, rootfs) }
+                .onFailure { Log.w(TAG, "js-debug provision failed: ${it.message}") }
+
             versionFile.writeText(VERSION)
             onProgress("Ubuntu ready: $filesWritten files extracted \u2713")
             NotificationStore.add("Ubuntu ready", "Container started — $filesWritten files extracted", NotificationStore.Type.UBUNTU_STATUS)
@@ -1708,6 +1712,72 @@ exit 0
         }.getOrNull() ?: return true // no version asset shipped: fall back to presence
         val installed = runCatching {
             File(rootfs, "opt/jdap/VERSION").readText().trim()
+        }.getOrNull() ?: "" // missing VERSION = pre-version install -> refresh
+        return shipped == installed
+    }
+
+    // ── JS-DEBUG-VENDOR (2026-10-03): @vscode/js-debug is NOT published on npm ──
+    // (404: '@vscode/js-debug@*' is not in this registry — confirmed live on-device
+    // twice). Microsoft ships the standalone DAP server only as a GitHub release
+    // tarball (js-debug-dap-v1.140.0.tar.gz, 1.2MB, entry src/dapDebugServer.js).
+    // Vendored APK-asset side like jdap: assets/js-debug → /opt, extracted
+    // GUEST-side by tar (guest symlink creation is safe under proot; the
+    // signal-31 symlinkat block only hit host-side extraction), then launched
+    // with `node dapDebugServer.js <port>` — node itself still comes from the
+    // apt stages, which is why installJsDebug keeps stages 1-2.
+
+    /** Name of the vendored js-debug tarball inside assets/js-debug (keep in sync). */
+    private const val JS_DEBUG_TARBALL = "js-debug-dap-v1.140.0.tar.gz"
+
+    /**
+     * Copy the vendored js-debug bundle (assets/js-debug, ~1.2MB) into the
+     * rootfs at opt/jsdebug-bundle/ for guest-side extraction. Called from
+     * install()'s bake step; idempotent, so ensureJsDebug() can call it again
+     * for already-installed rootfs (version-marker refresh).
+     */
+    fun provisionJsDebug(ctx: Context, rootfs: File = rootfsDir(ctx)) {
+        ctx.assets.open("js-debug/$JS_DEBUG_TARBALL").use { inp ->
+            File(rootfs, "opt/jsdebug-bundle").mkdirs()
+            File(rootfs, "opt/jsdebug-bundle/$JS_DEBUG_TARBALL").outputStream().use { out -> inp.copyTo(out) }
+        }
+        ctx.assets.open("js-debug/VERSION").use { inp ->
+            File(rootfs, "opt/js-debug").mkdirs()
+            File(rootfs, "opt/js-debug/VERSION").outputStream().use { out -> inp.copyTo(out) }
+        }
+        Log.i(TAG, "js-debug bundle staged at /opt/jsdebug-bundle (extraction at first use)")
+    }
+
+    /**
+     * Idempotent provisioning + extraction for an EXISTING rootfs. Refreshes
+     * the staged tarball when the shipped VERSION differs from the one on
+     * disk, and (re)extracts /opt/js-debug when the entry point is missing or
+     * the marker changed. Called by NodeDAPAdapter before use — no rootfs →
+     * no-op, never blocks.
+     */
+    fun ensureJsDebug(ctx: Context) {
+        val rootfs = rootfsDir(ctx)
+        if (!File(rootfs, "usr/bin/bash").exists()) return // no rootfs installed yet
+        if (!jsDebugUpToDate(ctx, rootfs)) {
+            runCatching { provisionJsDebug(ctx, rootfs) }
+                .onFailure { Log.w(TAG, "ensureJsDebug provision: ${it.message}") }
+            // Extract guest-side so proot handles the tar's symlinks natively.
+            execOnce(ctx,
+                "mkdir -p /opt && tar -xzf /opt/jsdebug-bundle/$JS_DEBUG_TARBALL -C /opt/ 2>&1 | tail -2; " +
+                "test -f /opt/js-debug/src/dapDebugServer.js && echo JS_DEBUG_EXTRACTED",
+                timeoutSeconds = 60)
+        }
+    }
+
+    /** Version-marker check: refreshes when the shipped VERSION differs, the
+     *  marker is missing (pre-version install), or the entry point is absent. */
+    private fun jsDebugUpToDate(ctx: Context, rootfs: File): Boolean {
+        if (!File(rootfs, "opt/jsdebug-bundle/$JS_DEBUG_TARBALL").exists()) return false
+        if (!File(rootfs, "opt/js-debug/src/dapDebugServer.js").exists()) return false
+        val shipped = runCatching {
+            ctx.assets.open("js-debug/VERSION").bufferedReader().use { it.readText().trim() }
+        }.getOrNull() ?: return true // no version asset shipped: fall back to presence
+        val installed = runCatching {
+            File(rootfs, "opt/js-debug/VERSION").readText().trim()
         }.getOrNull() ?: "" // missing VERSION = pre-version install -> refresh
         return shipped == installed
     }
