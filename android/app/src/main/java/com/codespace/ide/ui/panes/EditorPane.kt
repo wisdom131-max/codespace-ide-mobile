@@ -142,11 +142,10 @@ fun findFileByName(root: java.io.File, name: String, maxDepth: Int = 10): java.i
 }
 
 
-@Composable
-@kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 /** TAB-RESURRECTION (2026-10-03): the workspace-restore block may run once
  *  per project per process — see the claim at the restore LaunchedEffect. */
 private val editorRestoredProjects = mutableSetOf<String>()
+
 private fun claimEditorSessionRestore(projectId: String?): Boolean {
     if (projectId.isNullOrBlank()) return true  // legacy-migration path guards itself
     synchronized(editorRestoredProjects) {
@@ -156,6 +155,8 @@ private fun claimEditorSessionRestore(projectId: String?): Boolean {
     }
 }
 
+@Composable
+@kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun EditorPane(
     openFilePath: String? = null,
     onFileOpened: (() -> Unit)? = null,
