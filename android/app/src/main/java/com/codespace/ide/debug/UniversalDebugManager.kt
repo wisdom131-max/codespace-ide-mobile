@@ -403,7 +403,7 @@ object UniversalDebugManager {
         // EVERY session (starting/paused/resumed/stopped/failed/crashed), not just
         // crash lines — the Output tab's Debug channel previously had no way to show
         // that a session was even running.
-        notifyOutput("[debug] Session ${session.id.take(8)} (${session.language.displayName}${if (session.testDebug) " test-debug" else ""}) -> ${newState.name.lowercase()}")
+        notifyOutput("[debug] Session ${session.id.take(8)} (${session.language.displayName}${if (session.testDebug != null) " test-debug" else ""}) -> ${newState.name.lowercase()}")
         notifySessionStateChanged(session)
     }
     // DEBUG-CHANNEL (2026-10-03, owner-approved): source-level write. The Output tab's
