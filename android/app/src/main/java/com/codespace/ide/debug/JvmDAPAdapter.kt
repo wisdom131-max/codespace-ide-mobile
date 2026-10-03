@@ -531,6 +531,22 @@ class JvmDAPAdapter : DebugAdapter {
                     timeoutSeconds = 15)
             }.getOrNull() ?: "(probe launch failed)"
             onOutput("[jdap] ATTACH-FAIL DIAG: guest java processes at failure time: " + probe.trim().take(400) + "\n")
+            // SOCKET-LAYER DIAG (2026-10-03, owner-directed): java is confirmed alive —
+            // narrows to the connection itself. Read /proc/net/tcp directly for the
+            // exact port's socket state (0A=LISTEN, 06=TIME_WAIT, absent=never bound
+            // or already gone) from the SAME proot session, PLUS a raw TCP connect
+            // test via /dev/tcp — this separates "no real listener" (kernel truth,
+            // matches JDI) from "JDI-specific" (raw connect works, JDI's own socket
+            // handling does not) without guessing.
+            val diagPort = jdwpPort.get()
+            val portHex = String.format("%04X", diagPort)
+            val netDiag = runCatching {
+                com.codespace.ide.terminal.ProotInstaller.execOnce(context,
+                    "echo \"NET: \$(grep -i ':" + portHex + " ' /proc/net/tcp 2>/dev/null || echo NOT_IN_TCP_TABLE)\"; " +
+                        "timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/" + diagPort + "' 2>&1 && echo RAW_CONNECT_OK || echo RAW_CONNECT_FAILED",
+                    timeoutSeconds = 10)
+            }.getOrNull() ?: "(net probe failed)"
+            onOutput("[jdap] ATTACH-FAIL DIAG socket layer: " + netDiag.trim().take(300) + "\n")
             teardown(rt, session.id)
             debuggee.destroyForcibly()
             return false

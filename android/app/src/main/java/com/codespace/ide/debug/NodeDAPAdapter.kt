@@ -69,6 +69,12 @@ class NodeDAPAdapter : DebugAdapter {
         @Volatile var lastTotalFrames: Int = -1
         @Volatile var framesLoaded: Int = 0
         @Volatile var currentFrameId: Int = 0
+        // ROUND-3 (2026-10-03): the dapDebugServer.js NODE PROCESS itself — the
+        // DAP stream now rides a separate TCP socket (see DAPClient(socket)
+        // constructor), so client.stop() only closes that socket. stop() must
+        // ALSO kill this process directly or it leaks exactly like the Java
+        // attach orphans (same proot --kill-on-exit-cannot-run-under-SIGKILL risk).
+        @Volatile var serverProcess: Process? = null
     }
     private val runtimes = java.util.concurrent.ConcurrentHashMap<String, SessionRuntime>()
     private fun runtime(sessionId: String): SessionRuntime? = runtimes[sessionId]
@@ -305,8 +311,22 @@ class NodeDAPAdapter : DebugAdapter {
         // see), so we install jest INTO the project automatically instead of asking.
         if (!jestPresent && hostWorkdir != null && spec.guestWorkdir != null) {
             onOutput("[js-debug] jest is not installed under node_modules in this project - installing it automatically (npm install --save-dev jest, one-time)...\n")
+            // --no-bin-links (2026-10-03, owner-reported EACCES as root): the
+            // project directory is a BIND-MOUNTED Android storage path
+            // (/sdcard -> /storage/emulated/0, FUSE/scoped-storage backed) —
+            // same filesystem class already proven to BLOCK symlinkat() at the
+            // kernel/seccomp level (memory #16-30, the proot-extraction crash).
+            // jest's own package.json "bin" entry makes npm create a SYMLINK
+            // at node_modules/.bin/jest; that symlink() call is what's really
+            // failing — npm's generic EACCES hint ("as root/Administrator") is
+            // its boilerplate for this whole error class, not a true permission
+            // check (--change-id=0:0 already makes us real uid 0 in the guest).
+            // --no-bin-links makes npm write a plain wrapper script instead of
+            // a symlink; every OTHER npm install in this codebase targets the
+            // real rootfs (ext4), never project storage, which is why none of
+            // them needed this flag.
             val npmOut = ProotInstaller.execOnce(context,
-                "cd " + shQuote(spec.guestWorkdir) + " && npm install --save-dev jest 2>&1 | tail -4",
+                "cd " + shQuote(spec.guestWorkdir) + " && npm install --no-bin-links --save-dev jest 2>&1 | tail -6",
                 timeoutSeconds = 300, logToOutput = true)
             if (java.io.File(hostWorkdir, "node_modules/.bin/jest").exists()) {
                 onOutput("[js-debug] jest installed into this project.\n")
@@ -457,10 +477,24 @@ class NodeDAPAdapter : DebugAdapter {
         val proot = prootEnv.proot
         val envVars = prootEnv.envVars
         val headArgs = prootEnv.args.dropLast(2).toTypedArray()
-        val serverCmd = "node '$serverPath' --stdio"
+        // ROUND-3 FIX (2026-10-03, verified from the bundled CLI source):
+        // dapDebugServer.js parses process.argv POSITIONALLY as
+        // [,script,port="8123",host="localhost"] with NO "--stdio" branch at
+        // all — "--stdio" was being read as a non-numeric port and silently
+        // reinterpreted as a Unix-socket PATH named "--stdio", so nothing ever
+        // answered on real stdin/stdout (hence the content-free 15s timeout).
+        // Launch over TCP instead, the one mode this server actually supports.
+        val port = try {
+            java.net.ServerSocket(0).use { it.localPort }
+        } catch (e: Exception) {
+            onOutput("[js-debug] Could not reserve a local port: ${e.message}\n")
+            return false
+        }
+        val serverCmd = "node '$serverPath' $port 127.0.0.1"
         // P32: Use bash -c (non-login) with profile sourcing redirected to /dev/null.
-        // Same fix as LSP startServer — prevents [Agent] banner text from corrupting
-        // the DAP JSON-RPC stream on stdout.
+        // The DAP stream now rides its own TCP socket, not this process's stdio —
+        // profile/banner text can no longer corrupt it either way, but keeping
+        // this is harmless and matches every other adapter's launch shape.
         val shellCommand = "source /etc/profile >/dev/null 2>&1; source ~/.bashrc >/dev/null 2>&1; exec $serverCmd"
         val fullArgs = arrayOf(*headArgs, "/bin/bash", "-c", shellCommand)
 
@@ -479,11 +513,52 @@ class NodeDAPAdapter : DebugAdapter {
             return false
         }
 
-        // 5. Create and start DAPClient
-        val dapClient = DAPClient(process)
+        // The process's own stdout/stderr are now plain console logs (the CLI
+        // prints "Debug server listening at ..." there) — drain them for the
+        // Output tab and watch for that line to know when to connect.
+        val readyLatch = java.util.concurrent.CountDownLatch(1)
+        Thread {
+            try {
+                java.io.BufferedReader(java.io.InputStreamReader(process.inputStream)).use { reader ->
+                    while (true) {
+                        val line = reader.readLine() ?: break
+                        if (line.isNotBlank()) onOutput(line + "\n")
+                        if (line.contains("Debug server listening")) readyLatch.countDown()
+                    }
+                }
+            } catch (_: Exception) {}
+        }.also { it.isDaemon = true }.start()
+        Thread {
+            try {
+                process.errorStream.bufferedReader().forEachLine { line ->
+                    if (line.isNotBlank()) onOutput("[stderr] $line\n")
+                }
+            } catch (_: Exception) {}
+        }.also { it.isDaemon = true }.start()
+
+        if (!readyLatch.await(20, java.util.concurrent.TimeUnit.SECONDS)) {
+            if (!process.isAlive) {
+                onOutput("[js-debug] The DAP server process exited before it reported ready (see output above).\n")
+            } else {
+                onOutput("[js-debug] The DAP server did not report ready within 20s - aborting.\n")
+            }
+            process.destroyForcibly()
+            return false
+        }
+        val socket = try {
+            java.net.Socket().apply { connect(java.net.InetSocketAddress("127.0.0.1", port), 5000) }
+        } catch (e: Exception) {
+            onOutput("[js-debug] Could not connect to the DAP server on port $port: ${e.message}\n")
+            process.destroyForcibly()
+            return false
+        }
+
+        // 5. Create and start DAPClient (TCP transport)
+        val dapClient = DAPClient(socket)
         // DG12: per-session runtime — the client and ALL its mutable state are
         // keyed by session id from here on.
         val rt = SessionRuntime(dapClient)
+        rt.serverProcess = process
         if (preSpawned != null) {
             // F5 (TG07p1): the jest debuggee spawned by launch() for THIS session.
             rt.testProcess = preSpawned.first
@@ -579,8 +654,9 @@ class NodeDAPAdapter : DebugAdapter {
         Log.d(TAG, "Sending initialize...")
         val initResp = dapClient.request("initialize", initArgs, timeoutSeconds = 15)
         if (initResp == null) {
-            onOutput("[js-debug] initialize timed out (15s). Is Node.js installed?\n")
+            onOutput("[js-debug] initialize timed out (15s) over the DAP socket.\n")
             dapClient.stop()
+            process.destroyForcibly()
             runtimes.remove(session.id)  // DG12: no orphan runtime on failed launch
             UniversalDebugManager.untrackProcess(session.id)  // DG13
             return false
@@ -788,6 +864,10 @@ class NodeDAPAdapter : DebugAdapter {
         rt.testProcess?.destroyForcibly()
         rt.testProcess = null
         rt.client.stop()
+        // ROUND-3: client.stop() only closes the DAP socket now — the actual
+        // dapDebugServer.js node process needs its own kill or it leaks.
+        rt.serverProcess?.destroyForcibly()
+        rt.serverProcess = null
     }
 
     override fun pause(session: DebugSession) {

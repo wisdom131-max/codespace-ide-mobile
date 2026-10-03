@@ -12,19 +12,47 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * P26-2a: DAPClient — Debug Adapter Protocol client over stdin/stdout.
+ * P26-2a: DAPClient — Debug Adapter Protocol client over stdin/stdout OR a raw
+ * TCP socket (ROUND-3, 2026-10-03): vscode-js-debug's dapDebugServer.js has NO
+ * stdio mode at all — verified from its own bundled CLI parsing (process.argv
+ * is read positionally as [,script,port="8123",host="localhost"], with no
+ * "--stdio" branch), so a "--stdio" argument is misread as a non-numeric PORT
+ * value and the server opens a Unix-socket-path listener named "--stdio"
+ * instead — explaining the silent 15s initialize timeout exactly (no crash,
+ * no error, just nothing ever answering on stdin/stdout). jdap (our own
+ * driver) and debugpy both genuinely support stdio, so this class now backs
+ * either transport.
  *
  * Implements the DAP wire protocol (Content-Length framing, JSON body) mirroring
  * JsonRpcClient's approach for LSP but adapted for DAP's request/response/event model.
  *
  * Usage:
- *   val client = DAPClient(process)
+ *   val client = DAPClient(process)              // stdio transport (jdap, debugpy)
+ *   val client = DAPClient(socket)                // TCP transport (vscode-js-debug)
  *   client.onEvent("stopped") { body -> handlePause(body) }
  *   client.start()
  *   val initResp = client.request("initialize", initArgs)
  *   client.sendRequest("launch", launchArgs)
  */
-class DAPClient(private val process: Process) {
+class DAPClient private constructor(
+    private val input: java.io.InputStream,
+    private val output: java.io.OutputStream,
+    private val errorStream: java.io.InputStream?,
+    private val onStop: () -> Unit,
+) {
+    /** Stdio transport — the process's own stdin/stdout CARRY the DAP stream (jdap, debugpy). */
+    constructor(process: Process) : this(
+        process.inputStream, process.outputStream, process.errorStream,
+        { try { process.destroyForcibly() } catch (_: Exception) {} },
+    )
+
+    /** TCP transport — the DAP stream rides a socket; the launched process's
+     *  own stdout/stderr are plain console logs, drained separately by the
+     *  caller (see NodeDAPAdapter), not read by this client. */
+    constructor(socket: java.net.Socket) : this(
+        socket.getInputStream(), socket.getOutputStream(), null,
+        { try { socket.close() } catch (_: Exception) {} },
+    )
 
     private val TAG = "DAPClient"
 
@@ -34,7 +62,7 @@ class DAPClient(private val process: Process) {
 
     private lateinit var writer: PrintWriter
     private lateinit var readerThread: Thread
-    private lateinit var stderrThread: Thread
+    private var stderrThread: Thread? = null
 
     @Volatile var running = false
 
@@ -42,11 +70,11 @@ class DAPClient(private val process: Process) {
 
     fun start() {
         running = true
-        writer = PrintWriter(process.outputStream.bufferedWriter())
+        writer = PrintWriter(output.bufferedWriter())
 
         readerThread = Thread({
             try {
-                val reader = BufferedReader(InputStreamReader(process.inputStream))
+                val reader = BufferedReader(InputStreamReader(input))
                 while (running) {
                     val msg = readMessage(reader) ?: break
                     dispatch(msg)
@@ -56,18 +84,20 @@ class DAPClient(private val process: Process) {
             }
         }, "dap-reader").also { it.isDaemon = true; it.start() }
 
-        stderrThread = Thread({
-            try {
-                process.errorStream.bufferedReader().forEachLine { line ->
-                    Log.w(TAG, "DAP-STDERR: $line")
-                }
-            } catch (_: Exception) {}
-        }, "dap-stderr").also { it.isDaemon = true; it.start() }
+        if (errorStream != null) {
+            stderrThread = Thread({
+                try {
+                    errorStream.bufferedReader().forEachLine { line ->
+                        Log.w(TAG, "DAP-STDERR: $line")
+                    }
+                } catch (_: Exception) {}
+            }, "dap-stderr").also { it.isDaemon = true; it.start() }
+        }
     }
 
     fun stop() {
         running = false
-        try { process.destroyForcibly() } catch (_: Exception) {}
+        try { onStop() } catch (_: Exception) {}
     }
 
     // ── Wire protocol ──────────────────────────────────────────────────────────
