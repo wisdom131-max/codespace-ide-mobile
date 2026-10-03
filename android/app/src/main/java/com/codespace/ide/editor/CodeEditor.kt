@@ -2658,7 +2658,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     cursorBrush = animatedCursorBrush(colors.cursor),
                     visualTransformation = run {
                         val incrHighlighter = remember { IncrementalHighlighter() }
-                        remember(language, colors, lintErrors, foldedLineIndices, semanticTokens, precomputedHighlight, precomputedForText) {
+                        // REFRESH-FAMILY (2026-10-03): the TextMate toggle was NOT a key
+                        // of this remember — flipping it left the OLD SyntaxTransformation
+                        // in place until the file was closed and reopened. Reading the
+                        // state here both subscribes this scope (recompose on toggle) and
+                        // re-keys the transformation so the highlighter choice is re-made.
+                        val tmEnabledKey = com.codespace.ide.editor.ProjectSettingsStore.textMateHighlightingEnabled.value
+                        remember(language, colors, lintErrors, foldedLineIndices, semanticTokens, precomputedHighlight, precomputedForText, tmEnabledKey) {
                             SyntaxTransformation(
                                 language = language,
                                 colors = colors,

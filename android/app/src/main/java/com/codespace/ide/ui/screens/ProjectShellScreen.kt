@@ -759,6 +759,16 @@ fun ProjectShellScreen(
     val sharedTerminalState = androidx.compose.runtime.key(projectId) { rememberTerminalState(context) }
     // Bumped when terminal produces output, so the Explorer re-scans the file tree.
     var terminalActivityCounter by remember { mutableStateOf(0) }
+    // REFRESH-FAMILY (2026-10-03): same channel, fed by non-UI writers. AI/agent
+    // file operations (AgentTools writeFile/run_command, chat staged applies)
+    // announce through FsChangeNotifier so the Explorer tree re-scans without
+    // manual refresh — VS Code parity: the explorer is reactively bound to
+    // workspace file events, it has no manual-refresh dependency.
+    DisposableEffect(Unit) {
+        val l = { terminalActivityCounter++ }
+        com.codespace.ide.util.FsChangeNotifier.addListener(l)
+        onDispose { com.codespace.ide.util.FsChangeNotifier.removeListener(l) }
+    }
     // Lifted up here (not inside PreviewPane) so switching to Terminal/Problems/etc. and back
     // to Preview doesn't reset the active sub-tab or the connected Browser URL.
     val sharedPreviewState = com.codespace.ide.ui.panes.rememberPreviewState()

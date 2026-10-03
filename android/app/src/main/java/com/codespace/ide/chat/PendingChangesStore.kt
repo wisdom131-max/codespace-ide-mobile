@@ -211,6 +211,11 @@ object PendingChangesStore {
             lastApplied.value = lastApplied.value + (path to checkpointFile)
             appliedTick.value++
             bumpRevision()
+            // REFRESH-FAMILY (2026-10-03): a verified disk write changed the
+            // workspace — tell the Explorer's reactive channel (AI-created files
+            // used to miss the tree re-scan entirely; debounced, so applyAll
+            // still costs ONE re-scan).
+            com.codespace.ide.util.FsChangeNotifier.notifyChanged()
             ApplyOutcome.Applied(path, checkpointFile)
         } catch (e: Exception) {
             // FAIL CLOSED catch-all: indeterminate state never writes silently.
@@ -273,6 +278,11 @@ object PendingChangesStore {
             lastApplied.value = lastApplied.value + (path to checkpointFile)
             appliedTick.value++
             bumpRevision()
+            // REFRESH-FAMILY (2026-10-03): a verified disk write changed the
+            // workspace — tell the Explorer's reactive channel (AI-created files
+            // used to miss the tree re-scan entirely; debounced, so applyAll
+            // still costs ONE re-scan).
+            com.codespace.ide.util.FsChangeNotifier.notifyChanged()
             ApplyOutcome.Applied(path, checkpointFile)
         } catch (e: Exception) {
             ApplyOutcome.Failed(path, "Force apply failed: ${e.message}")

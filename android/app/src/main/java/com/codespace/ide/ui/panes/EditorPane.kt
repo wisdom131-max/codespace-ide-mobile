@@ -657,6 +657,16 @@ fun EditorPane(
     var goToLineOpen by remember { mutableStateOf(false) }
     // CW3: long-pressed gutter line -> breakpoint condition editor (null = closed)
     var condBpLine by remember { mutableStateOf<Int?>(null) }
+    // REFRESH-FAMILY (2026-10-03): UDM's breakpoint store is a plain singleton —
+    // nothing subscribed this composition to its changes, so gutter dots only
+    // appeared when an unrelated edit recomposed the pane. This bridge bumps a
+    // state read by the breakpointLines/conditionalBreakpointLines keys below.
+    var bpVersion by remember { mutableStateOf(0) }
+    DisposableEffect(udm) {
+        val listener = { bpVersion++ }
+        udm?.addOnBreakpointsChangedListener(listener)
+        onDispose { udm?.removeOnBreakpointsChangedListener(listener) }
+    }
     // Pinned tab paths set
     val pinnedPaths = remember { mutableStateListOf<String>() }
     // Per-file scroll line memory (path → first visible line)
@@ -2496,8 +2506,10 @@ fun EditorPane(
                         // diverged (gutter dots ignored Explorer removals; a tap where
                         // only UDM had the bp toggled UDM off while the local map turned
                         // it back on). Both render and toggle go through UDM now.
-                        breakpointLines = udm?.getBreakpoints(active.path)
-                            ?.map { it.line }?.toSet() ?: emptySet(),
+                        breakpointLines = remember(active.path, bpVersion) {
+                            udm?.getBreakpoints(active.path)
+                                ?.map { it.line }?.toSet() ?: emptySet()
+                        },
                         debugCurrentLine = debugCurrentLine,
                         onBreakpointToggle = { line ->
                             udm?.toggleBreakpoint(active.path, line)
@@ -2506,9 +2518,11 @@ fun EditorPane(
                                 "[BAND-DIAG] toggle: gutterLine0=" + line + " file=" + active.path.takeLast(40), "lsp")
                         },
                         // CW3: conditional/log breakpoints render as rings; long-press edits them
-                        conditionalBreakpointLines = udm?.getBreakpoints(active.path)
-                            ?.filter { it.condition != null || it.logMessage != null }
-                            ?.map { it.line }?.toSet() ?: emptySet(),
+                        conditionalBreakpointLines = remember(active.path, bpVersion) {
+                            udm?.getBreakpoints(active.path)
+                                ?.filter { it.condition != null || it.logMessage != null }
+                                ?.map { it.line }?.toSet() ?: emptySet()
+                        },
                         onBreakpointLongPress = { line ->
                             if (udm?.hasBreakpoint(active.path, line) == true) condBpLine = line
                             else udm?.toggleBreakpoint(active.path, line) // nothing to edit yet -> create one

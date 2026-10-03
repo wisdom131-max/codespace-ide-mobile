@@ -258,6 +258,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, guestWorkdir)
         // I2 — TERMINAL BRIDGE: last agent-run command + output are attachable in chat
         com.codespace.ide.terminal.TerminalAiBridge.recordRun(command, out, guestWorkdir)
+        // REFRESH-FAMILY: agent shell ops (mkdir/touch/rm/git) also change the tree
+        com.codespace.ide.util.FsChangeNotifier.notifyChanged()
         return truncMark(out, 16000)  // CH06 (P4h): marked, not silent
     }
 
@@ -285,6 +287,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         val target = File(resolveToolPath(context, path))
         target.parentFile?.mkdirs()
         target.writeText(content)
+        // REFRESH-FAMILY: AI file writes now reach the Explorer's reactive channel
+        com.codespace.ide.util.FsChangeNotifier.notifyChanged()
         return "Wrote ${content.length} chars to ${target.absolutePath}"
     }
 
