@@ -144,6 +144,18 @@ fun findFileByName(root: java.io.File, name: String, maxDepth: Int = 10): java.i
 
 @Composable
 @kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+/** TAB-RESURRECTION (2026-10-03): the workspace-restore block may run once
+ *  per project per process — see the claim at the restore LaunchedEffect. */
+private val editorRestoredProjects = mutableSetOf<String>()
+private fun claimEditorSessionRestore(projectId: String?): Boolean {
+    if (projectId.isNullOrBlank()) return true  // legacy-migration path guards itself
+    synchronized(editorRestoredProjects) {
+        if (projectId in editorRestoredProjects) return false
+        editorRestoredProjects.add(projectId)
+        return true
+    }
+}
+
 fun EditorPane(
     openFilePath: String? = null,
     onFileOpened: (() -> Unit)? = null,
@@ -682,7 +694,15 @@ fun EditorPane(
 
     // ── Workspace memory restore ──────────────────────────────────────────
     LaunchedEffect(Unit) {
-        if (tabs.isEmpty()) {
+        // TAB-RESURRECTION (2026-10-03): restore is a SESSION-START behavior
+        // (VS Code restores a workspace once per window), NOT an empty-state
+        // reflex. This pane leaves composition whenever the last tab closes
+        // (PSS composes it only while activeEditorTab != null) and re-enters
+        // on the next file open — an unguarded restore there re-read whatever
+        // the store still held and resurrected just-closed tabs. Claim once
+        // per project per process; a fresh app launch is a new process and
+        // restores again.
+        if (tabs.isEmpty() && claimEditorSessionRestore(projectId)) {
             val store = sessionStateStore
             val pid = projectId
             if (pid.isNullOrBlank()) {
@@ -972,6 +992,29 @@ fun EditorPane(
             store.saveLocks(pid, com.codespace.ide.editor.ViewScrollLockStore.snapshot())
             store.saveFolds(pid, tabFoldedRanges.mapValues { it.value.toList() })
             store.saveBlameEnabled(pid, showBlame)
+        }
+    }
+
+    // TAB-RESURRECTION (2026-10-03): the pane leaves composition the SAME
+    // frame the last tab closes (PSS composes EditorPane only while a tab is
+    // active), which CANCELS the persist LaunchedEffect above before its
+    // pending body ran — the EMPTY tab list never reached the store, and the
+    // stale paths resurrected on the next open or at next launch. onDispose
+    // runs synchronously at disposal: this final write guarantees the true
+    // final state (including EMPTY) lands. All reads happen at dispose time
+    // from the live containers, so they reflect the post-close state.
+    DisposableEffect(projectId, sessionStateStore) {
+        onDispose {
+            val store = sessionStateStore
+            val pid = projectId
+            if (store != null && pid != null) {
+                store.saveShellEditorState(
+                    pid,
+                    tabs.firstOrNull { it.id == activeIdState.value }?.path ?: tabs.firstOrNull()?.path,
+                    tabs.map { it.path },
+                    pinnedPaths.toList(),
+                )
+            }
         }
     }
 
