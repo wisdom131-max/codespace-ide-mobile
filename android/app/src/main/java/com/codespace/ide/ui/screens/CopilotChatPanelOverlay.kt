@@ -167,7 +167,9 @@ private fun sessionKey(id: String) = "session_v1_" + id
 private data class ChatSession(
     val id: String,
     var title: String,
-    val mode: ChatMode,
+    // CHAT-MODE-PERSIST: was `val` — the mode tab could never write the choice
+    // back to the session, so it never reached saveSessions' JSON either.
+    var mode: ChatMode,
     val messages: MutableList<ChatMsg> = mutableListOf(),
     var updatedAt: Long = System.currentTimeMillis(),
     // R9-A (D2): additive — old JSON loads unchanged (missing key -> null)
@@ -1136,6 +1138,19 @@ internal fun CopilotChatPanelInline(
         mutableStateListOf<ChatMsg>().apply { addAll(activeSession.messages) }
     }
 
+    // CHAT-MODE-PERSIST: `mode` (and activeCustomModeId) were remember-reset to
+    // ASK on every panel open — messages restored from the session but the mode
+    // never did, so closing and reopening the chat always showed "Ask". Sync
+    // once at open from the same session the messages came from. A custom mode
+    // whose definition file is gone falls back to plain AGENT silently at open
+    // (switchSession still shows its one-line notice for mid-session switches).
+    LaunchedEffect(activeSession.id) {
+        mode = activeSession.mode
+        val openCm = activeSession.customModeId
+        activeCustomModeId = if (openCm != null &&
+            com.codespace.ide.chat.CustomModeStore.findById(projectRootPath, openCm) != null) openCm else null
+    }
+
     fun persistSessions() {
         activeSession.messages.clear()
         activeSession.messages.addAll(messages)
@@ -1731,7 +1746,16 @@ internal fun CopilotChatPanelInline(
                 Row(
                     Modifier
                         .background(if (isSelected) colors.surface else Color.Transparent, RoundedCornerShape(4.dp))
-                        .clickable { mode = m; activeCustomModeId = null; activeSession.customModeId = null }
+                        .clickable {
+                            mode = m
+                            // CHAT-MODE-PERSIST: the tab only set the local state —
+                            // ChatSession.mode never changed, so persistSessions
+                            // kept writing the session's ORIGINAL mode and reopening
+                            // the panel (or switching away and back) lost the choice.
+                            activeSession.mode = m
+                            activeCustomModeId = null
+                            activeSession.customModeId = null
+                        }
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
