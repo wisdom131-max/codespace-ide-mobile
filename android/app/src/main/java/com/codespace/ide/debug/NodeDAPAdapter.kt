@@ -11,6 +11,9 @@ import org.json.JSONArray
 import com.codespace.ide.diagnostics.AppOutputLog
 import org.json.JSONObject
 
+/** F6-d/JS: one staged install at a time, process-wide (shared across adapter instances). */
+private val jsDebugInstallInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
+
 /**
  * P26-3a: NodeDAPAdapter — debug JavaScript/TypeScript via DAP.
  *
@@ -139,15 +142,59 @@ class NodeDAPAdapter : DebugAdapter {
                !out.contains("Error")
     }
 
+    /**
+     * F6-d/JS: STAGED install. The old one-shot chain (apt update + apt install
+     * nodejs+npm + npm install, all inside a single 180s window) could not
+     * finish under proot — and every retry restarted the WHOLE chain from
+     * scratch. Each stage now checks the REAL on-disk state first and runs only
+     * what is missing, so a retry (or an install killed at ANY point, including
+     * by the old 180s cap) RESUMES: the on-disk state IS the marker — no
+     * separate marker files that can drift out of sync. Per-stage timeouts are
+     * sized for proot reality (apt index 300s, node+npm unpack 600s, npm fetch
+     * 300s). Progress streams to the Output tab; a concurrent call only checks
+     * status (never double-runs the chain).
+     */
     fun installJsDebug(context: Context): Boolean {
-        Log.d(TAG, "Installing @vscode/js-debug...")
-        val result = ProotInstaller.execOnce(context,
-            "apt-get update -qq 2>/dev/null; " +
-            "apt-get install -y --no-install-recommends nodejs npm 2>/dev/null; " +
-            "npm install -g @vscode/js-debug 2>&1 | tail -5",
-            timeoutSeconds = 180)
-        Log.d(TAG, "js-debug install: $result")
-        return isJsDebugInstalled(context)
+        if (!jsDebugInstallInFlight.compareAndSet(false, true)) {
+            AppOutputLog.log("[JS-DEBUG] staged install already running elsewhere — this call only checked status", "lsp")
+            return isJsDebugInstalled(context)
+        }
+        try {
+            // Resume gate: if a previous partial run already delivered node+npm,
+            // the two apt stages are skipped entirely.
+            val nodePresent = { s: String -> "NODE_READY" in s }
+            val nodeProbe = "command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && echo NODE_READY || echo NODE_MISSING"
+            if (nodePresent(ProotInstaller.execOnce(context, nodeProbe, timeoutSeconds = 15))) {
+                AppOutputLog.log("[JS-DEBUG] node+npm already present — skipping the apt stages (resumed or pre-installed).", "lsp")
+            } else {
+                AppOutputLog.log("[JS-DEBUG] stage 1/3: apt-get update (1-2 min under proot)…", "lsp")
+                ProotInstaller.execOnce(context, "apt-get update -qq", timeoutSeconds = 300)
+                AppOutputLog.log("[JS-DEBUG] stage 2/3: apt install nodejs+npm (largest stage — up to 10 min under proot)…", "lsp")
+                // dpkg --configure -a first: an install killed mid-apt can leave
+                // dpkg with pending configure/lock state that blocks the retry.
+                val aptOut = ProotInstaller.execOnce(context,
+                    "dpkg --configure -a 2>/dev/null; " +
+                    "apt-get install -y --no-install-recommends nodejs npm 2>&1 | tail -5",
+                    timeoutSeconds = 600)
+                if (!nodePresent(ProotInstaller.execOnce(context, nodeProbe, timeoutSeconds = 15))) {
+                    AppOutputLog.log("[JS-DEBUG] stage 2/3 FAILED — node/npm still absent after apt. Last apt lines: " + aptOut.takeLast(300), "lsp")
+                    return false
+                }
+            }
+            AppOutputLog.log("[JS-DEBUG] stage 3/3: npm install -g @vscode/js-debug (downloads from the npm registry)…", "lsp")
+            val npmOut = ProotInstaller.execOnce(context,
+                "npm install -g @vscode/js-debug 2>&1 | tail -5",
+                timeoutSeconds = 300)
+            val ok = isJsDebugInstalled(context)
+            if (ok) {
+                AppOutputLog.log("[JS-DEBUG] install complete — js-debug is healthy. Press Debug again.", "lsp")
+            } else {
+                AppOutputLog.log("[JS-DEBUG] stage 3/3 FAILED — npm install did not yield a healthy js-debug. Last npm lines: " + npmOut.takeLast(300), "lsp")
+            }
+            return ok
+        } finally {
+            jsDebugInstallInFlight.set(false)
+        }
     }
 
     /** Find the dapDebugServer.js entry point in the global npm prefix. */
@@ -312,14 +359,19 @@ class NodeDAPAdapter : DebugAdapter {
         attachParams: JSONObject?,
         preSpawned: Pair<Process, Int>? = null,
     ): Boolean {
-        // 1. Ensure js-debug is installed
+        // 1. js-debug must be present before launch. F6-d/JS: the staged
+        // install can legitimately take minutes under proot — never block a
+        // debug tap on it. If it is mid-flight, say so; if idle, kick it in
+        // the background and let the user press Debug again once Output
+        // reports completion.
         if (!isJsDebugInstalled(context)) {
-            onOutput("[js-debug] @vscode/js-debug not installed — installing (~60s)...\n")
-            if (!installJsDebug(context)) {
-                onOutput("[js-debug] Install failed. Falling back to node inspect.\n")
-                return false
+            if (jsDebugInstallInFlight.get()) {
+                onOutput("[js-debug] @vscode/js-debug is still installing (staged install in flight — see the Output tab for stage progress).\n")
+            } else {
+                onOutput("[js-debug] @vscode/js-debug is not installed — starting the staged install in the background now (progress in the Output tab). Press Debug again once it reports complete.\n")
+                Thread { installJsDebug(context) }.also { it.isDaemon = true }.start()
             }
-            onOutput("[js-debug] Installed.\n")
+            return false
         }
 
         // 2. Locate dapDebugServer.js
