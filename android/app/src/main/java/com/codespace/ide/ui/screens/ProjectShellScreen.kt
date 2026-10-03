@@ -1856,6 +1856,87 @@ fun ProjectShellScreen(
                     fullScreen = fullScreen,
                 )
             } // end main Row (editor + optional chat panel)
+        // ── Bottom Panel — TERMINAL-SHRINK FIX (2026-10-03): composed OUTSIDE the
+        // main Row so it spans the FULL workspace width. It previously lived at the
+        // bottom of PssEditorColumn (the Row's last child), so toggling the
+        // Explorer/Chat sidebar squeezed the panel horizontally — every toggle
+        // resized the PTY (SIGWINCH), the shell redrew at the new narrow width,
+        // and on this phone screen the terminal visibly shrank and "cleared".
+        // At full width, sidebar toggles no longer change the terminal's
+        // dimensions at all (VS Code only resizes its panel with the sidebar on
+        // roomy desktop widths; here it just wrecked the session). The editor
+        // region still narrows VS Code-style. The horizontal/bottom inset matches
+        // the Row's own WorkspacePadding so the rounded panel stays visually
+        // independent, and the P-DIVIDER gap above it is preserved.
+        if (showBottomPanel && !fullScreen) {
+            Spacer(Modifier.height(WorkspaceShapes.PanelGapMedium))
+        }
+
+        // PssBottomPanelContent stays its own function — the DEX/VerifyError fix
+        // was about BODY registers; this thin call keeps that intact. Drag handle
+        // and visibility logic are unchanged (handled internally).
+        Box(
+            Modifier.padding(
+                start = WorkspaceShapes.WorkspacePadding,
+                end = WorkspaceShapes.WorkspacePadding,
+                bottom = WorkspaceShapes.WorkspacePadding,
+            )
+        ) {
+            PssBottomPanelContent(
+                showBottomPanel = showBottomPanel,
+                onHideBottomPanel = { showBottomPanel = false },
+                bottomPanelHeight = bottomPanelHeight,
+                onBottomPanelHeightChange = { bottomPanelHeight = it },
+                bottomPanelPrevHeight = bottomPanelPrevHeight,
+                onBottomPanelPrevHeightChange = { bottomPanelPrevHeight = it },
+                bottomPanelMaximized = bottomPanelMaximized,
+                onBottomPanelMaximizedChange = { bottomPanelMaximized = it },
+                isDraggingBottomPanel = isDraggingBottomPanel,
+                onDraggingChange = { isDraggingBottomPanel = it },
+                activeBottomTab = activeBottomTab,
+                onActiveBottomTabChange = { activeBottomTab = it },
+                terminalCommandToRun = terminalCommandToRun,
+                onCommandConsumed = { terminalCommandToRun = null },
+                sharedTerminalState = sharedTerminalState,
+                // TERMINAL-SHRINK FIX: PSS has no onFileSystemChanged local —
+                // the old site threaded { terminalActivityCounter++ } into
+                // PssEditorColumn; same counter bump, inlined here.
+                onFileSystemChanged = { terminalActivityCounter++ },
+                activeEditorTab = activeEditorTab,
+                debugMessages = debugMessages,
+                debugInput = debugInput,
+                sharedPreviewState = sharedPreviewState,
+                previewPort = previewPort,
+                onPreviewPortChange = { previewPort = it },
+                projectId = projectId,
+                totalHeight = totalHeight,
+                dividerColor = DividerColor,
+                panelBg = PanelBg,
+                tabTextInactive = TabTextInactive,
+                onRunInTerminal = { cmd -> terminalCommandToRun = cmd + "\r" },
+                heavyPanesReady = heavyPanesReady,
+                buildProblems = buildProblems,
+                onBuildProblemsChange = { problems -> buildProblems = problems },
+                onJumpToSource = { line -> scrollTargetLine = line; showBottomPanel = false },
+                onJumpToSourceWithPath = jtp@{ filePath, line ->
+                    // PR08 (P4a-2): defense in depth — an empty/blank path can never
+                    // enter the tab chain, whatever the calling surface sends.
+                    if (filePath.isBlank()) return@jtp
+                    val targetCanon = canonicalPathOrSelf(filePath)
+                    val existingTab = editorTabs.firstOrNull { canonicalPathOrSelf(it) == targetCanon }
+                    val resolvedPath = existingTab ?: filePath
+                    if (resolvedPath != activeEditorTab) {
+                        if (existingTab == null && !editorTabs.contains(resolvedPath)) editorTabs.add(resolvedPath)
+                        activeEditorTab = resolvedPath
+                    }
+                    scrollTargetLine = line
+                    showBottomPanel = false
+                },
+                fullScreen = fullScreen,
+                // I2 — TERMINAL BRIDGE: PssEditorColumn owns showChatPanelMs/pendingChatPromptMs
+                onAskAi = { p -> showChatPanel = true; pendingChatPromptMs.value = p },
+            )
+        }
 
         // Simple overlay menus
 
@@ -4886,70 +4967,6 @@ private fun PssEditorColumn(
 
         } // end editor region Column (own rounded container)
 
-        // P-DIVIDER: Gap + subtle drag handle between the Editor region and the Bottom
-        // Panel — only present while the panel is visible, mirroring the visibility
-        // check PssBottomPanelContent does internally. The visible drag handle itself
-        // (rendered inside PssBottomPanelContent) provides the touch-friendly thin
-        // separator; this gap is what keeps the two rounded containers independent.
-        if (showBottomPanel && !fullScreen) {
-            Spacer(Modifier.height(WorkspaceShapes.PanelGapMedium))
-        }
-
-        // Bottom Panel — extracted to PssBottomPanelContent to keep
-        // ProjectShellScreen's DEX method register count below ART's 256-register
-        // verifier limit (VerifyError fix). Renders as its OWN independent rounded
-        // container (see WorkspaceShapes doc) — not merged into the editor region above.
-        PssBottomPanelContent(
-            showBottomPanel = showBottomPanel,
-            onHideBottomPanel = { showBottomPanel = false },
-            bottomPanelHeight = bottomPanelHeight,
-            onBottomPanelHeightChange = { bottomPanelHeight = it },
-            bottomPanelPrevHeight = bottomPanelPrevHeight,
-            onBottomPanelPrevHeightChange = { bottomPanelPrevHeight = it },
-            bottomPanelMaximized = bottomPanelMaximized,
-            onBottomPanelMaximizedChange = { bottomPanelMaximized = it },
-            isDraggingBottomPanel = isDraggingBottomPanel,
-            onDraggingChange = { isDraggingBottomPanel = it },
-            activeBottomTab = activeBottomTab,
-            onActiveBottomTabChange = { activeBottomTab = it },
-            terminalCommandToRun = terminalCommandToRun,
-            onCommandConsumed = { terminalCommandToRun = null },
-            sharedTerminalState = sharedTerminalState,
-            onFileSystemChanged = onFileSystemChanged,
-            activeEditorTab = activeEditorTab,
-            debugMessages = debugMessages,
-            debugInput = debugInput,
-            sharedPreviewState = sharedPreviewState,
-            previewPort = previewPort,
-            onPreviewPortChange = { previewPort = it },
-            projectId = projectId,
-            totalHeight = totalHeight,
-            dividerColor = DividerColor,
-            panelBg = PanelBg,
-            tabTextInactive = TabTextInactive,
-            onRunInTerminal = { cmd -> terminalCommandToRun = cmd + "\r" },
-            heavyPanesReady = heavyPanesReady,
-            buildProblems = buildProblems,
-            onBuildProblemsChange = { problems -> buildProblems = problems },
-            onJumpToSource = { line -> scrollTargetLine = line; showBottomPanel = false },
-            onJumpToSourceWithPath = jtp@{ filePath, line ->
-                // PR08 (P4a-2): defense in depth — an empty/blank path can never
-                // enter the tab chain, whatever the calling surface sends.
-                if (filePath.isBlank()) return@jtp
-                val targetCanon = canonicalPathOrSelf(filePath)
-                val existingTab = editorTabs.firstOrNull { canonicalPathOrSelf(it) == targetCanon }
-                val resolvedPath = existingTab ?: filePath
-                if (resolvedPath != activeEditorTab) {
-                    if (existingTab == null && !editorTabs.contains(resolvedPath)) editorTabs.add(resolvedPath)
-                    activeEditorTab = resolvedPath
-                }
-                scrollTargetLine = line
-                showBottomPanel = false
-            },
-            fullScreen = fullScreen,
-            // I2 — TERMINAL BRIDGE: PssEditorColumn owns showChatPanelMs/pendingChatPromptMs
-            onAskAi = { p -> showChatPanel = true; pendingChatPromptMs.value = p },
-        )
 
     } // end editor Column
 
