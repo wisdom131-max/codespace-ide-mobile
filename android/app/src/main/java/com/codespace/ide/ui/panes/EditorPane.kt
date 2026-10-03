@@ -675,7 +675,11 @@ fun EditorPane(
     // state read by the breakpointLines/conditionalBreakpointLines keys below.
     var bpVersion by remember { mutableStateOf(0) }
     DisposableEffect(udm) {
-        val listener = { bpVersion++ }
+        // K2-CI-FIX: untyped lambda infers () -> Int; passing it where () -> Unit is
+        // expected trips the experimental "unit conversions on arbitrary expressions"
+        // feature. Explicit () -> Unit type keeps the return coercion on the
+        // long-supported lambda path (same class as #2724: verify inferred types).
+        val listener: () -> Unit = { bpVersion++ }
         udm?.addOnBreakpointsChangedListener(listener)
         onDispose { udm?.removeOnBreakpointsChangedListener(listener) }
     }

@@ -765,7 +765,9 @@ fun ProjectShellScreen(
     // manual refresh — VS Code parity: the explorer is reactively bound to
     // workspace file events, it has no manual-refresh dependency.
     DisposableEffect(Unit) {
-        val l = { terminalActivityCounter++ }
+        // K2-CI-FIX: same as EditorPane listener — explicit () -> Unit avoids the
+        // experimental arbitrary-expression unit conversion.
+        val l: () -> Unit = { terminalActivityCounter++ }
         com.codespace.ide.util.FsChangeNotifier.addListener(l)
         onDispose { com.codespace.ide.util.FsChangeNotifier.removeListener(l) }
     }
