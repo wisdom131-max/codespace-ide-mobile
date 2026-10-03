@@ -256,7 +256,8 @@ public final class TerminalSession extends TerminalOutput {
     public void gracefulExit() {
         if (isRunning()) {
             try {
-                write("exit\r".getBytes(StandardCharsets.UTF_8));
+                byte[] exitBytes = "exit\r".getBytes(StandardCharsets.UTF_8);
+                write(exitBytes, 0, exitBytes.length);
             } catch (Exception e) {
                 Logger.logWarn(mClient, LOG_TAG, "gracefulExit write failed: " + e.getMessage());
             }
