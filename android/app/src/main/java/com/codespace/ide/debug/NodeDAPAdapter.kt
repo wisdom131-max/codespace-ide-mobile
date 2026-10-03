@@ -204,12 +204,12 @@ class NodeDAPAdapter : DebugAdapter {
             // GitHub release tarball, vendored in APK assets like jdap. Stage 3 is now a
             // local bundle extraction — no registry fetch, seconds not minutes.
             AppOutputLog.log("[JS-DEBUG] stage 3/3: provisioning @vscode/js-debug from the vendored tarball (npm-registry 404 fix)…", "debug")
-            ProotInstaller.ensureJsDebug(context)
+            val ensureDiag = ProotInstaller.ensureJsDebug(context)
             val ok = isJsDebugInstalled(context, workDir)
             if (ok) {
                 AppOutputLog.log("[JS-DEBUG] install complete — js-debug is healthy at /opt/js-debug. Press Debug again.", "debug")
             } else {
-                AppOutputLog.log("[JS-DEBUG] stage 3/3 FAILED — vendored extraction did not yield /opt/js-debug/src/dapDebugServer.js.", "debug")
+                AppOutputLog.log("[JS-DEBUG] stage 3/3 FAILED — vendored extraction did not yield /opt/js-debug/src/dapDebugServer.js. ensureJsDebug diagnostic: $ensureDiag", "debug")
             }
             return ok
         } finally {
@@ -245,6 +245,15 @@ class NodeDAPAdapter : DebugAdapter {
         // (P26-3b) then carries breakpoints, pause, step and variables.
         val debugSpec = session.testDebug
         if (debugSpec != null) {
+            // DEBUG-TEST-SELF-HEAL (2026-10-03): ensure js-debug BEFORE spawning the
+            // debuggee — previously the test path spawned jest first and the js-debug
+            // install check only ran inside launchInternal, so a missing debugger
+            // wasted a spawn and the message arrived after the process was killed.
+            if (!isJsDebugInstalled(context, debugSpec.hostWorkdir ?: debugSpec.guestWorkdir)) {
+                onOutput("[js-debug] js-debug missing - starting the staged install. Press Debug Test again once it completes (progress is in the Output tab).\n")
+                Thread { installJsDebug(context) }.also { it.isDaemon = true }.start()
+                return false
+            }
             // DG12: the spawned debuggee belongs to THIS session's runtime, not
             // the adapter singleton — spawn first, remember the port, and hand
             // both to launchInternal via the per-session runtime it creates.
@@ -278,16 +287,35 @@ class NodeDAPAdapter : DebugAdapter {
      * to the Debug Console.
      */
     /** DG12: returns (process, inspectPort) — both belong to the CALLING session. */
+    /** POSIX single-quote (guest workdirs contain spaces — "My codespace app 3"). */
+    private fun shQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
+
     private fun spawnJestTest(
         context: Context,
         spec: TestDebugSpec,
         onOutput: (String) -> Unit,
     ): Pair<Process, Int>? {
-        // Honest pre-flight: debugging requires jest installed LOCALLY — the
-        // npx-fetched fallback of the Run path cannot be debugged.
         val hostWorkdir = spec.hostWorkdir
-        if (hostWorkdir == null || !java.io.File(hostWorkdir, "node_modules/.bin/jest").exists()) {
-            onOutput("[js-debug] jest is not installed under node_modules in this project - install it locally (npm install) to debug. Run still works via npx.\n")
+        val jestPresent = hostWorkdir != null && java.io.File(hostWorkdir, "node_modules/.bin/jest").exists()
+        // DEBUG-TEST-SELF-HEAL (2026-10-03, owner-directed): the Run path auto-fetches
+        // jest via npx, but Debug used to hard-refuse with a manual "npm install"
+        // instruction — the one Debug Test path that broke the auto-everything pattern.
+        // Debugging needs the LOCAL binary (node_modules/.bin/jest runs node directly
+        // under --inspect-brk; an npx wrapper spawns its own node the inspector cannot
+        // see), so we install jest INTO the project automatically instead of asking.
+        if (!jestPresent && hostWorkdir != null && spec.guestWorkdir != null) {
+            onOutput("[js-debug] jest is not installed under node_modules in this project - installing it automatically (npm install --save-dev jest, one-time)...\n")
+            val npmOut = ProotInstaller.execOnce(context,
+                "cd " + shQuote(spec.guestWorkdir) + " && npm install --save-dev jest 2>&1 | tail -4",
+                timeoutSeconds = 300, logToOutput = true)
+            if (java.io.File(hostWorkdir, "node_modules/.bin/jest").exists()) {
+                onOutput("[js-debug] jest installed into this project.\n")
+            } else {
+                onOutput("[js-debug] jest auto-install failed. Tail:\n" + npmOut.takeLast(300) + "\n[js-debug] Debug needs the local jest binary; Run still works via npx.\n")
+                return null
+            }
+        } else if (!jestPresent) {
+            onOutput("[js-debug] Cannot locate this project's working directory - cannot debug its tests. Run still works via npx.\n")
             return null
         }
         val guestWorkdir = spec.guestWorkdir

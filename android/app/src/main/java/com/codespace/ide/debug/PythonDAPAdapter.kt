@@ -318,6 +318,31 @@ class PythonDAPAdapter : DebugAdapter {
         // Capture once — a class property cannot be smart-cast after the null
         // check (documented pitfall class: delegated/custom-getter properties).
         val debugSpec = session.testDebug
+        // DEBUG-TEST-SELF-HEAL (2026-10-03, owner-directed): test-debug launches the
+        // RUNNER as a module (python3 -m pytest …); a missing pytest used to surface
+        // only as a debugpy module-error AFTER launch. Ensure it first, with the same
+        // three-source auto-install chain as debugpy (pip3 -> python3 -m pip -> apt).
+        if (debugSpec != null && debugSpec.runner == "pytest") {
+            val probe = ProotInstaller.execOnce(context,
+                "python3 -c 'import pytest' 2>/dev/null && echo PYTEST_OK || echo PYTEST_MISSING",
+                timeoutSeconds = 20)
+            if (!probe.contains("PYTEST_OK")) {
+                onOutput("[debug-test] pytest is not installed in the Ubuntu container - installing automatically (one-time)...\n")
+                val pipOut = ProotInstaller.execOnce(context,
+                    "pip3 install --break-system-packages pytest 2>&1 || " +
+                    "python3 -m pip install --break-system-packages pytest 2>&1 || " +
+                    "( apt-get update -qq && apt-get install -y --no-install-recommends python3-pytest ) 2>&1 | tail -4",
+                    timeoutSeconds = 300, logToOutput = true)
+                val reprobe = ProotInstaller.execOnce(context,
+                    "python3 -c 'import pytest' 2>/dev/null && echo PYTEST_OK || echo PYTEST_MISSING",
+                    timeoutSeconds = 20)
+                if (!reprobe.contains("PYTEST_OK")) {
+                    onOutput("[debug-test] pytest install failed - tail:\n" + pipOut.takeLast(300) + "\n[debug-test] Press Debug Test again to retry.\n")
+                    return false
+                }
+                onOutput("[debug-test] pytest installed.\n")
+            }
+        }
         val launchArgs = if (debugSpec != null) {
             val spec = debugSpec
             JSONObject().apply {

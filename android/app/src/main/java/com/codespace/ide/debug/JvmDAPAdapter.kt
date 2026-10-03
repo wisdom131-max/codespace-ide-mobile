@@ -340,6 +340,12 @@ class JvmDAPAdapter : DebugAdapter {
         val spec = session.testDebug // F5: JVM test-debug (gradle --debug-jvm)
         val debuggee: Process?
         val jdwpPort = java.util.concurrent.atomic.AtomicInteger(-1) // set by the gradle port-parse thread
+        // ATTACH-DIAG (2026-10-03, owner-directed): the debuggee dies between its
+        // "Listening for transport" line and the attach attempt on-device, and the
+        // only visible symptom is "Connection refused". Track WHEN the listen line
+        // arrived and watch the debuggee shell so its death moment is recorded.
+        val listenAtMs = java.util.concurrent.atomic.AtomicLong(0)
+        val attachSettled = java.util.concurrent.atomic.AtomicBoolean(false)
         if (spec != null) {
             debuggee = spawnGradleTestDebuggee(context, spec, { p -> jdwpPort.set(p) }, onOutput)
             if (debuggee == null) return false
@@ -348,6 +354,7 @@ class JvmDAPAdapter : DebugAdapter {
             while (jdwpPort.get() < 0 && System.currentTimeMillis() < deadline && debuggee.isAlive) {
                 try { Thread.sleep(250) } catch (_: InterruptedException) { break }
             }
+            if (jdwpPort.get() >= 0 && listenAtMs.get() == 0L) listenAtMs.set(System.currentTimeMillis())
             if (jdwpPort.get() < 0) {
                 jdwpPort.set(5005)
                 onOutput("[jdap] No 'Listening for transport' line seen - assuming the default JDWP port 5005.\n")
@@ -375,7 +382,23 @@ class JvmDAPAdapter : DebugAdapter {
                 }
                 return false
             }
+            listenAtMs.set(System.currentTimeMillis())
         }
+        // ATTACH-DIAG: watchdog — polls the debuggee shell until the attach settles
+        // (or 120s); if the debuggee dies first, its exit code and death offset from
+        // the listen line land in the console, pinpointing WHO died WHEN.
+        Thread {
+            val shell = debuggee
+            while (!attachSettled.get() && System.currentTimeMillis() - (listenAtMs.get().takeIf { it > 0 } ?: System.currentTimeMillis()) < 120_000) {
+                if (shell == null || !shell.isAlive) {
+                    val code = runCatching { shell?.exitValue() }.getOrNull()
+                    val offset = if (listenAtMs.get() > 0) System.currentTimeMillis() - listenAtMs.get() else -1L
+                    onOutput("[jdap] WATCHDOG: debuggee shell EXITED (code=$code) ${offset}ms after the JDWP listen line — before the attach completed.\n")
+                    break
+                }
+                try { Thread.sleep(400) } catch (_: InterruptedException) { break }
+            }
+        }.also { it.isDaemon = true }.start()
 
         // Spawn the jdap DAP driver (DAP over stdin/stdout; launcher caps its
         // JVM at -Xmx256m — F6-d captures the real two-JVM numbers).
@@ -464,11 +487,27 @@ class JvmDAPAdapter : DebugAdapter {
             }
         }
         if (attachResp == null) {
-            onOutput("[jdap] Attach to JDWP port ${jdwpPort.get()} failed: $attachErr. The debuggee output above shows its state.\n")
+            attachSettled.set(true)
+            // ATTACH-DIAG (2026-10-03, owner-directed): "Connection refused" on a port
+            // that just listened means the debuggee (or its JVM) died first. Record the
+            // shell's fate AND whether a java process still exists guest-side — this
+            // separates "shell alive, JVM dead" (OOM/JDWP bind) from "whole tree killed"
+            // (session teardown / external killer).
+            val shellAlive = debuggee.isAlive
+            val shellExit = if (!shellAlive) runCatching { debuggee.exitValue() }.getOrNull() else null
+            val offset = if (listenAtMs.get() > 0) System.currentTimeMillis() - listenAtMs.get() else -1L
+            onOutput("[jdap] Attach to JDWP port ${jdwpPort.get()} failed: $attachErr.\n")
+            onOutput("[jdap] ATTACH-FAIL DIAG: debuggee shell alive=$shellAlive" + (shellExit?.let { ", exitCode=$it" } ?: "") + " — ${offset}ms after the JDWP listen line.\n")
+            val probe = runCatching {
+                com.codespace.ide.terminal.ProotInstaller.execOnce(context,
+                    "pgrep -af java 2>/dev/null || echo NO_JAVA_PROCESS", timeoutSeconds = 15)
+            }.getOrNull() ?: "(probe failed)"
+            onOutput("[jdap] ATTACH-FAIL DIAG: guest java processes at failure time: " + probe.trim().take(300) + "\n")
             teardown(rt, session.id)
             debuggee.destroyForcibly()
             return false
         }
+        attachSettled.set(true)
         onOutput("[jdap] Attached to the debuggee (JDWP port ${jdwpPort.get()}).\n")
 
         // 2b. DAP spec: configure after 'initialized'. jdap's core sends it when

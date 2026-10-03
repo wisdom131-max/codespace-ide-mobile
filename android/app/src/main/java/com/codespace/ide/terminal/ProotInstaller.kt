@@ -1,6 +1,7 @@
 package com.codespace.ide.terminal
 
 import com.codespace.ide.data.NotificationStore
+import com.codespace.ide.diagnostics.AppOutputLog
 
 import android.content.Context
 import android.util.Log
@@ -1750,13 +1751,25 @@ exit 0
      * for already-installed rootfs (version-marker refresh).
      */
     fun provisionJsDebug(ctx: Context, rootfs: File = rootfsDir(ctx)) {
-        ctx.assets.open("js-debug/$JS_DEBUG_TARBALL").use { inp ->
-            File(rootfs, "opt/jsdebug-bundle").mkdirs()
-            File(rootfs, "opt/jsdebug-bundle/$JS_DEBUG_TARBALL").outputStream().use { out -> inp.copyTo(out) }
-        }
-        ctx.assets.open("js-debug/VERSION").use { inp ->
-            File(rootfs, "opt/js-debug").mkdirs()
-            File(rootfs, "opt/js-debug/VERSION").outputStream().use { out -> inp.copyTo(out) }
+        // JS-DEBUG-DIAG (2026-10-03, owner-directed): stage failures were invisible
+        // (only Logcat) — the Output tab saw a bare "extraction did not yield" with
+        // no cause. Staging now reports bytes-or-throwable to the debug channel.
+        try {
+            ctx.assets.open("js-debug/$JS_DEBUG_TARBALL").use { inp ->
+                File(rootfs, "opt/jsdebug-bundle").mkdirs()
+                val staged = File(rootfs, "opt/jsdebug-bundle/$JS_DEBUG_TARBALL")
+                staged.outputStream().use { out ->
+                    val n = inp.copyTo(out)
+                    AppOutputLog.log("[JS-DEBUG] staged tarball into rootfs: $n bytes -> opt/jsdebug-bundle/", "debug")
+                }
+            }
+            ctx.assets.open("js-debug/VERSION").use { inp ->
+                File(rootfs, "opt/js-debug").mkdirs()
+                File(rootfs, "opt/js-debug/VERSION").outputStream().use { out -> inp.copyTo(out) }
+            }
+        } catch (t: Throwable) {
+            AppOutputLog.log("[JS-DEBUG] STAGING FAILED: " + t.javaClass.simpleName + ": " + t.message, "debug")
+            throw t
         }
         Log.i(TAG, "js-debug bundle staged at /opt/jsdebug-bundle (extraction at first use)")
     }
@@ -1768,18 +1781,64 @@ exit 0
      * the marker changed. Called by NodeDAPAdapter before use — no rootfs →
      * no-op, never blocks.
      */
-    fun ensureJsDebug(ctx: Context) {
+    /**
+     * JS-DEBUG-DIAG (2026-10-03, owner-directed): returns a diagnostic string so
+     * callers can report the REAL failure. Extraction order: (1) HOST-side toybox
+     * tar directly into the rootfs tree — deterministic, no proot/guest-tar in the
+     * loop (the vendored tarball contains ZERO symlinks, verified, so host-side
+     * extraction is safe — the symlink-deferral machinery is not needed here).
+     * (2) guest-side tar fallback. Every step's outcome lands in the debug channel.
+     */
+    fun ensureJsDebug(ctx: Context): String {
         val rootfs = rootfsDir(ctx)
-        if (!File(rootfs, "usr/bin/bash").exists()) return // no rootfs installed yet
-        if (!jsDebugUpToDate(ctx, rootfs)) {
-            runCatching { provisionJsDebug(ctx, rootfs) }
-                .onFailure { Log.w(TAG, "ensureJsDebug provision: ${it.message}") }
-            // Extract guest-side so proot handles the tar's symlinks natively.
-            execOnce(ctx,
-                "mkdir -p /opt && tar -xzf /opt/jsdebug-bundle/$JS_DEBUG_TARBALL -C /opt/ 2>&1 | tail -2; " +
-                "test -f /opt/js-debug/src/dapDebugServer.js && echo JS_DEBUG_EXTRACTED",
-                timeoutSeconds = 60)
+        if (!File(rootfs, "usr/bin/bash").exists()) return "no rootfs installed yet" // no rootfs yet
+        if (jsDebugUpToDate(ctx, rootfs)) return "up-to-date"
+        var diag = "unknown"
+        try { provisionJsDebug(ctx, rootfs) } catch (t: Throwable) { return "provision failed: ${t.message}" }
+        val tarball = File(rootfs, "opt/jsdebug-bundle/$JS_DEBUG_TARBALL")
+        if (!tarball.exists()) return "staged tarball missing at ${tarball.path}"
+        // Pure-JVM host-side extraction via commons-compress (already a dependency
+        // here for the rootfs bootstrap) — no toybox/guest-tar assumption at all.
+        AppOutputLog.log("[JS-DEBUG] extracting HOST-side (commons-compress) into rootfs/opt …", "debug")
+        try {
+            var files = 0; var skipped = 0
+            java.util.zip.GZIPInputStream(tarball.inputStream().buffered()).use { gz ->
+                org.apache.commons.compress.archivers.tar.TarArchiveInputStream(gz).use { tar ->
+                    var e = tar.nextTarEntry
+                    while (e != null) {
+                        val dest = File(rootfs, "opt/" + e.name)
+                        if (e.isDirectory) {
+                            dest.mkdirs()
+                        } else if (e.isLink || e.isSymbolicLink) {
+                            skipped++ // none in this tarball (verified); count anyway
+                        } else {
+                            dest.parentFile?.mkdirs()
+                            dest.outputStream().use { out -> tar.copyTo(out) }
+                            dest.setReadable(true, false)
+                            files++
+                        }
+                        e = tar.nextTarEntry
+                    }
+                }
+            }
+            if (File(rootfs, "opt/js-debug/src/dapDebugServer.js").exists()) {
+                AppOutputLog.log("[JS-DEBUG] host-side extraction OK ($files files, $skipped symlink entries skipped).", "debug")
+                return "host-extract ok ($files files)"
+            }
+            diag = "host-extract wrote $files files but entry point absent"
+            AppOutputLog.log("[JS-DEBUG] host-side extraction: $diag", "debug")
+        } catch (t: Throwable) {
+            diag = "host-extract threw: ${t.javaClass.simpleName}: ${t.message}"
+            AppOutputLog.log("[JS-DEBUG] host-side extraction threw: $diag", "debug")
         }
+        // Guest-side fallback (the previous primary). Output is now LOGGED, not swallowed.
+        val guestOut = execOnce(ctx,
+            "mkdir -p /opt && tar -xzf /opt/jsdebug-bundle/$JS_DEBUG_TARBALL -C /opt/ 2>&1 | tail -3; " +
+            "test -f /opt/js-debug/src/dapDebugServer.js && echo JS_DEBUG_EXTRACTED",
+            timeoutSeconds = 60)
+        AppOutputLog.log("[JS-DEBUG] guest-side extraction output: " + guestOut.trim().take(300), "debug")
+        if (File(rootfs, "opt/js-debug/src/dapDebugServer.js").exists()) return "guest-extract ok"
+        return "extraction failed — diag: $diag; guest: ${guestOut.trim().take(200)}"
     }
 
     /** Version-marker check: refreshes when the shipped VERSION differs, the
