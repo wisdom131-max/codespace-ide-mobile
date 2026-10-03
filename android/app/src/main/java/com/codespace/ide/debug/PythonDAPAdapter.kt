@@ -145,7 +145,11 @@ class PythonDAPAdapter : DebugAdapter {
             "dpkg --configure -a 2>/dev/null; " +
             "command -v pip3 >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq python3-pip); " +
             "pip3 install --break-system-packages debugpy 2>&1 || " +
-            "python3 -m pip install --break-system-packages debugpy 2>&1",
+            "python3 -m pip install --break-system-packages debugpy 2>&1 || " +
+            // SELF-HEAL (2026-10-03, owner-approved): third genuine source — Ubuntu
+            // universe ships python3-debugpy 1.8.0 (verified in the noble pool). Used
+            // when pip/network is broken; a version-batched install beats none.
+            "( apt-get update -qq && apt-get install -y --no-install-recommends python3-debugpy ) 2>&1",
             workdir = workDir, timeoutSeconds = 300, logToOutput = true)
         Log.d(TAG, "debugpy install result: $result")
         lastInstallOutput = result

@@ -368,7 +368,9 @@ object LspManager {
             Language.KOTLIN,
             "kotlin-language-server",
             emptyList(),
-            "which kotlin-language-server && echo OK",
+            // SELF-HEAL (2026-10-03, owner-approved): lib-jar probe, not bare `which` —
+            // a dangling symlink or half-extracted zip passed the old check forever.
+            "which kotlin-language-server && test -n \"$(ls /opt/kotlin-language-server/server/lib/*.jar 2>/dev/null)\" && echo OK",
             // R3-KLSP-STDLIB: Install command now also downloads kotlin-stdlib-1.9.22.jar
             // from Maven Central to /opt/kotlin-stdlib/ so loose .kt files (no build.gradle)
             // get basic stdlib completions (listOf, println, map, etc.) via the global
@@ -396,7 +398,7 @@ object LspManager {
             Language.GO,
             "gopls",
             emptyList(),
-            "which gopls && echo OK",
+            "which gopls && gopls version >/dev/null 2>&1 && echo OK",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends golang-go; go install golang.org/x/tools/gopls@latest",
         ),
         // ── Java ───────────────────────────────────────────────────────────
@@ -410,10 +412,23 @@ object LspManager {
             // -Xms/-Xmx occurrence, so passing these appends overrides the launcher's
             // 1G minimum and pins an explicit 384m cap independent of JTO.
             listOf("--jvm-arg=-Xms32m", "--jvm-arg=-Xmx384m", "-data", "/tmp/jdtls-workspace"),
-            "test -f /opt/jdtls/bin/jdtls && echo found",
+            // SELF-HEAL (2026-10-03, owner-approved): half-extract detection. A truncated
+            // tar leaves bin/jdtls present but an empty/partial plugins dir — the old
+            // check passed forever and jdtls failed on every launch. Full 1.9.0 ships
+            // ~40 plugin jars; >=5 means the extraction is real.
+            "command -v java >/dev/null 2>&1 && test -f /opt/jdtls/bin/jdtls && [ \"$(ls /opt/jdtls/plugins/*.jar 2>/dev/null | wc -l)\" -ge 5 ] && echo found",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless curl unzip; " +
                 "mkdir -p /opt/jdtls && " +
-                "curl -fsSL https://download.eclipse.org/jdtls/milestones/1.9.0/jdt-language-server-1.9.0-202203031534.tar.gz | tar -xz -C /opt/jdtls && " +
+                // SELF-HEAL (2026-10-03, owner-approved): two genuine sources + retry/resume.
+                // Primary: download.eclipse.org direct, hardened with --retry/-C - so a
+                // flaky mobile connection resumes instead of restarting. Secondary:
+                // eclipse.org download.php?r=1 (302 to a random mirror — verified live:
+                // HTTP 302 -> download.eclipse.org). A half-extracted /opt/jdtls is
+                // wiped first so tar never merges over a partial tree.
+                "rm -rf /opt/jdtls && mkdir -p /opt/jdtls && " +
+                "( curl -fsSL --retry 3 -C - https://download.eclipse.org/jdtls/milestones/1.9.0/jdt-language-server-1.9.0-202203031534.tar.gz -o /tmp/jdtls.tgz || " +
+                "curl -fsSL --retry 3 'https://www.eclipse.org/downloads/download.php?file=/jdtls/milestones/1.9.0/jdt-language-server-1.9.0-202203031534.tar.gz&r=1' -o /tmp/jdtls.tgz ) && " +
+                "tar -xzf /tmp/jdtls.tgz -C /opt/jdtls && rm -f /tmp/jdtls.tgz && " +
                 "chmod +x /opt/jdtls/bin/jdtls && echo jdtls-installed",
             300,
         ),
@@ -423,7 +438,7 @@ object LspManager {
             Language.C,
             "clangd",
             listOf("--background-index", "--clang-tidy"),
-            "which clangd && echo OK",
+            "which clangd && clangd --version >/dev/null 2>&1 && echo OK",
             // P31-LSP-FIX: Clear stale dpkg locks before apt-get.
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -436,7 +451,7 @@ object LspManager {
             Language.CPP,
             "clangd",
             listOf("--background-index", "--clang-tidy"),
-            "which clangd && echo OK",
+            "which clangd && clangd --version >/dev/null 2>&1 && echo OK",
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
@@ -449,7 +464,7 @@ object LspManager {
             Language.RUST,
             "rust-analyzer",
             emptyList(),
-            "which rust-analyzer && echo OK",
+            "which rust-analyzer && rust-analyzer --version >/dev/null 2>&1 && echo OK",
             "apt-get update -qq; apt-get install -y --no-install-recommends curl; " +
                 "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable; " +
                 "source \$HOME/.cargo/env; " +
@@ -463,7 +478,7 @@ object LspManager {
             Language.PHP,
             "intelephense",
             listOf("--stdio"),
-            "which intelephense && echo OK",
+            "which intelephense && intelephense --version >/dev/null 2>&1 && echo OK",
             // LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -488,7 +503,7 @@ object LspManager {
             Language.HTML,
             "vscode-html-language-server",
             listOf("--stdio"),
-            "which vscode-html-language-server && echo OK",
+            "which vscode-html-language-server && vscode-html-language-server --version >/dev/null 2>&1 && echo OK",
             // LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -511,7 +526,7 @@ object LspManager {
             Language.CSS,
             "vscode-css-language-server",
             listOf("--stdio"),
-            "which vscode-css-language-server && echo OK",
+            "which vscode-css-language-server && vscode-css-language-server --version >/dev/null 2>&1 && echo OK",
             // LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -535,7 +550,7 @@ object LspManager {
             Language.JSON,
             "vscode-json-language-server",
             listOf("--stdio"),
-            "which vscode-json-language-server && echo OK",
+            "which vscode-json-language-server && vscode-json-language-server --version >/dev/null 2>&1 && echo OK",
             // LSP-FIX: NodeSource-based install — bypasses broken apt nodejs (libnode115 conflict).
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
@@ -558,7 +573,7 @@ object LspManager {
             Language.RUBY,
             "solargraph",
             listOf("stdio"),
-            "which solargraph && echo OK",
+            "which solargraph && solargraph --version >/dev/null 2>&1 && echo OK",
             "dpkg --configure -a 2>/dev/null; " +
                 "( command -v ruby >/dev/null 2>&1 && command -v gem >/dev/null 2>&1 ) || " +
                 "( apt-get update -qq && apt-get install -y --no-install-recommends ruby ruby-dev ); " +
@@ -571,7 +586,7 @@ object LspManager {
             Language.CSHARP,
             "OmniSharp",
             listOf("-stdio", "-loglevel", "warning"),
-            "which OmniSharp && echo OK || test -f /opt/omnisharp/OmniSharp && echo OK",
+            "test -f /opt/omnisharp/OmniSharp && test -f /opt/omnisharp/OmniSharp.dll && echo OK",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
                 "apt-get install -y --no-install-recommends unzip curl ca-certificates; " +
                 "mkdir -p /opt/omnisharp && " +
@@ -586,7 +601,7 @@ object LspManager {
             Language.LUA,
             "lua-language-server",
             listOf("--stdio"),
-            "which lua-language-server && echo OK",
+            "which lua-language-server && test -f /opt/lua-language-server/main.lua && echo OK",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
                 "apt-get install -y --no-install-recommends unzip curl ca-certificates; " +
                 "curl -fsSL 'https://github.com/LuaLS/lua-language-server/releases/download/3.13.5/lua-language-server-3.13.5-linux-arm64.tar.gz' | tar -xz -C /opt && " +
@@ -615,7 +630,7 @@ object LspManager {
             Language.SQL,
             "sql-language-server",
             listOf("up", "--method", "stdio"),
-            "which sql-language-server && echo OK",
+            "which sql-language-server && sql-language-server --version >/dev/null 2>&1 && echo OK",
             "[ -f /usr/lib/libdpkg_android_fix.so ] && export LD_PRELOAD=/usr/lib/libdpkg_android_fix.so; " +
                 "rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend " +
                 "/var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null; " +
@@ -638,7 +653,7 @@ object LspManager {
             "pwsh",
             listOf("-NoLogo", "-NoProfile", "-Command",
                 "/opt/powershell-editor-services/PowerShellEditorServices/Start-EditorServices.ps1 -Stdio"),
-            "which pwsh && test -d /opt/powershell-editor-services && echo OK",
+            "which pwsh && test -f /opt/powershell-editor-services/PowerShellEditorServices/Start-EditorServices.ps1 && echo OK",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
                 "apt-get install -y --no-install-recommends curl unzip libssl-dev; " +
                 "curl -fsSL 'https://github.com/PowerShell/PowerShell/releases/download/v7.4.6/powershell-7.4.6-linux-arm64.tar.gz' | tar -xz -C /opt/pwsh && " +
@@ -654,7 +669,7 @@ object LspManager {
             Language.SCALA,
             "metals",
             listOf("-Dmetals.client=emacs", "-XX:+UseG1GC", "-XX:+UseStringDeduplication"),
-            "which metals && echo OK",
+            "which metals && test -s \"$(readlink -f \"$(which metals)\")\" && echo OK",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
                 "apt-get install -y --no-install-recommends default-jre-headless curl; " +
                 "curl -fsSL -o /usr/local/bin/metals 'https://github.com/scalameta/metals/releases/download/v1.4.0/metals-linux-arm64' && " +
@@ -679,7 +694,7 @@ object LspManager {
             Language.SWIFT,
             "sourcekit-lsp",
             listOf("--stdio"),
-            "which sourcekit-lsp && echo OK",
+            "which sourcekit-lsp && test -f \"$(readlink -f \"$(which sourcekit-lsp)\")\" && echo OK",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; " +
                 "apt-get install -y --no-install-recommends curl tar ca-certificates; " +
                 "curl -fsSL 'https://download.swift.org/swift-5.10.1-release/ubuntu2404/swift-5.10.1-RELEASE/swift-5.10.1-RELEASE-ubuntu24.04-aarch64.tar.gz' | tar -xz -C /opt && " +

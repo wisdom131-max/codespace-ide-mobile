@@ -178,8 +178,26 @@ class NodeDAPAdapter : DebugAdapter {
                     "apt-get install -y --no-install-recommends nodejs npm 2>&1 | tail -5",
                     timeoutSeconds = 600)
                 if (!nodePresent(ProotInstaller.execOnce(context, nodeProbe, workdir = workDir, timeoutSeconds = 15))) {
-                    AppOutputLog.log("[JS-DEBUG] stage 2/3 FAILED — node/npm still absent after apt. Last apt lines: " + aptOut.takeLast(300), "debug")
-                    return false
+                    // SELF-HEAL (2026-10-03, owner-approved): second genuine source for
+                    // node+npm — the same NodeSource chain the LSP installs use (it
+                    // exists precisely because Ubuntu apt's nodejs is regularly wedged
+                    // by the libnode115 conflict). Purge the broken apt install first,
+                    // then NodeSource Node 20. Only fail when BOTH methods fail.
+                    AppOutputLog.log("[JS-DEBUG] stage 2/3: apt node/npm failed — trying NodeSource fallback (purge + setup_20.x)…", "debug")
+                    ProotInstaller.execOnce(context,
+                        "dpkg --configure -a 2>/dev/null; " +
+                        "apt-get install -f -y 2>/dev/null; " +
+                        "apt-get remove --purge nodejs npm -y 2>/dev/null; " +
+                        "apt-get autoremove -y 2>/dev/null; " +
+                        "( command -v curl >/dev/null 2>&1 || apt-get install -y curl 2>/dev/null ) && " +
+                        "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && " +
+                        "apt-get install -y nodejs",
+                        timeoutSeconds = 600)
+                    if (!nodePresent(ProotInstaller.execOnce(context, nodeProbe, workdir = workDir, timeoutSeconds = 15))) {
+                        AppOutputLog.log("[JS-DEBUG] stage 2/3 FAILED — node/npm still absent after apt AND NodeSource. Last apt lines: " + aptOut.takeLast(300), "debug")
+                        return false
+                    }
+                    AppOutputLog.log("[JS-DEBUG] stage 2/3: NodeSource fallback delivered node+npm.", "debug")
                 }
             }
             // JS-DEBUG-VENDOR (npm 404 fix): @vscode/js-debug is only published as a

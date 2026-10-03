@@ -137,14 +137,42 @@ class JvmDAPAdapter : DebugAdapter {
     /** Honest pre-flight: the jdap bundle and a JVM must exist in the container. */
     private fun preflight(context: Context, onOutput: (String) -> Unit): Boolean {
         ProotInstaller.ensureJdap(context)
-        val out = ProotInstaller.execOnce(context, "ls /opt/jdap/DapDriver.jar 2>/dev/null; command -v java >/dev/null 2>&1 && java -version 2>&1 | head -1 || echo NO_JAVA", timeoutSeconds = 15)
+        var out = ProotInstaller.execOnce(context, "ls /opt/jdap/DapDriver.jar 2>/dev/null; command -v java >/dev/null 2>&1 && java -version 2>&1 | head -1 || echo NO_JAVA", timeoutSeconds = 15)
         if (!out.contains("DapDriver.jar")) {
-            onOutput("[jdap] The jdap driver is not present in the Ubuntu container - reinstall the app and open Ubuntu once to provision it.\n")
-            return false
+            // SELF-HEAL (2026-10-03, owner-approved): repair from the built-in bundle
+            // instead of telling the user to reinstall the app. provisionJdap is a local
+            // APK-asset copy (seconds, no network); ensureJdap may have no-oped on a
+            // rootfs that does not exist yet, in which case re-probing still fails and
+            // we fall through to the honest message below.
+            onOutput("[jdap] jdap driver missing - repairing from the built-in bundle...\n")
+            runCatching { ProotInstaller.provisionJdap(context) }
+                .onFailure { onOutput("[jdap] bundle repair threw: " + it.message + "\n") }
+            out = ProotInstaller.execOnce(context, "ls /opt/jdap/DapDriver.jar 2>/dev/null; command -v java >/dev/null 2>&1 && java -version 2>&1 | head -1 || echo NO_JAVA", timeoutSeconds = 15)
+            if (!out.contains("DapDriver.jar")) {
+                onOutput("[jdap] jdap repair failed - the Ubuntu rootfs may not be installed yet. Open Ubuntu once (it provisions automatically), then press Debug again.\n")
+                return false
+            }
+            onOutput("[jdap] bundle repaired.\n")
         }
         if (out.contains("NO_JAVA") || !out.contains("version")) {
-            onOutput("[jdap] No JVM inside the Ubuntu container. Install one first: apt update && apt install -y openjdk-21-jdk-headless\n")
-            return false
+            // SELF-HEAL (2026-10-03, owner-approved): auto-install the JVM (the old flow
+            // printed a manual "apt install" instruction - the one install path in the
+            // app that broke the auto-everything pattern). openjdk-21-jdk-headless is
+            // required for FILE mode (javac); fallback default-jdk-headless. One-time,
+            // ~3-5 min under proot, progress streams to the Output tab.
+            onOutput("[jdap] No JVM inside the Ubuntu container - installing openjdk-21-jdk-headless automatically (one-time, ~3-5 min)...\n")
+            val jdkOut = ProotInstaller.execOnce(context,
+                "dpkg --configure -a 2>/dev/null; " +
+                "apt-get update -qq; " +
+                "( apt-get install -y --no-install-recommends openjdk-21-jdk-headless || " +
+                "  apt-get install -y --no-install-recommends default-jdk-headless ) 2>&1 | tail -5",
+                timeoutSeconds = 900, logToOutput = true)
+            out = ProotInstaller.execOnce(context, "ls /opt/jdap/DapDriver.jar 2>/dev/null; command -v java >/dev/null 2>&1 && java -version 2>&1 | head -1 || echo NO_JAVA", timeoutSeconds = 15)
+            if (out.contains("NO_JAVA") || !out.contains("version")) {
+                onOutput("[jdap] JVM install failed. Tail of output:\n" + jdkOut.takeLast(300) + "\n[jdap] Press Debug again to retry.\n")
+                return false
+            }
+            onOutput("[jdap] JVM installed successfully.\n")
         }
         return true
     }

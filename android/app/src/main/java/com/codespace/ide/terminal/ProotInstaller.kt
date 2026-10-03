@@ -1704,9 +1704,23 @@ exit 0
      * (pre-version install), or when a core artifact is absent. All copies are
      * idempotent overwrites. (Ported from ubuntu-proot-test F6-b.)
      */
+    // SELF-HEAL (2026-10-03, owner-approved): every file provisionJdap copies —
+    // jdapUpToDate previously verified only 2 of 12; a half-deleted /opt/jdap
+    // (e.g. manual cleanup or a failed copy) passed the check and every JVM debug
+    // launch then failed with "reinstall the app" instead of repairing.
+    private val jdapDestPaths = listOf(
+        "opt/jdap/jars/com.microsoft.java.debug.core-0.53.1.jar",
+        "opt/jdap/jars/gson-2.8.9.jar", "opt/jdap/jars/commons-io-2.14.0.jar",
+        "opt/jdap/jars/commons-lang3-3.6.jar", "opt/jdap/jars/rxjava-2.2.21.jar",
+        "opt/jdap/jars/reactive-streams-1.0.4.jar",
+        "opt/jdap/DapDriver.jar", "opt/jdap/DapDriver.java", "opt/jdap/SourceProvider.java",
+        "opt/jdap/EvalEngine.java", "opt/jdap/JdapEvalHost.java", "opt/jdap/jdap-evalhost.jar",
+        "opt/jdap/jdap_eval_test.py", "opt/jdap/Hello.java", "opt/jdap/VERSION",
+        "usr/local/bin/jdap",
+    )
+
     private fun jdapUpToDate(ctx: Context, rootfs: File): Boolean {
-        if (!File(rootfs, "opt/jdap/DapDriver.jar").exists()) return false
-        if (!File(rootfs, "opt/jdap/jdap-evalhost.jar").exists()) return false
+        if (jdapDestPaths.any { !File(rootfs, it).exists() }) return false
         val shipped = runCatching {
             ctx.assets.open("jdap/VERSION").bufferedReader().use { it.readText().trim() }
         }.getOrNull() ?: return true // no version asset shipped: fall back to presence
