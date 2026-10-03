@@ -21,7 +21,10 @@ import kotlinx.coroutines.delay
 internal suspend fun awaitTerminalReadiness(
     activityResumed: () -> Boolean,
     serviceBound: () -> Boolean,
-    pollMs: Long = 250L,
+    // Owner-approved 2026-10-03: 50ms poll — worst-case gate overhead one
+    // poll interval (was 250ms; the gate is condition-based so common-case
+    // latency is still one iteration when the signals already hold).
+    pollMs: Long = 50L,
     maxWaitMs: Long = 30_000L,
 ): Boolean {
     val start = android.os.SystemClock.elapsedRealtime()
