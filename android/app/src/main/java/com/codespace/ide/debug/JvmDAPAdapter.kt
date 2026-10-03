@@ -161,6 +161,7 @@ class JvmDAPAdapter : DebugAdapter {
         session: DebugSession,
         port: Int,
         onOutput: (String) -> Unit,
+        listenLatch: java.util.concurrent.CountDownLatch,
     ): Process? {
         val guestPath = ProotInstaller.hostToGuestPath(context, session.filePath)
             ?: run {
@@ -191,7 +192,7 @@ class JvmDAPAdapter : DebugAdapter {
             " -cp " + cp + " " + shQuote(baseName) + " 2>&1"
         val proc = spawnShellProcess(context, shellCommand, onOutput,
             "[jdap] Failed to spawn the debuggee: ") ?: return null
-        drainToConsole(proc, onOutput)
+        drainToConsole(proc, onOutput, listenLatch)
         return proc
     }
 
@@ -270,13 +271,20 @@ class JvmDAPAdapter : DebugAdapter {
     }
 
     /** Drain a process's stdout to the Debug Console so a full pipe never blocks it. */
-    private fun drainToConsole(proc: Process, onOutput: (String) -> Unit) {
+    private fun drainToConsole(
+        proc: Process,
+        onOutput: (String) -> Unit,
+        listenLatch: java.util.concurrent.CountDownLatch? = null,
+    ) {
         Thread {
             try {
                 java.io.BufferedReader(java.io.InputStreamReader(proc.inputStream)).use { reader ->
                     while (true) {
                         val line = reader.readLine() ?: break
                         if (line.isNotBlank()) onOutput(line + "\n")
+                        if (listenLatch != null && line.contains("Listening for transport dt_socket at address:")) {
+                            listenLatch.countDown() // the debuggee JVM has bound JDWP
+                        }
                     }
                 }
             } catch (_: Exception) {
@@ -320,8 +328,21 @@ class JvmDAPAdapter : DebugAdapter {
                 return false
             }
             jdwpPort.set(port)
-            debuggee = spawnFileDebuggee(context, session, port, onOutput)
+            // F6-d attach race: the 7/7 test slept 3s before attach; the event
+            // equivalent is to wait for the debuggee JVM to actually report
+            // "Listening for transport" before any attach goes out.
+            val listenLatch = java.util.concurrent.CountDownLatch(1)
+            debuggee = spawnFileDebuggee(context, session, port, onOutput, listenLatch)
             if (debuggee == null) return false
+            if (!listenLatch.await(90, TimeUnit.SECONDS)) {
+                if (!debuggee.isAlive) {
+                    onOutput("[jdap] The debuggee exited before its JDWP listener came up (see output above).\n")
+                } else {
+                    onOutput("[jdap] The debuggee JVM did not report a JDWP listener within 90s - aborting.\n")
+                    debuggee.destroyForcibly()
+                }
+                return false
+            }
         }
 
         // Spawn the jdap DAP driver (DAP over stdin/stdout; launcher caps its
@@ -391,9 +412,22 @@ class JvmDAPAdapter : DebugAdapter {
             put("projectName", File(session.filePath).name)
         }
         Log.d(TAG, "Sending DAP attach port=${jdwpPort.get()}")
-        val attachResp = dapClient.request("attach", attachArgs, timeoutSeconds = 30)
+        // F6-d: one retry (races surface as a fast refused-connection error,
+    // which the driver answers while still healthy) + the REAL reason.
+        var attachResp: JSONObject? = null
+        var attachErr: String? = null
+        for (attempt in 1..2) {
+            val r = dapClient.requestDetailed("attach", attachArgs, timeoutSeconds = 30)
+            attachResp = r.first
+            attachErr = r.second
+            if (attachResp != null) break
+            if (attempt == 1) {
+                onOutput("[jdap] Attach attempt 1 failed ($attachErr) - retrying once...\n")
+                try { Thread.sleep(2000) } catch (_: InterruptedException) { }
+            }
+        }
         if (attachResp == null) {
-            onOutput("[jdap] Attach to JDWP port ${jdwpPort.get()} failed - the debuggee may not be listening (see its output above).\n")
+            onOutput("[jdap] Attach to JDWP port ${jdwpPort.get()} failed: $attachErr. The debuggee output above shows its state.\n")
             teardown(rt, session.id)
             debuggee.destroyForcibly()
             return false

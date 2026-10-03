@@ -3692,14 +3692,13 @@ private fun PssBottomPanelContent(
                     if (path.isNullOrBlank()) {
                         debugMessages.add("[debug] No file open — open a file first, then press Run.")
                     } else {
-                        // P25-DEBUG: Start real debug session via UDM
                         val lang = Language.fromPath(path)
-                        // DEBUG-ANR FIX: async — startDebug blocks up to 10s+ on proot.
-                        com.codespace.ide.debug.UniversalDebugManager.startDebugAsync(lang, path, null, context) { sessionId ->
-                        if (sessionId != null) {
-                            debugMessages.add("[debug] Session started: ${lang.displayName} — ${path.substringAfterLast('/')}")
-                        } else {
-                            // Fallback: non-debuggable file policy
+                        // F6-d: "not debuggable" and "launch failed" are DIFFERENT
+                        // outcomes and must never share one message — a Java/JS
+                        // launch that compiled and started but failed at attach
+                        // previously fell through to "Don't know how to run this
+                        // file type."
+                        if (!com.codespace.ide.debug.UniversalDebugManager.canDebug(lang, path, context)) {
                             val ext = path.substringAfterLast(".").lowercase()
                             val alternatives = when (ext) {
                                 "html", "htm" -> "HTML is not directly debuggable. Try: Open Preview, Inspect DOM, or Open Console."
@@ -3712,7 +3711,15 @@ private fun PssBottomPanelContent(
                                 else -> "Don't know how to run this file type."
                             }
                             debugMessages.add("[debug] " + alternatives)
-                        }
+                        } else {
+                            // DEBUG-ANR FIX: async — startDebug blocks up to 10s+ on proot.
+                            com.codespace.ide.debug.UniversalDebugManager.startDebugAsync(lang, path, null, context) { sessionId ->
+                                if (sessionId != null) {
+                                    debugMessages.add("[debug] Session started: ${lang.displayName} — ${path.substringAfterLast('/')}")
+                                } else {
+                                    debugMessages.add("[debug] Launch failed — the transcript above shows the reason. The file type IS supported; nothing is wrong with the file.")
+                                }
+                            }
                         }
                     }
                 },
@@ -3921,17 +3928,14 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // P44-OUTPUT: Wire UDM output to AppOutputLog so debug output appears here
-    LaunchedEffect(Unit) {
-        com.codespace.ide.debug.UniversalDebugManager.addOnOutputListener { msg ->
-            AppOutputLog.log(msg, "debug")
-        }
-    }
-    DisposableEffect(Unit) {
-        onDispose { 
-            // Note: we can't remove this specific listener because it's a lambda
-            // The UDM listener-list pattern means stale listeners are harmless
-        }
+    // P44-OUTPUT: Wire UDM output to AppOutputLog so debug output appears here.
+    // F6-d: remembered lambda + real disposal — the old LaunchedEffect added a
+    // NEW listener on every tab re-entry and never removed any (each re-entry
+    // duplicated every line in AppOutputLog). Same family as the console doubling.
+    val udmOut: (String) -> Unit = remember { { msg -> AppOutputLog.log(msg, "debug") } }
+    DisposableEffect(udmOut) {
+        com.codespace.ide.debug.UniversalDebugManager.addOnOutputListener(udmOut)
+        onDispose { com.codespace.ide.debug.UniversalDebugManager.removeOnOutputListener(udmOut) }
     }
     // P31-CRASH-FIX: Read size in a snapshot so it matches the items() count.
     // P-OUTPUT-SPEED: Use snapshotFlow to properly batch rapid log changes and auto-scroll.
@@ -4097,18 +4101,21 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
         allSessions = udm.getActiveSessions()
         // P54-TOOLBAR-STRIP: caps assignment removed with the console step toolbar
     }
-    val outputListener: (String) -> Unit = { msg ->
-        messages.add(msg)
-        scope.launch { listState.animateScrollToItem(messages.size - 1) }
-    }
+    // F6-d: NO output listener here — the screen-level DisposableEffect already
+    // appends UDM output to this same `messages` list; a second one DOUBLED every
+    // line in the console. This panel keeps only the session-state listener and
+    // auto-scrolls as the shared list grows.
     LaunchedEffect(Unit) {
         udm.addOnSessionStateChangedListener(stateListener)
-        udm.addOnOutputListener(outputListener)
     }
     DisposableEffect(Unit) {
         onDispose {
             udm.removeOnSessionStateChangedListener(stateListener)
-            udm.removeOnOutputListener(outputListener)
+        }
+    }
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.snapshotFlow { messages.size }.collect {
+            if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
         }
     }
 

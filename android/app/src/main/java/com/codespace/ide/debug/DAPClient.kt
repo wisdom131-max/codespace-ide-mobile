@@ -154,7 +154,15 @@ class DAPClient(private val process: Process) {
     }
 
     /** Send a DAP request and wait for a response. Returns the response body or null on timeout/error. */
-    fun request(command: String, args: JSONObject? = null, timeoutSeconds: Long = 10): JSONObject? {
+    fun request(command: String, args: JSONObject? = null, timeoutSeconds: Long = 10): JSONObject? =
+        requestDetailed(command, args, timeoutSeconds).first
+
+    /**
+     * Like [request] but carries WHY it failed: error is non-null iff body is
+     * null. F6-d: "attach failed, debuggee may not be listening" hid the real
+     * reason (refused vs timeout vs adapter error) — adapters now print it.
+     */
+    fun requestDetailed(command: String, args: JSONObject? = null, timeoutSeconds: Long = 10): Pair<JSONObject?, String?> {
         val s = seq.getAndIncrement()
         val msg = JSONObject()
         msg.put("seq", s)
@@ -170,13 +178,14 @@ class DAPClient(private val process: Process) {
             val resp = queue.poll(timeoutSeconds, TimeUnit.SECONDS)
             if (resp == null) {
                 Log.e(TAG, "DAP request '$command' timed out after ${timeoutSeconds}s")
-                return null
+                return Pair(null, "no response from the debug adapter within ${timeoutSeconds}s")
             }
             if (!resp.optBoolean("success", false)) {
-                Log.e(TAG, "DAP request '$command' failed: ${resp.optString("message","")}")
-                return null
+                val detail = resp.optString("message", "")
+                Log.e(TAG, "DAP request '$command' failed: $detail")
+                return Pair(null, "adapter error: ${if (detail.isBlank()) "unknown" else detail}")
             }
-            resp.optJSONObject("body")
+            Pair(resp.optJSONObject("body"), null)
         } finally {
             pending.remove(s)
         }

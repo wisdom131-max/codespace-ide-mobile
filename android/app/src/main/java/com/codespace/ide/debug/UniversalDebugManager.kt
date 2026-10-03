@@ -483,6 +483,20 @@ object UniversalDebugManager {
     }
 
     /**
+     * F6-d: TRUE iff some registered adapter can debug this file. Lets the UI
+     * tell "this file type is not debuggable" apart from "a launch of a
+     * debuggable file failed" — two outcomes that previously shared one
+     * misleading message ("Don't know how to run this file type").
+     */
+    fun canDebug(language: Language, filePath: String, context: Context): Boolean {
+        val probe = DebugSession(
+            id = "probe", language = language, filePath = filePath,
+            providerId = "", state = DebugState.STARTING, testDebug = null,
+        )
+        return resolveAdapter(context, probe) != null
+    }
+
+    /**
      * Starts a debug session for the given file.
      * Returns the session ID, or null if no provider is available.
      */
