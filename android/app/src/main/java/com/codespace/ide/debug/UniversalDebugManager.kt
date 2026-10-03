@@ -419,6 +419,8 @@ object UniversalDebugManager {
         // P26-2d/P26-3a: Register DAP adapters (tried before legacy providers)
         registerAdapter(PythonDAPAdapter())
         registerAdapter(NodeDAPAdapter())
+        // F6-c: JVM bytecode via the in-container jdap driver (attach to JDWP).
+        registerAdapter(JvmDAPAdapter())
         // Register built-in providers — P23-10: language providers registered eagerly
         // (lightweight objects, no processes started until launch() is called)
         registerProvider(PythonDebugProvider())

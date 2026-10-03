@@ -944,6 +944,10 @@ object ProotInstaller {
                 Log.w(TAG, "Failed to install dpkg/shadow-utils fixes: ${e.message}")
             }
 
+            // ── F6-c (2026-10-03): JVM debug driver bundle → /opt/jdap ─────────
+            runCatching { provisionJdap(context, rootfs) }
+                .onFailure { Log.w(TAG, "jdap provision failed: ${it.message}") }
+
             versionFile.writeText(VERSION)
             onProgress("Ubuntu ready: $filesWritten files extracted \u2713")
             NotificationStore.add("Ubuntu ready", "Container started — $filesWritten files extracted", NotificationStore.Type.UBUNTU_STATUS)
@@ -1642,4 +1646,81 @@ exit 0
             else -> "Exit code ${r.exitCode}\n${r.stdout.trim()}"
         }
     }
+
+    // ── F6-c (2026-10-03): jdap — JVM DAP driver + java-debug-core jars ──────
+
+    /** jdap jars shipped in assets/jdap (kept in sync with provisionJdap). */
+    private val jdapJars = listOf(
+        "com.microsoft.java.debug.core-0.53.1.jar",
+        "gson-2.8.9.jar",
+        "commons-io-2.14.0.jar",
+        "commons-lang3-3.6.jar",
+        "rxjava-2.2.21.jar",
+        "reactive-streams-1.0.4.jar",
+    )
+
+    /**
+     * Copy the jdap bundle (assets/jdap, ~4MB) into the rootfs: driver +
+     * com.microsoft.java.debug.core-0.53.1 + runtime deps at /opt/jdap,
+     * launcher at /usr/local/bin/jdap. Called from install()'s bake step;
+     * idempotent, so ensureJdap() can call it again for already-installed
+     * rootfs (version-marker refresh).
+     */
+    fun provisionJdap(ctx: Context, rootfs: File = rootfsDir(ctx)) {
+        jdapJars.forEach { copyJdapAsset(ctx, rootfs, "jars/$it", "opt/jdap/jars/$it", exec = false) }
+        copyJdapAsset(ctx, rootfs, "DapDriver.jar", "opt/jdap/DapDriver.jar", exec = false)
+        copyJdapAsset(ctx, rootfs, "DapDriver.java", "opt/jdap/DapDriver.java", exec = false)
+        copyJdapAsset(ctx, rootfs, "SourceProvider.java", "opt/jdap/SourceProvider.java", exec = false)
+        copyJdapAsset(ctx, rootfs, "EvalEngine.java", "opt/jdap/EvalEngine.java", exec = false)
+        copyJdapAsset(ctx, rootfs, "JdapEvalHost.java", "opt/jdap/JdapEvalHost.java", exec = false)
+        copyJdapAsset(ctx, rootfs, "jdap-evalhost.jar", "opt/jdap/jdap-evalhost.jar", exec = false)
+        copyJdapAsset(ctx, rootfs, "jdap_eval_test.py", "opt/jdap/jdap_eval_test.py", exec = false)
+        copyJdapAsset(ctx, rootfs, "Hello.java", "opt/jdap/Hello.java", exec = false)
+        copyJdapAsset(ctx, rootfs, "VERSION", "opt/jdap/VERSION", exec = false)
+        copyJdapAsset(ctx, rootfs, "jdap.sh", "usr/local/bin/jdap", exec = true)
+        Log.i(TAG, "jdap bundle provisioned (6 jars + driver + sources + evalhost + launcher)")
+    }
+
+    /**
+     * Idempotent provisioning for an EXISTING rootfs (app update over an old
+     * install, bundle version bump). Called by JvmDAPAdapter before spawning a
+     * session — no rootfs → no-op, never blocks.
+     */
+    fun ensureJdap(ctx: Context) {
+        val rootfs = rootfsDir(ctx)
+        if (!File(rootfs, "usr/bin/bash").exists()) return // no rootfs installed yet
+        if (jdapUpToDate(ctx, rootfs)) return
+        runCatching { provisionJdap(ctx, rootfs) }
+            .onFailure { Log.w(TAG, "ensureJdap: ${it.message}") }
+    }
+
+    /**
+     * Version-marker check (not presence-only): refreshes when the shipped
+     * bundle VERSION differs from the one on disk, when the marker is missing
+     * (pre-version install), or when a core artifact is absent. All copies are
+     * idempotent overwrites. (Ported from ubuntu-proot-test F6-b.)
+     */
+    private fun jdapUpToDate(ctx: Context, rootfs: File): Boolean {
+        if (!File(rootfs, "opt/jdap/DapDriver.jar").exists()) return false
+        if (!File(rootfs, "opt/jdap/jdap-evalhost.jar").exists()) return false
+        val shipped = runCatching {
+            ctx.assets.open("jdap/VERSION").bufferedReader().use { it.readText().trim() }
+        }.getOrNull() ?: return true // no version asset shipped: fall back to presence
+        val installed = runCatching {
+            File(rootfs, "opt/jdap/VERSION").readText().trim()
+        }.getOrNull() ?: "" // missing VERSION = pre-version install -> refresh
+        return shipped == installed
+    }
+
+    /** Reads one file from assets/jdap/ into the rootfs (mkdir + perms). */
+    private fun copyJdapAsset(ctx: Context, rootfs: File, assetName: String, destRel: String, exec: Boolean = false) {
+        val dest = File(rootfs, destRel)
+        dest.parentFile?.mkdirs()
+        ctx.assets.open("jdap/$assetName").use { inp ->
+            dest.outputStream().use { out -> inp.copyTo(out) }
+        }
+        dest.setReadable(true, false)
+        if (exec) dest.setExecutable(true, false)
+    }
+
 }

@@ -63,12 +63,18 @@ object TestRunManager {
      * Debug capability for TEST lenses (F5, TG07p1): Python via debugpy
      * module+args launch, JS/TS via node --inspect-brk + js-debug attach —
      * both through UniversalDebugManager, so breakpoints/pause/step work in
-     * the existing Debug Console. JVM is F6 (JDWP decision pending); Dart and
-     * everything else stays honestly false (DG04: a control may never promise
-     * a debug session that does not exist).
+     * the existing Debug Console.
+     *
+     * F6-c: JVM (Java/Kotlin tests) via gradle test --debug-jvm — gradle
+     * suspends the test JVM on a JDWP port and the jdap driver attaches.
+     * Kotlin is the same gradle+JDWP+jdap flow (JVM bytecode); it stays
+     * listed but is verified on device in F6-d. Dart and everything else
+     * stays honestly false (DG04: a control may never promise a debug
+     * session that does not exist).
      */
     fun supportsDebug(language: Language): Boolean = when (language) {
-        Language.PYTHON, Language.JAVASCRIPT, Language.TYPESCRIPT -> true
+        Language.PYTHON, Language.JAVASCRIPT, Language.TYPESCRIPT,
+        Language.JAVA, Language.KOTLIN -> true
         else -> false
     }
 
@@ -271,7 +277,7 @@ object TestRunManager {
             val guestRoot = (projectRoot?.let { ProotInstaller.hostToGuestPath(context, it) })
                 ?: File(guestFile).parent
 
-            val spec = buildDebugSpec(guestRoot, guestFile, hostFilePath, projectRoot, language, testId)
+            val spec = buildDebugSpec(guestRoot, guestFile, hostFilePath, projectRoot, language, testId, suite)
             if (spec == null) {
                 return@withContext TestRunResult(testId, TestRunStatus.UNSUPPORTED, null, 0)
             }
@@ -322,6 +328,7 @@ object TestRunManager {
         projectRoot: String?,
         language: Language,
         testId: String,
+        suite: Boolean,
     ): com.codespace.ide.debug.TestDebugSpec? {
         val chain = chainOf(testId, hostFilePath)
         if (chain.isEmpty()) return null
@@ -343,6 +350,22 @@ object TestRunManager {
                 com.codespace.ide.debug.TestDebugSpec(
                     runner = "jest",
                     guestArgs = listOf(guestFile, "-t", leaf),
+                    guestWorkdir = guestRoot,
+                    hostWorkdir = projectRoot,
+                )
+            }
+            Language.JAVA, Language.KOTLIN -> {
+                // F6-c: gradle test --debug-jvm suspends the test JVM waiting
+                // for a JDWP attach (default 5005); JvmDAPAdapter parses the
+                // real port from the "Listening for transport" line. gradle
+                // compiles with debug info by default. Evaluation honestly
+                // reports the eval host not being injectable into the gradle
+                // test worker's classpath from outside the build script —
+                // breakpoints/step/variables work without it.
+                val pattern = gradleTestPattern(hostFilePath, chain, suite) ?: return null
+                com.codespace.ide.debug.TestDebugSpec(
+                    runner = "gradle",
+                    guestArgs = listOf("test", "--tests", pattern, "--debug-jvm", "--no-daemon", "--console=plain"),
                     guestWorkdir = guestRoot,
                     hostWorkdir = projectRoot,
                 )
