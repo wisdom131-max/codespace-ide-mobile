@@ -69,6 +69,9 @@ import android.net.Uri
 
 internal class SimpleTerminalSessionClient : TerminalSessionClient {
     var onTextChanged: (() -> Unit)? = null
+    /** TERMINAL-START-PERF one-shot: fires on this session's FIRST text update, then clears itself. */
+    @kotlin.jvm.Volatile
+    var firstFrameProbe: (() -> Unit)? = null
     var onTitleChanged: ((String?) -> Unit)? = null
     var onSessionFinished: (() -> Unit)? = null
     var onCursorStateChange: ((Boolean) -> Unit)? = null
@@ -85,6 +88,7 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
 
     override fun onTextChanged(changedSession: TerminalSession) {
         lastOutputAtMs = android.os.SystemClock.elapsedRealtime()
+        firstFrameProbe?.also { p -> firstFrameProbe = null; p() }
         onTextChanged?.invoke()
     }
 
@@ -909,6 +913,7 @@ internal fun TerminalPane(
         }
 
         // Slow path: first-time install, or upgrading the initial placeholder tab.
+        TerminalStartupProbe.mark("addUbuntuTab entered")
         val id = replaceTabId ?: System.currentTimeMillis().toString()
         val existing = replaceTabId?.let { rid -> tabs.firstOrNull { it.id == rid } }
         // Part B: lock for this tab - explicit param first (restore path), then the
@@ -919,6 +924,7 @@ internal fun TerminalPane(
         if (existing == null) {
             tabs.add(TabSession(id, "Ubuntu", progressSession, progressClient))
         }
+        TerminalStartupProbe.mark("placeholder session created")
         activeId = id
         progressClient.onTextChanged = {
             if (isActivityVisible) currentView.value?.post { currentView.value?.onScreenUpdated() }
@@ -1044,6 +1050,7 @@ internal fun TerminalPane(
                 // TerminalService is stopped only when TerminalPane is disposed (all tabs closed).
                 if (!installFailed) TerminalService.updateProgress(ctx, "Ubuntu terminal active")
             }
+            TerminalStartupProbe.mark("setup-thread done — real session about to be created")
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 // Replace the progress tab with real Ubuntu proot session
                 val idx = tabs.indexOfFirst { it.id == id }
@@ -1054,6 +1061,8 @@ internal fun TerminalPane(
                 val validLock = tabLock?.takeIf { it in activeRoots }
                 val wd = validLock ?: loadWorkspacePath(ctx, projectId)
                 val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
+                TerminalStartupProbe.mark("real session created — proot forking")
+                client.firstFrameProbe = { TerminalStartupProbe.mark("first-frame — prompt visible, session usable") }
                 if (onOpenFileAtLine != null) {
                     com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!,
                         lockedRootProvider = { tabs.firstOrNull { it.id == id }?.lockedRootPath })
@@ -1115,6 +1124,7 @@ internal fun TerminalPane(
         // Service/process survive).
         val existingSessions = svc.getLiveUbuntuSessions(projectId)
         if (existingSessions.isNotEmpty()) {
+            TerminalStartupProbe.begin("reattach path — ${existingSessions.size} live session(s)")
             // Kill the placeholder /system/bin/sh session created by rememberTerminalState —
             // it's not in the Service's liveSessions list, so getLiveUbuntuSessions() won't
             // clean it up. Without this, every Activity recreate leaks a sh process.
@@ -1155,6 +1165,7 @@ internal fun TerminalPane(
             if (ProotInstaller.isInstalled(context)) {
                 val bootPrefs = context.getSharedPreferences("terminal_prefs", android.content.Context.MODE_PRIVATE)
                 if (bootPrefs.getBoolean("ubuntu_first_boot_completed", false)) {
+                    TerminalStartupProbe.begin("spinner-shown — no live session, rootfs already installed")
                     showTapToStart = true
                 } else {
                     bootPrefs.edit().putBoolean("ubuntu_first_boot_completed", true).apply()
@@ -1172,16 +1183,19 @@ internal fun TerminalPane(
     // 30s safety cap falls through to start-anyway (same as the Back path).
     LaunchedEffect(showTapToStart) {
         if (showTapToStart && !autoStartCountdownDone) {
-            awaitTerminalReadiness(
+            val gateOk = awaitTerminalReadiness(
                 activityResumed = { isActivityVisible },
                 serviceBound = { boundService != null },
             )
+            TerminalStartupProbe.mark("gate-pass ok=$gateOk")
             autoStartCountdownDone = true
             showTapToStart = false
+            TerminalStartupProbe.mark("spinner-hidden — terminal view composes")
             // Phase 4: try session restore (loop-guarded, crash-safe)
             val restored = if (TerminalSessionStore.claimRestoreAttempt(context)) {
                 TerminalSessionStore.load(context, projectId)
             } else emptyList()
+            TerminalStartupProbe.mark("store-restore loaded=${restored.size}")
             if (restored.isNotEmpty()) {
                 // Part B: only re-apply a saved lock if that root still exists.
                 val activeRoots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(context, projectId)
