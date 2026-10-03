@@ -148,16 +148,28 @@ object TestLensDetector {
 
     private fun detectPythonTests(lines: List<String>, filePath: String): JSONArray {
         val lenses = JSONArray()
+        // TEST-ID FIX (2026-10-03, owner-reported): the ID must keep the "test_"
+        // prefix — substringAfter("def test_") built ids like "<file>/add" for
+        // "def test_add", so the pytest node id resolved to "::add" and
+        // Run/Debug selectors matched nothing ("collected 0 items"). Also track
+        // the enclosing class so class-nested tests get the real pytest node id
+        // (<file>::TestX::test_y instead of a class-less one that matches nothing).
+        var classChain = ""
+        var classIndent = -1
         lines.forEachIndexed { lineIndex, line ->
             val trimmed = line.trim()
-            if (trimmed.startsWith("def test_") || trimmed.startsWith("async def test_")) {
-                val name = trimmed.substringAfter("def test_").substringBefore('(').trim()
-                addLenses(lenses, idFor(filePath, "", name.ifEmpty { "test" }), lineIndex, suite = false)
-            }
+            val indent = line.length - line.trimStart().length
             if (trimmed.startsWith("class Test") && trimmed.contains(":")) {
                 val name = trimmed.substringAfter("class ").substringBefore('(')
                     .substringBefore(':').trim()
-                addLenses(lenses, idFor(filePath, "", name.ifEmpty { "Test" }), lineIndex, suite = true)
+                classChain = name.ifEmpty { "Test" }
+                classIndent = indent
+                addLenses(lenses, idFor(filePath, "", classChain), lineIndex, suite = true)
+            }
+            if (trimmed.startsWith("def test_") || trimmed.startsWith("async def test_")) {
+                val name = trimmed.substringAfter("def ").substringBefore('(').trim()
+                val memberOfClass = classIndent in 0 until indent
+                addLenses(lenses, idFor(filePath, if (memberOfClass) classChain else "", name), lineIndex, suite = false)
             }
         }
         return lenses

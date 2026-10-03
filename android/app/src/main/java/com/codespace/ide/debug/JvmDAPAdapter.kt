@@ -215,9 +215,14 @@ class JvmDAPAdapter : DebugAdapter {
         onOutput("[jdap] Compiled with debug info. Starting $baseName under the debugger...\n")
 
         val cp = shQuote(guestDir + ":/opt/jdap/jdap-evalhost.jar")
+        // ATTACH-DIAG: wrap with an exit-code echo so java's death signal is IN the
+        // console at the death moment — 137=SIGKILL (external kill/OOM), 139=SEGV,
+        // 143=SIGTERM, 0=clean exit. Without this, the shell's own exit swallowed
+        // the code and only "Connection refused" was ever visible.
         val shellCommand = "cd " + shQuote(guestDir) + " && " +
             "java -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=127.0.0.1:" + port +
-            " -cp " + cp + " " + shQuote(baseName) + " 2>&1"
+            " -cp " + cp + " " + shQuote(baseName) + " 2>&1; " +
+            "rc=\$?; echo \"[jdap] DEBUGGEE-EXIT code=\$rc\"; exit \$rc"
         val proc = spawnShellProcess(context, shellCommand, onOutput,
             "[jdap] Failed to spawn the debuggee: ", workDir = guestDir) ?: return null
         drainToConsole(proc, onOutput, listenLatch)
@@ -399,6 +404,23 @@ class JvmDAPAdapter : DebugAdapter {
                 try { Thread.sleep(400) } catch (_: InterruptedException) { break }
             }
         }.also { it.isDaemon = true }.start()
+        // ATTACH-DIAG: guest-side SAMPLER — one proot spawn, 60 x 0.5s, /proc-based
+        // (no procps dependency). Logs java state+RSS only on TRANSITIONS, so the
+        // death timestamp relative to the listen line and the RSS trend (OOM
+        // evidence) land in the debug channel without flooding it.
+        Thread {
+            val sample = runCatching {
+                com.codespace.ide.terminal.ProotInstaller.execOnce(context,
+                    "last=''; i=0; while [ \$i -lt 60 ]; do " +
+                        "js=\$(for p in /proc/[0-9]*; do if [ \"\$(cat \$p/comm 2>/dev/null)\" = \"java\" ]; then echo \"\$p:\$(grep -m1 VmRSS \$p/status 2>/dev/null | tr -s ' ' | cut -d' ' -f2)\"; fi; done | tr '\n' ';'); " +
+                        "if [ \"\$js\" != \"\$last\" ]; then echo \"[jdap-PROBE] t=\${i}x0.5s java=[\$js]\"; last=\$js; fi; " +
+                        "if [ -z \"\$js\" ]; then if [ -n \"\$last\" ]; then echo \"[jdap-PROBE] JAVA_GONE t=\${i}x0.5s\"; break; " +
+                        "elif [ \$i -eq 0 ]; then echo \"[jdap-PROBE] NO_JAVA_SEEN at t=0\"; break; fi; fi; " +
+                        "i=\$((i+1)); sleep 0.5; done; echo '[jdap-PROBE] sampler end'",
+                    timeoutSeconds = 45, logToOutput = true)
+            }.getOrNull() ?: "[jdap-PROBE] sampler launch failed"
+            AppOutputLog.log("[jdap-PROBE] sampler finished: " + sample.trim().take(400), "debug")
+        }.also { it.isDaemon = true }.start()
 
         // Spawn the jdap DAP driver (DAP over stdin/stdout; launcher caps its
         // JVM at -Xmx256m — F6-d captures the real two-JVM numbers).
@@ -498,11 +520,17 @@ class JvmDAPAdapter : DebugAdapter {
             val offset = if (listenAtMs.get() > 0) System.currentTimeMillis() - listenAtMs.get() else -1L
             onOutput("[jdap] Attach to JDWP port ${jdwpPort.get()} failed: $attachErr.\n")
             onOutput("[jdap] ATTACH-FAIL DIAG: debuggee shell alive=$shellAlive" + (shellExit?.let { ", exitCode=$it" } ?: "") + " — ${offset}ms after the JDWP listen line.\n")
+            // ATTACH-DIAG: /proc-based java scan — pgrep depends on procps being
+            // installed in the minimal rootfs, so its earlier NO_JAVA_PROCESS may have
+            // been the probe itself failing (2>/dev/null hid it). This reads kernel
+            // /proc directly: presence + per-pid VmRSS. PROBE_END proves the probe ran.
             val probe = runCatching {
                 com.codespace.ide.terminal.ProotInstaller.execOnce(context,
-                    "pgrep -af java 2>/dev/null || echo NO_JAVA_PROCESS", timeoutSeconds = 15)
-            }.getOrNull() ?: "(probe failed)"
-            onOutput("[jdap] ATTACH-FAIL DIAG: guest java processes at failure time: " + probe.trim().take(300) + "\n")
+                    "for p in /proc/[0-9]*; do if [ \"\$(cat \$p/comm 2>/dev/null)\" = \"java\" ]; then " +
+                        "echo \"JAVA_ALIVE \$p \$(grep -m1 VmRSS \$p/status 2>/dev/null)\"; fi; done; echo PROBE_END",
+                    timeoutSeconds = 15)
+            }.getOrNull() ?: "(probe launch failed)"
+            onOutput("[jdap] ATTACH-FAIL DIAG: guest java processes at failure time: " + probe.trim().take(400) + "\n")
             teardown(rt, session.id)
             debuggee.destroyForcibly()
             return false

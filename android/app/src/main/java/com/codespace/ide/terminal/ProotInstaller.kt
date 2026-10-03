@@ -1743,6 +1743,9 @@ exit 0
 
     /** Name of the vendored js-debug tarball inside assets/js-debug (keep in sync). */
     private const val JS_DEBUG_TARBALL = "js-debug-dap-v1.140.0.tar.gz"
+    /** Staged into the rootfs under a FIXED name — the APK-side name varies with
+     *  AGP's .gz decompression, the staged name must not. */
+    private const val STAGED_TARBALL = "js-debug-bundle.tar"
 
     /**
      * Copy the vendored js-debug bundle (assets/js-debug, ~1.2MB) into the
@@ -1755,12 +1758,32 @@ exit 0
         // (only Logcat) — the Output tab saw a bare "extraction did not yield" with
         // no cause. Staging now reports bytes-or-throwable to the debug channel.
         try {
-            ctx.assets.open("js-debug/$JS_DEBUG_TARBALL").use { inp ->
-                File(rootfs, "opt/jsdebug-bundle").mkdirs()
-                val staged = File(rootfs, "opt/jsdebug-bundle/$JS_DEBUG_TARBALL")
+            // PACKAGING TRUTH (verified in the built APK 2026-10-03, byte-exact):
+            // AGP DECOMPRESSES .gz assets during packaging and strips the extension —
+            // the APK contains "js-debug-dap-v1.140.0.tar" (plain tar, 2,621,440 bytes),
+            // so assets.open("<name>.tar.gz") throws FileNotFoundException. Probe BOTH
+            // names and magic-sniff at extraction time — the code works no matter
+            // which form the packager produces.
+            File(rootfs, "opt/jsdebug-bundle").mkdirs()
+            val staged = File(rootfs, "opt/jsdebug-bundle/$STAGED_TARBALL")
+            val gzStream = try {
+                ctx.assets.open("js-debug/$JS_DEBUG_TARBALL")
+            } catch (_: java.io.FileNotFoundException) {
+                null
+            }
+            val plainStream = gzStream ?: try {
+                ctx.assets.open("js-debug/${JS_DEBUG_TARBALL.removeSuffix(".gz")}")
+            } catch (_: java.io.FileNotFoundException) {
+                null
+            }
+            if (plainStream == null) {
+                AppOutputLog.log("[JS-DEBUG] STAGING FAILED: neither js-debug/$JS_DEBUG_TARBALL nor the .tar form exists in this APK's assets - the asset is missing from the build itself.", "debug")
+                throw java.io.FileNotFoundException("js-debug tarball missing from APK assets (both names)")
+            }
+            plainStream.use { inp ->
                 staged.outputStream().use { out ->
                     val n = inp.copyTo(out)
-                    AppOutputLog.log("[JS-DEBUG] staged tarball into rootfs: $n bytes -> opt/jsdebug-bundle/", "debug")
+                    AppOutputLog.log("[JS-DEBUG] staged tarball into rootfs: $n bytes -> opt/jsdebug-bundle/$STAGED_TARBALL (name in APK: ${if (gzStream != null) "tar.gz" else "tar — AGP-decompressed"})", "debug")
                 }
             }
             ctx.assets.open("js-debug/VERSION").use { inp ->
@@ -1795,15 +1818,23 @@ exit 0
         if (jsDebugUpToDate(ctx, rootfs)) return "up-to-date"
         var diag = "unknown"
         try { provisionJsDebug(ctx, rootfs) } catch (t: Throwable) { return "provision failed: ${t.message}" }
-        val tarball = File(rootfs, "opt/jsdebug-bundle/$JS_DEBUG_TARBALL")
+        val tarball = File(rootfs, "opt/jsdebug-bundle/$STAGED_TARBALL")
         if (!tarball.exists()) return "staged tarball missing at ${tarball.path}"
         // Pure-JVM host-side extraction via commons-compress (already a dependency
         // here for the rootfs bootstrap) — no toybox/guest-tar assumption at all.
         AppOutputLog.log("[JS-DEBUG] extracting HOST-side (commons-compress) into rootfs/opt …", "debug")
         try {
             var files = 0; var skipped = 0
-            java.util.zip.GZIPInputStream(tarball.inputStream().buffered()).use { gz ->
-                org.apache.commons.compress.archivers.tar.TarArchiveInputStream(gz).use { tar ->
+            // Magic-sniff: the staged file may be gzip (source .tar.gz form) or a
+            // PLAIN tar (AGP already decompressed the .gz during packaging — verified).
+            val pb = java.io.PushbackInputStream(tarball.inputStream().buffered(), 2)
+            val magic = ByteArray(2)
+            val mRead = runCatching { pb.read(magic) }.getOrDefault(0)
+            if (mRead == 2) pb.unread(magic)
+            val isGz = magic[0] == 0x1f.toByte() && magic[1] == 0x8b.toByte()
+            AppOutputLog.log("[JS-DEBUG] staged bundle format: ${if (isGz) "gzip" else "plain tar"}", "debug")
+            val inStream = if (isGz) java.util.zip.GZIPInputStream(pb) else pb
+            org.apache.commons.compress.archivers.tar.TarArchiveInputStream(inStream).use { tar ->
                     var e = tar.nextTarEntry
                     while (e != null) {
                         val dest = File(rootfs, "opt/" + e.name)
@@ -1819,7 +1850,6 @@ exit 0
                         }
                         e = tar.nextTarEntry
                     }
-                }
             }
             if (File(rootfs, "opt/js-debug/src/dapDebugServer.js").exists()) {
                 AppOutputLog.log("[JS-DEBUG] host-side extraction OK ($files files, $skipped symlink entries skipped).", "debug")
@@ -1833,7 +1863,7 @@ exit 0
         }
         // Guest-side fallback (the previous primary). Output is now LOGGED, not swallowed.
         val guestOut = execOnce(ctx,
-            "mkdir -p /opt && tar -xzf /opt/jsdebug-bundle/$JS_DEBUG_TARBALL -C /opt/ 2>&1 | tail -3; " +
+            "mkdir -p /opt && tar -xf /opt/jsdebug-bundle/$STAGED_TARBALL -C /opt/ 2>&1 | tail -3; " +
             "test -f /opt/js-debug/src/dapDebugServer.js && echo JS_DEBUG_EXTRACTED",
             timeoutSeconds = 60)
         AppOutputLog.log("[JS-DEBUG] guest-side extraction output: " + guestOut.trim().take(300), "debug")
@@ -1844,7 +1874,7 @@ exit 0
     /** Version-marker check: refreshes when the shipped VERSION differs, the
      *  marker is missing (pre-version install), or the entry point is absent. */
     private fun jsDebugUpToDate(ctx: Context, rootfs: File): Boolean {
-        if (!File(rootfs, "opt/jsdebug-bundle/$JS_DEBUG_TARBALL").exists()) return false
+        if (!File(rootfs, "opt/jsdebug-bundle/$STAGED_TARBALL").exists()) return false
         if (!File(rootfs, "opt/js-debug/src/dapDebugServer.js").exists()) return false
         val shipped = runCatching {
             ctx.assets.open("js-debug/VERSION").bufferedReader().use { it.readText().trim() }
