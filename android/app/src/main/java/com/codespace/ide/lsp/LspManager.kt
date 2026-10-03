@@ -404,7 +404,12 @@ object LspManager {
         Language.JAVA to ServerConfig(
             Language.JAVA,
             "/opt/jdtls/bin/jdtls",
-            listOf("-data", "/tmp/jdtls-workspace"),
+            // HEAP-CONFLICT FIX (2026-10-03, owner-approved): the jdtls launcher
+            // hardcodes -Xms1G; our JAVA_TOOL_OPTIONS injects -Xmx384m — where JTO
+            // propagates, min>max kills the JVM instantly. The JVM takes the LAST
+            // -Xms/-Xmx occurrence, so passing these appends overrides the launcher's
+            // 1G minimum and pins an explicit 384m cap independent of JTO.
+            listOf("--jvm-arg=-Xms32m", "--jvm-arg=-Xmx384m", "-data", "/tmp/jdtls-workspace"),
             "test -f /opt/jdtls/bin/jdtls && echo found",
             "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless curl unzip; " +
                 "mkdir -p /opt/jdtls && " +

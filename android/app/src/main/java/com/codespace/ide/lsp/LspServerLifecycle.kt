@@ -151,7 +151,13 @@ object LspServerLifecycle {
         val documentSymbol = JSONObject().apply {
             put("dynamicRegistration", false)
             put("hierarchicalDocumentSymbolSupport", true)
-            put("labelSupport", JSONObject().apply { put("labelDetailsSupport", true) })
+            // JDTLS -32700 FIX (2026-10-03, owner-approved): LSP 3.17 defines
+            // documentSymbol.labelSupport as a plain BOOLEAN. We previously sent it as
+            // an OBJECT {"labelDetailsSupport": true} — jdtls's strict lsp4j Gson
+            // parse fails the ENTIRE initialize message -> -32700 on every retry
+            // (reproduced locally with the real jdtls 1.9.0; jdtls's own error named
+            // this exact field). vtsls tolerated it, which is why TS worked.
+            put("labelSupport", true)
         }
         val foldingRange = JSONObject().apply {
             put("dynamicRegistration", false)
