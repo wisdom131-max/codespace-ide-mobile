@@ -164,6 +164,14 @@ public final class TerminalEmulator {
     /** The normal screen buffer. Stores the characters that appear on the screen of the emulated terminal. */
     private final TerminalBuffer mMainBuffer;
     /**
+     * REFLOW CAPACITY GUARD (2026-10-03): transcript capacity as configured at
+     * construction. Used as the base for the reflow growth cap so that repeated
+     * shrinks cannot balloon the circular buffer unboundedly, while a single
+     * realistic shrink (e.g. side panel opening) can still grow up to 4x to keep
+     * reflowed scrollback from being dropped.
+     */
+    private final int mBaseTranscriptRows;
+    /**
      * The alternate screen buffer, exactly as large as the display and contains no additional saved lines (so that when
      * the alternate screen buffer is active, you cannot scroll back to view saved lines).
      * <p>
@@ -327,7 +335,8 @@ public final class TerminalEmulator {
 
     public TerminalEmulator(TerminalOutput session, int columns, int rows, int cellWidthPixels, int cellHeightPixels, Integer transcriptRows, TerminalSessionClient client) {
         mSession = session;
-        mScreen = mMainBuffer = new TerminalBuffer(columns, getTerminalTranscriptRows(transcriptRows), rows);
+        mBaseTranscriptRows = getTerminalTranscriptRows(transcriptRows);
+        mScreen = mMainBuffer = new TerminalBuffer(columns, mBaseTranscriptRows, rows);
         mAltBuffer = new TerminalBuffer(columns, rows, rows);
         mClient = client;
         mRows = rows;
@@ -427,9 +436,45 @@ public final class TerminalEmulator {
     private void resizeScreen() {
         final int[] cursor = {mCursorCol, mCursorRow};
         int newTotalRows = (mScreen == mAltBuffer) ? mRows : mMainBuffer.mTotalRows;
+        if (mScreen == mMainBuffer && mColumns < mMainBuffer.mColumns) {
+            // REFLOW CAPACITY GUARD (2026-10-03): shrinking the column count wraps
+            // every transcript line into more rows. The reflow in
+            // TerminalBuffer.resize() writes into a fixed-size circular buffer and
+            // silently drops the OLDEST rows once it runs out of capacity, so on a
+            // long session a single shrink (e.g. the Explorer panel opening) could
+            // permanently delete hours of scrollback. Grow the capacity to cover
+            // the estimated reflow instead, capped at 4x the configured transcript
+            // (and the platform max) so a degenerate transient width cannot balloon
+            // memory — a shrink far narrower than that still degrades gracefully
+            // oldest-first instead of crashing.
+            int estimated = estimateReflowRows(mColumns) + mRows;
+            int cap = Math.min(mBaseTranscriptRows * 4, TERMINAL_TRANSCRIPT_ROWS_MAX);
+            if (estimated > newTotalRows) newTotalRows = Math.min(estimated, cap);
+        }
         mScreen.resize(mColumns, mRows, newTotalRows, cursor, getStyle(), isAlternateBufferActive());
         mCursorCol = cursor[0];
         mCursorRow = cursor[1];
+    }
+
+    /**
+     * Estimate the number of output rows the main buffer's active content
+     * (transcript + screen) will occupy once reflowed to {@code newColumns}
+     * columns. Follows the same walk order as the reflow loop in
+     * {@link TerminalBuffer#resize(int, int, int, int[], long, boolean)}:
+     * each source row occupies ceil(cellsUsed / newColumns) rows, blank rows
+     * still count as one (they are re-inserted before later non-blank rows), and
+     * a small margin covers wide/combining character wrap slack.
+     */
+    private int estimateReflowRows(int newColumns) {
+        TerminalBuffer buf = mMainBuffer;
+        int needed = 0;
+        int firstExternal = -buf.getActiveTranscriptRows();
+        for (int external = firstExternal; external < buf.mScreenRows; external++) {
+            TerminalRow row = buf.mLines[buf.externalToInternalRow(external)];
+            int used = (row == null) ? 0 : row.getSpaceUsed();
+            needed += Math.max(1, (used + newColumns - 1) / newColumns);
+        }
+        return needed + (needed >> 4) + 32;
     }
 
     public int getCursorRow() {
