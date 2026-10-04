@@ -531,18 +531,24 @@ class JvmDAPAdapter : DebugAdapter {
                     timeoutSeconds = 15)
             }.getOrNull() ?: "(probe launch failed)"
             onOutput("[jdap] ATTACH-FAIL DIAG: guest java processes at failure time: " + probe.trim().take(400) + "\n")
-            // SOCKET-LAYER DIAG (2026-10-03, owner-directed): java is confirmed alive —
-            // narrows to the connection itself. Read /proc/net/tcp directly for the
-            // exact port's socket state (0A=LISTEN, 06=TIME_WAIT, absent=never bound
-            // or already gone) from the SAME proot session, PLUS a raw TCP connect
-            // test via /dev/tcp — this separates "no real listener" (kernel truth,
-            // matches JDI) from "JDI-specific" (raw connect works, JDI's own socket
-            // handling does not) without guessing.
+            // SOCKET-LAYER DIAG (2026-10-03, owner-directed; honesty fix 2026-10-04):
+            // two prior weaknesses corrected — (1) `grep ... 2>/dev/null || echo
+            // NOT_IN_TCP_TABLE` conflated "absent" with UNREADABLE: Android SELinux
+            // restricts app access to /proc/net/*, so a denied read printed the same
+            // NOT_IN_TCP_TABLE as a genuinely missing listener. Readability is now
+            // checked first and reported distinctly. (2) The JDWP listener accepts
+            // exactly ONE debugger (listen(fd, 1) in the JDK socket transport, closed
+            // after the first accept), so if an earlier attach attempt connected, the
+            // table absence and refused raw connect at THIS point are EXPECTED and
+            // prove nothing about the original failure. ROUND-5 note: the actual
+            // round-4 root cause was NOT the socket layer at all — attach attempt 1
+            // SUCCEEDED (success:true, empty body) and DAPClient misread it; this
+            // diag stays for genuine future failures.
             val diagPort = jdwpPort.get()
             val portHex = String.format("%04X", diagPort)
             val netDiag = runCatching {
                 com.codespace.ide.terminal.ProotInstaller.execOnce(context,
-                    "echo \"NET: \$(grep -i ':" + portHex + " ' /proc/net/tcp 2>/dev/null || echo NOT_IN_TCP_TABLE)\"; " +
+                    "if [ -r /proc/net/tcp ]; then echo \"NET: \$(grep -i ':" + portHex + " ' /proc/net/tcp || echo NOT_IN_TCP_TABLE)\"; else echo NET: /proc/net/tcp UNREADABLE (SELinux) — cannot judge the listener; fi; " +
                         "timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/" + diagPort + "' 2>&1 && echo RAW_CONNECT_OK || echo RAW_CONNECT_FAILED",
                     timeoutSeconds = 10)
             }.getOrNull() ?: "(net probe failed)"

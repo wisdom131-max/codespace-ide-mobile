@@ -215,7 +215,19 @@ class DAPClient private constructor(
                 Log.e(TAG, "DAP request '$command' failed: $detail")
                 return Pair(null, "adapter error: ${if (detail.isBlank()) "unknown" else detail}")
             }
-            Pair(resp.optJSONObject("body"), null)
+            // ROUND-5 (2026-10-04): DAP spec allows launch/attach/configurationDone/
+            // disconnect responses to have NO body field — success:true alone means
+            // success. Returning a null body for those made every caller treat the
+            // response as a FAILURE: the Java attach (microsoft java-debug core)
+            // returns success:true with no body, so attach attempt 1 SUCCEEDED and
+            // was then misread as failed with a null error string ("Attach attempt 1
+            // failed (null)" in device logs), retried (the JDK listener accepts
+            // exactly ONE debugger — listen(fd,1), closed after the first accept —
+            // so the honest retry got Connection refused), and the healthy session
+            // was torn down by our own code. Absent body on success now yields an
+            // empty JSONObject instead — callers that need data still get nothing,
+            // but they no longer misreport success as failure.
+            Pair(resp.optJSONObject("body") ?: JSONObject(), null)
         } finally {
             pending.remove(s)
         }

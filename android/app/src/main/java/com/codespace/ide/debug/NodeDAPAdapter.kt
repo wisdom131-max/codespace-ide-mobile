@@ -325,8 +325,15 @@ class NodeDAPAdapter : DebugAdapter {
             // a symlink; every OTHER npm install in this codebase targets the
             // real rootfs (ext4), never project storage, which is why none of
             // them needed this flag.
+            // ROUND-5 DIAG ONLY (install behavior unchanged): tail -6 kept only the
+            // boilerplate hints, so the failing syscall+path line was never captured
+            // in three device rounds. npm's full debug log stays on device at
+            // /root/.npm/_logs — this grep surfaces the syscall-context lines that
+            // precede the boilerplate ("npm error code EACCES / syscall / path") so
+            // the next run identifies the exact blocked operation.
             val npmOut = ProotInstaller.execOnce(context,
-                "cd " + shQuote(spec.guestWorkdir) + " && npm install --no-bin-links --save-dev jest 2>&1 | tail -6",
+                "cd " + shQuote(spec.guestWorkdir) + " && npm install --no-bin-links --save-dev jest 2>&1 | " +
+                    "grep -B1 -A5 'npm error' | tail -40",
                 timeoutSeconds = 300, logToOutput = true)
             if (java.io.File(hostWorkdir, "node_modules/.bin/jest").exists()) {
                 onOutput("[js-debug] jest installed into this project.\n")
@@ -670,9 +677,9 @@ class NodeDAPAdapter : DebugAdapter {
         // 7. launch or attach (BEFORE setBreakpoints — the adapter needs to start
         // the debuggee before it can accept breakpoint configuration)
         if (attachParams != null) {
-            // Attach mode
+            // Attach mode (type pre-aliased to pwa-node — see buildLaunchArgs)
             val args = JSONObject().apply {
-                put("type", "node")
+                put("type", "pwa-node")
                 put("request", "attach")
                 put("name", "Attach to Node.js")
                 attachParams.keys().forEach { k -> put(k, attachParams[k]) }
@@ -680,13 +687,33 @@ class NodeDAPAdapter : DebugAdapter {
                 put("remoteRoot", guestScriptPath.substringBeforeLast("/"))
             }
             Log.d(TAG, "Sending DAP attach: $args")
-            dapClient.sendRequest("attach", args)
+            // ROUND-5: requestDetailed instead of fire-and-forget — the old
+            // sendRequest path printed "Attached to Node.js process." without ever
+            // reading the response, so server-side rejections (like the "Unknown
+            // config" error) surfaced only later via output events with no context.
+            val attachResp = dapClient.requestDetailed("attach", args, timeoutSeconds = 30)
+            if (attachResp.first == null) {
+                onOutput("[js-debug] Attach rejected by the debug adapter: ${attachResp.second}.\n")
+                dapClient.stop()
+                process.destroyForcibly()
+                runtimes.remove(session.id)
+                UniversalDebugManager.untrackProcess(session.id)
+                return false
+            }
             onOutput("[js-debug] Attached to Node.js process.\n")
         } else {
             // Launch mode
             val launchArgs = buildLaunchArgs(guestScriptPath, session)
             Log.d(TAG, "Sending DAP launch: $launchArgs")
-            dapClient.sendRequest("launch", launchArgs)
+            val launchResp = dapClient.requestDetailed("launch", launchArgs, timeoutSeconds = 30)
+            if (launchResp.first == null) {
+                onOutput("[js-debug] Launch rejected by the debug adapter: ${launchResp.second}.\n")
+                dapClient.stop()
+                process.destroyForcibly()
+                runtimes.remove(session.id)
+                UniversalDebugManager.untrackProcess(session.id)
+                return false
+            }
             onOutput("[js-debug] Launched ${session.filePath.substringAfterLast("/")}.\n")
         }
 
@@ -767,7 +794,14 @@ class NodeDAPAdapter : DebugAdapter {
     private fun buildLaunchArgs(guestScriptPath: String, session: DebugSession): JSONObject {
         val isTs = session.filePath.endsWith(".ts")
         return JSONObject().apply {
-            put("type", "node")
+            // ROUND-5: dapDebugServer.js (verified from the bundled v1.140 source)
+            // resolves the launch config in a switch on `type` with cases pwa-node,
+            // pwa-msedge, pwa-chrome, pwa-extensionHost, node-terminal,
+            // pwa-editor-browser — NO bare "node" case; the default branch throws
+            // "Unknown config: {value}". VS Code maps node→pwa-node EXTENSION-side
+            // before the request ever reaches the DAP server; running the server
+            // standalone skips that mapping, so the type must be sent pre-aliased.
+            put("type", "pwa-node")
             put("request", "launch")
             put("name", "Debug Node.js")
             put("program", guestScriptPath)
