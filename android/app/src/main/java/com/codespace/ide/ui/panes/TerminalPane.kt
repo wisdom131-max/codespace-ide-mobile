@@ -1024,7 +1024,7 @@ internal fun TerminalPane(
                         "sdcardCanRead=${sdcard.canRead()} sdcardCanWrite=${sdcard.canWrite()} " +
                         "backupDirExists=${bDir.exists()} " +
                         "backupFileExists=${bFile.exists()} backupCanRead=${bFile.canRead()} backupBytes=${bFile.length()} " +
-                        "usableSpaceMb=${(rootfsDirFile.parentFile?.usableSpace() ?: 0L) / (1024 * 1024)}"
+                        "usableSpaceMb=${(rootfsDirFile.parentFile?.usableSpace ?: 0L) / (1024 * 1024)}"
                     android.util.Log.d("TerminalPane", diag)
                     com.codespace.ide.diagnostics.AppOutputLog.log(diag, "terminal")
                 }

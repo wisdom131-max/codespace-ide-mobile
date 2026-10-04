@@ -289,7 +289,7 @@ object BackupManager {
         // The probe is a WARNING, never a refusal: the typed failure paths below are the
         // actual verdict, and this line explains them when they fire.
         runCatching {
-            val usableMb = (rootfs.parentFile?.usableSpace() ?: 0L) / (1024 * 1024)
+            val usableMb = (rootfs.parentFile?.usableSpace ?: 0L) / (1024 * 1024)
             val diag = "[RESTORE-DIAG] restore start: backupMb=${f.length() / (1024 * 1024)} usableMb=$usableMb rootfsExists=${rootfs.exists()}"
             Log.d(TAG, diag)
             com.codespace.ide.diagnostics.AppOutputLog.log(diag, "terminal")
