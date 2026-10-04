@@ -1130,6 +1130,18 @@ object LspManager {
             if (!installVerified) installOutput.lineSequence().map { it.trim() }
                 .firstOrNull { it.isNotBlank() }?.take(120) else null,
         )
+        if (installVerified) {
+            // Owner finding (B) (2026-10-01): downloaded LSP server files live guest-side
+            // under /opt and were lost on full uninstall when the container restore failed
+            // or the container backup was stale. Same treatment as the other stores:
+            // refresh the /opt snapshot right after every VERIFIED install. Daemon thread
+            // — the snapshot writes a few hundred MB to FUSE and must never block the
+            // install path or the caller's UI.
+            Thread {
+                runCatching { com.codespace.ide.terminal.BackupManager.snapshotLspOpt(context) }
+                    .onFailure { Log.w(TAG, "lsp-opt snapshot failed: ${it.message}") }
+            }.apply { isDaemon = true; name = "LspOptSnapshot"; start() }
+        }
         // P-NOTIFY: Task completion notification — fire system notification if threshold allows
         notifyTaskComplete(context, "${language.displayName} LSP server installed")
         return installOutput

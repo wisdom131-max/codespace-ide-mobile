@@ -917,6 +917,54 @@ internal fun TerminalPane(
             return
         }
 
+        // S1-c WARM-PATH (2026-10-04): upgrading the initial placeholder tab while the
+        // rootfs is ALREADY installed and healthy — skip the placeholder dance entirely
+        // (progress thread, "Checking installation..." churn, foreground-service setup
+        // status, PTY create/teardown round-trip ≈290ms of pure ceremony). Session
+        // creation semantics match the fast path above; the only differences: the
+        // placeholder tab is replaced IN PLACE (same id), and its inert PTY is retired
+        // with the same EXIT-9 pattern the slow path uses (expectedTeardown + graceful
+        // exit + 2s SIGKILL fallback), never killed cold.
+        if (replaceTabId != null && ProotInstaller.isInstalled(ctx)) {
+            TerminalStartupProbe.mark("warm-path: rootfs installed — placeholder dance skipped")
+            McpShellProfile.install(ctx)
+            com.codespace.ide.terminal.IdeTerminalBridge.installIdeCli(ctx)
+            // First-tab-at-launch case: no other tab keeps the foreground service alive.
+            TerminalService.start(ctx, "Ubuntu terminal active")
+            val existingTab = tabs.firstOrNull { it.id == replaceTabId }
+            val phSession = existingTab?.session
+            val phClient = existingTab?.client
+            if (phSession != null && phClient != null) {
+                phClient.expectedTeardown = true
+                phSession.gracefulExit()
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    try { phSession.finishIfRunning() } catch (_: Throwable) {}
+                }, 2000)
+            }
+            val activeRoots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(ctx, projectId)
+            // Lock precedence matches the slow path: explicit param first, then the tab's
+            // own existing lock (upgrade-in-place must never silently unlock); the lock
+            // stays valid only while the root still exists.
+            val tabLock = lockedRoot ?: existingTab?.lockedRootPath
+            val validLock = tabLock?.takeIf { it in activeRoots }
+            val wd = validLock ?: loadWorkspacePath(ctx, projectId)
+            val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
+            if (onOpenFileAtLine != null) {
+                com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!,
+                    lockedRootProvider = { tabs.firstOrNull { t -> t.id == replaceTabId }?.lockedRootPath })
+            }
+            client.firstFrameProbe = { TerminalStartupProbe.mark("first-frame — prompt visible, session usable") }
+            val idx = tabs.indexOfFirst { it.id == replaceTabId }
+            val newTab = TabSession(replaceTabId, "Ubuntu", session, client, lockedRootPath = validLock)
+            if (idx >= 0) tabs[idx] = newTab else tabs.add(newTab)
+            activeId = replaceTabId
+            scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
+                TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
+            }) }
+            TerminalStartupProbe.mark("warm-path: real session created — proot forking")
+            return
+        }
+
         // FIXED 2026-07-03: an install is already actively running (e.g. user tapped "+"
         // for another tab while the first-run download/extract is still going). Jump
         // straight to that tab — which already shows the real % progress — instead of
@@ -961,6 +1009,25 @@ internal fun TerminalPane(
                 // Ensure Termux proot binaries are extracted from assets
                 writeToDisplay(progressSession, "[Ubuntu] Preparing proot runtime...\r\n")
                 ProotInstaller.ensureBinaries(ctx)
+                // S1-b RESTORE-DIAG (2026-10-04, owner finding A): the full-uninstall
+                // restore failure had no captured signature. Every fact the restore
+                // DECISION depends on, logged where it survives a failed run (Output
+                // panel terminal channel), so the next failing device run names the
+                // exact stage — storage permission, missing backup, or extraction.
+                runCatching {
+                    val bDir = BackupManager.backupDir()
+                    val bFile = BackupManager.backupFile()
+                    val sdcard = android.os.Environment.getExternalStorageDirectory()
+                    val rootfsDirFile = ProotInstaller.rootfsDir(ctx)
+                    val diag = "[RESTORE-DIAG] decision inputs: isFirstTimeInstall=$isFirstTimeInstall " +
+                        "rootfsExists=${rootfsDirFile.exists()} " +
+                        "sdcardCanRead=${sdcard.canRead()} sdcardCanWrite=${sdcard.canWrite()} " +
+                        "backupDirExists=${bDir.exists()} " +
+                        "backupFileExists=${bFile.exists()} backupCanRead=${bFile.canRead()} backupBytes=${bFile.length()} " +
+                        "usableSpaceMb=${(rootfsDirFile.parentFile?.usableSpace() ?: 0L) / (1024 * 1024)}"
+                    android.util.Log.d("TerminalPane", diag)
+                    com.codespace.ide.diagnostics.AppOutputLog.log(diag, "terminal")
+                }
                 if (isFirstTimeInstall && BackupManager.hasBackup()) {
                     // A previous container backup exists in shared storage (survives uninstall) —
                     // restore it instead of downloading a fresh Ubuntu rootfs from scratch. This is
@@ -1006,6 +1073,15 @@ internal fun TerminalPane(
                     writeToDisplay(progressSession, "\r\n[Ubuntu] ✓ Installation complete! Launching...\r\n\r\n")
                 } else {
                     writeToDisplay(progressSession, "[Ubuntu] ✓ Already installed. Launching...\r\n\r\n")
+                }
+                // Owner finding (B): re-apply the LSP /opt snapshot after ANY setup path
+                // (restore, restore-fallback-fresh, fresh) so downloaded servers survive
+                // full uninstalls even when the container backup was stale or absent.
+                // No-op when no snapshot exists; never blocks the launch path on failure.
+                runCatching {
+                    if (BackupManager.applyLspOptSnapshot(ctx)) {
+                        writeToDisplay(progressSession, "[Ubuntu] LSP server files restored from snapshot.\r\n")
+                    }
                 }
                 // Pre-flight binary diagnostics — logcat only (adb debugging), not written to
                 // the terminal, to keep the visible text focused on setup status/progress.

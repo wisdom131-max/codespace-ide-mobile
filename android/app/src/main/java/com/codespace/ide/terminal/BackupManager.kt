@@ -62,6 +62,122 @@ object BackupManager {
 
     fun deleteBackup(): Boolean = backupFile().let { !it.exists() || it.delete() }
 
+    // ── Owner finding (B) (2026-10-01): downloaded LSP server files live guest-side
+    // under /opt and were LOST on full uninstall — the container restore can fail or
+    // the container backup can be older than the newest server installs, and nothing
+    // app-start-side covered them. Owner ruling: same treatment as the other stores.
+    // Event-driven snapshot refreshed after every VERIFIED LSP install (never at every
+    // app start — /opt can be hundreds of MB and lives on FUSE), re-applied after any
+    // container restore/fresh-install path. GUEST_SECRET_PATHS are all under root/, so
+    // an opt/-only walk cannot touch them (TP12 parity holds by construction).
+    fun lspOptSnapshotFile(): File = File(backupDir(), "lsp-opt.tar.gz")
+
+    /** Tars rootfs/opt into shared storage (atomic tmp+rename). False = nothing to snapshot. */
+    fun snapshotLspOpt(context: Context): Boolean {
+        val opt = File(ProotInstaller.rootfsDir(context), "opt")
+        if (!opt.exists()) return false
+        backupDir().mkdirs()
+        val tmp = File(backupDir(), "lsp-opt.tar.gz.tmp")
+        tmp.delete()
+        return runCatching {
+            var entries = 0
+            GzipCompressorOutputStream(tmp.outputStream()).use { gz ->
+                TarArchiveOutputStream(gz).use { tar ->
+                    tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
+                    tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_STAR)
+                    opt.walkTopDown().forEach { file ->
+                        if (file == opt) return@forEach
+                        val relPath = "opt/" + file.relativeTo(opt).path
+                        runCatching {
+                            when {
+                                java.nio.file.Files.isSymbolicLink(file.toPath()) -> {
+                                    val link = java.nio.file.Files.readSymbolicLink(file.toPath())
+                                    val symEntry = TarArchiveEntry(relPath, TarArchiveEntry.LF_SYMLINK)
+                                    symEntry.linkName = link.toString()
+                                    tar.putArchiveEntry(symEntry)
+                                    tar.closeArchiveEntry()
+                                }
+                                file.isDirectory -> {
+                                    tar.putArchiveEntry(TarArchiveEntry(file, relPath))
+                                    tar.closeArchiveEntry()
+                                }
+                                else -> {
+                                    val entry = TarArchiveEntry(file, relPath)
+                                    entry.size = file.length()
+                                    if (file.canExecute()) entry.mode = entry.mode or 0b001_001_001
+                                    tar.putArchiveEntry(entry)
+                                    file.inputStream().use { it.copyTo(tar) }
+                                    tar.closeArchiveEntry()
+                                }
+                            }
+                            entries++
+                        }.onFailure { Log.w(TAG, "lsp-opt snapshot skipped ${file.path}: ${it.message}") }
+                    }
+                }
+            }
+            val renamed = tmp.renameTo(lspOptSnapshotFile())
+            if (renamed) {
+                Log.d(TAG, "lsp-opt snapshot: $entries entries -> ${lspOptSnapshotFile().length()} bytes")
+                com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] lsp-opt snapshot refreshed: $entries entries, ${lspOptSnapshotFile().length() / (1024 * 1024)}MB (LSP servers survive full uninstall)", "terminal")
+            }
+            renamed
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Re-applies the /opt snapshot into the (restored or freshly installed) rootfs.
+     * No-op when no snapshot exists. Per-entry failures are logged, never fatal — the
+     * server trees are additive content, and LSP's isServerInstalled self-heal will
+     * re-download anything genuinely broken.
+     */
+    fun applyLspOptSnapshot(context: Context): Boolean {
+        val snap = lspOptSnapshotFile()
+        if (!snap.exists() || snap.length() == 0L) return false
+        val rootfs = ProotInstaller.rootfsDir(context)
+        if (!rootfs.exists()) return false
+        return runCatching {
+            var applied = 0
+            GzipCompressorInputStream(snap.inputStream()).use { gz ->
+                TarArchiveInputStream(gz).use { tar ->
+                    var entry = tar.nextEntry
+                    while (entry != null) {
+                        // RG07 parity: entries arrive from an on-disk archive and get
+                        // contained at the rootfs boundary before extraction.
+                        val outFile = com.codespace.ide.util.CanonicalPaths.safeEntryDestination(rootfs, entry.name)
+                        if (outFile == null) {
+                            Log.w(TAG, "Rejected lsp-opt tar entry (escape attempt): ${entry.name}")
+                        } else {
+                            runCatching {
+                                when {
+                                    entry.isDirectory -> if (!outFile.exists()) outFile.mkdirs()
+                                    entry.isSymbolicLink -> {
+                                        val link = outFile.toPath()
+                                        val target = java.nio.file.Paths.get(entry.linkName)
+                                        outFile.parentFile?.mkdirs()
+                                        if (java.nio.file.Files.exists(link) || java.nio.file.Files.isSymbolicLink(link))
+                                            java.nio.file.Files.delete(link)
+                                        java.nio.file.Files.createSymbolicLink(link, target)
+                                    }
+                                    else -> {
+                                        outFile.parentFile?.mkdirs()
+                                        outFile.outputStream().use { out -> tar.copyTo(out) }
+                                        if ((entry.mode and 0b001_001_001) != 0) outFile.setExecutable(true, false)
+                                        outFile.setReadable(true, false)
+                                    }
+                                }
+                                applied++
+                            }.onFailure { Log.w(TAG, "lsp-opt apply skipped ${entry.name}: ${it.message}") }
+                        }
+                        entry = tar.nextEntry
+                    }
+                }
+            }
+            Log.d(TAG, "lsp-opt snapshot applied: $applied entries")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] lsp-opt snapshot applied: $applied entries into rootfs", "terminal")
+            true
+        }.getOrDefault(false)
+    }
+
     /**
      * Tars + gzips the entire rootfs into the shared-storage backup file. Writes to a .tmp
      * file first and renames atomically on success, so an interrupted backup never leaves a
@@ -166,6 +282,23 @@ object BackupManager {
         }
         val rootfs = ProotInstaller.rootfsDir(context)
         onProgress("Restoring container from backup (${f.length() / (1024 * 1024)} MB)...")
+        // S1-b RESTORE-DIAG (2026-10-04, owner finding A): the full-uninstall restore
+        // failure had no captured signature. Space is the prime suspect — the RG02
+        // atomic swap needs room for the tmp extraction AND the staged old rootfs at the
+        // same time, and a device that just wiped app data may be near its storage limit.
+        // The probe is a WARNING, never a refusal: the typed failure paths below are the
+        // actual verdict, and this line explains them when they fire.
+        runCatching {
+            val usableMb = (rootfs.parentFile?.usableSpace() ?: 0L) / (1024 * 1024)
+            val diag = "[RESTORE-DIAG] restore start: backupMb=${f.length() / (1024 * 1024)} usableMb=$usableMb rootfsExists=${rootfs.exists()}"
+            Log.d(TAG, diag)
+            com.codespace.ide.diagnostics.AppOutputLog.log(diag, "terminal")
+            if (usableMb < 300) {
+                val warn = "[RESTORE-DIAG] LOW SPACE WARNING: ${usableMb}MB usable — the atomic swap needs room for the temp extraction plus the staged old rootfs; restore may fail mid-way"
+                Log.w(TAG, warn)
+                com.codespace.ide.diagnostics.AppOutputLog.log(warn, "terminal")
+            }
+        }
         // RG02: extract to a SIBLING temp dir (same filesystem → atomic renames).
         val tmp = File(rootfs.parentFile, "rootfs.restore.tmp")
         tmp.deleteRecursively()
@@ -176,6 +309,10 @@ object BackupManager {
         var filesWritten = 0
         var fileFailures = 0
         var symlinkWarnings = 0
+        // S1-b RESTORE-DIAG: capture the FIRST hard file failure's real exception —
+        // the old code counted failures and logged the entry name but swallowed the
+        // throwable, so a disk-full / EACCES verdict was invisible in the report.
+        var firstFailureDetail: String? = null
         GzipCompressorInputStream(f.inputStream()).use { gz ->
             TarArchiveInputStream(gz).use { tar ->
                 var entry = tar.nextEntry
@@ -209,14 +346,22 @@ object BackupManager {
                         }
                         else -> {
                             outFile.parentFile?.mkdirs()
-                            val fileOk = runCatching {
+                            val copyOutcome = runCatching {
                                 outFile.outputStream().use { out -> tar.copyTo(out) }
                                 if ((entry.mode and 0b001_001_001) != 0) outFile.setExecutable(true, false)
                                 outFile.setReadable(true, false)
-                            }.isSuccess
+                            }
                             // RG02: a failed FILE copy is a HARD failure — the old code
                             // logged and continued, producing a broken container.
-                            if (!fileOk) { fileFailures++; Log.e(TAG, "Restore failed ${entry.name}"); entryFailed = true }
+                            if (copyOutcome.isFailure) {
+                                fileFailures++
+                                val cause = copyOutcome.exceptionOrNull()
+                                Log.e(TAG, "Restore failed ${entry.name}: ${cause?.javaClass?.simpleName}: ${cause?.message}")
+                                if (firstFailureDetail == null) {
+                                    firstFailureDetail = "${cause?.javaClass?.simpleName}: ${cause?.message} (entry ${entry.name})"
+                                }
+                                entryFailed = true
+                            }
                         }
                     }
                     if (entryFailed) return@use
@@ -232,8 +377,10 @@ object BackupManager {
         // rootfs first and reported success over a half-extracted container).
         if (fileFailures > 0) {
             tmp.deleteRecursively()
-            val msg = "Restore FAILED: $fileFailures of ${filesWritten + fileFailures} entries could not be written. The current container was NOT modified; the backup file is untouched."
+            val detailNote = firstFailureDetail?.let { " First failure: $it." } ?: ""
+            val msg = "Restore FAILED: $fileFailures of ${filesWritten + fileFailures} entries could not be written. The current container was NOT modified; the backup file is untouched.$detailNote"
             onProgress("\u2717 $msg")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] $msg", "terminal")
             return RestoreResult(filesWritten, fileFailures, symlinkWarnings, false, msg)
         }
 
