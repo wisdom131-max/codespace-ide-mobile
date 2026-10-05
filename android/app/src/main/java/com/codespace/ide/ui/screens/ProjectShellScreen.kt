@@ -767,7 +767,13 @@ fun ProjectShellScreen(
     DisposableEffect(Unit) {
         // K2-CI-FIX: same as EditorPane listener — explicit () -> Unit avoids the
         // experimental arbitrary-expression unit conversion.
-        val l: () -> Unit = { terminalActivityCounter++ }
+        val l: () -> Unit = {
+            terminalActivityCounter++
+            // FsNotify probe (item 9): confirms receipt at PSS. Pairs with the
+            // "[FsNotify] dispatched" line; terminal-driven bumps are identifiable
+            // by surrounding terminal output lines.
+            com.codespace.ide.diagnostics.AppOutputLog.log("[FsNotify] PSS received — explorer refresh bumped", "terminal")
+        }
         com.codespace.ide.util.FsChangeNotifier.addListener(l)
         onDispose { com.codespace.ide.util.FsChangeNotifier.removeListener(l) }
     }

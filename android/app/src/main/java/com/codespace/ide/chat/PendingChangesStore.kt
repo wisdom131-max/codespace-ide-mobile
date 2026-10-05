@@ -121,6 +121,9 @@ object PendingChangesStore {
             )
         }
         bumpRevision()
+        // FsNotify probe (item 9): the STAGED path in the log answers the
+        // path-dialect fork directly — project root vs rootfs guest landing.
+        com.codespace.ide.diagnostics.AppOutputLog.log("[FsNotify] STAGED (not on disk — Apply required): " + path, "terminal")
         return "staged: $path (${newContent.length} chars, pending review — the user must Apply before it reaches disk; later reads of this file return your staged version)"
     }
 
@@ -216,6 +219,7 @@ object PendingChangesStore {
             // used to miss the tree re-scan entirely; debounced, so applyAll
             // still costs ONE re-scan).
             com.codespace.ide.util.FsChangeNotifier.notifyChanged()
+            com.codespace.ide.diagnostics.AppOutputLog.log("[FsNotify] apply OK — on disk: " + path, "terminal")
             ApplyOutcome.Applied(path, checkpointFile)
         } catch (e: Exception) {
             // FAIL CLOSED catch-all: indeterminate state never writes silently.
@@ -283,6 +287,7 @@ object PendingChangesStore {
             // used to miss the tree re-scan entirely; debounced, so applyAll
             // still costs ONE re-scan).
             com.codespace.ide.util.FsChangeNotifier.notifyChanged()
+            com.codespace.ide.diagnostics.AppOutputLog.log("[FsNotify] apply OK — on disk: " + path, "terminal")
             ApplyOutcome.Applied(path, checkpointFile)
         } catch (e: Exception) {
             ApplyOutcome.Failed(path, "Force apply failed: ${e.message}")

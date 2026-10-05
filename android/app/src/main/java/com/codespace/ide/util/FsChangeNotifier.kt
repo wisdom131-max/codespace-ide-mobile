@@ -36,8 +36,13 @@ object FsChangeNotifier {
             if (dirty) return
             dirty = true
         }
+        // FsNotify probe (D15-a device round, item 9 re-diagnosis): log the queue
+        // point with the live listener count so a device run shows whether the
+        // write path reached the notifier AND whether PSS had a listener attached.
+        com.codespace.ide.diagnostics.AppOutputLog.log("[FsNotify] queued — " + listeners.size + " listener(s) registered", "terminal")
         main.postDelayed({
             synchronized(this) { dirty = false }
+            com.codespace.ide.diagnostics.AppOutputLog.log("[FsNotify] dispatched to " + listeners.size + " listener(s)", "terminal")
             listeners.toList().forEach { runCatching(it) }
         }, 500)
     }
