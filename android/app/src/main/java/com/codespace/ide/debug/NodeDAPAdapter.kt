@@ -359,7 +359,11 @@ class NodeDAPAdapter : DebugAdapter {
             onOutput("[js-debug] Cannot allocate an inspector port: ${e.message}\n")
             return null
         }
-        val prootEnv = IdeEnvironment.forSubprocess(context)
+        // V0-GATE FIX (2026-10-05): same workspace threading as the other
+        // adapters - jest spawns also resolved WORKSPACE_PATH to the "default"
+        // project fallback. guestWorkdir is guest-side; /sdcard and /root
+        // dialects pass through resolveWorkspacePath unchanged.
+        val prootEnv = IdeEnvironment.forSubprocess(context, workDir = guestWorkdir)
         val proot = prootEnv.proot
         val headArgs = prootEnv.args.dropLast(2).toTypedArray()
         val jestArgs = spec.guestArgs.joinToString(" ") { "'" + it.replace("'", "'\''") + "'" }
@@ -480,7 +484,10 @@ class NodeDAPAdapter : DebugAdapter {
 
         // 4. Spawn: node <dapDebugServer.js> --stdio
         // Gap 1: Use IdeEnvironment.forSubprocess — central env config.
-        val prootEnv = IdeEnvironment.forSubprocess(context)
+        // V0-GATE FIX (2026-10-05): thread the session's REAL project root -
+        // JS/TS file debug spawns also resolved WORKSPACE_PATH to the
+        // "default" fallback (/host-files/projects/default).
+        val prootEnv = IdeEnvironment.forSubprocess(context, workDir = session.projectRoot)
         val proot = prootEnv.proot
         val envVars = prootEnv.envVars
         val headArgs = prootEnv.args.dropLast(2).toTypedArray()

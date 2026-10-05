@@ -56,6 +56,16 @@ data class DebugSession(
     var pid: Int? = null,
     /** F5: non-null when this session debugs a single test via its runner. */
     var testDebug: TestDebugSpec? = null,
+    /**
+     * V0-GATE FIX (2026-10-05, device evidence 20:36:32/20:37:05/20:37:52): the
+     * HOST project root of the session's project. Debug adapters spawn their
+     * proot subprocess via IdeEnvironment.forSubprocess, which previously
+     * received NO workspace info at all — every Python/JS debug spawn resolved
+     * WORKSPACE_PATH to the "default" fallback (/host-files/projects/default)
+     * even with a real /sdcard project open. UDM.startDebug always HAD the
+     * root (it gates TrustState with it) but never handed it to the adapter.
+     */
+    var projectRoot: String? = null,
 )
 
 enum class DebugState {
@@ -555,6 +565,7 @@ object UniversalDebugManager {
             providerId = adapter?.id ?: provider!!.id,
             state = DebugState.STARTING,
             testDebug = testDebug,
+            projectRoot = projectRoot, // V0-GATE FIX: adapters need the real root
         )
         sessions[session.id] = session
         if (adapter != null) {

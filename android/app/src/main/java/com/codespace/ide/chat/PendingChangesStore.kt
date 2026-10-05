@@ -124,6 +124,14 @@ object PendingChangesStore {
         // FsNotify probe (item 9): the STAGED path in the log answers the
         // path-dialect fork directly — project root vs rootfs guest landing.
         com.codespace.ide.diagnostics.AppOutputLog.log("[FsNotify] STAGED (not on disk — Apply required): " + path, "terminal")
+        // V0-GATE FIX (2026-10-05): the AI write pipeline was INVISIBLE in the
+        // chat channel — a failed Apply left no log trace anywhere (only the
+        // success path ever logged). The chat channel now records every stage
+        // and every Apply outcome so a broken send/stage/apply chain is
+        // diagnosable end to end from one export.
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[chat] write_file STAGED by AI: path=" + path + " raw=" + rawPath +
+            " (" + newContent.length + " chars, session=" + session + ")", "chat")
         return "staged: $path (${newContent.length} chars, pending review — the user must Apply before it reaches disk; later reads of this file return your staged version)"
     }
 
@@ -161,6 +169,26 @@ object PendingChangesStore {
      * distinguishable states; everything indeterminate is Blocked.
      */
     fun apply(rawPath: String): ApplyOutcome {
+        // V0-GATE FIX (2026-10-05): every Apply outcome — including the silent
+        // failure paths — is now recorded in the chat channel. Previously only
+        // the success path logged; a Blocked/Drift/Failed/NotFound Apply was
+        // indistinguishable from "the user never tapped Apply".
+        val outcome = applyInternal(rawPath)
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[chat] Apply outcome: " + describeOutcome(outcome) + " raw=" + rawPath, "chat")
+        return outcome
+    }
+
+    /** V0-GATE FIX: one-line outcome summary for the chat channel. */
+    private fun describeOutcome(o: ApplyOutcome): String = when (o) {
+        is ApplyOutcome.Applied -> "APPLIED (on disk, checkpoint=" + (o.checkpointFile != null) + ") path=" + o.path
+        is ApplyOutcome.Blocked -> "BLOCKED (" + o.reason + ") path=" + o.path
+        is ApplyOutcome.Drift -> "DRIFT (disk changed since staging — disk content captured in entry) path=" + o.path
+        is ApplyOutcome.NotFound -> "NOT_FOUND (no pending entry for this path) path=" + o.path
+        is ApplyOutcome.Failed -> "FAILED (" + o.message + ") path=" + o.path
+    }
+
+    private fun applyInternal(rawPath: String): ApplyOutcome {
         val path = CanonicalPaths.canonicalKey(rawPath)
         val entry = synchronized(pending) { pending[path] } ?: return ApplyOutcome.NotFound(path)
         return try {
@@ -256,6 +284,13 @@ object PendingChangesStore {
      * CHOSE to overwrite whatever is on disk). Still checkpoints first.
      */
     fun forceApply(rawPath: String): ApplyOutcome {
+        val outcome = forceApplyInternal(rawPath)
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[chat] Force-apply outcome: " + describeOutcome(outcome) + " raw=" + rawPath, "chat")
+        return outcome
+    }
+
+    private fun forceApplyInternal(rawPath: String): ApplyOutcome {
         val path = CanonicalPaths.canonicalKey(rawPath)
         val entry = synchronized(pending) { pending[path] } ?: return ApplyOutcome.NotFound(path)
         return try {

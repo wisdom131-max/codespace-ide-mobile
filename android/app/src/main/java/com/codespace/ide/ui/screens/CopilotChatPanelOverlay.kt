@@ -648,6 +648,13 @@ private suspend fun chat(
     includeImplicitCtx: Boolean = true,
     attachments: List<com.codespace.ide.chat.ChatAttachment> = emptyList(),
 ): String = withContext(Dispatchers.IO) {
+    // V0-GATE FIX (2026-10-05): the [chat] channel previously only recorded
+    // key-failover info lines — a real send left NO trace in an Output export,
+    // so "did the request even go out?" was unanswerable. Every send now logs
+    // its lifecycle start here (stage/apply outcomes log from their own code).
+    com.codespace.ide.diagnostics.AppOutputLog.log(
+        "[chat] send START: mode=" + mode + " model=" + model +
+        " msgs=" + messages.size + " projectRoot=" + (projectRootPath ?: "null"), "chat")
     // P41-X: Build workspace context for AI prompts
     // R3-ATTACH: includeImplicitCtx=false turns OFF the implicit workspace
     // context (explicit attachments/auto-instructions only) — VS Code parity.
@@ -772,6 +779,9 @@ private suspend fun chat(
                 // needs no approval gate). Only Apply, which the user initiates from
                 // the review card, ever writes to disk.
                 val stagedMsg: String? = if (mode == ChatMode.AGENT && toolName == "write_file") {
+                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                        "[chat] write_file tool call (agent mode — staging): raw=" +
+                        toolArgs.optString("path") + " contentLen=" + toolArgs.optString("content").length, "chat")
                     try {
                         com.codespace.ide.chat.PendingChangesStore.stage(
                             toolArgs.getString("path"), toolArgs.getString("content"), context, projectRootPath)

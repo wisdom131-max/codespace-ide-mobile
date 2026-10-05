@@ -204,25 +204,32 @@ class JvmDAPAdapter : DebugAdapter {
         val guestDir = guestPath.substringBeforeLast('/')
         val baseName = File(guestPath).nameWithoutExtension // Java: public class name = file name
 
-        // Compile with -g so breakpoints bind and evaluation sees locals.
-        val compile = ProotInstaller.execOnce(context,
-            "cd " + shQuote(guestDir) + " && javac -g " + shQuote(guestPath) + " 2>&1", timeoutSeconds = 60)
-        if (compile.contains("error") || compile.contains("Error")) {
-            onOutput("[jdap] javac failed - fix the compile errors, then debug again:\n")
-            onOutput(compile.lines().takeLast(15).joinToString("\n") + "\n")
-            return null
-        }
-        onOutput("[jdap] Compiled with debug info. Starting $baseName under the debugger...\n")
-
+        // V0-GATE FIX (2026-10-05, device evidence 20:38:54-58): compile and
+        // launch used to run in TWO separate proot invocations — javac in proot
+        // #1 (execOnce), then a FRESH proot instance for the java launch. The
+        // .class file written by proot #1 was not visible to the java process
+        // inside proot #2 (each proot instance gets its own bind-mount view of
+        // the FUSE-backed /sdcard): "Compiled with debug info" at 20:38:54,
+        // JDWP attach OK, then ClassNotFoundException on the SAME class in the
+        // SAME directory at 20:38:58. Merged into ONE shell invocation — the
+        // process that writes DebugV0.class is the process that loads it. This
+        // matches the known-good single-shell pattern of the F6-b jdap-eval-test
+        // flow (7/7 on device); the two-process split had never run on device
+        // before this round (F6-d was still pending).
+        // javac errors stream to the console and the && chain stops before java;
+        // launch()'s listen-latch then reports the early exit with the compiler
+        // output directly above it.
         val cp = shQuote(guestDir + ":/opt/jdap/jdap-evalhost.jar")
         // ATTACH-DIAG: wrap with an exit-code echo so java's death signal is IN the
         // console at the death moment — 137=SIGKILL (external kill/OOM), 139=SEGV,
         // 143=SIGTERM, 0=clean exit. Without this, the shell's own exit swallowed
         // the code and only "Connection refused" was ever visible.
         val shellCommand = "cd " + shQuote(guestDir) + " && " +
+            "javac -g " + shQuote(guestPath) + " 2>&1 && " +
             "java -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=127.0.0.1:" + port +
             " -cp " + cp + " " + shQuote(baseName) + " 2>&1; " +
             "rc=\$?; echo \"[jdap] DEBUGGEE-EXIT code=\$rc\"; exit \$rc"
+        onOutput("[jdap] Compiling (debug info) and starting $baseName in one shell...\n")
         val proc = spawnShellProcess(context, shellCommand, onOutput,
             "[jdap] Failed to spawn the debuggee: ", workDir = guestDir) ?: return null
         drainToConsole(proc, onOutput, listenLatch)

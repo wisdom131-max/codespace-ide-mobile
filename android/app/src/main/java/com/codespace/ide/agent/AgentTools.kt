@@ -284,7 +284,13 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     private fun writeFile(path: String, content: String, context: android.content.Context): String {
-        val target = File(resolveToolPath(context, path))
+        val resolvedPath = resolveToolPath(context, path)
+        // V0-GATE FIX (2026-10-05): the DIRECT (non-agent) write path also logs to
+        // the chat channel now — agent-mode stages go through PendingChangesStore,
+        // but any direct write was previously invisible in every chat-channel export.
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[chat] write_file DIRECT write: raw=" + path + " resolved=" + resolvedPath, "chat")
+        val target = File(resolvedPath)
         target.parentFile?.mkdirs()
         target.writeText(content)
         // REFRESH-FAMILY: AI file writes now reach the Explorer's reactive channel

@@ -196,7 +196,11 @@ class PythonDAPAdapter : DebugAdapter {
 
         // 3. Spawn: python3 -m debugpy.adapter (DAP adapter over stdin/stdout)
         // Gap 1: Use IdeEnvironment.forSubprocess — central env config.
-        val prootEnv = IdeEnvironment.forSubprocess(context)
+        // V0-GATE FIX (2026-10-05): thread the session's REAL project root so
+        // WORKSPACE_PATH stops resolving to the "default" fallback — device log
+        // showed workDir=null → /host-files/projects/default with a /sdcard
+        // project open (20:36:32). UDM.startDebug now sets session.projectRoot.
+        val prootEnv = IdeEnvironment.forSubprocess(context, workDir = session.projectRoot)
         val proot = prootEnv.proot
         val envVars = prootEnv.envVars
         val headArgs = prootEnv.args.dropLast(2).toTypedArray()
