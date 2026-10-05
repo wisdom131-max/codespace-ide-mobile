@@ -412,6 +412,22 @@ internal fun buildCustomMenuGroups(availModels: List<String>): List<com.codespac
  * error row when it does not. fetchModelList now throws with the parsed vendor
  * message, so the reason here is the REAL failure (404, auth, bad payload, ...).
  */
+// C6-CHAT-SCOPE (2026-10-05, item-9 blocker root cause): the send pipeline ran
+// in the panel's rememberCoroutineScope — leaving the chat panel (switching to the
+// Explorer mid-request, etc.) cancelled the IN-FLIGHT request with ZERO trace:
+// the CancellationException catch was empty, so the AI never received the ask and
+// nothing downstream (stage/apply/FsNotify) ever ran. This is the real reason the
+// item-9 device test produced no trace. Sends now run in a panel-independent
+// supervisor scope: they survive unmount, complete in the background, and the
+// reply persists via the session store (persistSessions) so it appears on re-entry.
+// stopChat() still cancels via the retained chatJob; chatStopRequested lets the
+// catch log user-stops distinctly from external cancellations.
+internal val ChatSendScope = kotlinx.coroutines.CoroutineScope(
+    kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate,
+)
+
+@Volatile internal var chatStopRequested = false
+
 private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): Pair<List<String>, List<Triple<String, String, String>>> {
     val entries = mutableListOf<String>()
     val errors = mutableListOf<Triple<String, String, String>>()
@@ -423,6 +439,9 @@ private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): Pair<L
             com.codespace.ide.chat.ChatKeyFailover.execute(provider.id, tokenStore) { k ->
                 provider.fetchModels(k)
             }
+        } catch (ce: kotlinx.coroutines.CancellationException) {
+            // C6: a cancelled coroutine (panel unmount) is NOT an endpoint failure.
+            throw ce
         } catch (e: Exception) { fetchError = e.message; null }
         if (live == null) {
             errors.add(Triple(provider.id, provider.displayName, (fetchError ?: "unreachable").take(90)))
@@ -1262,6 +1281,7 @@ internal fun CopilotChatPanelInline(
     // Cancels the coroutine (streaming reads cooperate via ensureActive) and
     // keeps whatever streamed so far as a partial reply.
     fun stopChat() {
+        chatStopRequested = true
         chatJob?.cancel()
         com.codespace.ide.agent.AgentFlowGate.pending.value = null
         if (liveStreamText.isNotBlank()) {
@@ -1310,12 +1330,18 @@ internal fun CopilotChatPanelInline(
         error = ""
         chatLoading = true
         liveStreamText = ""
-        chatJob = scope.launch {
+        // C6-CHAT-SCOPE: ChatSendScope, NOT the composition scope — see file-level
+        // comment. The request must survive leaving the chat panel.
+        chatStopRequested = false
+        chatJob = ChatSendScope.launch {
             try {
                 com.codespace.ide.chat.ChatModelSelection.set(context, selectedModel)
                 // R5-AUTO: "auto" never reaches the wire — resolve to the
                 // active provider's default right before dispatch.
                 val effModel = com.codespace.ide.chat.ChatModelSelection.resolveAuto(context, selectedModel, tokenStore)
+                // C6 probe: every send leaves a trace — start, model, mode, depth.
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[chat] send START model='" + effModel + "' mode=" + mode + " msgs=" + messages.size + " atts=" + sendAtts.size, "chat")
                 val toolsUsed = mutableListOf<String>()
                 val sink: ((ChatStreamEvent) -> Unit) = { ev ->
                     when (ev) {
@@ -1325,6 +1351,9 @@ internal fun CopilotChatPanelInline(
                     }
                 }
                 val reply = chat(effModel, messages.toList(), mode, activeCustomModeId, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
+                // C6 probe: completion trace — reply size + tools used.
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[chat] send OK — reply " + reply.length + " chars, tools=" + (toolsUsed.distinct().joinToString(",").ifEmpty { "none" }), "chat")
                 // R4-TYPED-ENTRY: tools-used transcript chip rides before the reply
                 if (toolsUsed.isNotEmpty()) messages.add(ChatMsg("tool", toolsUsed.distinct().joinToString(", ")))
                 messages.add(ChatMsg("assistant", reply))
@@ -1334,7 +1363,12 @@ internal fun CopilotChatPanelInline(
                 }
                 persistSessions()
             } catch (ce: kotlinx.coroutines.CancellationException) {
-                // Stop button / disposal — stopChat() already finalized state.
+                // C6: never silent again — a cancelled send leaves a trace so a
+                // device log can always answer "did the ask ever reach the model?"
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[chat] send CANCELLED — " + (if (chatStopRequested) "user stopped the request" else "external cancellation (request died mid-flight)"), "chat")
+                // The user's ask must not vanish: persist it even when cancelled.
+                runCatching { persistSessions() }
             } catch (e: Exception) {
                 // I5 — quota notification (VS Code chatQuotaNotification analog):
                 // rate-limit / quota errors also surface in the notification bell,
@@ -1353,6 +1387,8 @@ internal fun CopilotChatPanelInline(
                         deduplicationKey = "ai-quota-" + he.statusCode,
                     )
                 }
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[chat] send FAILED — " + (e.message ?: e.javaClass.simpleName), "chat")
                 error = e.message ?: "Unknown error"
                 messages.add(ChatMsg("assistant", "Error: ${e.message}"))
                 persistSessions()

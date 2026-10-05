@@ -114,6 +114,11 @@ class CustomOpenAiProvider(
             val live = OpenAiCompatibleTransport.fetchModelList(modelsUrl(base), apiKey).take(80)
             CustomEndpointStore.setLiveModels(endpointId, live)
             (manual + live).distinct()
+        } catch (ce: kotlinx.coroutines.CancellationException) {
+            // C6: cancellation (coroutine scope left the composition) is NOT an
+            // endpoint failure — rethrow so callers don't misreport it or run
+            // failover logic on a dead coroutine.
+            throw ce
         } catch (e: Exception) {
             if (manual.isEmpty()) throw e
             com.codespace.ide.diagnostics.AppOutputLog.log(
