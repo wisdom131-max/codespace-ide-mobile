@@ -405,13 +405,6 @@ internal fun buildCustomMenuGroups(availModels: List<String>): List<com.codespac
  * its own /models endpoint and merges it with the defaults, so the picker always
  * shows models that actually exist right now. Entries stay "providerId:model".
  */
-/**
- * CUSTOM-ENDPOINT-FIX (a)+(b): live model entries PLUS per-provider fetch-failure
- * reasons. A failed fetch no longer silently degrades to the placeholder default —
- * the picker shows real models when the list loads, or a "no models: <reason>"
- * error row when it does not. fetchModelList now throws with the parsed vendor
- * message, so the reason here is the REAL failure (404, auth, bad payload, ...).
- */
 // C6-CHAT-SCOPE (2026-10-05, item-9 blocker root cause): the send pipeline ran
 // in the panel's rememberCoroutineScope — leaving the chat panel (switching to the
 // Explorer mid-request, etc.) cancelled the IN-FLIGHT request with ZERO trace:
@@ -428,6 +421,13 @@ internal val ChatSendScope = kotlinx.coroutines.CoroutineScope(
 
 @Volatile internal var chatStopRequested = false
 
+/**
+ * CUSTOM-ENDPOINT-FIX (a)+(b): live model entries PLUS per-provider fetch-failure
+ * reasons. A failed fetch no longer silently degrades to the placeholder default —
+ * the picker shows real models when the list loads, or a "no models: <reason>"
+ * error row when it does not. fetchModelList now throws with the parsed vendor
+ * message, so the reason here is the REAL failure (404, auth, bad payload, ...).
+ */
 private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): Pair<List<String>, List<Triple<String, String, String>>> {
     val entries = mutableListOf<String>()
     val errors = mutableListOf<Triple<String, String, String>>()
