@@ -127,43 +127,13 @@ object IdeEnvironment {
         workDir: String? = null,
     ): String? {
         val rawPath = workDir ?: ProjectPathResolver.resolveProjectRoot(context, projectId)
-        // DIAGNOSTIC: Log the raw path and which branch we take
-        AppOutputLog.log("resolveWorkspacePath DIAG: projectId=$projectId workDir=$workDir rawPath=$rawPath", "terminal")
-        val result = rawPath?.let {
-            when {
-                it.startsWith("/storage/emulated/0") -> {
-                    AppOutputLog.log("resolveWorkspacePath DIAG: translating /storage/emulated/0 -> /sdcard", "terminal")
-                    it.replace("/storage/emulated/0", "/sdcard")
-                }
-                it.startsWith("/sdcard") -> {
-                    AppOutputLog.log("resolveWorkspacePath DIAG: already /sdcard prefix, keeping as-is", "terminal")
-                    it
-                }
-                it.startsWith("/root") -> {
-                    AppOutputLog.log("resolveWorkspacePath DIAG: /root prefix, keeping as-is", "terminal")
-                    it
-                }
-                else -> {
-                    // ROOTFS/FILESDIR FIX (2026-09-06): host-style roots (filesDir projects,
-                    // GitHub clones under filesDir/ubuntu-rootfs/root/repos, ...) were
-                    // rejected here -> null -> the shell never cd'd into the project root or
-                    // the per-terminal LOCKED root, so `ide open <relative>` failed with
-                    // "does not exist" and pwd/$WORKSPACE_PATH were wrong. Translate
-                    // host->guest with the SAME single source of truth the LSP uses:
-                    // rootfs-backed paths become /root/..., filesDir -> /host-files/...
-                    // (filesDir is bind-mounted into the guest), /storage -> /sdcard.
-                    val guest = com.codespace.ide.terminal.ProotInstaller.hostToGuestPath(context, it)
-                    if (guest != null) {
-                        AppOutputLog.log("resolveWorkspacePath DIAG: host path '$it' -> guest '$guest'", "terminal")
-                        guest
-                    } else {
-                        AppOutputLog.log("resolveWorkspacePath DIAG: UNRECOGNIZED PREFIX '$it' -> returning null (not accessible inside proot)", "terminal")
-                        null
-                    }
-                }
-            }
-        }
-        AppOutputLog.log("resolveWorkspacePath DIAG: final result=$result", "terminal")
+        // V0-e (2026-10-05): the dialect branch table lives in the resolver core now
+        // (resolver/PathDialects.workspaceToGuest — /root passthrough, hostToGuest
+        // for everything else, null = unreachable = fail closed). This was the LAST
+        // private copy of the host->guest workspace dialect; one source of truth.
+        AppOutputLog.log("resolveWorkspacePath (V0 core): projectId=$projectId workDir=$workDir rawPath=$rawPath", "terminal")
+        val result = rawPath?.let { com.codespace.ide.resolver.PathResolver.workspaceToGuest(context, it) }
+        AppOutputLog.log("resolveWorkspacePath (V0 core): final result=$result", "terminal")
         return result
     }
 

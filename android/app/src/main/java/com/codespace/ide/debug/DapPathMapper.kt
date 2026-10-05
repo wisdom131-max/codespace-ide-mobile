@@ -1,7 +1,6 @@
 package com.codespace.ide.debug
 
 import android.content.Context
-import com.codespace.ide.terminal.ProotInstaller
 import java.io.File
 
 /**
@@ -20,8 +19,11 @@ import java.io.File
 object DapPathMapper {
 
     fun toDapSourcePath(context: Context, path: String): String {
+        // V0-e (2026-10-05): translation now flows through the resolver core
+        // (resolver/PathResolver.toGuest); the defensive exists() gate and the
+        // filesDir fallback keep their exact DG02 semantics.
         if (!File(path).exists()) return path
-        return ProotInstaller.hostToGuestPath(context, path)
+        return com.codespace.ide.resolver.PathResolver.toGuest(context, path)
             ?: "/host-files/" + path.removePrefix(context.filesDir.absolutePath + "/")
     }
 }

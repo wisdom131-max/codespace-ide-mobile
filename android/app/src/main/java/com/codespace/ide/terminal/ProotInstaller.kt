@@ -108,32 +108,9 @@ object ProotInstaller {
     // own reimplementation — mirrored here so every caller (LspManager, AgentTools
     // git checks, Problems-panel jump-to-source) gets the same correct mapping.
     fun guestToHostPath(context: Context, guestPath: String): File {
-        val trimmed = guestPath.trim()
-        return when {
-            trimmed == "/sdcard" -> File("/storage/emulated/0")
-            trimmed.startsWith("/sdcard/") -> File("/storage/emulated/0/" + trimmed.removePrefix("/sdcard/"))
-            // HOST-FILES (2026-09-19, audit F2): filesDir is bind-mounted as /host-files
-            // in the guest (see launchArgs), and hostToGuestPath already emits
-            // /host-files paths for filesDir content — this reverse lacked the case,
-            // same class as the /sdcard BUG-A gap: /host-files/x resolved to
-            // rootfs/host-files/x, which does not exist on the host. RESTRICTED to
-            // /host-files/projects ONLY: app-private data (databases, settings, token
-            // storage) stays on the nonexistent rootfs fallback, so callers exists()
-            // checks refuse it. Escape attempts with .. fail the canonical containment
-            // check and fall back the same way. File-opening callers still apply the
-            // terminal root-lock AFTER this translation (OSC 7777 open and
-            // resolveTappedFileLink), so locked terminals keep failing closed.
-            trimmed == "/host-files/projects" || trimmed.startsWith("/host-files/projects/") -> {
-                val projectsRoot = File(context.filesDir, "projects")
-                val rel = if (trimmed == "/host-files/projects") "" else trimmed.removePrefix("/host-files/projects/")
-                val candidate = File(projectsRoot, rel)
-                val rootCanonical = try { projectsRoot.canonicalPath } catch (_: Exception) { projectsRoot.absolutePath }
-                val candCanonical = try { candidate.canonicalPath } catch (_: Exception) { candidate.absolutePath }
-                val contained = candCanonical == rootCanonical || candCanonical.startsWith(rootCanonical.trimEnd('/') + "/")
-                if (contained) candidate else File(rootfsDir(context), trimmed.removePrefix("/"))
-            }
-            else -> File(rootfsDir(context), trimmed.removePrefix("/"))
-        }
+        return com.codespace.ide.resolver.PathDialects.guestToHost(
+            guestPath, rootfsDir(context).absolutePath, context.filesDir.absolutePath,
+        )
     }
 
     /**
@@ -144,21 +121,9 @@ object ProotInstaller {
      * reachable from inside proot at all (no bind-mount covers it) — see launchArgs binds.
      */
     fun hostToGuestPath(context: Context, hostPath: String): String? {
-        val rootfs = rootfsDir(context).absolutePath
-        // context.filesDir (/data/user/0/.../files) is bind-mounted as /host-files inside proot.
-        // This covers app-private project storage (files/projects/$id) which is the most
-        // common path for SourceControlPane, git blame, and git status badge.
-        val hostFilesDir = context.filesDir.absolutePath
-        return when {
-            hostPath == rootfs -> "/"
-            hostPath.startsWith("$rootfs/") -> "/" + hostPath.removePrefix("$rootfs/")
-            hostPath == "/storage/emulated/0" -> "/sdcard"
-            hostPath.startsWith("/storage/emulated/0/") -> "/sdcard/" + hostPath.removePrefix("/storage/emulated/0/")
-            hostPath == "/sdcard" || hostPath.startsWith("/sdcard/") -> hostPath
-            hostPath == hostFilesDir -> "/host-files"
-            hostPath.startsWith("$hostFilesDir/") -> "/host-files/" + hostPath.removePrefix("$hostFilesDir/")
-            else -> null // not bind-mounted into the proot guest
-        }
+        return com.codespace.ide.resolver.PathDialects.hostToGuest(
+            hostPath, rootfsDir(context).absolutePath, context.filesDir.absolutePath,
+        )
     }
 
     fun isInstalled(context: Context): Boolean {
