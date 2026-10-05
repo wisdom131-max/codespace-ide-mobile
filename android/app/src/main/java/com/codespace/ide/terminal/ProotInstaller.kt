@@ -588,13 +588,13 @@ object ProotInstaller {
             histScript.setExecutable(true, false)
             histScript.setReadable(true, false)
             Log.i(TAG, "ensureShimInstalled: wrote 02-bash-history.sh (history flush)")
+        } catch (e: Exception) {
+            Log.w(TAG, "ensureShimInstalled: failed to write 02-bash-history.sh: ${e.message}")
         }
 
         // D15-a: self-heal the shell-integration emitter on every session start —
         // same always-overwrite guarantee as 00/01/02 above (script is a few KB).
-        writeShellIntegrationScript(rootfs) catch (e: Exception) {
-            Log.w(TAG, "ensureShimInstalled: failed to write 02-bash-history.sh: ${e.message}")
-        }
+        writeShellIntegrationScript(rootfs)
     }
 
     /** Download + unpack the Ubuntu rootfs tarball. */
