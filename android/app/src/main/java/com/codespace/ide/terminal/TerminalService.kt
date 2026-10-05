@@ -184,7 +184,10 @@ class TerminalService : Service() {
         // finish any sessions still tracked here so we don't leave orphaned proot/bash
         // process trees running past the service's own lifetime.
         synchronized(liveSessions) {
-            liveSessions.forEach { try { it.session.finishIfRunning() } catch (_: Exception) {} }
+            liveSessions.forEach {
+                try { com.codespace.ide.terminal.shellintegration.ShellIntegrationState.detach(it.session) } catch (_: Exception) {}
+                try { it.session.finishIfRunning() } catch (_: Exception) {}
+            }
             liveSessions.clear()
         }
         com.codespace.ide.agent.AgentApiServer.stop()

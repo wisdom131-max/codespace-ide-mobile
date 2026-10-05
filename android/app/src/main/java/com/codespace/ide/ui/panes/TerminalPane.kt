@@ -1361,6 +1361,7 @@ internal fun TerminalPane(
         // it so the SIGKILL of the closed session is never reported as a crash.
         tabs[idx].client.expectedTeardown = true
         tabs[idx].session.finishIfRunning()
+        com.codespace.ide.terminal.shellintegration.ShellIntegrationState.detach(tabs[idx].session)
         tabs.removeAt(idx)
         sharedState.viewCache.remove(id) // P14-A: evict cached view so it can be GC'd
         if (activeId == id) activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.first().id
@@ -1638,6 +1639,13 @@ internal fun TerminalPane(
             )
             }
         }
+
+        // D15-b B1+B2 wiring: the ACTIVE tab's shell-integration surfaces — cwd/exit
+        // status strip + shell-run recorder (extracted file; own state holders, no
+        // pane recomposition on mark arrival).
+        val activeSession633 = tabs.firstOrNull { it.id == activeId }?.session
+        TerminalShellStatusBar(activeSession633)
+        ShellRunRecorder(activeSession633)
 
         // ── NewTermux-style toolbar row ────────────────────────────
         // Fixed single-line height + horizontal scroll: in portrait, this row must never wrap to a

@@ -393,6 +393,51 @@ internal fun ChatAttachPickerDialog(
                         }
                     }
                 }
+                // D15-b B2 — LAST SHELL COMMAND row (OSC 633-observed): command + its
+                // real output window + exit code, manual attach only (fail-closed AI
+                // consumption stays parked for D15-c per the approved D15 plan).
+                val lastShellRun = com.codespace.ide.terminal.TerminalAiBridge.lastShellRun.value
+                if (lastShellRun != null && onPickSelection != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable {
+                                onPickSelection(
+                                    ChatAttachment(
+                                        path = "terminal-command", relPath = "terminal-command", name = "terminal-command",
+                                        kind = ChatAttachment.Kind.SELECTION,
+                                        selText = "$ " + lastShellRun.command + "\n" +
+                                            (lastShellRun.output ?: "(no output captured)") + "\n" +
+                                            "[exit: " + (lastShellRun.exitCode?.toString() ?: "unknown") +
+                                            (if (lastShellRun.nonceValidated) " | shell-verified" else "") + "]",
+                                    )
+                                )
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Description, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text(
+                                "Attach last terminal command (exit " + (lastShellRun.exitCode?.toString() ?: "?") + ")",
+                                fontSize = 11.sp,
+                                color = colors.text,
+                            )
+                            Text(
+                                lastShellRun.command,
+                                fontSize = 9.sp,
+                                color = colors.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
                 // I4 — "Attach problems" row (VS Code chatDynamicVariables #problems analog)
                 if (problemsSnapshot.isNotEmpty() && onPickSelection != null) {
                     val errCount = problemsSnapshot.count { it.severity == com.codespace.ide.diagnostics.DiagnosticManager.Severity.ERROR }

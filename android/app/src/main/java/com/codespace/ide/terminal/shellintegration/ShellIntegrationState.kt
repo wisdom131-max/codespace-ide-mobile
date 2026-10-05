@@ -31,7 +31,10 @@ import java.util.concurrent.atomic.AtomicLong
  * mutation is synchronized. AppOutputLog is safe to call from any thread
  * (the OSC 7777 bridge already logs from this thread).
  */
-class ShellIntegrationState private constructor(
+// D15-b: constructor is internal (not private) so the JVM test suite can drive
+// onPayload directly without a live TerminalSession — production code still
+// goes through attach(); nothing outside the module can construct this.
+class ShellIntegrationState internal constructor(
     private val sessionId: Long,
     private val expectedNonce: String?,
 ) {
@@ -70,12 +73,60 @@ class ShellIntegrationState private constructor(
         fun attach(session: TerminalSession, expectedNonce: String?): ShellIntegrationState {
             val state = ShellIntegrationState(sessionCounter.incrementAndGet(), expectedNonce)
             session.setOsc633Listener { payload -> state.onPayload(payload) }
+            registry[session] = state
             state.log("listener attached — session #${state.sessionId}, nonce=${if (expectedNonce != null) "present" else "NOT INJECTED (E events will be UNVALIDATED)"}")
             return state
         }
+
+        // D15-b B0 — SESSION REGISTRY: both factory sites discard attach()'s return
+        // value, so pane-side consumers need a lookup. WeakHashMap: a finished
+        // session's entry is collectable even if a detach call is missed; detach()
+        // (closeTab / service onDestroy) removes promptly. Synchronized wrapper:
+        // attach/detach/forSession race safely across threads.
+        private val registry = java.util.Collections.synchronizedMap(
+            java.util.WeakHashMap<TerminalSession, ShellIntegrationState>(),
+        )
+
+        /** The per-session state attached to [session], or null when the session has no OSC 633 integration. */
+        fun forSession(session: TerminalSession): ShellIntegrationState? = registry[session]
+
+        /** Remove [session]'s registry entry (call when the session is finished). */
+        fun detach(session: TerminalSession) {
+            registry.remove(session)
+        }
+
+        /**
+         * D15-b: injectable log sink. Production leaves this null (debug channel via
+         * AppOutputLog); JVM tests replace it because AppOutputLog is Android-bound
+         * (Handler/Looper) and this class must stay runnable host-side.
+         */
+        internal var logSink: ((String) -> Unit)? = null
     }
 
     enum class Phase { PROMPT, COMMAND_INPUT, COMMAND_OUTPUT }
+
+    /**
+     * D15-b B0 — REACTIVE SURFACE: what changed. Callbacks fire on the READER
+     * thread (from onPayload); consumers must hop to the main thread themselves.
+     * Pure Kotlin (CopyOnWriteArrayList) so the JVM suite can test this class.
+     */
+    enum class ChangeKind { CWD, OUTPUT_START, COMMAND_COMPLETE }
+
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<(ChangeKind) -> Unit>()
+
+    /**
+     * Observe state changes. Returns a removal handle. Callbacks fire on the
+     * reader thread; never blocks onPayload (each callback is isolated, a
+     * throwing listener cannot kill the others or the reader thread).
+     */
+    fun addListener(listener: (ChangeKind) -> Unit): () -> Unit {
+        listeners.add(listener)
+        return { listeners.remove(listener) }
+    }
+
+    private fun fire(kind: ChangeKind) {
+        for (l in listeners) runCatching { l(kind) }
+    }
 
     data class CommandRecord(
         val seq: Long,
@@ -114,7 +165,10 @@ class ShellIntegrationState private constructor(
             when (event) {
                 is ShellIntegrationEvent.PromptStart -> phase = Phase.PROMPT
                 is ShellIntegrationEvent.PromptEnd -> { /* stay: prompt painted, awaiting input */ }
-                is ShellIntegrationEvent.CommandOutputStart -> phase = Phase.COMMAND_OUTPUT
+                is ShellIntegrationEvent.CommandOutputStart -> {
+                    phase = Phase.COMMAND_OUTPUT
+                    fire(ChangeKind.OUTPUT_START)
+                }
                 is ShellIntegrationEvent.CommandComplete -> {
                     phase = Phase.PROMPT
                     lastExitCode = event.exitCode
@@ -132,6 +186,7 @@ class ShellIntegrationState private constructor(
                     pendingSeq++
                     currentCommand = ""
                     currentCommandValidated = false
+                    fire(ChangeKind.COMMAND_COMPLETE)
                 }
                 is ShellIntegrationEvent.CommandLine -> {
                     phase = Phase.COMMAND_INPUT
@@ -146,6 +201,7 @@ class ShellIntegrationState private constructor(
                     if (event.name == "Cwd") {
                         val changed = cwd != event.value
                         cwd = event.value
+                        if (changed) fire(ChangeKind.CWD)
                         log("P;Cwd=${trunc(event.value)}${if (changed) "" else " (unchanged)"}")
                         return
                     }
@@ -181,7 +237,10 @@ class ShellIntegrationState private constructor(
     fun recentCommands(limit: Int = MAX_RECORDS): List<CommandRecord> = synchronized(this) { records.toList().takeLast(limit) }
 
     private fun log(msg: String) {
-        com.codespace.ide.diagnostics.AppOutputLog.log("[633] #$sessionId $msg", "terminal")
+        val line = "[633] #$sessionId $msg"
+        val sink = logSink
+        if (sink != null) sink(line)
+        else com.codespace.ide.diagnostics.AppOutputLog.log(line, "terminal")
     }
 
     private fun trunc(s: String): String = if (s.length <= LOG_RAW_LIMIT) s else s.take(LOG_RAW_LIMIT) + "…(${s.length})"

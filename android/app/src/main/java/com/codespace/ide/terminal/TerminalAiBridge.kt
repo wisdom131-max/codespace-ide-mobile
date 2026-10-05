@@ -25,6 +25,22 @@ object TerminalAiBridge {
     @Volatile var lastRunOutput: String? = null
         private set
 
+    /** D15-b B2: last SHELL-TYPED command (OSC 633 observed), attachable from the picker. */
+    val lastShellRun = androidx.compose.runtime.mutableStateOf<com.codespace.ide.terminal.shellintegration.ShellRunCapture.ShellRun?>(null)
+
+    /**
+     * D15-b B2 — record one shell-typed command run (E -> C -> D lifecycle) with its
+     * transcript-window output, exit code, and cwd. Called from TerminalPane's
+     * ShellRunRecorder on the main thread; overwrites the previous run (the picker
+     * attaches the LAST command, VS Code parity).
+     */
+    fun recordShellRun(run: com.codespace.ide.terminal.shellintegration.ShellRunCapture.ShellRun) {
+        lastShellRun.value = run
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[633] shell-run recorded: '" + run.command.take(60) + "' exit=" + (run.exitCode?.toString() ?: "-") +
+                " outLen=" + (run.output?.length ?: 0) + " cwd=" + (run.cwd ?: "-"), "terminal")
+    }
+
     /** Live transcript access — set by TerminalPane (screen.getTranscriptText()). */
     @Volatile var transcriptProvider: (() -> String?)? = null
 
