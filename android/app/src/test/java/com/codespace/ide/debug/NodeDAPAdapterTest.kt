@@ -58,12 +58,10 @@ class NodeDAPAdapterTest {
         assertNull(adapter.capabilities())
     }
 
-    @Test
-    fun supportsHotReload_returnsFalse_byDefault() {
-        val adapter = NodeDAPAdapter()
-        // NodeDAPAdapter doesn't support hot reload — it's a full DAP adapter
-        assertFalse(adapter.supportsHotReload())
-    }
+    // supportsHotReload_returnsFalse_byDefault REMOVED (2026-10-05): the
+    // supportsHotReload default now lives on DebugProvider only —
+    // NodeDAPAdapter implements DebugAdapter, which never had it, so the
+    // assertion no longer compiles against the current interface surface.
 }
 
 /**

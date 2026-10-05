@@ -244,13 +244,13 @@ class DAPClientTest {
             id = "session-1",
             language = com.codespace.ide.domain.Language.JAVASCRIPT,
             filePath = "/projects/test/app.js",
-            name = "Debug app.js",
+            providerId = "node-inspect",
         )
 
         assertEquals("session-1", session.id)
         assertEquals(com.codespace.ide.domain.Language.JAVASCRIPT, session.language)
         assertEquals("/projects/test/app.js", session.filePath)
-        assertEquals("Debug app.js", session.name)
+        assertEquals("node-inspect", session.providerId)
     }
 
     @Test
@@ -284,15 +284,18 @@ class DAPClientTest {
     @Test
     fun debugStackFrame_hasFileLineAndFunction() {
         val frame = DebugStackFrame(
-            id = 1,
+            frameId = 7,
             file = "/projects/test/app.js",
             line = 15,
-            column = 3,
             function = "main",
+            active = true,
         )
 
         assertEquals("/projects/test/app.js", frame.file)
         assertEquals(15, frame.line)
+        assertEquals("main", frame.function)
+        assertEquals(7, frame.frameId)
+        assertTrue(frame.active)
         assertEquals("main", frame.function)
     }
 

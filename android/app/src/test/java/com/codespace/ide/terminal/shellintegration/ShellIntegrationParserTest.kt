@@ -154,7 +154,7 @@ class ShellIntegrationParserTest {
     }
 
     @Test
-    fun `fast path (>=2000 chars) round-trips`() {
+    fun `fast path at 2000 chars round-trips`() {
         // The emitter switches to the fast escape at 2000+ chars: ONLY backslash
         // and ';' are escaped there; raw control chars are legal and pass through.
         val cmd = "x".repeat(1998) + ";\\"
