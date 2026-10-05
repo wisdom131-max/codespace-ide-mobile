@@ -193,6 +193,296 @@ object ProotInstaller {
      * It is a pure host-side file copy — no proot invocation needed — and is idempotent
      * (skipped if dst already exists with the same size as src).
      */
+    /**
+     * D15-a: write the shell-integration emitter (99-shell-integration.sh) into the
+     * rootfs profile.d. Adapted from VS Code shellIntegration-bash.sh (MIT) — see the
+     * script header for exactly what was kept/removed. Called from BOTH the fresh
+     * extraction path (next to 99-dpkg-fix.sh) AND ensureShimInstalled() (self-heal:
+     * an existing rootfs from an older build gets the script without a re-extraction,
+     * and an accidentally modified/removed script is restored every session start —
+     * same always-overwrite pattern as 00-ld-preload-shim.sh).
+     *
+     * Why the nonce reads the ENV and not the args: the app injects
+     * CODESPACE_SHELL_NONCE per session via the /usr/bin/env -i arg list
+     * (IdeEnvironment.forTerminal extraEnv); the script captures it, UNSETS it so
+     * child processes cannot read it, and echoes it on every 633;E mark for the
+     * host-side ShellIntegrationState to validate.
+     */
+    fun writeShellIntegrationScript(rootfs: File) {
+        val profileDDir = File(rootfs, "etc/profile.d")
+        val script = File(profileDDir, "99-shell-integration.sh")
+        val content =
+                listOf(
+                "#!/bin/bash",
+                "# 99-shell-integration.sh — Codespace IDE shell integration (D15-a).",
+                "# Adapted from VS Code shellIntegration-bash.sh (MIT, microsoft/vscode) with:",
+                "#   KEPT verbatim (in substance): bash-only guard, idempotent re-entry guard,",
+                "#   DEBUG-trap preservation (parse + chain, never replace), starship",
+                "#   bash_preexec interop, PROMPT_COMMAND preservation with \$? restore",
+                "#   (the original array/string is saved and re-evaluated with the exit code",
+                "#   restored first — so 02-bash-history.sh's \"history -a\" and any \$?-sensitive",
+                "#   prompt logic keep working), PS1/PS2 re-wrap on change detection, the",
+                "#   escape-value rule (backslash doubling, \\x3b for semicolons, \\xNN for",
+                "#   control chars, fast path for inputs >= 2000 chars), history-verified",
+                "#   command capture, and the first-prompt gate.",
+                "#   REMOVED (no host consumer yet — D15-b/c may restore from source):",
+                "#   env-collection reporting, Python activation, IsWindows, PromptType,",
+                "#   Prompt/ContinuationPrompt property reports, HasRichCommandDetection.",
+                "# Marks emitted: 633;A 633;B 633;C 633;D[;exit] 633;E;cmd;nonce",
+                "#                633;F 633;G 633;P;Cwd=<escaped>",
+                "# Consumed on the host by ShellIntegrationParser; never rendered.",
+                "",
+                "# bash-only: profile.d is sourced by /etc/profile under the login shell; a",
+                "# non-bash shell (sh/dash) must no-op rather than choke on bashisms.",
+                "if [ -z \"\${BASH_VERSION:-}\" ]; then",
+                "    return 0 2>/dev/null",
+                "fi",
+                "",
+                "# Idempotent install: sourcing twice must emit no duplicate marks.",
+                "if [ -n \"\${CODESPACE_SHELL_INTEGRATION:-}\" ]; then",
+                "    builtin return",
+                "fi",
+                "CODESPACE_SHELL_INTEGRATION=1",
+                "",
+                "# Per-session nonce, injected by the app through /usr/bin/env. Captured then",
+                "# UNSET so child processes cannot read it. Empty when injection was skipped —",
+                "# marks still emit; the host flags E events UNVALIDATED.",
+                "__csi_nonce=\"\${CODESPACE_SHELL_NONCE:-}\"",
+                "unset CODESPACE_SHELL_NONCE",
+                "",
+                "__csi_get_trap() {",
+                "    # 'trap -p DEBUG' outputs a shell command like `trap -- '…shellcode…' DEBUG`.",
+                "    # Splice the quoted terms into an array expression to preserve quoting exactly",
+                "    # (VS Code __vsc_get_trap, unchanged in substance).",
+                "    builtin local -a terms",
+                "    builtin eval \"terms=( \$(trap -p \"\${1:-DEBUG}\") )\"",
+                "    builtin printf '%s' \"\${terms[2]:-}\"",
+                "}",
+                "",
+                "__csi_escape_value_fast() {",
+                "    builtin local LC_ALL=C out",
+                "    out=\${1//\\\\/\\\\\\\\}",
+                "    out=\${out//;/\\\\x3b}",
+                "    builtin printf '%s\\n' \"\${out}\"",
+                "}",
+                "",
+                "__csi_escape_value() {",
+                "    # Escape per contract: backslash -> \\\\, ';' -> \\x3b, control chars (<31) -> \\xNN.",
+                "    if [ \"\${#1}\" -ge 2000 ]; then",
+                "        __csi_escape_value_fast \"\$1\"",
+                "        builtin return",
+                "    fi",
+                "    builtin local -r LC_ALL=C",
+                "    builtin local -r str=\"\${1}\"",
+                "    builtin local -i i",
+                "    builtin local -i val",
+                "    builtin local byte",
+                "    builtin local token",
+                "    builtin local out=''",
+                "    for (( i=0; i<\"\${#str}\"; ++i )); do",
+                "        byte=\"\${str:\$i:1}\"",
+                "        builtin printf -v val '%d' \"'\$byte\"",
+                "        if (( val < 31 )); then",
+                "            builtin printf -v token '\\\\x%02x' \"'\$byte\"",
+                "        elif (( val == 92 )); then",
+                "            token=\"\\\\\\\\\"",
+                "        elif (( val == 59 )); then",
+                "            token=\"\\\\x3b\"",
+                "        else",
+                "            token=\"\$byte\"",
+                "        fi",
+                "        out+=\"\$token\"",
+                "    done",
+                "    builtin printf '%s\\n' \"\$out\"",
+                "}",
+                "",
+                "__csi_prompt_start() {",
+                "    builtin printf '\\e]633;A\\a'",
+                "}",
+                "",
+                "__csi_prompt_end() {",
+                "    builtin printf '\\e]633;B\\a'",
+                "}",
+                "",
+                "__csi_update_cwd() {",
+                "    __csi_cwd=\"\$PWD\"",
+                "    builtin printf '\\e]633;P;Cwd=%s\\a' \"\$(__csi_escape_value \"\${__csi_cwd}\")\"",
+                "}",
+                "",
+                "__csi_continuation_start() {",
+                "    builtin printf '\\e]633;F\\a'",
+                "}",
+                "",
+                "__csi_continuation_end() {",
+                "    builtin printf '\\e]633;G\\a'",
+                "}",
+                "",
+                "__csi_command_output_start() {",
+                "    if [[ -z \"\${__csi_first_prompt-}\" ]]; then",
+                "        builtin return",
+                "    fi",
+                "    builtin printf '\\e]633;E;%s;%s\\a' \"\$(__csi_escape_value \"\${__csi_current_command}\")\" \"\$__csi_nonce\"",
+                "    builtin printf '\\e]633;C\\a'",
+                "}",
+                "",
+                "__csi_command_complete() {",
+                "    if [[ -z \"\${__csi_first_prompt-}\" ]]; then",
+                "        __csi_update_cwd",
+                "        builtin return",
+                "    fi",
+                "    if [ \"\$__csi_current_command\" = \"\" ]; then",
+                "        builtin printf '\\e]633;D\\a'",
+                "    else",
+                "        builtin printf '\\e]633;D;%s\\a' \"\$__csi_status\"",
+                "    fi",
+                "    __csi_update_cwd",
+                "}",
+                "",
+                "__csi_update_prompt() {",
+                "    # in command execution: wrap PS1/PS2 with the start/end marks. Re-detects a",
+                "    # user re-export of PS1 (custom prompt managers) and re-wraps.",
+                "    if [ \"\$__csi_in_command_execution\" = \"1\" ]; then",
+                "        if [[ \"\$__csi_custom_PS1\" == \"\" || \"\$__csi_custom_PS1\" != \"\$PS1\" ]]; then",
+                "            __csi_original_PS1=\$PS1",
+                "            __csi_custom_PS1=\"\\[\$(__csi_prompt_start)\\]\$__csi_original_PS1\\[\$(__csi_prompt_end)\\]\"",
+                "            PS1=\"\$__csi_custom_PS1\"",
+                "        fi",
+                "        if [[ \"\$__csi_custom_PS2\" == \"\" || \"\$__csi_custom_PS2\" != \"\$PS2\" ]]; then",
+                "            __csi_original_PS2=\$PS2",
+                "            __csi_custom_PS2=\"\\[\$(__csi_continuation_start)\\]\$__csi_original_PS2\\[\$(__csi_continuation_end)\\]\"",
+                "            PS2=\"\$__csi_custom_PS2\"",
+                "        fi",
+                "        __csi_in_command_execution=\"0\"",
+                "    fi",
+                "}",
+                "",
+                "__csi_precmd() {",
+                "    # VS Code parity: cwd update happens inside __csi_command_complete (both the",
+                "    # pre-first-prompt and the normal path). Adding it here would double the",
+                "    # Cwd mark every prompt — verified in simulation before shipping.",
+                "    __csi_command_complete \"\$__csi_status\"",
+                "    __csi_current_command=\"\"",
+                "    __csi_first_prompt=1",
+                "    __csi_update_prompt",
+                "}",
+                "",
+                "__csi_preexec() {",
+                "    __csi_initialized=1",
+                "    if [[ ! \$BASH_COMMAND == __csi_prompt* ]]; then",
+                "        # BASH_COMMAND arrives with aliases resolved; history 1 (when the user's",
+                "        # HISTCONTROL allows verification) holds the raw command line.",
+                "        if [ \"\$__csi_history_verify\" = \"1\" ]; then",
+                "            __csi_current_command=\"\$(builtin history 1 | sed 's/ *[0-9]* *//')\"",
+                "        else",
+                "            __csi_current_command=\$BASH_COMMAND",
+                "        fi",
+                "    else",
+                "        __csi_current_command=\"\"",
+                "    fi",
+                "    __csi_command_output_start",
+                "}",
+                "",
+                "# Allow verifying \$BASH_COMMAND via history only when HISTCONTROL permits it",
+                "# (mirrors VS Code's regex).",
+                "__csi_regex_histcontrol=\".*(erasedups|ignoreboth|ignoredups|ignorespace).*\"",
+                "if [[ \"\${HISTCONTROL:-}\" =~ \$__csi_regex_histcontrol ]]; then",
+                "    __csi_history_verify=0",
+                "else",
+                "    __csi_history_verify=1",
+                "fi",
+                "builtin unset __csi_regex_histcontrol",
+                "",
+                "__csi_initialized=0",
+                "__csi_original_PS1=\"\$PS1\"",
+                "__csi_original_PS2=\"\$PS2\"",
+                "__csi_custom_PS1=\"\"",
+                "__csi_custom_PS2=\"\"",
+                "__csi_in_command_execution=\"1\"",
+                "__csi_current_command=\"\"",
+                "",
+                "# Debug trapping/preexec inspired by starship (ISC) — preserve any existing",
+                "# DEBUG trap by chaining it after ours; interop with bash_preexec if present.",
+                "if [[ -n \"\${bash_preexec_imported:-}\" ]]; then",
+                "    __csi_preexec_only() {",
+                "        if [ \"\$__csi_in_command_execution\" = \"0\" ]; then",
+                "            __csi_in_command_execution=\"1\"",
+                "            __csi_preexec",
+                "        fi",
+                "    }",
+                "    precmd_functions+=(__csi_prompt_cmd)",
+                "    preexec_functions+=(__csi_preexec_only)",
+                "else",
+                "    __csi_dbg_trap=\"\$(__csi_get_trap DEBUG)\"",
+                "",
+                "    if [[ -z \"\$__csi_dbg_trap\" ]]; then",
+                "        __csi_preexec_only() {",
+                "            if [ \"\$__csi_in_command_execution\" = \"0\" ]; then",
+                "                __csi_in_command_execution=\"1\"",
+                "                __csi_preexec",
+                "            fi",
+                "        }",
+                "        trap '__csi_preexec_only \"\$_\"' DEBUG",
+                "    elif [[ \"\$__csi_dbg_trap\" != '__csi_preexec \"\$_\"' && \"\$__csi_dbg_trap\" != '__csi_preexec_all \"\$_\"' ]]; then",
+                "        __csi_preexec_all() {",
+                "            if [ \"\$__csi_in_command_execution\" = \"0\" ]; then",
+                "                __csi_in_command_execution=\"1\"",
+                "                __csi_preexec",
+                "                builtin eval \"\${__csi_dbg_trap}\"",
+                "            fi",
+                "        }",
+                "        trap '__csi_preexec_all \"\$_\"' DEBUG",
+                "    fi",
+                "fi",
+                "",
+                "__csi_update_prompt",
+                "",
+                "__csi_restore_exit_code() {",
+                "    return \"\$1\"",
+                "}",
+                "",
+                "__csi_prompt_cmd_original() {",
+                "    __csi_status=\"\$?\"",
+                "    builtin local cmd",
+                "    __csi_restore_exit_code \"\${__csi_status}\"",
+                "    # Evaluate the original PROMPT_COMMAND (array or string) the way bash would",
+                "    # (https://unix.stackexchange.com/a/672843), so the saved entries still see",
+                "    # the REAL \$? — 02-bash-history.sh's \"history -a\" survives intact.",
+                "    for cmd in \"\${__csi_original_prompt_command[@]}\"; do",
+                "        eval \"\${cmd:-}\"",
+                "    done",
+                "    __csi_precmd",
+                "}",
+                "",
+                "__csi_prompt_cmd() {",
+                "    __csi_status=\"\$?\"",
+                "    __csi_precmd",
+                "}",
+                "",
+                "# PROMPT_COMMAND arrays and strings are handled the same (VS Code note: only",
+                "# the first array entry is considered).",
+                "__csi_original_prompt_command=\${PROMPT_COMMAND:-}",
+                "",
+                "if [[ -z \"\${bash_preexec_imported:-}\" ]]; then",
+                "    if [[ -n \"\${__csi_original_prompt_command:-}\" && \"\${__csi_original_prompt_command:-}\" != \"__csi_prompt_cmd\" ]]; then",
+                "        PROMPT_COMMAND=__csi_prompt_cmd_original",
+                "    else",
+                "        PROMPT_COMMAND=__csi_prompt_cmd",
+                "    fi",
+                "fi",
+                ).joinToString("\n") + "\n"
+        try {
+            profileDDir.mkdirs()
+            script.writeText(content)
+            script.setExecutable(true, false)
+            script.setReadable(true, false)
+            Log.i(TAG, "writeShellIntegrationScript: wrote 99-shell-integration.sh (${content.length} chars)")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[proot] \u2713 99-shell-integration.sh ready in profile.d — OSC 633 marks will be emitted by new shells", "terminal")
+        } catch (e: Exception) {
+            Log.w(TAG, "writeShellIntegrationScript: failed: ${e.message}")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[proot] WARNING: Could not write 99-shell-integration.sh: ${e.message}", "terminal")
+        }
+    }
+
     fun ensureShimInstalled(context: Context) {
         val nativeLibDir = File(context.applicationInfo.nativeLibraryDir)
         val src = File(nativeLibDir, "libdpkg_android_fix.so")
@@ -298,7 +588,11 @@ object ProotInstaller {
             histScript.setExecutable(true, false)
             histScript.setReadable(true, false)
             Log.i(TAG, "ensureShimInstalled: wrote 02-bash-history.sh (history flush)")
-        } catch (e: Exception) {
+        }
+
+        // D15-a: self-heal the shell-integration emitter on every session start —
+        // same always-overwrite guarantee as 00/01/02 above (script is a few KB).
+        writeShellIntegrationScript(rootfs) catch (e: Exception) {
             Log.w(TAG, "ensureShimInstalled: failed to write 02-bash-history.sh: ${e.message}")
         }
     }
@@ -937,6 +1231,10 @@ object ProotInstaller {
                     "fi\n"
                 )
                 File(profileDDir, "99-dpkg-fix.sh").setExecutable(true, false)
+
+                // D15-a: bake the shell-integration emitter into FRESH extractions too
+                // (ensureShimInstalled() self-heals existing rootfs every session start).
+                writeShellIntegrationScript(rootfs)
 
                 installShadowUtilsWrappers(rootfs)
 

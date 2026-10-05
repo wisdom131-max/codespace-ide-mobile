@@ -343,6 +343,27 @@ public final class TerminalSession extends TerminalOutput {
         if (listener != null) listener.onOscIdeOpen(type, path, line);
     }
 
+    /**
+     * OSC 633 listener — VS Code shell-integration marks (D15). Called from the
+     * emulator reader thread with the RAW payload after the OSC number. All
+     * grammar work lives in ShellIntegrationParser (pure Kotlin, JVM-tested);
+     * implementations must hop to the main thread before touching UI.
+     */
+    public interface Osc633Listener {
+        void onOsc633(String payload);
+    }
+
+    private Osc633Listener mOsc633Listener;
+
+    public void setOsc633Listener(Osc633Listener listener) {
+        mOsc633Listener = listener;
+    }
+
+    public void onOsc633(String payload) {
+        Osc633Listener listener = mOsc633Listener;
+        if (listener != null) listener.onOsc633(payload);
+    }
+
     public int getPid() {
         return mShellPid;
     }

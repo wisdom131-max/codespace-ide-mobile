@@ -45,6 +45,11 @@ object IdeEnvironment {
         context: Context,
         projectId: String = "default",
         workDir: String? = null,
+        // D15-a: per-session KEY=VALUE entries injected into the guest env (passed via
+        // "/usr/bin/env -i" args like WORKSPACE_PATH). Used for the shell-integration
+        // nonce (CODESPACE_SHELL_NONCE). forSubprocess deliberately does NOT take this —
+        // the nonce is terminal-session-only.
+        extraEnv: List<String> = emptyList(),
     ): ProotEnv {
         val (proot, args, envVars) = ProotInstaller.launchArgs(context)
         val workspacePath = resolveWorkspacePath(context, projectId, workDir)
@@ -57,7 +62,7 @@ object IdeEnvironment {
         AppOutputLog.log("forTerminal DIAG: enrichedEnvVars will ${if (workspacePath != null) "ADD" else "SKIP"} WORKSPACE_PATH/PROJECT_FILES", "terminal")
 
         val enrichedEnv = enrichEnvVars(envVars, workspacePath)
-        val enrichedArgs = enrichArgs(args, workspacePath)
+        val enrichedArgs = enrichArgs(args, workspacePath, extraEnv)
 
         // DIAGNOSTIC: Verify the env vars actually made it into the args
         if (workspacePath != null) {
@@ -99,7 +104,7 @@ object IdeEnvironment {
         }.toTypedArray()
 
         val enrichedEnv = enrichEnvVars(envVars, workspacePath)
-        val enrichedArgs = enrichArgs(filteredArgs, workspacePath)
+        val enrichedArgs = enrichArgs(filteredArgs, workspacePath, emptyList())
 
         return ProotEnv(
             proot = proot,
@@ -178,21 +183,25 @@ object IdeEnvironment {
     }
 
     /**
-     * Inject WORKSPACE_PATH and PROJECT_FILES into the proot "/usr/bin/env -i"
-     * argument list, right before the final "/bin/bash" command.
-     * This is how they become real environment variables for the guest process.
+     * Inject WORKSPACE_PATH, PROJECT_FILES (when a workspace is open) and any
+     * extraEnv entries into the proot "/usr/bin/env -i" argument list, right
+     * before the final "/bin/bash" command. This is how they become real
+     * environment variables for the guest process. D15-a: extraEnv (e.g. the
+     * per-session shell-integration nonce) is injected even WITHOUT a workspace.
      */
-    private fun enrichArgs(args: Array<String>, workspacePath: String?): Array<String> {
-        if (workspacePath == null) return args
+    private fun enrichArgs(args: Array<String>, workspacePath: String?, extraEnv: List<String>): Array<String> {
+        val envEntries = buildList {
+            if (workspacePath != null) {
+                add("WORKSPACE_PATH=$workspacePath")
+                add("PROJECT_FILES=$workspacePath")
+            }
+            addAll(extraEnv)
+        }
+        if (envEntries.isEmpty()) return args
 
         // Find the "/bin/bash" entry near the end and insert env vars before it
         val bashIndex = args.indexOfLast { it == "/bin/bash" }
         if (bashIndex < 0) return args
-
-        val envEntries = arrayOf(
-            "WORKSPACE_PATH=$workspacePath",
-            "PROJECT_FILES=$workspacePath",
-        )
 
         val result = args.toMutableList()
         result.addAll(bashIndex, envEntries.toList())
@@ -211,7 +220,12 @@ object IdeEnvironment {
             "export WORKSPACE_PATH=\"$workspacePath\"\n",
             "export PROJECT_FILES=\"$workspacePath\"\n",
             "cd \"$workspacePath\" 2>/dev/null && clear || echo \"[LOCK-DIAG] cd to '$workspacePath' failed - not reachable inside Ubuntu, keeping current cwd\"\n",
-            "export PROMPT_COMMAND='history -a'\n",
+            // D15-a: append, never clobber — 99-shell-integration.sh installs a
+            // PROMPT_COMMAND wrapper that re-evaluates whatever it captured; a bare
+            // assignment here destroyed it. With integration active the value composes
+            // ("__csi_prompt_cmd_original; history -a"); without it, it stays exactly
+            // "history -a" as before.
+            "export PROMPT_COMMAND=\"\${PROMPT_COMMAND:+\$PROMPT_COMMAND;}history -a\"\n",
             "export HISTFILE=~/.bash_history\n",
             "export HISTSIZE=500\n",
             "export HISTFILESIZE=500\n",

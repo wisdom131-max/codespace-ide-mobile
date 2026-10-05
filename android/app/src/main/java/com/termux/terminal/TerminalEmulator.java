@@ -2194,6 +2194,14 @@ public final class TerminalEmulator {
                     }
                 }
                 break;
+            case 633:
+                // OSC 633 — VS Code shell-integration marks (D15). DUMB FORWARD ONLY:
+                // all grammar/escaping work lives in ShellIntegrationParser (pure Kotlin,
+                // JVM-tested) so the vendored tree stays free of feature logic. The
+                // sequence is consumed silently (never rendered to the screen). Raw
+                // payload = everything after "633;". Listener thread: emulator reader.
+                mSession.onOsc633(textParameter);
+                break;
             case 7777:
                 // OSC 7777 — Codespace IDE file-open protocol (Acode-compatible, verified from
                 // Acode-Foundation/Acode src/components/terminal/terminal.js setupOscHandler).

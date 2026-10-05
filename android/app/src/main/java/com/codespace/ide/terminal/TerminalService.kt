@@ -332,8 +332,18 @@ class TerminalService : Service() {
             // Gap 1+3: Use IdeEnvironment as single source of truth for env vars.
             // WORKSPACE_PATH and PROJECT_FILES are now baked into the env map directly
             // (via /usr/bin/env -i args) instead of post-hoc session.write() injection.
-            val prootEnv = IdeEnvironment.forTerminal(this, projectId, workDir)
+            // D15-a: per-session shell-integration nonce. Injected into the guest env
+            // (before /bin/bash in the /usr/bin/env -i arg list) so the profile.d
+            // emitter echoes it on every 633;E mark; the SAME value is held by the
+            // per-session ShellIntegrationState for validation (mismatch/absent =
+            // UNVALIDATED, fail-closed). Never a singleton: one state per session.
+            val shellNonce = com.codespace.ide.terminal.shellintegration.ShellIntegrationState.newNonce()
+            val prootEnv = IdeEnvironment.forTerminal(
+                this, projectId, workDir,
+                extraEnv = listOf(com.codespace.ide.terminal.shellintegration.ShellIntegrationState.NONCE_ENV + "=" + shellNonce),
+            )
             val session = TerminalSession(prootEnv.proot, "/", prootEnv.args, prootEnv.envVars, 4000, client)
+            com.codespace.ide.terminal.shellintegration.ShellIntegrationState.attach(session, shellNonce)
             liveSessions.add(TrackedSession(session, projectId))
             // Give ANY AI launched inside the terminal (Claude Code, llama.cpp,
             // etc.) the same 32 AgentTools the chat panel uses, via localhost:8765 — was built

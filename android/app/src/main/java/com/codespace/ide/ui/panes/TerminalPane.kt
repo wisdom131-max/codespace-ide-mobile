@@ -564,8 +564,16 @@ internal fun createTerminalSession(
         // TP14 (2026-09-26): projectId is threaded through (was hardcoded "default" —
         // the pane fallback built the session for the WRONG project while the service
         // path used the real one: dual-factory drift).
-        val prootEnv = IdeEnvironment.forTerminal(context, projectId, workDir)
+        // D15-a: same nonce + per-session state wiring as TerminalService.createSession —
+        // the dual factory (TP14) means BOTH sites must attach or pane-created tabs
+        // stay unintegrated while service tabs work.
+        val shellNonce = com.codespace.ide.terminal.shellintegration.ShellIntegrationState.newNonce()
+        val prootEnv = IdeEnvironment.forTerminal(
+            context, projectId, workDir,
+            extraEnv = listOf(com.codespace.ide.terminal.shellintegration.ShellIntegrationState.NONCE_ENV + "=" + shellNonce),
+        )
         val session = TerminalSession(prootEnv.proot, "/", prootEnv.args, prootEnv.envVars, 4000, client)
+        com.codespace.ide.terminal.shellintegration.ShellIntegrationState.attach(session, shellNonce)
         // TP14 (2026-09-26): single session registry — pane-created sessions used to be
         // invisible to the service (TB02 dual-writer family: one concept, two owners):
         // service-level reattach/cleanup missed them. Registered exactly like
