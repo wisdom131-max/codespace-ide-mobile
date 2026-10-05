@@ -34,6 +34,14 @@ public abstract class TerminalOutput {
      * Acode-compatible) was received from the shell. No-op by default;
      * {@link TerminalSession} overrides this to fan out to registered listeners.
      */
+    /**
+     * OSC 633 shell-integration marks (D15). Default no-op — overridden by
+     * TerminalSession to dispatch to its Osc633Listener. All grammar lives in
+     * the pure-Kotlin ShellIntegrationParser; raw payload only.
+     */
+    public void onOsc633(String payload) {
+    }
+
     public void onOscIdeOpen(String type, String path, int line) {
         // Default no-op.
     }

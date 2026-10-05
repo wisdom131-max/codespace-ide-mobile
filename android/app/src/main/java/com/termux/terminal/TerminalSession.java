@@ -359,6 +359,7 @@ public final class TerminalSession extends TerminalOutput {
         mOsc633Listener = listener;
     }
 
+    @Override
     public void onOsc633(String payload) {
         Osc633Listener listener = mOsc633Listener;
         if (listener != null) listener.onOsc633(payload);
