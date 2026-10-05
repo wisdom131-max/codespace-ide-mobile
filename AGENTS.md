@@ -61,7 +61,7 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
-### [2026-10-05 02:10 WAT] [PENDING-CI] D15-a shell integration (OSC 633) foundation shipped — S1-a confirmed closed, batch-test ruling applied
+### [2026-10-05 02:55 WAT] [CI-GREEN 37251788137 @ 19e9c09] D15-a shell integration (OSC 633) foundation shipped — S1-a confirmed closed, batch-test ruling applied
 
 S1-A VERIFICATION REPORT (owner-approved, all four items CLOSED IN SOURCE, no code needed): (1) breakpoints live-refresh = bpVersion state bridge from UDM OnBreakpointsChangedListener keyed into the gutter remember (EditorPane.kt); (2) TextMate toggle = textMateHighlightingEnabled read in the visualTransformation scope AND re-keys the SyntaxTransformation remember (CodeEditor.kt); (3) Commonly Used ranking = rankedIds() computed in-composition from the live SettingsUsageTracker cache (InProjectSettingsDialog.kt); (4) AI-created files = FsChangeNotifier broadcast, AgentTools + PendingChangesStore writers, PSS listener, 500ms debounce. Device confirmation rides the ONE consolidated S1 checklist (owner ruling: batch-test S1, no per-item sessions).
 
@@ -78,6 +78,12 @@ CODE (this commit):
 - NEW TEST SUITE: android/app/src/test/.../ShellIntegrationParserTest.kt — 24 vectors: every mark type, escape contract (escaped-';-stays-one-field, backslash/control-char/multibyte round-trips, fast-path >=2000), full command-lifecycle cycle, malformed inputs (unknown subcommand, empty payload, non-numeric exit code, truncated escape, bad hex, P-without-=), field-boundary fail-closed vector, splitter unit vectors. All 40+ assertions pre-verified against an exact Python port of the parser (ALL VECTORS PASS) — CI runs the Kotlin versions.
 
 WHAT WAS REMOVED (per protocol): nothing deleted; the only BEHAVIOR change outside D15 is the fallback PROMPT_COMMAND line (clobber -> append, documented above, no-integration behavior identical).
+
+CI RED TRAIL (4 pushes to green — every root cause documented):
+- d3388ba RED: the self-heal call insertion in ProotInstaller landed BETWEEN the 02-bash-history try block's closing brace and its catch ("Expecting 'catch' or 'finally'" :591). LESSON (new failure class): when anchoring an insertion after a "Log.i(...)" inside a try, the FIRST 8-space '}' found is the TRY's closer, not the catch's — the safe anchor is the '}' AFTER the complete catch block. Fix 619bfcd.
+- 619bfcd RED: TerminalEmulator.mSession is typed TerminalOutput (not TerminalSession), so mSession.onOsc633 could not resolve in javac. LESSON (extends the check-the-actual-type family): vendored-tree hooks must route through TerminalOutput like onOscIdeOpen — default no-op on the abstract base, @Override dispatch in TerminalSession. Fix b608d35.
+- b608d35 RED at the NEW unit-test step: compiling the whole test source set surfaced THREE rotted legacy test files that had never been CI-compiled — SessionStateStoreTest (referenced the TB02-deleted encodeShellState), DAPClientTest (pre-P27 DebugSession.name / DebugStackFrame id/column signatures), NodeDAPAdapterTest (supportsHotReload moved to DebugProvider-only). LESSON: test sources rot silently while no CI step compiles them; expect the first unit-test CI step to be a rot census. Fix 19e9c09 (SessionStateStoreTest rewritten to cover the SURVIVING decodeShellState migration reader; DAPClientTest aligned to current models; stale hot-reload assertion removed with note; ShellIntegrationParserTest backtick name with '>' is illegal on JVM — renamed).
+- 19e9c09 GREEN: full build + 24-vector parser suite + repaired legacy tests all pass. APK arm64-v8a artifact attached.
 
 P5 DEVICE CHECKS — ONE CONSOLIDATED S1 CHECKLIST (owner ruling 2026-10-05: batch-test S1 in a single session, covering S1-b restore diagnostics, S1-c warm-path skip, the four S1-a refresh confirmations, and D15-a gate A; delivered in chat with the push report).
 
