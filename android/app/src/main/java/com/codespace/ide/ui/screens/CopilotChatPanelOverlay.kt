@@ -648,18 +648,32 @@ private suspend fun chat(
     includeImplicitCtx: Boolean = true,
     attachments: List<com.codespace.ide.chat.ChatAttachment> = emptyList(),
 ): String = withContext(Dispatchers.IO) {
+    // V0-f-b (2026-10-06, owner design direction): EXPLICIT structured workspace
+    // context — every root (name + path) from getAllWorkspaceRoots, the active
+    // one marked, plus the open file. Never pwd-style inference, never a silent
+    // /root default: with no root info the model wrote /root/trigger_apply.txt
+    // while a real project was open. When the scoped root fails to resolve
+    // (project-id drift, prefs miss) the ACTIVE project root is the fallback —
+    // the same source TrustState uses everywhere else.
+    val chatProjectId = com.codespace.ide.data.SessionStateStore(context).lastProjectId()
+    val allRoots = if (chatProjectId != null)
+        com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(context, chatProjectId) else emptyList()
+    val wsRoot = projectRootPath?.takeIf { it.isNotBlank() }
+        ?: com.codespace.ide.security.TrustState.activeProjectRoot(context)
+
     // V0-GATE FIX (2026-10-05): the [chat] channel previously only recorded
     // key-failover info lines — a real send left NO trace in an Output export,
     // so "did the request even go out?" was unanswerable. Every send now logs
     // its lifecycle start here (stage/apply outcomes log from their own code).
     com.codespace.ide.diagnostics.AppOutputLog.log(
         "[chat] send START: mode=" + mode + " model=" + model +
-        " msgs=" + messages.size + " projectRoot=" + (projectRootPath ?: "null"), "chat")
+        " msgs=" + messages.size + " projectRoot=" + (projectRootPath ?: "null") +
+        " wsRoot=" + (wsRoot ?: "null") + " roots=" + allRoots.size, "chat")
     // P41-X: Build workspace context for AI prompts
     // R3-ATTACH: includeImplicitCtx=false turns OFF the implicit workspace
     // context (explicit attachments/auto-instructions only) — VS Code parity.
     val workspaceCtx = if (includeImplicitCtx)
-        WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths) else ""
+        WorkspaceContextProvider.buildContext(wsRoot, currentFilePath, openFilePaths, allRoots) else ""
     // MCP: lazy first-chat discovery — spawns enabled external MCP servers once,
     // tools/list results feed the external-tools docs block below.
     com.codespace.ide.agent.McpClientManager.ensureDiscovered(context)

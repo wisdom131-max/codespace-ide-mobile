@@ -477,6 +477,12 @@ internal data class TabSession(
     // its workDir/$WORKSPACE_PATH resolve to this root at every (re)creation.
     // Null = unlocked (follows the app's active root at session creation).
     val lockedRootPath: String? = null,
+    // V0-f-a (2026-10-06, owner design direction): this tab's OWN CWD at session
+    // creation — recorded once, never re-resolved. The save path stamps it into
+    // TerminalSessionStore per tab, and restore uses it so a restored tab starts
+    // where IT was, not where the app's active root happens to point now (the
+    // CWD-independence rule: roots and per-tab CWD are separate concepts).
+    val initialWorkDir: String? = null,
 )
 
 // ── Built-in color schemes — matching Termux's bundled themes ──────────────────
@@ -882,7 +888,7 @@ internal fun TerminalPane(
             }
         }
         scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
-            TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
+            TerminalSessionStore.SavedTab(it.id, it.name, it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
         }) }
     }
 
@@ -900,7 +906,14 @@ internal fun TerminalPane(
     //    (no progress screen needed).
     //  - replaceTabId != null: upgrade an existing placeholder tab in place (used once,
     //    for the very first tab on app launch, by the bootstrap LaunchedEffect below).
-    fun addUbuntuTab(replaceTabId: String? = null, lockedRoot: String? = null) {
+    /**
+     * V0-f-a: [savedWorkDir] is ONLY for the restore path — the tab's persisted
+     * CWD. Precedence: explicit lock (user intent, still-existence-validated)
+     * > savedWorkDir (this tab's own CWD at save time) > the app's active root
+     * (fresh tabs; VS Code-style init-at-active-root with no lock required).
+     * New tab creation passes null — only restore passes a value.
+     */
+    fun addUbuntuTab(replaceTabId: String? = null, lockedRoot: String? = null, savedWorkDir: String? = null) {
         val ctx = context
 
         // Fast path: already installed, just opening another tab — fork immediately.
@@ -910,17 +923,18 @@ internal fun TerminalPane(
             // A2: install the `ide` CLI (OSC 7777 helper) into the rootfs — idempotent
             com.codespace.ide.terminal.IdeTerminalBridge.installIdeCli(ctx)
             val id = System.currentTimeMillis().toString()
-            // Part B: locked root (if any) wins over the app's active root
-            val wd = lockedRoot ?: loadWorkspacePath(ctx, projectId)
+            // Part B: locked root (if any) wins over the app's active root.
+            // V0-f-a: savedWorkDir (restore) sits between lock and active root.
+            val wd = lockedRoot ?: savedWorkDir ?: loadWorkspacePath(ctx, projectId)
             val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
             if (onOpenFileAtLine != null) {
                 com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!)
             }
-            tabs.add(TabSession(id, "Ubuntu", session, client, lockedRootPath = lockedRoot))
+            tabs.add(TabSession(id, "Ubuntu", session, client, lockedRootPath = lockedRoot, initialWorkDir = wd))
             activeId = id
             // Phase 4: persist after opening a new tab
             scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
-                TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
+                TerminalSessionStore.SavedTab(it.id, it.name, it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
             }) }
             return
         }
@@ -955,7 +969,9 @@ internal fun TerminalPane(
             // stays valid only while the root still exists.
             val tabLock = lockedRoot ?: existingTab?.lockedRootPath
             val validLock = tabLock?.takeIf { it in activeRoots }
-            val wd = validLock ?: loadWorkspacePath(ctx, projectId)
+            // V0-f-a: savedWorkDir (restore) sits between the validated lock and
+            // the active root — same precedence as the fast path.
+            val wd = validLock ?: savedWorkDir ?: loadWorkspacePath(ctx, projectId)
             val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
             if (onOpenFileAtLine != null) {
                 com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!,
@@ -963,11 +979,11 @@ internal fun TerminalPane(
             }
             client.firstFrameProbe = { TerminalStartupProbe.mark("first-frame — prompt visible, session usable") }
             val idx = tabs.indexOfFirst { it.id == replaceTabId }
-            val newTab = TabSession(replaceTabId, "Ubuntu", session, client, lockedRootPath = validLock)
+            val newTab = TabSession(replaceTabId, "Ubuntu", session, client, lockedRootPath = validLock, initialWorkDir = wd)
             if (idx >= 0) tabs[idx] = newTab else tabs.add(newTab)
             activeId = replaceTabId
             scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
-                TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
+                TerminalSessionStore.SavedTab(it.id, it.name, it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
             }) }
             TerminalStartupProbe.mark("warm-path: real session created — proot forking")
             return
@@ -1170,7 +1186,8 @@ internal fun TerminalPane(
                 // root still exists (validated at every re-creation, per VS Code model).
                 val activeRoots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(ctx, projectId)
                 val validLock = tabLock?.takeIf { it in activeRoots }
-                val wd = validLock ?: loadWorkspacePath(ctx, projectId)
+                // V0-f-a: same wd precedence chain as fast/warm paths.
+                val wd = validLock ?: savedWorkDir ?: loadWorkspacePath(ctx, projectId)
                 val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
                 TerminalStartupProbe.mark("real session created — proot forking")
                 client.firstFrameProbe = { TerminalStartupProbe.mark("first-frame — prompt visible, session usable") }
@@ -1180,9 +1197,9 @@ internal fun TerminalPane(
                 }
                 com.codespace.ide.terminal.IdeTerminalBridge.installIdeCli(ctx)
                 if (idx >= 0) {
-                    tabs[idx] = TabSession(id, "Ubuntu", session, client, lockedRootPath = validLock)
+                    tabs[idx] = TabSession(id, "Ubuntu", session, client, lockedRootPath = validLock, initialWorkDir = wd)
                 } else {
-                    tabs.add(TabSession(id, "Ubuntu", session, client, lockedRootPath = validLock))
+                    tabs.add(TabSession(id, "Ubuntu", session, client, lockedRootPath = validLock, initialWorkDir = wd))
                 }
                 activeId = id
             }
@@ -1326,10 +1343,18 @@ internal fun TerminalPane(
                 // Restore each saved tab as a fresh Ubuntu session
                 restored.forEachIndexed { i, saved ->
                     val validLock = saved.lockedRoot?.takeIf { it in activeRoots }
+                    // V0-f-a: restore each tab with ITS OWN persisted CWD, not the
+                    // app's CURRENT active root — the save used to stamp every tab
+                    // with the active root and the restore ignored SavedTab.workingDir
+                    // entirely, so relaunching after switching roots retroactively
+                    // re-cd'd every terminal (violates the CWD-independence rule).
+                    // "/root" is the legacy placeholder for "unresolved" — treat it
+                    // as absent so old saves degrade to init-at-active-root.
+                    val savedWd = saved.workingDir.takeUnless { it == "/root" }
                     if (i == 0) {
-                        tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id, lockedRoot = validLock) }
+                        tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id, lockedRoot = validLock, savedWorkDir = savedWd) }
                     } else {
-                        addUbuntuTab(replaceTabId = null, lockedRoot = validLock)
+                        addUbuntuTab(replaceTabId = null, lockedRoot = validLock, savedWorkDir = savedWd)
                     }
                 }
                 // Re-apply saved names
@@ -1367,7 +1392,7 @@ internal fun TerminalPane(
         if (activeId == id) activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.first().id
         // Phase 4: persist updated tab list
         scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
-            TerminalSessionStore.SavedTab(it.id, it.name, loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
+            TerminalSessionStore.SavedTab(it.id, it.name, it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
         }) }
     }
 

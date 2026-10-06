@@ -35,15 +35,26 @@ object WorkspaceContextProvider {
     /**
      * Build a workspace context string for AI prompts.
      *
-     * @param projectRootPath  Absolute path to the project root
+     * @param projectRootPath  Absolute path to the ACTIVE project root
      * @param currentFilePath  Absolute path to the currently open file (or null)
      * @param openFilePaths    List of currently open file paths
+     * @param allRoots         ALL workspace roots (V0-f-b, owner design direction
+     *                         2026-10-06: multi-root aware, primary/active first as
+     *                         returned by ProjectPathResolver.getAllWorkspaceRoots).
+     *                         The AI gets an EXPLICIT structured list — every root
+     *                         with name + path, the active one marked — so it never
+     *                         falls back to pwd-style inference or a bare /root
+     *                         default (device evidence: the model wrote
+     *                         /root/trigger_apply.txt while a real project was open,
+     *                         because this context was single-root and empty when the
+     *                         root param failed to resolve).
      * @return A concise context string, or empty string if no project
      */
     fun buildContext(
         projectRootPath: String?,
         currentFilePath: String? = null,
         openFilePaths: List<String> = emptyList(),
+        allRoots: List<String> = emptyList(),
     ): String {
         if (projectRootPath == null) return ""
         val root = File(projectRootPath)
@@ -51,6 +62,17 @@ object WorkspaceContextProvider {
 
         val sb = StringBuilder()
         sb.appendLine("## WORKSPACE CONTEXT")
+        sb.appendLine()
+
+        // 0. V0-f-b: structured multi-root block — every workspace root with
+        //    name + path, the ACTIVE root marked. This is the section the model
+        //    uses to anchor file writes; it must be first and explicit.
+        val roots = if (allRoots.isNotEmpty()) allRoots else listOf(projectRootPath)
+        sb.appendLine("Workspace roots:")
+        roots.forEach { r ->
+            val marker = if (r == projectRootPath) " [ACTIVE]" else ""
+            sb.appendLine("  - ${File(r).name}: $r$marker")
+        }
         sb.appendLine()
 
         // 1. Project name and type
