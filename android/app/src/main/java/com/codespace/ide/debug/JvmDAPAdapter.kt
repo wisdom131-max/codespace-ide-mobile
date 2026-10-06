@@ -135,9 +135,28 @@ class JvmDAPAdapter : DebugAdapter {
     // ── Preflight ───────────────────────────────────────────────────────────
 
     /** Honest pre-flight: the jdap bundle and a JVM must exist in the container. */
+    /**
+     * JAVAC-NOT-FOUND ROOT CAUSE (2026-10-06, gate round 2): preflight only ever
+     * probed java — a JRE-only rootfs (a runtime installed for LSP use) PASSED
+     * preflight with javac missing. Round 1's compile check then matched only the
+     * substrings "error"/"Error", so bash's "javac: command not found" passed as a
+     * SUCCESSFUL compile ("Compiled with debug info" printed), no .class ever
+     * existed, and the launch failed with ClassNotFoundException — which round 1
+     * misdiagnosed as a FUSE cross-process visibility race (that theory is
+     * RETRACTED; the merged compile+launch shell made the truth visible: the
+     * compile never ran at all, exit 127 stops the chain before java). The probe
+     * now checks BOTH tools; the install gate requires BOTH.
+     */
+    private fun guestToolingProbe(context: Context): String =
+        ProotInstaller.execOnce(context,
+            "ls /opt/jdap/DapDriver.jar 2>/dev/null; " +
+            "command -v java >/dev/null 2>&1 && java -version 2>&1 | head -1 || echo NO_JAVA; " +
+            "command -v javac >/dev/null 2>&1 && javac -version 2>&1 | head -1 || echo NO_JAVAC",
+            timeoutSeconds = 15)
+
     private fun preflight(context: Context, onOutput: (String) -> Unit): Boolean {
         ProotInstaller.ensureJdap(context)
-        var out = ProotInstaller.execOnce(context, "ls /opt/jdap/DapDriver.jar 2>/dev/null; command -v java >/dev/null 2>&1 && java -version 2>&1 | head -1 || echo NO_JAVA", timeoutSeconds = 15)
+        var out = guestToolingProbe(context)
         if (!out.contains("DapDriver.jar")) {
             // SELF-HEAL (2026-10-03, owner-approved): repair from the built-in bundle
             // instead of telling the user to reinstall the app. provisionJdap is a local
@@ -147,32 +166,32 @@ class JvmDAPAdapter : DebugAdapter {
             onOutput("[jdap] jdap driver missing - repairing from the built-in bundle...\n")
             runCatching { ProotInstaller.provisionJdap(context) }
                 .onFailure { onOutput("[jdap] bundle repair threw: " + it.message + "\n") }
-            out = ProotInstaller.execOnce(context, "ls /opt/jdap/DapDriver.jar 2>/dev/null; command -v java >/dev/null 2>&1 && java -version 2>&1 | head -1 || echo NO_JAVA", timeoutSeconds = 15)
+            out = guestToolingProbe(context)
             if (!out.contains("DapDriver.jar")) {
                 onOutput("[jdap] jdap repair failed - the Ubuntu rootfs may not be installed yet. Open Ubuntu once (it provisions automatically), then press Debug again.\n")
                 return false
             }
             onOutput("[jdap] bundle repaired.\n")
         }
-        if (out.contains("NO_JAVA") || !out.contains("version")) {
+        if (out.contains("NO_JAVA") || out.contains("NO_JAVAC") || !out.contains("version")) {
             // SELF-HEAL (2026-10-03, owner-approved): auto-install the JVM (the old flow
             // printed a manual "apt install" instruction - the one install path in the
             // app that broke the auto-everything pattern). openjdk-21-jdk-headless is
             // required for FILE mode (javac); fallback default-jdk-headless. One-time,
             // ~3-5 min under proot, progress streams to the Output tab.
-            onOutput("[jdap] No JVM inside the Ubuntu container - installing openjdk-21-jdk-headless automatically (one-time, ~3-5 min)...\n")
+            onOutput("[jdap] Full JDK not present (need java AND javac) - installing openjdk-21-jdk-headless automatically (one-time, ~3-5 min)...\n")
             val jdkOut = ProotInstaller.execOnce(context,
                 "dpkg --configure -a 2>/dev/null; " +
                 "apt-get update -qq; " +
                 "( apt-get install -y --no-install-recommends openjdk-21-jdk-headless || " +
                 "  apt-get install -y --no-install-recommends default-jdk-headless ) 2>&1 | tail -5",
                 timeoutSeconds = 900, logToOutput = true)
-            out = ProotInstaller.execOnce(context, "ls /opt/jdap/DapDriver.jar 2>/dev/null; command -v java >/dev/null 2>&1 && java -version 2>&1 | head -1 || echo NO_JAVA", timeoutSeconds = 15)
-            if (out.contains("NO_JAVA") || !out.contains("version")) {
-                onOutput("[jdap] JVM install failed. Tail of output:\n" + jdkOut.takeLast(300) + "\n[jdap] Press Debug again to retry.\n")
+            out = guestToolingProbe(context)
+            if (out.contains("NO_JAVA") || out.contains("NO_JAVAC") || !out.contains("version")) {
+                onOutput("[jdap] JDK install failed (java or javac still missing). Tail of output:\n" + jdkOut.takeLast(300) + "\n[jdap] Press Debug again to retry.\n")
                 return false
             }
-            onOutput("[jdap] JVM installed successfully.\n")
+            onOutput("[jdap] JDK installed successfully (java + javac).\n")
         }
         return true
     }
