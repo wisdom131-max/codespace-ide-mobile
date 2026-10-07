@@ -1398,7 +1398,19 @@ internal fun CopilotChatPanelInline(
                 // rate-limit / quota errors also surface in the notification bell,
                 // not just the red error bubble.
                 val he = e as? com.codespace.ide.chat.ChatHttpException
-                if (he != null && (he.statusCode == 429 || he.statusCode == 402)) {
+                // CREDIT-CLARITY (V0-f-c round 2, 2026-10-07): 402 is OUT OF CREDITS
+                // (account-level, provider billing), NOT a rate limit — it previously
+                // shared the 429 notification copy, which said "rate limit / quota",
+                // a wording that pointed the owner at the wrong knob. Own title+body.
+                if (he != null && he.statusCode == 402) {
+                    com.codespace.ide.data.NotificationStore.add(
+                        title = "AI provider out of credits",
+                        body = "This provider rejected the request: the account behind this key has no credits left (monthly limit reached or billing issue). The request was not processed. Top up with the provider, or switch key / model / provider in Settings.",
+                        severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
+                        source = com.codespace.ide.data.NotificationStore.Source.AI,
+                        deduplicationKey = "ai-quota-402",
+                    )
+                } else if (he != null && he.statusCode == 429) {
                     com.codespace.ide.data.NotificationStore.add(
                         title = "AI rate limit reached",
                         body = if (he.retryAfterMs != null) {
@@ -1408,7 +1420,7 @@ internal fun CopilotChatPanelInline(
                         },
                         severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
                         source = com.codespace.ide.data.NotificationStore.Source.AI,
-                        deduplicationKey = "ai-quota-" + he.statusCode,
+                        deduplicationKey = "ai-quota-429",
                     )
                 }
                 com.codespace.ide.diagnostics.AppOutputLog.log(

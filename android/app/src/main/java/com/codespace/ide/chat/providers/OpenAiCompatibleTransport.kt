@@ -263,6 +263,24 @@ internal object OpenAiCompatibleTransport {
                 )
             }
         }
+        // CREDIT-CLARITY (V0-f-c round 2, 2026-10-07): HTTP 402 Payment Required is
+        // the vendor saying the ACCOUNT BEHIND THIS KEY IS OUT OF CREDIT (monthly
+        // included credits exhausted, trial spent, or a billing problem) — it is
+        // NOT a rate limit and NOT a bad key. On device (2026-10-07) a Hugging Face
+        // 402 surfaced as a generic "API error (402): ..." bubble; the owner had
+        // to root-cause it from the log. Lead with a plain-language verdict so the
+        // user knows immediately: nothing is wrong with the app, the key, or the
+        // model — the provider account needs a top-up or the user must switch.
+        if (resp.code == 402) {
+            val vendorDetail = parts.first
+            val withDetail = if (vendorDetail.isNotBlank()) "\n(" + vendorDetail + ")" else ""
+            return com.codespace.ide.chat.ChatHttpException(
+                resp.code,
+                "This request failed: the provider account for this key is OUT OF CREDITS (monthly limit reached or billing issue). " +
+                    "The request was not processed. Top up the provider account, or switch key / model / provider in Settings." + withDetail,
+                retryAfterMs(resp),
+            )
+        }
         return com.codespace.ide.chat.ChatHttpException(resp.code, parts.first, retryAfterMs(resp))
     }
 

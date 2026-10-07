@@ -277,8 +277,14 @@ class JvmDAPAdapter : DebugAdapter {
         }
         val args = spec.guestArgs.joinToString(" ") { shQuote(it) }
         val shellCommand = "cd " + shQuote(guestWorkdir) + " && ./gradlew " + args + " 2>&1"
+        // D14-FAMILY FIX (V0-f-c round 2, 2026-10-07): the gradle-test spawn was the
+        // LAST spawnShellProcess site without workDir — forSubprocess defaulted to
+        // projectId=default workDir=null, and the device log (10:58:03) showed
+        // WORKSPACE_PATH baking to the legacy /host-files/projects/default fallback
+        // while every other session resolved the real project. Same family, same
+        // one-line threading as the file-mode site above.
         val proc = spawnShellProcess(context, shellCommand, onOutput,
-            "[jdap] Failed to spawn gradle: ") ?: return null
+            "[jdap] Failed to spawn gradle: ", workDir = guestWorkdir) ?: return null
         onOutput("[jdap] gradle starting - attaching the debugger when the test JVM listens...\n")
 
         // Stream output to the Debug Console AND parse the actual JDWP port from
