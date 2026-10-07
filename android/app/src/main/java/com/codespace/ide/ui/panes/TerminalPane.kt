@@ -1018,6 +1018,22 @@ internal fun TerminalPane(
                     // restore it instead of downloading a fresh Ubuntu rootfs from scratch. This is
                     // what makes every GitHub Actions rebuild's forced uninstall/reinstall NOT wipe
                     // Node/ffmpeg/Piper/Claude Code/projects every single time.
+                    // E17 GRANT GATE (2026-10-07): a full uninstall revokes the per-install
+                    // All-files-access grant; FUSE then reports the backup as present while
+                    // reads fail EACCES, so an ungated restore silently degraded into a fresh
+                    // ~250MB download. Bounded wait first (no intent re-fire — MainActivity
+                    // already opened Settings once at launch, so no screen bounce); the typed
+                    // restoreBackup gate covers the still-denied case with a defined
+                    // user-denied path (fresh install + a Settings-Restore recovery note).
+                    if (!com.codespace.ide.terminal.BackupManager.hasAllFilesAccess()) {
+                        writeToDisplay(progressSession, "[Ubuntu] Container backup found, but \"All files access\" is not granted yet.\r\n[Ubuntu] Waiting up to 90s — grant it in the Settings screen that opened at launch...\r\n")
+                        val grantedNow = com.codespace.ide.terminal.BackupManager.awaitAllFilesGrant()
+                        if (grantedNow) {
+                            writeToDisplay(progressSession, "[Ubuntu] ✓ Permission granted — restoring...\r\n")
+                        } else {
+                            writeToDisplay(progressSession, "[Ubuntu] Permission not granted within 90s — restore skipped. A fresh install starts now.\r\n[Ubuntu] Grant \"All files access\" later and use Settings → Restore to recover the backup.\r\n")
+                        }
+                    }
                     writeToDisplay(progressSession, "[Ubuntu] Found a container backup — restoring instead of a fresh install...\r\n\r\n")
                     BackupManager.restorePrefs(ctx)
                     // RG02/RG08 (P3a): restoreBackup now returns a TYPED result —

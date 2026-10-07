@@ -514,7 +514,8 @@ fun SettingsScreen(
                             scope.launch {
                                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                     BackupManager.restorePrefs(context)
-                                    BackupManager.restoreBackup(context) { msg -> backupStatus = msg }
+                                    val rres = BackupManager.restoreBackup(context) { msg -> backupStatus = msg }
+                                    if (!rres.ok) backupStatus = "Restore failed: " + rres.message.take(200)
                                 }
                                 backupRunning = false
                             }

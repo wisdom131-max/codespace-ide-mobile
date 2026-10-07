@@ -262,7 +262,33 @@ object BackupManager {
         val symlinkWarnings: Int,
         val ok: Boolean,
         val message: String,
+        /** E17 grant gate: true when the ONLY reason for failure is the missing
+         *  All-files-access grant. Callers use it to wait/retry instead of falling
+         *  straight through to a fresh install. */
+        val needsGrant: Boolean = false,
     )
+
+    /** E17 (2026-10-07, advisor-approved): does THIS install hold the All-files-access
+     *  grant? A full uninstall/reinstall (or Android's unused-app auto-revoke)
+     *  removes the grant; without it the FUSE layer reports exists()==true while
+     *  open() fails EACCES — so a backup "restore" attempt silently degrades into
+     *  a fresh ~250MB download. Pre-R devices have legacy storage and always pass. */
+    fun hasAllFilesAccess(): Boolean =
+        android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R ||
+            Environment.isExternalStorageManager()
+
+    /** E17: bounded wait for the user to grant All files access (the Settings screen
+     *  MainActivity opened at launch — this never re-fires the intent, so no screen
+     *  bounce). Polls every [pollMs] up to [timeoutMs]; returns as soon as granted.
+     *  False = user-denied/timeout — callers proceed down their defined fallback. */
+    fun awaitAllFilesGrant(timeoutMs: Long = 90_000L, pollMs: Long = 3_000L): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (hasAllFilesAccess()) return true
+            try { Thread.sleep(pollMs) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); return false }
+        }
+        return hasAllFilesAccess()
+    }
 
     /**
      * Extracts the shared-storage backup back into the rootfs dir.
@@ -275,6 +301,17 @@ object BackupManager {
      * aborts with the live rootfs untouched.
      */
     fun restoreBackup(context: Context, onProgress: (String) -> Unit): RestoreResult {
+        // E17 grant gate (2026-10-07): the backup tarball lives in shared storage;
+        // without the All-files-access grant FUSE lets exists() pass and open()
+        // fail EACCES mid-restore. Refuse UP FRONT with a typed result so callers
+        // can wait for the grant and retry instead of burning the attempt.
+        if (!hasAllFilesAccess()) {
+            val msg = "All files access not granted \u2014 the backup lives in shared storage and cannot be read without it. Grant \"All files access\" (the Settings screen the app opened at launch) and restore again."
+            Log.w(TAG, "[RESTORE-DIAG] E17 gate: restore refused, All files access not granted")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] E17 gate: restore refused, All files access not granted", "terminal")
+            onProgress("Restore needs the \"All files access\" permission.")
+            return RestoreResult(0, 0, 0, false, msg, needsGrant = true)
+        }
         val f = backupFile()
         if (!f.exists()) {
             onProgress("No backup found at ${f.path}")
@@ -441,10 +478,11 @@ object BackupManager {
         // fails EACCES (the first RG05 hotfix only handled ENOENT, i.e. a MISSING
         // file). Application.onCreate must NEVER crash: gate on the grant, and any
         // storage I/O failure is an honest ERROR log, never a launch abort.
-        val hasAllFilesAccess =
+        // NOTE (E17): local renamed so it never shadows the member fun hasAllFilesAccess().
+        val grantHeld =
             android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R ||
                 Environment.isExternalStorageManager()
-        if (!hasAllFilesAccess) {
+        if (!grantHeld) {
             Log.w(TAG, "RG05 onAppStart: All files access NOT granted — shared-storage prefs backup/restore paused (launch continues; grant is re-requested by MainActivity)")
             NotificationStore.add(
                 "Storage permission needed",
