@@ -379,21 +379,21 @@ private fun registeredModelEntries(tokenStore: SecureTokenStore?): List<String> 
  * model entries, labeled, from the per-endpoint registry + live cache.
  */
 internal fun buildCustomMenuGroups(availModels: List<String>): List<com.codespace.ide.ui.screens.CustomMenuGroup> {
+    // MK PHASE B (2026-10-07): the picker's custom-endpoint group build now reads
+    // the SHARED ModelCatalog facade instead of hitting CustomEndpointStore
+    // directly (list/manualModels/liveModelsFetchedAt reads removed here). The
+    // merge/split semantics are the facade's — JVM-tested in ModelCatalogTest.
     val groups = ArrayList<com.codespace.ide.ui.screens.CustomMenuGroup>()
-    com.codespace.ide.chat.CustomEndpointStore.list().forEach { ep ->
-        val pid = com.codespace.ide.chat.CustomEndpointStore.providerIdFor(ep.id)
-        val entries = availModels.filter { it.startsWith(pid + ":") }
-        if (entries.isNotEmpty()) {
-            val manualIds = com.codespace.ide.chat.CustomEndpointStore.manualModels(ep.id).toHashSet()
-            val manual = entries.filter { it.substringAfter(':') in manualIds }
-            val live = entries.filter { it !in manual }
-            val ts = com.codespace.ide.chat.CustomEndpointStore.liveModelsFetchedAt(ep.id)
-            val cal = java.util.Calendar.getInstance()
-            cal.timeInMillis = ts
-            val fetchedAt = if (ts > 0) String.format("%02d:%02d",
-                cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE)) else "not fetched"
-            groups.add(com.codespace.ide.ui.screens.CustomMenuGroup(pid, ep.label, live, manual, fetchedAt))
-        }
+    val cat = com.codespace.ide.chat.ModelCatalog.catalog()
+    for (g in com.codespace.ide.chat.ModelCatalog.groupEntries(availModels)) {
+        val ep = cat.firstOrNull { it.endpointId == g.endpointId } ?: continue
+        val pid = com.codespace.ide.chat.CustomEndpointStore.providerIdFor(g.endpointId)
+        val ts = ep.liveFetchedAt
+        val cal = java.util.Calendar.getInstance()
+        cal.timeInMillis = ts
+        val fetchedAt = if (ts > 0) String.format("%02d:%02d",
+            cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE)) else "not fetched"
+        groups.add(com.codespace.ide.ui.screens.CustomMenuGroup(pid, g.label, g.live, g.manual, fetchedAt))
     }
     return groups
 }

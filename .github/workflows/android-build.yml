@@ -51,13 +51,14 @@ jobs:
         working-directory: android
         run: ./gradlew assembleProdDebug --stacktrace --no-build-cache
 
-      - name: JVM unit tests (D15 shell-integration parser suite)
-        # D15-a: runs the pure-Kotlin OSC 633 parser matrix host-side. Scoped to the
-        # shell-integration package (--tests) so only that suite executes, but note
-        # Gradle compiles the WHOLE unit-test source set — a broken legacy test
-        # source fails here, which is exactly what we want to surface.
+      - name: JVM unit tests (D15 shell-integration + MK model-catalog suites)
+        # D15-a: runs the pure-Kotlin OSC 633 parser matrix host-side. MK phase B
+        # (2026-10-07): adds the ModelCatalog merge/dedupe + refresh-semantics suite.
+        # Scoped via --tests so only these suites execute, but note Gradle compiles
+        # the WHOLE unit-test source set — a broken legacy test source fails here,
+        # which is exactly what we want to surface.
         working-directory: android
-        run: ./gradlew testProdDebugUnitTest --tests "com.codespace.ide.terminal.shellintegration.*" --stacktrace
+        run: ./gradlew testProdDebugUnitTest --tests "com.codespace.ide.terminal.shellintegration.*" --tests "com.codespace.ide.chat.ModelCatalogTest" --stacktrace
 
       - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v4
