@@ -757,6 +757,12 @@ internal fun TerminalPane(
     var zshSetupDone      by remember { mutableStateOf(false) }
     var showSchemeMenu    by remember { mutableStateOf(false) }
     var activeScheme      by remember { mutableStateOf(TerminalSchemes.DARK) }
+    // E17-b (2026-10-07, advisor): grant-vs-download choice for the first-run
+    // restore gate. 0 = no choice yet, 1 = grant access now, 2 = download fresh,
+    // 3 = dialog dismissed. The install THREAD polls grantChoiceMade (500ms).
+    var showGrantChoice by remember { mutableStateOf(false) }
+    var grantChoiceBackupMb by remember { mutableStateOf(0L) }
+    val grantChoiceMade = remember { java.util.concurrent.atomic.AtomicInteger(0) }
     val currentView = remember { androidx.compose.runtime.mutableStateOf<com.termux.view.TerminalView?>(null) }
 
     LaunchedEffect(Unit) {
@@ -1018,22 +1024,68 @@ internal fun TerminalPane(
                     // restore it instead of downloading a fresh Ubuntu rootfs from scratch. This is
                     // what makes every GitHub Actions rebuild's forced uninstall/reinstall NOT wipe
                     // Node/ffmpeg/Piper/Claude Code/projects every single time.
-                    // E17 GRANT GATE (2026-10-07): a full uninstall revokes the per-install
-                    // All-files-access grant; FUSE then reports the backup as present while
-                    // reads fail EACCES, so an ungated restore silently degraded into a fresh
-                    // ~250MB download. Bounded wait first (no intent re-fire — MainActivity
-                    // already opened Settings once at launch, so no screen bounce); the typed
-                    // restoreBackup gate covers the still-denied case with a defined
-                    // user-denied path (fresh install + a Settings-Restore recovery note).
+                    // E17 GRANT GATE (2026-10-07) + E17-b (advisor): a full uninstall
+                    // revokes the per-install All-files-access grant; FUSE then reports the
+                    // backup as present while reads fail EACCES, so an ungated restore
+                    // silently degraded into a fresh download. See the E17-b CHOICE block
+                    // below: explicit grant-vs-download dialog, never a silent download.
+                    // E17 GRANT GATE (2026-10-07) + E17-b CHOICE (advisor ruling):
+                    // a full uninstall revokes the per-install All-files-access
+                    // grant; FUSE then reports the backup as present while reads
+                    // fail EACCES. NO silent download on mobile data: the user
+                    // explicitly chooses grant-and-restore vs download-fresh. No
+                    // choice within 10 minutes = install SKIPPED (never a default
+                    // download); a grant-choice that never lands within 90s also
+                    // skips (reopen the tab to retry — the backup is untouched).
+                    var e17FreshChosen = false
                     if (!com.codespace.ide.terminal.BackupManager.hasAllFilesAccess()) {
-                        writeToDisplay(progressSession, "[Ubuntu] Container backup found, but \"All files access\" is not granted yet.\r\n[Ubuntu] Waiting up to 90s — grant it in the Settings screen that opened at launch...\r\n")
-                        val grantedNow = com.codespace.ide.terminal.BackupManager.awaitAllFilesGrant()
-                        if (grantedNow) {
-                            writeToDisplay(progressSession, "[Ubuntu] ✓ Permission granted — restoring...\r\n")
-                        } else {
-                            writeToDisplay(progressSession, "[Ubuntu] Permission not granted within 90s — restore skipped. A fresh install starts now.\r\n[Ubuntu] Grant \"All files access\" later and use Settings → Restore to recover the backup.\r\n")
+                        grantChoiceMade.set(0)
+                        grantChoiceBackupMb = try {
+                            com.codespace.ide.terminal.BackupManager.backupFile().length() / (1024 * 1024)
+                        } catch (_: Exception) { 0L }
+                        showGrantChoice = true
+                        writeToDisplay(progressSession, "[Ubuntu] Container backup found, but \"All files access\" is not granted after the reinstall.\r\n[Ubuntu] Waiting for your choice: grant access to restore the backup, or download a fresh Ubuntu (~58 MB)...\r\n")
+                        var e17WaitMs = 0
+                        while (grantChoiceMade.get() == 0 && e17WaitMs < 600_000) {
+                            try { Thread.sleep(500) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
+                            e17WaitMs += 500
+                        }
+                        showGrantChoice = false
+                        when (grantChoiceMade.get()) {
+                            1 -> {
+                                writeToDisplay(progressSession, "[Ubuntu] Grant \"All files access\" in the Settings screen that just opened — waiting up to 90s...\r\n")
+                                try {
+                                    val gi = android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                        data = android.net.Uri.parse("package:" + ctx.packageName)
+                                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    ctx.startActivity(gi)
+                                } catch (_: Exception) { }
+                                val grantedNow = com.codespace.ide.terminal.BackupManager.awaitAllFilesGrant()
+                                if (!grantedNow) {
+                                    writeToDisplay(progressSession, "[Ubuntu] Permission still not granted within 90s — install skipped. Grant \"All files access\" and reopen this tab to retry.\r\n")
+                                    return@Thread
+                                }
+                                writeToDisplay(progressSession, "[Ubuntu] ✓ Permission granted — restoring...\r\n")
+                            }
+                            2 -> {
+                                e17FreshChosen = true
+                                writeToDisplay(progressSession, "[Ubuntu] Downloading a fresh Ubuntu (~58 MB) — your backup stays in shared storage (Settings → Restore can recover it later).\r\n")
+                            }
+                            else -> {
+                                writeToDisplay(progressSession, "[Ubuntu] No choice made — install skipped. Reopen this tab to retry.\r\n")
+                                return@Thread
+                            }
                         }
                     }
+                    if (e17FreshChosen) {
+                        writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~58 MB)...\r\n[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
+                        ProotInstaller.install(ctx) { msg ->
+                            TerminalService.updateProgress(ctx, msg.take(60))
+                            writeToDisplay(progressSession, "  $msg\r\n")
+                        }
+                        writeToDisplay(progressSession, "\r\n[Ubuntu] ✓ Installation complete! Launching...\r\n\r\n")
+                    } else {
                     writeToDisplay(progressSession, "[Ubuntu] Found a container backup — restoring instead of a fresh install...\r\n\r\n")
                     BackupManager.restorePrefs(ctx)
                     // RG02/RG08 (P3a): restoreBackup now returns a TYPED result —
@@ -1049,18 +1101,19 @@ internal fun TerminalPane(
                         writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Restored from backup! Launching...\r\n\r\n")
                     } else {
                         writeToDisplay(progressSession, "\r\n[Ubuntu] \u2717 Backup restore FAILED (${restoreResult.message}).\r\n[Ubuntu] Falling back to a fresh install...\r\n\r\n")
-                        writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
+                        writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~58 MB)...\r\n")
                         ProotInstaller.install(ctx) { msg ->
                             TerminalService.updateProgress(ctx, msg.take(60))
                             writeToDisplay(progressSession, "  $msg\r\n")
                         }
                         writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Installation complete! Launching...\r\n\r\n")
                     }
+                    }
                 } else if (isFirstTimeInstall) {
                     // P24: explicitly tell user no backup was found — so a ~250MB download
                     // is expected and not mistaken for a bug or unnecessary reinstall.
                     writeToDisplay(progressSession, "[Ubuntu] No container backup found in /sdcard/CodespaceIDE/ — fresh install.\r\n")
-                    writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~250MB)...\r\n")
+                    writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~58 MB)...\r\n")
                     writeToDisplay(progressSession, "[Ubuntu] This may take a few minutes on mobile data.\r\n\r\n")
                     ProotInstaller.install(ctx) { msg ->
                         // Mirror progress to the foreground notification so Android sees activity,
@@ -1597,6 +1650,28 @@ internal fun TerminalPane(
 
         // Rename dialog
         if (renameTargetId != null) {
+            // E17-b (2026-10-07, advisor): grant-vs-download choice — never a silent
+            // rootfs download on mobile data. Shown when the install thread finds a
+            // backup but no All-files-access grant; the choice lands in
+            // grantChoiceMade, which the thread polls. Outside-tap/back = skip.
+            if (showGrantChoice) {
+                AlertDialog(
+                    onDismissRequest = { grantChoiceMade.set(3) },
+                    title = { Text("Storage permission needed") },
+                    text = {
+                        Text(
+                            "A container backup (${grantChoiceBackupMb} MB) was found in shared storage, but the app no longer has the \"All files access\" permission after the reinstall.\n\n" +
+                                "Grant access to restore your backup (the Settings screen opens), or download a fresh Ubuntu (~58 MB) on your connection."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { grantChoiceMade.set(1) }) { Text("Grant access now") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { grantChoiceMade.set(2) }) { Text("Download fresh (~58 MB)") }
+                    },
+                )
+            }
             // Rotation fix (#8): see color scheme picker above for rationale.
             key(configuration.orientation) {
             AlertDialog(
