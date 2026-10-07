@@ -95,6 +95,10 @@ spawn, IdeEnvironment builders, and the DAP adapter debuggee launches
 
 ### 2d. node_modules consumer (V1-b)
 
+- **Ships OFF by default behind an opt-in switch** (advisor 3a): a global
+  "workspace bindings" toggle in Settings, default OFF. A bind injects ONLY when the
+  switch is ON AND the project has a registered binding AND the crash-loop guard has
+  not tripped. The switch is the kill-switch; the guard is the seatbelt.
 - Register-on-need: an explicit action (AI tooling npm install for a project, or a
   one-tap "Move node_modules into rootfs storage" in Explorer/Settings) creates the
   private dir, MOVES the project's node_modules into it (rename within... cross-device:
@@ -106,12 +110,54 @@ spawn, IdeEnvironment builders, and the DAP adapter debuggee launches
 
 ---
 
+## 2e. Crash-loop guard (advisor 3a) — one restart recovers, never a reinstall
+
+**Requirement:** if the previous start with bindings did not complete, bindings
+auto-disable; the next start always boots clean.
+
+**How an incomplete start is detected:** a two-phase mark file in APP-INTERNAL
+filesDir (NOT the rootfs, NOT /sdcard — it must be readable even when proot is
+hanging):
+
+1. Immediately BEFORE a session launches with bindings active, the app writes
+   `bindings-start.pending` (contains: timestamp, project key, binding list).
+2. The bound session's FIRST successful output callback (first onData after exec —
+   proot survived startup and bash is emitting) CLEARS the mark.
+3. On the NEXT app start, a still-present mark means the previous bound start never
+   completed → set `bindingsDisabledByGuard=true` (persisted), DELETE the mark,
+   notify the user ("Workspace bindings auto-disabled after an incomplete start —
+   tap to re-enable"), and launch everything with zero binds.
+
+With the guard tripped, launches are byte-identical to today — so ONE restart is
+always a full recovery. Re-enabling requires an explicit user tap (never auto).
+
+**False-positive cost, stated honestly:** an app crash UNRELATED to bindings during a
+bound start also trips the guard once — cost is one re-enable tap. Guard scope is
+STARTUP completion: a mid-session freeze (e.g. during jest) happens after the mark was
+cleared and does not trip it — that class stays with the revert-style isolation
+playbook (S1-c precedent).
+
+---
+
+## 2f. Expected device rounds between now and V1-b, with combining proposal (advisor 3b)
+
+| # | Round | Carries |
+|---|---|---|
+| 1 | **Consolidated round** (unchanged, 8 checkpoints) | V0-f-c confirmation + the 7 other pending checkpoints |
+| 2 | **Combined WiFi round** | E17 round-trip FIRST (full uninstall/reinstall + restore), then E17-b choice-dialog check (dialog shows backup MB + ~58 MB, both buttons, no-choice timeout aborts), then V1-a inert checks (launch args byte-identical, all four consumers). Proposal: if MK phases C–E and F are SHIPPED by then, their device checks ride this same round instead of getting their own. |
+| 3 | **V1-b dedicated round** (kept per advisor 3c) | node_modules live bind + jest run; first gate: the re-test names the exact failing syscall from the widened capture. Sole focus, nothing else bundled. |
+
+That is 3 rounds between now and V1-b. The only NEW device time V1 asks for is the
+V1-a inert checks in round 2 (~minutes) plus the dedicated V1-b round.
+
+---
+
 ## 3. Phases, risk, testing
 
 | Phase | Content | Device round |
 |---|---|---|
 | V1-a | Registry store + launchArgs overload + JVM tests (bind-arg assembly, missing-dir skip, path-form integrity, hash stability) | RIDES round 2 (after E17 round-trip, same round, INERT checks only) |
-| V1-b | Caller threading + node_modules register/move + live bind | DEDICATED round (see flag) |
+| V1-b | Caller threading + node_modules register/move + live bind + opt-in switch (default OFF) + crash-loop guard | DEDICATED round (see flag) |
 | V1-c | Lifecycle: project-delete cleanup, repair (rotted binding auto-clear + notify), Settings surface | rides the next natural round |
 
 **High-risk flag (owner decision required):** V1-b is the first LIVE proot bind of a
