@@ -763,6 +763,9 @@ internal fun TerminalPane(
     var showGrantChoice by remember { mutableStateOf(false) }
     var grantChoiceBackupMb by remember { mutableStateOf(0L) }
     val grantChoiceMade = remember { java.util.concurrent.atomic.AtomicInteger(0) }
+    // kind 0 = E17-b grant-vs-download; kind 1 = E17-c retry-restore-vs-download
+    var grantChoiceKind by remember { mutableStateOf(0) }
+    var grantChoiceReason by remember { mutableStateOf("") }
     val currentView = remember { androidx.compose.runtime.mutableStateOf<com.termux.view.TerminalView?>(null) }
 
     LaunchedEffect(Unit) {
@@ -1088,25 +1091,53 @@ internal fun TerminalPane(
                     } else {
                     writeToDisplay(progressSession, "[Ubuntu] Found a container backup — restoring instead of a fresh install...\r\n\r\n")
                     BackupManager.restorePrefs(ctx)
-                    // RG02/RG08 (P3a): restoreBackup now returns a TYPED result —
-                    // the old code printed "Restored from backup!" without reading
-                    // the Boolean. On failure the live container is untouched, so
-                    // we fall back to a fresh install instead of "launching" a
-                    // rootfs that was never restored.
-                    val restoreResult = BackupManager.restoreBackup(ctx) { msg ->
-                        TerminalService.updateProgress(ctx, msg.take(60))
-                        writeToDisplay(progressSession, "  $msg\r\n")
-                    }
-                    if (restoreResult.ok) {
-                        writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Restored from backup! Launching...\r\n\r\n")
-                    } else {
-                        writeToDisplay(progressSession, "\r\n[Ubuntu] \u2717 Backup restore FAILED (${restoreResult.message}).\r\n[Ubuntu] Falling back to a fresh install...\r\n\r\n")
-                        writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~58 MB)...\r\n")
-                        ProotInstaller.install(ctx) { msg ->
+                    // RG02/RG08 (P3a): restoreBackup returns a TYPED result — the old
+                    // code printed "Restored from backup!" without reading it. On failure
+                    // the live container is untouched.
+                    // E17-c (advisor 2026-10-07): a failed restore (grant present, other
+                    // reason — corrupted backup, EACCES mid-copy, space) must NOT silently
+                    // download ~58 MB either: the SAME explicit choice — "Try restore
+                    // again" vs "Download fresh (~58 MB)". Every retry is a user tap;
+                    // outside-tap/no choice = install skipped (backup untouched).
+                    var restoreOk = false
+                    while (!restoreOk) {
+                        val restoreResult = BackupManager.restoreBackup(ctx) { msg ->
                             TerminalService.updateProgress(ctx, msg.take(60))
                             writeToDisplay(progressSession, "  $msg\r\n")
                         }
-                        writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Installation complete! Launching...\r\n\r\n")
+                        if (restoreResult.ok) {
+                            writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Restored from backup! Launching...\r\n\r\n")
+                            restoreOk = true
+                        } else {
+                            writeToDisplay(progressSession, "\r\n[Ubuntu] \u2717 Backup restore FAILED (${restoreResult.message}).\r\n")
+                            grantChoiceKind = 1
+                            grantChoiceReason = restoreResult.message
+                            grantChoiceMade.set(0)
+                            showGrantChoice = true
+                            writeToDisplay(progressSession, "[Ubuntu] Waiting for your choice: try restoring again, or download a fresh Ubuntu (~58 MB)...\r\n")
+                            var e17cWaitMs = 0
+                            while (grantChoiceMade.get() == 0 && e17cWaitMs < 600_000) {
+                                try { Thread.sleep(500) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
+                                e17cWaitMs += 500
+                            }
+                            showGrantChoice = false
+                            when (grantChoiceMade.get()) {
+                                1 -> writeToDisplay(progressSession, "[Ubuntu] Retrying the restore...\r\n\r\n")
+                                2 -> {
+                                    writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~58 MB)...\r\n")
+                                    ProotInstaller.install(ctx) { msg ->
+                                        TerminalService.updateProgress(ctx, msg.take(60))
+                                        writeToDisplay(progressSession, "  $msg\r\n")
+                                    }
+                                    writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Installation complete! Launching...\r\n\r\n")
+                                    restoreOk = true
+                                }
+                                else -> {
+                                    writeToDisplay(progressSession, "[Ubuntu] No choice made — install skipped. Reopen this tab to retry.\r\n")
+                                    return@Thread
+                                }
+                            }
+                        }
                     }
                     }
                 } else if (isFirstTimeInstall) {
@@ -1657,15 +1688,24 @@ internal fun TerminalPane(
             if (showGrantChoice) {
                 AlertDialog(
                     onDismissRequest = { grantChoiceMade.set(3) },
-                    title = { Text("Storage permission needed") },
+                    title = { Text(if (grantChoiceKind == 0) "Storage permission needed" else "Backup restore failed") },
                     text = {
-                        Text(
-                            "A container backup (${grantChoiceBackupMb} MB) was found in shared storage, but the app no longer has the \"All files access\" permission after the reinstall.\n\n" +
-                                "Grant access to restore your backup (the Settings screen opens), or download a fresh Ubuntu (~58 MB) on your connection."
-                        )
+                        if (grantChoiceKind == 0) {
+                            Text(
+                                "A container backup (${grantChoiceBackupMb} MB) was found in shared storage, but the app no longer has the \"All files access\" permission after the reinstall.\n\n" +
+                                    "Grant access to restore your backup (the Settings screen opens), or download a fresh Ubuntu (~58 MB) on your connection."
+                            )
+                        } else {
+                            Text(
+                                "The container backup could not be restored: ${grantChoiceReason}\n\n" +
+                                    "Try restoring again, or download a fresh Ubuntu (~58 MB) on your connection. The backup stays in shared storage either way."
+                            )
+                        }
                     },
                     confirmButton = {
-                        TextButton(onClick = { grantChoiceMade.set(1) }) { Text("Grant access now") }
+                        TextButton(onClick = { grantChoiceMade.set(1) }) {
+                            Text(if (grantChoiceKind == 0) "Grant access now" else "Try restore again")
+                        }
                     },
                     dismissButton = {
                         TextButton(onClick = { grantChoiceMade.set(2) }) { Text("Download fresh (~58 MB)") }
