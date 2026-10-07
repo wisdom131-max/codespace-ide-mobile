@@ -31,18 +31,35 @@ Phase C is the UI pass that makes the facade visible and wires the deferred scop
 ### C-1. Per-group targeted Refetch (wires the phase-B API)
 - Each custom-endpoint GROUP in the model picker gains a Refetch action → calls
   `ModelCatalog.refreshLive(endpointId)` (cache-preserving) and re-renders just that group.
+- **Advisor condition 2b:** a refresh IN FLIGHT ignores repeat taps and shows an
+  in-progress state ("Refreshing…" row + disabled action) until it settles — one
+  tap, one network call.
 - On failure: last-good cached list + timestamp STAY; the group shows an inline
   "last fetched <time> — refresh failed (<reason>)" line. Manual entries always render.
-- Picker-open fetch-all behavior is UNCHANGED (no behavior surprise in the batch);
-  SUSPECT: whether the open-fetch should later be dropped in favor of Refetch-only —
-  separate owner question, NOT in this phase.
+- **Finding 2c (READ-verified):** the fetch-all does NOT run per picker open — it runs
+  ONCE PER PANEL MOUNT (LaunchedEffect at CopilotChatPanelOverlay ~1127 →
+  fetchLiveModelEntries over EVERY available provider, key-failover per provider).
+  Cost: every chat-panel open re-fetches every provider = the mobile-data hit.
+  PROPOSAL (own item, C-1b): a short per-provider cache window — persist per-provider
+  fetchedAt + last-good list; the mount-fetch SKIPS providers fetched within the
+  window (default 10 min) and reuses their cached lists; Refetch (C-1) bypasses the
+  window; a "last fetched <t>" line makes staleness visible so real changes are not
+  hidden. Applies uniformly to built-ins AND customs. Real changes are one Refetch
+  tap away at all times.
 
 ### C-2. Error bubbles carry endpoint identity
-- ChatHttpException gains optional `endpointLabel` + `endpointUrl` + `statusClass`
+- ChatHttpException gains optional `endpointLabel` + `endpointUrl` + `statusCode`
   fields, populated in classifyHttpError where the response/request is in hand
   (SUSPECT pending read of ChatHttpException's current shape).
-- The red bubble renders: "<Endpoint label> (<base URL>): <status class> — <vendor text>"
-  for custom endpoints; built-in providers keep today's text plus the status class.
+- The red bubble renders: "<Endpoint label> (<base URL>): <code + reason line, e.g.
+  429 Too Many Requests> — <vendor text>" for custom endpoints; built-in providers
+  keep today's text plus the exact code.
+- **Advisor condition 2a:** the displayed base URL is SANITIZED — query strings and
+  user-info stripped (render scheme://host[:port]/path only, via Uri parsing, never
+  string surgery), because bubbles persist into session blobs and backups; and the
+  SAME C12 token-pattern redaction (sk-, AKIA, hf_, AIza, xox, eyJ, BEGIN PRIVATE KEY
+  blocks, ghp_) is applied to bubble text before it is rendered or persisted.
+- The EXACT status code is shown (advisor 2a), not only the class.
 - Notification bell wording unchanged (402 branch untouched).
 
 ### C-3. AiKeysSection key-health checks stay DIRECT (READ-verified purpose)
@@ -50,16 +67,27 @@ Phase C is the UI pass that makes the facade visible and wires the deferred scop
   must keep hitting the endpoint with the tested key. No facade indirection. Documented
   here so the next audit doesn't "fix" it.
 
-### C-4. OPEN OWNER QUESTION — built-in providers behind the facade
-Phase B deferred this to the phase-C ruling. Options:
-- **(a) Keep built-ins DIRECT (recommended for C):** smaller diff; facade serves customs
-  only; built-ins' model lists are static curated lists today, so dedupe/merge logic buys
-  them little. Cost: two code paths live on.
-- **(b) Move built-ins behind ModelCatalog:** uniform path, one ordering/dedupe home,
-  future cache behavior for free; cost: touches every built-in fetchModels call site,
-  bigger diff, extended JVM tests — an EXPANDED batch.
-- Recommendation: **(a) now**; revisit (b) in phase D/E only if a concrete need appears
-  (e.g. built-ins gaining live model-list fetching). Advisor decides.
+### C-4. OPEN OWNER QUESTION — built-in providers behind the facade (VERIFIED, premise corrected)
+My earlier premise ("built-ins have static curated lists") was WRONG — the advisor's
+9/6 recollection is correct. READ-VERIFIED: every built-in overrides fetchModels with a
+LIVE list fetch — AnthropicProvider:170, GeminiProvider:217, OpenAiProvider:32,
+DeepSeekProvider:32, OpenRouterProvider:48, XaiProvider:35 — and the panel-mount
+fetch-all loop (fetchLiveModelEntries, CopilotChatPanelOverlay:431/1127) calls
+provider.fetchModels for EVERY available provider with key failover, added as the
+"404-fix" (stale hardcoded IDs 404ing). SUSPECT (build-time read): built-in results are
+NOT cached anywhere today — every panel mount refetches them all.
+Re-presented options:
+- **(a) Keep built-ins DIRECT (still recommended for phase C):** the acute cost of
+  (a) — per-mount refetch of every provider — is fixed by the C-1b cache window, which
+  sits at the fetch-all loop and covers built-ins WITHOUT moving them behind the
+  facade. Smaller diff; two code paths live on.
+- **(b) Move built-ins behind ModelCatalog:** NOW has real value, not negligible —
+  uniform live-fetch + cache + dedupe + per-group Refetch for every provider, one
+  ordering home. Cost: touches ChatProviderRegistry wiring, the fetch-all call sites,
+  the picker's built-in list source; bigger diff, extended JVM tests, EXPANDED batch.
+- Recommendation: **(a) for phase C + ship C-1b** so built-ins get the data savings
+  immediately; fold (b) into phase D/E only if per-group Refetch for built-ins is
+  wanted in the picker. Owner decides.
 
 ---
 

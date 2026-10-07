@@ -132,15 +132,30 @@ crashed session names itself in the recovery notice.
 1. Immediately BEFORE a bound session launches, its mark is written. The mark is
    ALSO active during the node_modules MOVE (§2g) and until the first bound access
    proves out.
-2. **Clear signal (advisor 3b) — NOT first output.** The mark clears only when the
-   shell PROVES responsive:
-   - **Interactive terminal:** the app injects a probe round-trip after the first
-     prompt — writes `printf '__BINDINGS_ALIVE_<nonce>__'` to the session and clears
-     the mark only when the nonce appears in output (bounded 90s; no nonce → mark
-     stays → next start disables bindings).
+2. **Clear signal (advisor 3b) — NOT first output, and NO injected printf.** The
+   interactive clear signal REUSES THE OSC 633 SHELL-INTEGRATION MARKS (advisor
+   proposal 2026-10-07, adopted): the app already ships a VS Code-adapted
+   shellIntegration-bash.sh into the rootfs profile.d (ProotInstaller:163–274,
+   emits 633;A prompt-start / 633;E command-finished / P;Cwd marks) and already
+   routes OSC sequences to app-side handlers (IdeTerminalBridge → TerminalSession
+   OSC hooks).
+   - **Interactive terminal:** the mark clears when the app-side OSC handler receives
+     that session's first **633;A** (prompt render). A printf probe was REJECTED for
+     this: it cannot be made invisible or safe — a foreground program receives
+     injected bytes as stdin, a half-typed prompt line gets them appended mid-line,
+     and suppressing echo means mutating global pty state (stty -echo) inside the
+     user's own session. 633;A requires ZERO bytes written into the pty input and
+     proves MORE than bare output: bash forked, executed its rc files, ran the
+     integration hooks, and rendered a prompt.
+   - **Fallback (integration script absent, e.g. a partial restore):** if no 633;A
+     arrives within 90s BUT the session produced sustained output (≥5 distinct
+     output chunks over ≥30s of liveness), sustained responsiveness clears the mark
+     (the advisor's alternative). This keeps a missing integration from permanently
+     disabling bindings.
    - **Test-run path:** one-shot by construction — clear when the test process
      COMPLETES with a parsed exit code (success or failure of the tests is irrelevant;
-     completion is the responsiveness proof).
+     completion is the responsiveness proof). (Test spawns are non-interactive and
+     emit no 633 marks — the completion signal is the natural proof there.)
    - (MCP spawn, tool exec, DAP: UNBOUND in V1-b — no marks needed until a later
      phase opts them in.)
 3. On the NEXT app start, ANY still-present mark = that bound start never completed
@@ -158,8 +173,9 @@ bound start also trips the guard once — cost is one re-enable tap.
 - Mid-session freezes AFTER the clear signal (e.g. jest itself hanging the bound
   session later) — the mark is gone; that class stays with the revert-style
   isolation playbook (S1-c precedent).
-- The probe proves the SHELL is responsive, not that the BIND is healthy — a bind
-  that maps fine at launch but misbehaves under load is invisible to the guard.
+- 633;A proves the shell completed its rc files and rendered a prompt, not that the
+  BIND is healthy — a bind that maps fine at launch but misbehaves under load is
+  invisible to the guard.
 - A UI-thread ANR where the session keeps running: the probe round-trips fine, the
   mark clears, and the guard never sees the freeze.
 - A crash during the MOVE protocol itself is covered by the MOVE-MARK repair path
