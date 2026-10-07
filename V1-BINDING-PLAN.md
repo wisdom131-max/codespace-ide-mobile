@@ -99,12 +99,20 @@ spawn, IdeEnvironment builders, and the DAP adapter debuggee launches
   "workspace bindings" toggle in Settings, default OFF. A bind injects ONLY when the
   switch is ON AND the project has a registered binding AND the crash-loop guard has
   not tripped. The switch is the kill-switch; the guard is the seatbelt.
+- **V1-b binds ONLY interactive terminals and the test-run path** (advisor 3c): MCP
+  shell spawns, one-shot tool exec, and DAP debuggee launches stay UNBOUND until the
+  mechanism is proven on device (a later phase opts each in explicitly). This shrinks
+  the blast radius of the first live bind to the two consumers that need it.
 - Register-on-need: an explicit action (AI tooling npm install for a project, or a
   one-tap "Move node_modules into rootfs storage" in Explorer/Settings) creates the
-  private dir, MOVES the project's node_modules into it (rename within... cross-device:
-  FUSE→ext4 copy, then delete source), and writes the registry entry.
+  private dir and runs the MOVE PROTOCOL in §2g below (copy → verify → swap —
+  never a blind move), then writes the registry entry.
 - Guest sees `<project>/node_modules` as a normal ext4 directory → npm bin symlinks
   live on ext4, jest never touches FUSE for them.
+- **Switch description must state (advisor 3d):** "Explorer and the editor continue to
+  show the project WITHOUT node_modules until the V3 file-system integration lands —
+  terminals and test runs see it; the file tree does not." The unbound-view gap is
+  stated on the toggle itself, not left for the owner to discover.
 - Removal: delete registry entry → next session unbinds; the private dir stays until
   explicit cleanup (owner can reclaim via Settings later).
 
@@ -115,27 +123,78 @@ spawn, IdeEnvironment builders, and the DAP adapter debuggee launches
 **Requirement:** if the previous start with bindings did not complete, bindings
 auto-disable; the next start always boots clean.
 
-**How an incomplete start is detected:** a two-phase mark file in APP-INTERNAL
-filesDir (NOT the rootfs, NOT /sdcard — it must be readable even when proot is
-hanging):
+**How an incomplete start is detected (amended per advisor 3b/3c):** PER-SESSION mark
+files in APP-INTERNAL filesDir (NOT the rootfs, NOT /sdcard — readable even when
+proot is hanging): `bindings-start.<sessionId>.pending`, each containing timestamp,
+project key, launch type, and binding list. Per-session, not one global file — a
+crashed session names itself in the recovery notice.
 
-1. Immediately BEFORE a session launches with bindings active, the app writes
-   `bindings-start.pending` (contains: timestamp, project key, binding list).
-2. The bound session's FIRST successful output callback (first onData after exec —
-   proot survived startup and bash is emitting) CLEARS the mark.
-3. On the NEXT app start, a still-present mark means the previous bound start never
-   completed → set `bindingsDisabledByGuard=true` (persisted), DELETE the mark,
-   notify the user ("Workspace bindings auto-disabled after an incomplete start —
-   tap to re-enable"), and launch everything with zero binds.
+1. Immediately BEFORE a bound session launches, its mark is written. The mark is
+   ALSO active during the node_modules MOVE (§2g) and until the first bound access
+   proves out.
+2. **Clear signal (advisor 3b) — NOT first output.** The mark clears only when the
+   shell PROVES responsive:
+   - **Interactive terminal:** the app injects a probe round-trip after the first
+     prompt — writes `printf '__BINDINGS_ALIVE_<nonce>__'` to the session and clears
+     the mark only when the nonce appears in output (bounded 90s; no nonce → mark
+     stays → next start disables bindings).
+   - **Test-run path:** one-shot by construction — clear when the test process
+     COMPLETES with a parsed exit code (success or failure of the tests is irrelevant;
+     completion is the responsiveness proof).
+   - (MCP spawn, tool exec, DAP: UNBOUND in V1-b — no marks needed until a later
+     phase opts them in.)
+3. On the NEXT app start, ANY still-present mark = that bound start never completed
+   → set `bindingsDisabledByGuard=true` (persisted), DELETE the marks, notify the user
+   ("Workspace bindings auto-disabled after an incomplete start — tap to re-enable"),
+   and launch everything with zero binds.
 
 With the guard tripped, launches are byte-identical to today — so ONE restart is
 always a full recovery. Re-enabling requires an explicit user tap (never auto).
 
 **False-positive cost, stated honestly:** an app crash UNRELATED to bindings during a
-bound start also trips the guard once — cost is one re-enable tap. Guard scope is
-STARTUP completion: a mid-session freeze (e.g. during jest) happens after the mark was
-cleared and does not trip it — that class stays with the revert-style isolation
-playbook (S1-c precedent).
+bound start also trips the guard once — cost is one re-enable tap.
+
+**Failure windows that remain UNCOVERED (advisor 3b, stated):**
+- Mid-session freezes AFTER the clear signal (e.g. jest itself hanging the bound
+  session later) — the mark is gone; that class stays with the revert-style
+  isolation playbook (S1-c precedent).
+- The probe proves the SHELL is responsive, not that the BIND is healthy — a bind
+  that maps fine at launch but misbehaves under load is invisible to the guard.
+- A UI-thread ANR where the session keeps running: the probe round-trips fine, the
+  mark clears, and the guard never sees the freeze.
+- A crash during the MOVE protocol itself is covered by the MOVE-MARK repair path
+  (§2g), not by the start guard.
+
+---
+
+## 2g. MOVE PROTOCOL for node_modules (advisor 3a) — copy → verify → swap, never a blind move
+
+The FUSE original is kept until the copy is VERIFIED; every step is crash-detectable
+and resumable/undoable via `MOVE-MARK.json` written beside the private dir (states:
+`copying → verifying → swapping → done`, plus source path, target path, file and
+byte totals, timestamps).
+
+1. **COPY** — create `<rootfs>/opt/bindings/<hash>/node_modules.incoming/`, copy the
+   FUSE `node_modules` into it (overwrite-tolerant, so an interrupted copy RESUMES by
+   re-running the copy). Mark state `copying`.
+2. **VERIFY** — file count and total bytes match the mark's recorded totals; spot-
+   check that at least one `bin/` entry copied as a REAL symlink on ext4 (the whole
+   point of the mechanism). Mark state `verifying` → `swapping` only on pass.
+3. **SWAP** — rename the FUSE original to `<project>/node_modules.unbound-backup`
+   (kept, NOT deleted), then write the registry entry (the bind covers the guest
+   `node_modules` path from the next session). Mark state `done`, mark deleted.
+
+**Interruption handling:** a non-`done` mark at app start or session build surfaces a
+repair prompt: RESUME (redo the incomplete step idempotently) or UNDO. Undo during
+copying/verifying = delete `.incoming` + mark (FUSE original untouched). Undo during
+swapping (original already renamed) = rename `node_modules.unbound-backup` back.
+
+**MOVE-BACK PATH (explicit):** disable the switch (or delete the registry entry)
+→ the next session boots unbound → Settings shows "Move back" while a
+`node_modules.unbound-backup` exists → tap moves it back. If a NEW node_modules
+appeared on FUSE while bound (npm install ran unbound), move-back REFUSES and says
+which directory to keep — never silently overwrites either copy. The rootfs-private
+copy is retained as `.moved-away` until the user deletes it.
 
 ---
 
@@ -144,7 +203,7 @@ playbook (S1-c precedent).
 | # | Round | Carries |
 |---|---|---|
 | 1 | **Consolidated round** (unchanged, 8 checkpoints) | V0-f-c confirmation + the 7 other pending checkpoints |
-| 2 | **Combined WiFi round** | E17 round-trip FIRST (full uninstall/reinstall + restore), then E17-b choice-dialog check (dialog shows backup MB + ~58 MB, both buttons, no-choice timeout aborts), then V1-a inert checks (launch args byte-identical, all four consumers). Proposal: if MK phases C–E and F are SHIPPED by then, their device checks ride this same round instead of getting their own. |
+| 2 | **Combined WiFi round** | ORDER (ruling 2026-10-07): (a) NON-DESTRUCTIVE checks FIRST — including any KEY-DEPENDENT MK checks (a full uninstall wipes saved API keys BY DESIGN, so nothing key-dependent may run after the round-trip); (b) E17 uninstall/reinstall/restore round-trip; (c) on the FRESH install: E17-b + E17-c choice-dialog checks (backup MB + ~58 MB, both button paths, no-choice timeout aborts) and V1-a inert checks (launch args byte-identical, all consumers). NOTE: V1-a shares an APK with the E17 round-trip — if E17 fails, bisect by COMMIT REVERT, not by guessing. Proposal: if MK phases C–E and F are SHIPPED by then, their checks ride step (a) of this same round instead of getting their own. |
 | 3 | **V1-b dedicated round** (kept per advisor 3c) | node_modules live bind + jest run; first gate: the re-test names the exact failing syscall from the widened capture. Sole focus, nothing else bundled. |
 
 That is 3 rounds between now and V1-b. The only NEW device time V1 asks for is the
@@ -157,7 +216,7 @@ V1-a inert checks in round 2 (~minutes) plus the dedicated V1-b round.
 | Phase | Content | Device round |
 |---|---|---|
 | V1-a | Registry store + launchArgs overload + JVM tests (bind-arg assembly, missing-dir skip, path-form integrity, hash stability) | RIDES round 2 (after E17 round-trip, same round, INERT checks only) |
-| V1-b | Caller threading + node_modules register/move + live bind + opt-in switch (default OFF) + crash-loop guard | DEDICATED round (see flag) |
+| V1-b | Caller threading (interactive + test-run ONLY — MCP/tool-exec/DAP stay unbound) + node_modules register/move (copy→verify→swap) + live bind + opt-in switch (default OFF, description states the Explorer unbound-view gap until V3) + per-session crash-loop guard with probe-based clear | DEDICATED round (see flag) |
 | V1-c | Lifecycle: project-delete cleanup, repair (rotted binding auto-clear + notify), Settings surface | rides the next natural round |
 
 **High-risk flag (owner decision required):** V1-b is the first LIVE proot bind of a
