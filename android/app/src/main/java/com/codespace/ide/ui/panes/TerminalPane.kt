@@ -939,55 +939,16 @@ internal fun TerminalPane(
             return
         }
 
-        // S1-c WARM-PATH (2026-10-04): upgrading the initial placeholder tab while the
-        // rootfs is ALREADY installed and healthy — skip the placeholder dance entirely
-        // (progress thread, "Checking installation..." churn, foreground-service setup
-        // status, PTY create/teardown round-trip ≈290ms of pure ceremony). Session
-        // creation semantics match the fast path above; the only differences: the
-        // placeholder tab is replaced IN PLACE (same id), and its inert PTY is retired
-        // with the same EXIT-9 pattern the slow path uses (expectedTeardown + graceful
-        // exit + 2s SIGKILL fallback), never killed cold.
-        if (replaceTabId != null && ProotInstaller.isInstalled(ctx)) {
-            TerminalStartupProbe.mark("warm-path: rootfs installed — placeholder dance skipped")
-            McpShellProfile.install(ctx)
-            com.codespace.ide.terminal.IdeTerminalBridge.installIdeCli(ctx)
-            // First-tab-at-launch case: no other tab keeps the foreground service alive.
-            TerminalService.start(ctx, "Ubuntu terminal active")
-            val existingTab = tabs.firstOrNull { it.id == replaceTabId }
-            val phSession = existingTab?.session
-            val phClient = existingTab?.client
-            if (phSession != null && phClient != null) {
-                phClient.expectedTeardown = true
-                phSession.gracefulExit()
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    try { phSession.finishIfRunning() } catch (_: Throwable) {}
-                }, 2000)
-            }
-            val activeRoots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(ctx, projectId)
-            // Lock precedence matches the slow path: explicit param first, then the tab's
-            // own existing lock (upgrade-in-place must never silently unlock); the lock
-            // stays valid only while the root still exists.
-            val tabLock = lockedRoot ?: existingTab?.lockedRootPath
-            val validLock = tabLock?.takeIf { it in activeRoots }
-            // V0-f-a: savedWorkDir (restore) sits between the validated lock and
-            // the active root — same precedence as the fast path.
-            val wd = validLock ?: savedWorkDir ?: loadWorkspacePath(ctx, projectId)
-            val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
-            if (onOpenFileAtLine != null) {
-                com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!,
-                    lockedRootProvider = { tabs.firstOrNull { t -> t.id == replaceTabId }?.lockedRootPath })
-            }
-            client.firstFrameProbe = { TerminalStartupProbe.mark("first-frame — prompt visible, session usable") }
-            val idx = tabs.indexOfFirst { it.id == replaceTabId }
-            val newTab = TabSession(replaceTabId, "Ubuntu", session, client, lockedRootPath = validLock, initialWorkDir = wd)
-            if (idx >= 0) tabs[idx] = newTab else tabs.add(newTab)
-            activeId = replaceTabId
-            scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
-                TerminalSessionStore.SavedTab(it.id, it.name, it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
-            }) }
-            TerminalStartupProbe.mark("warm-path: real session created — proot forking")
-            return
-        }
+        // S1-c WARM-PATH REVERTED (2026-10-06, owner request — terminal freeze hunt):
+        // the intermittent terminal-freeze/app-close correlates with the S1-c
+        // warm-path skip (the only recent terminal-startup change), and two
+        // attempts captured NO crash evidence. PRAGMATIC REVERT, NOT A ROOT-CAUSE
+        // FIX: placeholder-tab upgrades now flow through the original slow path
+        // again ("Checking installation..." progress dance, foreground-service
+        // setup, full PTY create/teardown) — pre-S1-c behavior. If the freeze
+        // disappears, S1-c's pattern is implicated and can be reintroduced piece
+        // by piece; if it persists, the hunt moves elsewhere with the warm path
+        // ruled out.
 
         // FIXED 2026-07-03: an install is already actively running (e.g. user tapped "+"
         // for another tab while the first-run download/extract is still going). Jump
