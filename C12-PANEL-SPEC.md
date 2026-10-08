@@ -49,6 +49,11 @@ selText plaintext leak.
     (proposal: sk-≥20 chars, hf_≥17, AIza≥30 after the prefix); eyJ is NEVER
     applied to message text. A scrub must NEVER rewrite ordinary code or prose —
     the tier exists to catch leaked credentials, not to police conversations.
+  - **PATTERN SHAPE (advisor correction 2026-10-08), both tiers:** a token match
+    requires (i) a WORD BOUNDARY before the prefix (no mid-identifier hits) and
+    (ii) a KEY-LIKE BODY after the prefix — mixed letters AND digits within the
+    matched window; plain hyphenated words never match. A bare
+    "disk-usage-monitor-config" or a kebab-case identifier is not a key.
 - Eviction, TWO tiers (advisor item 5): PER SESSION, keep stored copies for the
   LAST ~10 attachments or ~200 KB total, whichever hits first; PLUS a GLOBAL cap
   across ALL sessions, SET TO 512 KB (advisor 2026-10-08 — everything loads at app
@@ -58,7 +63,11 @@ selText plaintext leak.
   never advance the byte budget beyond their marker.
 - JVM tests (in the CI unit-test step, BEFORE any build ships): (a) a CORPUS of
   ordinary code and prose that must come out UNCHANGED through both tiers (base64
-  fragments, short sk- look-alikes, ordinary eyJ-free text, config samples); (b)
+  fragments, short sk- look-alikes, ordinary eyJ-free text, config samples, AND
+  the hyphenated-word/kebab-case/CSS-class corpus — e.g.
+  "disk-usage-monitor-config", kebab-case package/file names, CSS classes like
+  "task-sk-item-card", CI job ids, slug-style config names — none may match for
+  sk-, hf_, or AIza); (b)
   realistic secrets that MUST be caught in both tiers; (c) idempotence (a second
   scrub pass changes nothing); (d) eviction order, per-session AND global
   byte-budget accounting, oldest-first ordering; (e) every pattern, exclusion
@@ -187,14 +196,17 @@ API.**
   (`EditorFileWriter.write(path, content, baseLen, baseHash)`); the V2 integration
   owns the actual IO. Exact writer signature re-READ against V2's shipped API at
   build time.
-- **Advisor item 3a:** Save to file is DISABLED unless the ENTIRE file was loaded
-  into the in-memory copy (no truncation). Per the 2026-10-08 note: files ABOVE the
-  64 KB load cap can still be VIEWED and EDITED FOR SENDING (within the send caps)
-  but can NEVER be saved back; the disabled Save shows that reason: "only part of
-  this file is loaded". A file whose send-cap truncation exceeds its load (fully
-  loaded, but >12000 chars) also cannot be saved — same reason line, "only part
-  of this file would be written" is NOT silently assumed; the Save writes the
-  WHOLE in-memory copy or nothing.
+- **Advisor item 3a (CORRECTED 2026-10-08):** Save to file is disabled ONLY when
+  writing would ACTUALLY be unsafe: (1) PARTIAL LOAD — files above the 64 KB load
+  cap can still be VIEWED and EDITED FOR SENDING (within the send caps) but can
+  never Save, disabled with the reason "only part of this file is loaded"; (2) the
+  source would be a redacted/stored copy — impossible by construction (3b: Save
+  uses the in-memory editing copy only; the post-send sheet has no Save); (3)
+  CONFLICT UNCONFIRMED — no write without the explicit "Overwrite disk version"
+  tap (3c). A fully loaded file over the 12000-char SEND cap CAN Save: the send
+  cap only limits what rides the request; the in-memory copy stays whole, so Save
+  writes the complete file — the earlier restriction on that case is REMOVED
+  (no hazard exists; corrected 2026-10-08).
 - **Advisor note (2026-10-08), hash timing:** the FULL-FILE length + hash is taken
   AT ATTACH TIME, only for files that FULLY loaded (≤64 KB). Over-cap files never
   receive a full hash, which is exactly why they can never Save; the first-8 KB
