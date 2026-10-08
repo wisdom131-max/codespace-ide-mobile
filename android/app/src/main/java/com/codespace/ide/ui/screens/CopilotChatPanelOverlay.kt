@@ -375,6 +375,23 @@ private fun registeredModelEntries(tokenStore: SecureTokenStore?): List<String> 
         }
 
 /**
+ * G-C C-2 (advisor 2a): sanitize an endpoint base URL for DISPLAY and PERSISTED
+ * bubble text — scheme://host[:port]/path only. Query strings and user-info are
+ * stripped via Uri parsing (never string surgery) because bubbles persist into
+ * session blobs and backups. Returns "" for unparseable input.
+ */
+internal fun sanitizeEndpointUrl(url: String): String {
+    return try {
+        val u = android.net.Uri.parse(url.trim())
+        val scheme = u.scheme ?: return ""
+        val host = u.host ?: return ""
+        val port = if (u.port > 0) ":" + u.port else ""
+        val path = u.path ?: ""
+        scheme + "://" + host + port + path
+    } catch (_: Exception) { "" }
+}
+
+/**
  * MK-RESTRUCTURE B (2026-09-16): per-endpoint picker groups — live vs manual
  * model entries, labeled, from the per-endpoint registry + live cache.
  */
@@ -1464,8 +1481,28 @@ internal fun CopilotChatPanelInline(
                 }
                 com.codespace.ide.diagnostics.AppOutputLog.log(
                     "[chat] send FAILED — " + (e.message ?: e.javaClass.simpleName), "chat")
-                error = e.message ?: "Unknown error"
-                messages.add(ChatMsg("assistant", "Error: ${e.message}"))
+                // G-C C-2 (2026-10-08, advisor conditions 2a): error bubbles carry
+                // ENDPOINT IDENTITY for custom endpoints — "<label> (<sanitized
+                // base URL>): <existing message>". The message already names the
+                // EXACT status code ("API error (402): ..."); built-ins keep today's
+                // text unchanged. The displayed URL is sanitized to
+                // scheme://host[:port]/path via Uri parsing (never string surgery)
+                // because bubbles persist into session blobs and backups — and the
+                // SAME C12 token patterns redact the bubble text before it is
+                // rendered or persisted (full attachment-tier set).
+                var errText = e.message ?: "Unknown error"
+                if (he != null) {
+                    val pid2 = selectedModel.substringBefore(':', "")
+                    val eid2 = com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(pid2)
+                    if (eid2 != null) {
+                        val ep2 = com.codespace.ide.chat.CustomEndpointStore.byId(eid2)
+                        val safeUrl2 = sanitizeEndpointUrl(ep2?.baseUrl ?: "")
+                        errText = (ep2?.label ?: "Custom") + " (" + safeUrl2 + "): " + errText
+                    }
+                }
+                val redacted2 = com.codespace.ide.chat.AttachmentSecrets.redact(errText, com.codespace.ide.chat.AttachmentSecrets.TIER_ATTACHMENT).first
+                error = redacted2
+                messages.add(ChatMsg("assistant", "Error: " + redacted2))
                 persistSessions()
             } finally {
                 chatLoading = false
