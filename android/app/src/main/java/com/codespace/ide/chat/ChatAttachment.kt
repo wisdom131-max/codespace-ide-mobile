@@ -153,7 +153,12 @@ object ChatAttachmentInjector {
                 continue
             }
             if (att.kind == ChatAttachment.Kind.SELECTION) {
-                val text = (att.selText ?: "").trim().take(MAX_FILE_CHARS)
+                // C12 s1-e (advisor item 1): an EDITED snippet rides the send as
+                // the override; an UNEDITED one keeps its original text (the
+                // selection IS the fresh state — nothing is re-read from disk).
+                val snap = att.snapshot
+                val text = (if (snap != null && snap.edited) (snap.editedContent ?: snap.content) else (att.selText ?: ""))
+                    .trim().take(MAX_FILE_CHARS)
                 if (text.isEmpty()) continue
                 sb.append("\n### Selection from ").append(att.relPath).append('\n')
                 sb.append(text).append('\n')
@@ -161,6 +166,28 @@ object ChatAttachmentInjector {
                 continue
             }
             try {
+                // C12 s1-e (advisor item 1): an EDITED attachment sends the
+                // in-memory copy (the override, visibly chosen in the sheet) —
+                // an UNEDITED attachment keeps the FRESH DISK READ below, so a
+                // stale attach-time snapshot is never sent silently. The
+                // unreadable/missing-file class stays for unedited + restored
+                // descriptors (honest skip, as today).
+                val editedSnap = att.snapshot
+                if (editedSnap != null && editedSnap.edited) {
+                    val editedRaw = (editedSnap.editedContent ?: editedSnap.content).trim()
+                    if (editedRaw.isEmpty()) continue
+                    val remainingEdited = MAX_TOTAL_CHARS - total
+                    if (remainingEdited <= 0) { sb.append("\n(remaining attachments skipped — context cap reached)\n"); break }
+                    val cappedEdited = editedRaw.take(minOf(MAX_FILE_CHARS, remainingEdited))
+                    sb.append("\n### File: ").append(att.relPath).append(" (edited copy)").append('\n')
+                    val langEdited = langOf(att.name)
+                    sb.append("```").append(langEdited).append('\n')
+                    sb.append(cappedEdited)
+                    if (cappedEdited.length < editedRaw.length) sb.append("\n(file truncated to fit context)")
+                    sb.append("\n```\n")
+                    total += cappedEdited.length
+                    continue
+                }
                 val f = File(att.path)
                 if (!f.isFile || !f.canRead()) continue
                 val remaining = MAX_TOTAL_CHARS - total
