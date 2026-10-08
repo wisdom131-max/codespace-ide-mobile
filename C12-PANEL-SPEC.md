@@ -41,53 +41,88 @@ selText plaintext leak.
   `[content not stored: secret-looking file]`.
 - Token REDACTION (best-effort, stated in plan and sheet copy): `sk-`, `AKIA`,
   `hf_`, `AIza`, `xox`, `eyJ` (JWT), `ghp_`, `-----BEGIN PRIVATE KEY-----` blocks.
-- Eviction: per session, keep stored copies for the LAST ~10 attachments or ~200 KB
-  total, whichever hits first; older copies → marker that says WHY:
+- Eviction, TWO tiers (advisor item 5): PER SESSION, keep stored copies for the
+  LAST ~10 attachments or ~200 KB total, whichever hits first; PLUS a GLOBAL cap
+  across ALL sessions (proposal: ~1 MB total, owner may adjust), OLDEST evicted
+  first (by message timestamp). Evicted copies → marker that says WHY:
   `[content evicted to save space — attach again to view]`. FAILED/EXCLUDED entries
   never advance the byte budget beyond their marker.
-- JVM tests: every pattern, exclusion match, eviction order, byte-budget accounting.
+- JVM tests: every pattern, exclusion match, eviction order, per-session AND global
+  byte-budget accounting, oldest-first ordering.
 
 ### C12-s1-b. Attach-time copy + tappable chips + the AttachmentSheet (pre-send)
 - Attach time: read up to 64 KB (text sniff: invalid UTF-8 or NUL in first 8 KB →
-  BINARY flag) into an in-memory `copy` — the copy that will ride the send.
-- Chips become TAPPABLE → open the sheet (× removal stays).
+  BINARY flag) into an in-memory snapshot — the VIEW/COMPARE basis, with an EDITED
+  flag that turns on the moment the user changes anything in the sheet.
+- **Advisor item 1 (send semantics):** the UNEDITED attachment keeps the FRESH DISK
+  READ at send time (original behavior); the in-memory copy rides the send ONLY
+  when the user EDITED it (override). A stale attach-time snapshot is never sent
+  silently — the edited state is always user-caused and visible in the sheet.
+- Chips become TAPPABLE → open the sheet (× removal stays). **Advisor item 6:**
+  chip body = one large tap target (opens the sheet); the × is a separate trailing
+  icon button with a ≥48 dp touch target and clear spacing from the chip body,
+  so open-tap and remove-tap cannot be confused on a phone.
 - NEW `ui/panels/AttachmentSheet.kt`:
   - Header: relPath, size, kind.
   - CHANGE NOTICE: first-8 KB hash at attach vs now — "no change detected" (exact
     ruling wording) or "file changed since attaching — the edited copy still rides
     the send".
-  - "showing X of N characters" counter over the capped view (X = what the send will
-    use given the 12000/24000 caps; N = full copy size).
-  - EDITOR: multiline field editing the COPY. SELECTION kind edits its snippet the
-    same way. IMAGE/AUDIO: info row only (sent as a part), no editor.
-  - Actions: "Reset to attached version", "Remove attachment", close.
-- Build-block unchanged in this commit (copy consumed in C12-s1-e) — sheet edits are
-  live in state but the send still reads disk for ONE commit, then flips. (Keeps each
-  commit single-purpose; the interim state is honest: the sheet's counter already
-  reflects what WILL ride the send.)
+  - "showing X of N characters" counter over the capped VIEW.
+  - **Advisor item 2 (send-portion notice):** when the send caps will truncate, the
+    sheet states exactly what rides: "Only the first N characters will be sent; the
+    rest is not included" (N computed from the 12000/24000 caps at send time). Edits
+    BEYOND the cap are allowed (the copy stays whole) but carry a persistent flag
+    line in the sheet ("content past character N is not sent") so nothing is sent
+    silently less than shown.
+  - EDITOR: multiline field editing the copy (turns the EDITED flag on). SELECTION
+    kind edits its snippet the same way. IMAGE/AUDIO: info row only (sent as a
+    part), no editor.
+  - Actions: "Reset to attached version" (clears the EDITED flag back to the
+    snapshot), "Remove attachment", close.
+- Build-block unchanged in this commit (copy consumption lands in C12-s1-e) — each
+  commit stays single-purpose; the sheet's notices already reflect what WILL ride
+  the send.
 
 ### C12-s1-c. Binary/non-text attach-time warning (own tiny commit, per ruling)
 - On attaching a binary: dialog "Attached as binary — content cannot be edited or
   shown in the sheet." In the sheet: editor disabled, read-only notice.
 
 ### C12-s1-d. Persistence: stored copy + exclusion/redaction/eviction + labels
-- msgToJson persists, per FILE/SELECTION attachment, the copy that rode the send
-  (≤12000): excluded-by-filename → marker; else redacted best-effort; `redacted`
-  flag when anything was excluded/redacted; eviction applied per session budget.
+- msgToJson persists, per FILE/SELECTION attachment, the content that ACTUALLY rode
+  the send (≤12000 — per item 1: the fresh disk read for unedited attachments, the
+  edited copy for overrides): excluded-by-filename → marker; else redacted
+  best-effort; `redacted` flag when anything was excluded/redacted; eviction applied
+  per session AND global budgets.
 - Post-send chips become tappable → the sheet in POST-SEND mode: READ-ONLY, header
   "stored copy" or "stored copy, secrets redacted" (exact ruling wording) whenever
   anything was excluded/redacted, "showing X of N characters" over the stored view.
   The "byte-exact by construction" claim does NOT appear for excluded/redacted cases.
 - msgFromJson ignores unknown fields both ways (old blobs load; new blobs on old
   builds degrade to descriptor behavior).
+- **ONE-TIME SCRUB (advisor item 4):** on SESSION LOAD, the redaction rules run
+  over every EXISTING persisted text field — old selText snippets first (today's
+  plaintext leak), then any stored copies — and the scrubbed sessions are
+  rewritten to storage in the same pass. Idempotent; no marker added when nothing
+  matched.
+  **What it changes:** in-app storage (the `copilot_chat` prefs blobs) stops
+  carrying old secrets from the first load after this ships, and stays scrubbed.
+  **What it does NOT change:** backup files ALREADY on shared storage keep their
+  pre-scrub copies until the next backup cycle replaces them — the prefs-backup
+  folder is rewritten by onAppStart's backupPrefs at every launch (grant-gated),
+  so the /sdcard copy turns over at the first app start after the scrub; anything
+  copied or extracted elsewhere before then is out of reach and stays until
+  overwritten. Stated in the sheet plan and changelog so expectations are honest.
 - Restored conversations WITHOUT a stored copy (evicted/excluded/old blob) fall back
   to today's behavior: re-read from disk (CH04 parity preserved, honestly stated).
 
-### C12-s1-e. Send path consumes the copy
-- buildBlock FILE branch: use the (possibly edited) copy, not a fresh disk read;
-  unchanged caps; unreadable-missing-file class disappears for pre-send attaches
-  (the copy is in memory) and stays for restored-descriptor fallback.
-- The copy that rode the send is exactly what s1-d persisted.
+### C12-s1-e. Send path: edited override or fresh disk read (advisor item 1)
+- buildBlock FILE branch: EDITED attachments → the in-memory copy rides the send
+  (the override, visibly chosen in the sheet); UNEDITED attachments → FRESH DISK
+  READ at send time (unchanged original behavior — no stale snapshot is ever sent
+  silently). Caps unchanged. Unreadable-missing-file class stays for unedited and
+  restored-descriptor attachments (honest skip, as today).
+- Whatever actually rode the send (disk-read content or edited copy) is exactly
+  what s1-d persists.
 
 ### Removed / replaced
 - Nothing removed (ruling expectation confirmed). Superseded: non-tappable chips;
@@ -121,12 +156,26 @@ e: revert send path (disk read returns; sheet still works on the copy for displa
 
 ## 3. STAGE 2 (after V2 editor IO) — write-back + Open in editor
 
+**Status: amended per advisor item 3 (2026-10-08) — RETURNS FOR APPROVAL; not yet
+owner-approved.**
+
 ### Capabilities
-- "Save to file" in the sheet writes the copy back to the REAL project file through
-  the GATED write path only (R6 staging / V2 editor IO). The chat surface never
-  performs an ungated disk write — it calls an injected writer API
-  (`EditorFileWriter.write(path, content, baseHash)`); the V2 integration owns the
-  actual IO. Exact writer signature re-READ against V2's shipped API at build time.
+- "Save to file" in the PRE-SEND sheet writes the copy back to the REAL project
+  file through the GATED write path only (R6 staging / V2 editor IO). The chat
+  surface never performs an ungated disk write — it calls an injected writer API
+  (`EditorFileWriter.write(path, content, baseLen, baseHash)`); the V2 integration
+  owns the actual IO. Exact writer signature re-READ against V2's shipped API at
+  build time.
+- **Advisor item 3a:** Save to file is DISABLED unless the ENTIRE file was loaded
+  into the in-memory copy (no truncation — files at/over the 64 KB snapshot cap or
+  send caps show Save disabled with the reason: "only part of this file is loaded").
+- **Advisor item 3b:** Save writes ONLY from the in-memory EDITING copy — never
+  from a stored/redacted/persisted copy (the post-send sheet has no Save action at
+  all; its copies are display-only by design).
+- **Advisor item 3c:** the conflict gate compares FULL FILE LENGTH + FULL HASH of
+  the disk file vs the attach-time snapshot (not the first-8 KB view hash — that
+  hash remains view-only), and the WRITE preserves the original line endings and
+  encoding of the in-memory copy (no newline translation, no re-encoding).
 - "Open in editor" action: opens the file in the editor pane (onOpenFileAtLine
   family; the path-form normalization lessons apply — host/guest/proot forms).
 - Conflict handling: if the file changed on disk since attaching (same first-8 KB
