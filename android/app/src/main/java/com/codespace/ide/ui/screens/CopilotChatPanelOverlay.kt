@@ -2072,7 +2072,7 @@ internal fun CopilotChatPanelInline(
                                 }
                                 com.codespace.ide.chat.CustomEndpointStore.setLiveModels(eid, live)
                                 live
-                            }
+                            })
                             customRefreshing = customRefreshing - eid
                             when (outcome) {
                                 is com.codespace.ide.chat.ModelCatalog.RefreshOutcome.Ok -> {
