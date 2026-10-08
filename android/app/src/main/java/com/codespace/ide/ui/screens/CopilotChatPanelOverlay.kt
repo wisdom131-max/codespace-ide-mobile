@@ -1853,7 +1853,7 @@ internal fun CopilotChatPanelInline(
                         scope.launch {
                             val provider = com.codespace.ide.chat.providers.CustomOpenAiProvider(eid)
                             val base = com.codespace.ide.chat.CustomEndpointStore.byId(eid)?.baseUrl
-                            val outcome = com.codespace.ide.chat.ModelCatalog.refreshLive(eid) {
+                            val outcome = com.codespace.ide.chat.ModelCatalog.refreshLive(eid, fetcher = {
                                 if (base.isNullOrBlank()) throw IllegalStateException("endpoint has no base URL")
                                 val live = com.codespace.ide.chat.ChatKeyFailover.execute(provider.id, tokenStore) { k ->
                                     com.codespace.ide.chat.providers.OpenAiCompatibleTransport.fetchModelList(provider.modelsUrl(base), k).take(80)
