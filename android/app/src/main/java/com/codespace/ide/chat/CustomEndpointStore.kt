@@ -195,6 +195,16 @@ object CustomEndpointStore {
         prefs?.getLong("live_ts_" + id, 0L) ?: 0L
     } catch (_: Exception) { 0L }
 
+    /** G-C C-4(c): a model-not-found/404 response drops the endpoint's live list —
+     * the next picker open refetches instead of serving a dead list. fetchedAt
+     * resets with it, so the window logic can never resurrect the stale list. */
+    fun clearLiveModels(id: String) {
+        try {
+            prefs?.edit()?.remove("live_" + id)?.remove("live_ts_" + id)?.apply()
+        } catch (_: Exception) { }
+        versionCounter++
+    }
+
     fun setLiveModels(id: String, models: List<String>) {
         try {
             prefs?.edit()?.putString("live_" + id, models.take(80).joinToString("\n"))

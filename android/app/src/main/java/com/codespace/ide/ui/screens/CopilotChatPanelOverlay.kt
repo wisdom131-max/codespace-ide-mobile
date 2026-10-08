@@ -354,6 +354,11 @@ private fun sessionCopiesWithEviction(msgs: List<ChatMsg>): List<List<StoredCopy
  * scrub runs before backupPrefs); anything copied out before then stays as-is.
  */
 private fun scrubSessionsOnce(ctx: Context, sessions: List<ChatSession>): Int {
+    // Owner ruling 2026-10-08: ships OFF — the owner enables the pass in Settings
+    // ("Saved-chat secret scrub") after the foundation checkpoints pass; the
+    // enable-and-verify is its own round checkpoint. Absent flag = scrub skipped.
+    val prefs = ctx.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
+    if (!prefs.getBoolean("c12_scrub_enabled", false)) return 0
     var changedItems = 0
     val evictMarker = com.codespace.ide.chat.AttachmentSecrets.EVICTED_MARKER
     // ── 1. redaction pass over every persisted text (idempotent: markers and
@@ -1727,6 +1732,23 @@ internal fun CopilotChatPanelInline(
                 // SAME C12 token patterns redact the bubble text before it is
                 // rendered or persisted (full attachment-tier set).
                 var errText = e.message ?: "Unknown error"
+                if (he != null) {
+                    // G-C C-4 condition (c) (2026-10-08): a model-not-found / 404
+                    // response drops that provider's caches AUTOMATICALLY — the
+                    // window cache AND the endpoint's live list go, so the next
+                    // picker open refetches instead of serving a dead model list.
+                    val pid404 = selectedModel.substringBefore(':', "")
+                    val isModelNotFound = he.statusCode == 404 || (errText.contains("model", true) &&
+                        (errText.contains("not found", true) || errText.contains("does not exist", true) ||
+                            errText.contains("invalid model", true)))
+                    if (isModelNotFound && pid404.isNotBlank()) {
+                        com.codespace.ide.chat.ProviderModelCache.drop(pid404)
+                        val eid404 = com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(pid404)
+                        if (eid404 != null) com.codespace.ide.chat.CustomEndpointStore.clearLiveModels(eid404)
+                        com.codespace.ide.diagnostics.AppOutputLog.log(
+                            "[model-cache] 404 drop: " + pid404 + " (" + he.statusCode + ")", "chat")
+                    }
+                }
                 if (he != null) {
                     val pid2 = selectedModel.substringBefore(':', "")
                     val eid2 = com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(pid2)

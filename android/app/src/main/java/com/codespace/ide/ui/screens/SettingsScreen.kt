@@ -362,6 +362,32 @@ fun SettingsScreen(
                     )
                 },
             )
+            // C12 s1-d (owner ruling 2026-10-08): saved-chat secret scrub ships
+            // OFF — the owner enables it AFTER the foundation checkpoints pass;
+            // the enable-and-verify is its own round checkpoint. Enabling writes
+            // the flag; the actual one-time redaction pass runs at the NEXT app
+            // start (scrubSessionsOnce reads this flag), with the one-time
+            // "N saved items had secrets removed" notice.
+            val scrubPrefs = remember { context.getSharedPreferences("copilot_chat", Context.MODE_PRIVATE) }
+            var scrubEnabled by remember { mutableStateOf(scrubPrefs.getBoolean("c12_scrub_enabled", false)) }
+            ListItem(
+                headlineContent = { Text("Saved-chat secret scrub") },
+                supportingContent = {
+                    Text(
+                        if (scrubEnabled) "On — saved chat copies get secret-looking tokens removed at the next app start"
+                        else "Off — saved chat copies are kept as-is"
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = scrubEnabled,
+                        onCheckedChange = { checked ->
+                            scrubEnabled = checked
+                            scrubPrefs.edit().putBoolean("c12_scrub_enabled", checked).apply()
+                        },
+                    )
+                },
+            )
             HorizontalDivider()
 
             // ── Accounts ────────────────────────────────────────────────────

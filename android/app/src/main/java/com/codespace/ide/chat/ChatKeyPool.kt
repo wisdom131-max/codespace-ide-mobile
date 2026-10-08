@@ -88,6 +88,8 @@ object ChatKeyPool {
     fun setActive(providerId: String, suffix: String) {
         val p = prefs ?: return
         try { p.edit().putString("active_" + providerId, suffix).apply() } catch (_: Exception) { }
+        // G-C C-4(b): the ACTIVE key changing is a key change — drop the window.
+        ProviderModelCache.drop(providerId)
     }
 
     fun clearActive(providerId: String) {
@@ -111,6 +113,9 @@ object ChatKeyPool {
         val idx = slots(providerId).toMutableList()
         if (suf !in idx) idx.add(suf)
         saveIndex(providerId, idx)
+        // G-C C-4(b): a key change invalidates the provider's model-cache window —
+        // a different key can see a different /models list (and a dead one a 401).
+        ProviderModelCache.drop(providerId)
         return suf
     }
 
@@ -119,6 +124,8 @@ object ChatKeyPool {
         tokenStore?.setAiKey(suffix, null)
         if (activeSuffix(providerId) == suffix) clearActive(providerId)
         saveIndex(providerId, slots(providerId).filter { it != suffix })
+        // G-C C-4(b): key removed = key changed — drop the window cache.
+        ProviderModelCache.drop(providerId)
     }
 
     // CH12 (P4h): user-entered labels moved OUT of plain SharedPreferences into
