@@ -440,6 +440,22 @@ private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): Pair<L
     val entries = mutableListOf<String>()
     val errors = mutableListOf<Triple<String, String, String>>()
     for (provider in ChatProviderRegistry.available(tokenStore)) {
+        // G-C C-1b (advisor-approved 2026-10-08): providers fetched within the
+        // 10-min window reuse the last-good list — no /models call on every
+        // panel open. Customs merge CURRENT manual models at reuse time (a
+        // manual add shows immediately); the explicit per-group Refetch (C-1)
+        // bypasses the window and overwrites this cache on success.
+        val cachedLive = com.codespace.ide.chat.ProviderModelCache.freshModels(provider.id)
+        if (cachedLive != null) {
+            val manualNow = if (provider is com.codespace.ide.chat.providers.CustomOpenAiProvider) {
+                com.codespace.ide.chat.CustomEndpointStore.manualModels(
+                    com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(provider.id) ?: "")
+            } else emptyList()
+            val reuse = (if (provider.defaultModelIsPlaceholder) emptyList() else listOf(provider.defaultModel)) +
+                manualNow + cachedLive
+            reuse.distinct().forEach { entries.add(provider.id + ":" + it) }
+            continue
+        }
         var fetchError: String? = null
         // MULTI-KEY: try EVERY key of the provider (failover order) — a dead slot-1
         // key no longer hides the models reachable via the other keys.
@@ -463,6 +479,16 @@ private suspend fun fetchLiveModelEntries(tokenStore: SecureTokenStore?): Pair<L
             val models = if (provider.defaultModelIsPlaceholder) live
                 else (listOf(provider.defaultModel) + live).distinct()
             models.forEach { entries.add("${provider.id}:${it}") }
+            // G-C C-1b: stamp the window cache with the LIVE portion (customs
+            // exclude manual entries here — they merge fresh at reuse time).
+            if (live.isNotEmpty()) {
+                val cacheable = if (provider is com.codespace.ide.chat.providers.CustomOpenAiProvider) {
+                    val mn = com.codespace.ide.chat.CustomEndpointStore.manualModels(
+                        com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(provider.id) ?: "")
+                    live.filter { it !in mn }
+                } else live
+                if (cacheable.isNotEmpty()) com.codespace.ide.chat.ProviderModelCache.put(provider.id, cacheable)
+            }
         }
     }
     return entries.distinct() to errors.toList()
@@ -1778,6 +1804,13 @@ internal fun CopilotChatPanelInline(
                             when (outcome) {
                                 is com.codespace.ide.chat.ModelCatalog.RefreshOutcome.Ok -> {
                                     customRefreshErrors = customRefreshErrors - eid
+                                    // C-1b: an explicit Refetch bypasses the window —
+                                    // its fresh result REPLACES the window cache so a
+                                    // panel reopen within 10 min serves the same data.
+                                    // Live portion only, matching the mount fetch's
+                                    // stamp (manual entries merge fresh at reuse).
+                                    val mn = com.codespace.ide.chat.CustomEndpointStore.manualModels(eid)
+                                    com.codespace.ide.chat.ProviderModelCache.put(pid, outcome.models.filter { it !in mn })
                                     // groupEntries splits from availModels — replace this
                                     // endpoint's slice so the group shows the fresh list.
                                     availModels = (availModels.filter { !it.startsWith(pid + ":") } +

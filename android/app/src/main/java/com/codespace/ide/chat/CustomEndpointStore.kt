@@ -127,6 +127,9 @@ object CustomEndpointStore {
                 o.put("label", label.trim().ifBlank { id })
                 o.put("baseUrl", trimmedUrl)
                 persistEndpoints(arr)
+                // G-C C-1b: a base-URL edit invalidates the window cache — models
+                // cached from the OLD url must never serve ("cache dropped" log).
+                ProviderModelCache.drop(providerIdFor(id))
                 return true
             }
         }
@@ -144,6 +147,8 @@ object CustomEndpointStore {
         if (removed) {
             prefs?.edit()?.remove("manual_" + id)?.remove("live_" + id)?.remove("live_ts_" + id)?.apply()
             persistEndpoints(arr)
+            // G-C C-1b: deleting an endpoint drops its window cache too.
+            ProviderModelCache.drop(providerIdFor(id))
         }
         return removed
     }

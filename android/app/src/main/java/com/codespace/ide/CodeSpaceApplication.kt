@@ -54,6 +54,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         ProjectSettingsStore.init(this)
         // Custom OpenAI-compatible endpoint base URL (config, not a credential)
         com.codespace.ide.chat.CustomEndpointStore.init(this)
+        com.codespace.ide.chat.ProviderModelCache.init(this)
         // PERSIST-A: find-widget state (query + toggles) — plain prefs, cross-project.
         com.codespace.ide.editor.EditorFindState.init(this)
         com.codespace.ide.chat.ChatKeyPool.init(this)
