@@ -179,17 +179,71 @@ private data class ChatSession(
 private fun newSession(mode: ChatMode = ChatMode.ASK, customModeId: String? = null): ChatSession =
     ChatSession(id = java.util.UUID.randomUUID().toString(), title = "New chat", mode = mode, customModeId = customModeId)
 
-private fun msgToJson(m: ChatMsg): JSONObject {
+/**
+ * C12 s1-d (2026-10-08): the STORED COPY for one attachment — what ACTUALLY rode
+ * the send (advisor item 1: the fresh disk read for unedited attachments, the
+ * edited copy for overrides), capped at STORED_COPY_MAX_CHARS, then
+ * exclusion-by-filename and best-effort token redaction per the s1-a library:
+ *   - excluded-by-filename -> the marker (never content)
+ *   - FILE unreadable at save -> NO copy at all (absent "c" = old-blob behavior:
+ *     restored conversations fall back to re-reading the file, CH04 parity)
+ *   - IMAGE/AUDIO -> no copy (sent as a part, descriptor-only)
+ * Byte-exact-by-construction applies ONLY to plain stored copies; excluded and
+ * redacted copies carry their markers/flags instead.
+ */
+private data class StoredCopy(
+    val content: String,
+    val redacted: Boolean,   // anything was excluded-or-redacted
+    val bytes: Int,          // budget accounting; markers count as their own length
+)
+
+private const val STORED_COPY_MAX_CHARS = 12000
+
+private fun storedCopyFor(a: com.codespace.ide.chat.ChatAttachment): StoredCopy? {
+    val kind = a.kind
+    if (kind == com.codespace.ide.chat.ChatAttachment.Kind.IMAGE || kind == com.codespace.ide.chat.ChatAttachment.Kind.AUDIO) return null
+    if (com.codespace.ide.chat.AttachmentSecrets.isExcludedFilename(a.name)) {
+        return StoredCopy(com.codespace.ide.chat.AttachmentSecrets.EXCLUDED_MARKER, true, com.codespace.ide.chat.AttachmentSecrets.EXCLUDED_MARKER.length)
+    }
+    val snap = a.snapshot
+    val raw: String = when {
+        kind == com.codespace.ide.chat.ChatAttachment.Kind.SELECTION ->
+            if (snap != null && snap.edited) (snap.editedContent ?: snap.content) else (a.selText ?: "")
+        snap != null && snap.edited -> (snap.editedContent ?: snap.content)
+        else -> {
+            // UNEDITED FILE: the fresh disk read (what buildBlock sent). Unreadable
+            // -> NO copy (honest absent, restored conversations re-read the file).
+            try {
+                val f = java.io.File(a.path)
+                if (!f.isFile || !f.canRead()) return null
+                f.readText()
+            } catch (_: Exception) { return null }
+        }
+    }
+    if (raw.isEmpty()) return null
+    val capped = raw.take(STORED_COPY_MAX_CHARS)
+    val (red, changed) = com.codespace.ide.chat.AttachmentSecrets.redact(capped, com.codespace.ide.chat.AttachmentSecrets.TIER_ATTACHMENT)
+    return StoredCopy(red, changed, red.length)
+}
+
+private fun msgToJson(m: ChatMsg, copies: List<StoredCopy?>? = null): JSONObject {
     val mo = JSONObject().put("role", m.role).put("text", m.text)
     if (m.rating != null) mo.put("rating", m.rating)
     // CH04 (P4h): attachment descriptors ride the message (capped: 8 per message,
     // selection snippets at 4000 chars) so a restored conversation re-sends faithfully.
+    // C12 s1-d: the stored copy ("c", ≤12000) rides per FILE/SELECTION attachment
+    // — what actually rode the send, excluded/redacted per the s1-a library.
     if (m.attachments.isNotEmpty()) {
         val atts = JSONArray()
-        m.attachments.take(8).forEach { a ->
+        m.attachments.take(8).forEachIndexed { i, a ->
             val ao = JSONObject().put("p", a.path).put("r", a.relPath).put("n", a.name).put("k", a.kind.name)
             if (a.kind == com.codespace.ide.chat.ChatAttachment.Kind.SELECTION && !a.selText.isNullOrEmpty()) ao.put("s", a.selText!!.take(4000))
             if (!a.mimeType.isNullOrEmpty()) ao.put("m", a.mimeType)
+            val cp = if (copies != null && i < copies.size) copies[i] else storedCopyFor(a)
+            if (cp != null) {
+                ao.put("c", cp.content)
+                if (cp.redacted) ao.put("rc", true)
+            }
             atts.put(ao)
         }
         mo.put("att", atts)
@@ -204,6 +258,7 @@ private fun msgFromJson(o: JSONObject): ChatMsg {
     for (j in 0 until attsArr.length()) {
         try {
             val ao = attsArr.getJSONObject(j)
+            val storedCopy = if (ao.has("c")) ao.optString("c") else null
             atts.add(com.codespace.ide.chat.ChatAttachment(
                 path = ao.optString("p"),
                 relPath = ao.optString("r"),
@@ -211,6 +266,19 @@ private fun msgFromJson(o: JSONObject): ChatMsg {
                 kind = try { com.codespace.ide.chat.ChatAttachment.Kind.valueOf(ao.optString("k")) } catch (_: Exception) { com.codespace.ide.chat.ChatAttachment.Kind.FILE },
                 selText = if (ao.has("s")) ao.optString("s") else null,
                 mimeType = if (ao.has("m")) ao.optString("m") else null,
+                // C12 s1-d: restored stored copy as an UNEDITED snapshot — buildBlock
+                // keeps the fresh-disk-read rule (CH04 parity), the post-send sheet
+                // shows the stored view. Evicted/excluded markers arrive as content.
+                snapshot = if (storedCopy != null)
+                    com.codespace.ide.chat.AttachmentSnapshot(
+                        content = storedCopy,
+                        truncated = false,
+                        isBinary = false,
+                        attachHash8k = "",
+                        edited = false,
+                        editedContent = null,
+                        fromPersist = true,
+                    ) else null,
             ))
         } catch (_: Exception) { }
     }
@@ -232,6 +300,127 @@ private val sessionBlobCache = java.util.concurrent.ConcurrentHashMap<String, St
 // SERIALIZE). With dirtyIds, only the changed session's blob is rebuilt; unchanged
 // sessions reuse the blob that is already on disk (loaded into the cache at startup)
 // and skip straight to the cheap index-metadata entry.
+/**
+ * C12 s1-d (advisor item 5): PER-SESSION eviction — stored copies are kept for the
+ * LAST ~10 attachments or ~200 KB total (whichever hits first, AttachmentSecrets
+ * budgets), walking NEWEST first; everything older becomes the EVICTED marker so
+ * the sheet says WHY there is no copy. FAILED/EXCLUDED entries carry only their
+ * marker bytes (storedCopyFor already accounts for that).
+ */
+private const val SESSION_KEEP_ATTACHMENTS = 10
+
+private fun sessionCopiesWithEviction(msgs: List<ChatMsg>): List<List<StoredCopy?>> {
+    val perMsg = msgs.map { m -> m.attachments.take(8).map { storedCopyFor(it) } }
+    var keepCount = 0
+    var bytes = 0
+    val evict = mutableSetOf<Pair<Int, Int>>()
+    for (i in perMsg.indices.reversed()) {
+        for (j in perMsg[i].indices.reversed()) {
+            val cp = perMsg[i][j] ?: continue
+            val keep = keepCount < SESSION_KEEP_ATTACHMENTS &&
+                bytes + cp.bytes <= com.codespace.ide.chat.AttachmentSecrets.SESSION_MAX_BYTES
+            if (keep) {
+                keepCount++
+                bytes += cp.bytes
+            } else {
+                evict.add(i to j)
+            }
+        }
+    }
+    val marker = com.codespace.ide.chat.AttachmentSecrets.EVICTED_MARKER
+    return perMsg.mapIndexed { i, list ->
+        list.mapIndexed { j, cp ->
+            if (cp == null) null
+            else if (evict.contains(i to j)) StoredCopy(marker, false, marker.length)
+            else cp
+        }
+    }
+}
+
+/**
+ * C12 s1-d (advisor items 2+4, 2026-10-08): ONE-TIME SCRUB + GLOBAL BUDGET, run on
+ * session LOAD (idempotent — nothing changes after the first pass):
+ *  - every persisted attachment stored copy + selection snippet gets the FULL
+ *    redaction tier; message text (user AND assistant) gets the HIGH-CONFIDENCE
+ *    tier only (never eyJ, never ordinary code or prose);
+ *  - stored-copy bytes are accounted per session and the GLOBAL 512 KB budget is
+ *    enforced OLDEST-session-first (by updatedAt) — copies over budget become the
+ *    EVICTED marker;
+ *  - when ANYTHING changed, the affected sessions are rewritten to storage in the
+ *    same pass and the user sees the one-time notice "N saved items had secrets
+ *    removed" (NotificationStore + one-shot prefs flag) — no notice when nothing
+ *    changed, no marker added when nothing matched.
+ * Backup honesty: /sdard prefs-backup copies turn over at the NEXT app start (the
+ * scrub runs before backupPrefs); anything copied out before then stays as-is.
+ */
+private fun scrubSessionsOnce(ctx: Context, sessions: List<ChatSession>): Int {
+    var changedItems = 0
+    val evictMarker = com.codespace.ide.chat.AttachmentSecrets.EVICTED_MARKER
+    // ── 1. redaction pass over every persisted text (idempotent: markers and
+    // [REDACTED] echoes never re-match) ──
+    sessions.forEach { s ->
+        var sessionDirty = false
+        val newMsgs = s.messages.map { m ->
+            var msgDirty = false
+            val (newText, textChanged) = com.codespace.ide.chat.AttachmentSecrets.redact(m.text, com.codespace.ide.chat.AttachmentSecrets.TIER_MESSAGE_TEXT)
+            if (textChanged) { changedItems++; msgDirty = true }
+            val newAtts = m.attachments.map { a ->
+                var att = a
+                val selNow = a.selText
+                if (selNow != null && selNow.isNotEmpty()) {
+                    val (newSel, selChanged) = com.codespace.ide.chat.AttachmentSecrets.redact(selNow, com.codespace.ide.chat.AttachmentSecrets.TIER_ATTACHMENT)
+                    if (selChanged) { att = att.copy(selText = newSel); changedItems++; msgDirty = true }
+                }
+                val snapNow = att.snapshot
+                if (snapNow != null && snapNow.content.isNotEmpty()) {
+                    val (newC, cChanged) = com.codespace.ide.chat.AttachmentSecrets.redact(snapNow.content, com.codespace.ide.chat.AttachmentSecrets.TIER_ATTACHMENT)
+                    if (cChanged) { att = att.copy(snapshot = snapNow.copy(content = newC)); changedItems++; msgDirty = true }
+                }
+                att
+            }
+            if (msgDirty) { sessionDirty = true; m.copy(text = newText, attachments = newAtts) } else m
+        }
+        if (sessionDirty) {
+            s.messages.clear()
+            s.messages.addAll(newMsgs)
+            sessionBlobCache.remove(s.id)
+        }
+    }
+    // ── 2. global byte budget: oldest sessions' copies evicted first ──
+    fun copyBytes(s: ChatSession): Int {
+        var total = 0
+        s.messages.forEach { m ->
+            m.attachments.take(8).forEach { a ->
+                val snap = a.snapshot
+                val len = snap?.content?.length ?: 0
+                if (len > 0) total += len
+            }
+        }
+        return total
+    }
+    var global = sessions.sumOf { copyBytes(it) }
+    if (global > com.codespace.ide.chat.AttachmentSecrets.GLOBAL_MAX_BYTES) {
+        sessions.sortedBy { it.updatedAt }.forEach { s ->
+            if (global <= com.codespace.ide.chat.AttachmentSecrets.GLOBAL_MAX_BYTES) return@forEach
+            val before = copyBytes(s)
+            s.messages.replaceAll { m ->
+                m.copy(attachments = m.attachments.map { a ->
+                    val snap = a.snapshot
+                    if (snap != null && snap.content.isNotEmpty() && snap.content != evictMarker) {
+                        changedItems++
+                        a.copy(snapshot = snap.copy(content = evictMarker, editedContent = null, edited = false))
+                    } else a
+                })
+            }
+            sessionBlobCache.remove(s.id)
+            global += copyBytes(s) - before
+        }
+    }
+    // ── 3. persist every affected session in the same pass ──
+    saveSessions(ctx, sessions, null)
+    return changedItems
+}
+
 private fun saveSessions(ctx: Context, sessions: List<ChatSession>, dirtyIds: Set<String>? = null) {
     val editor = ctx.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE).edit()
     val idx = JSONArray()
@@ -241,7 +430,10 @@ private fun saveSessions(ctx: Context, sessions: List<ChatSession>, dirtyIds: Se
         val mustSerialize = dirtyIds == null || s.id in dirtyIds || sessionBlobCache[s.id] == null
         if (mustSerialize) {
             val msgsArr = JSONArray()
-            s.messages.takeLast(50).forEach { m -> msgsArr.put(msgToJson(m)) }
+            val keptMsgs = s.messages.takeLast(50)
+            // C12 s1-d: stored copies with per-session eviction applied.
+            val copies = sessionCopiesWithEviction(keptMsgs)
+            keptMsgs.forEachIndexed { i, m -> msgsArr.put(msgToJson(m, copies[i])) }
             val blob = JSONObject()
                 .put("id", s.id)
                 .put("title", s.title)
@@ -1147,6 +1339,8 @@ internal fun CopilotChatPanelInline(
     }
     // C12 s1-c (2026-10-08): one-shot binary attach warning dialog state.
     var showBinaryAttachNotice by remember { mutableStateOf(false) }
+    // C12 s1-d (2026-10-08): post-send stored-copy sheet target (read-only view).
+    var viewStoredAttachment by remember { mutableStateOf<com.codespace.ide.chat.ChatAttachment?>(null) }
     // C12 s1-b (2026-10-08): the open AttachmentSheet target (null = closed).
     // Snapshots are created AT ATTACH TIME via attachmentWithSnapshot() below;
     // the EDITED flag + override live inside the snapshot object itself.
@@ -1233,7 +1427,25 @@ internal fun CopilotChatPanelInline(
     // ── Sessions (UI bucket #5) ─────────────────────────────────────────
     val sessions = remember {
         mutableStateListOf<ChatSession>().apply {
-            val loaded = loadSessions(context)
+                val loaded = loadSessions(context)
+            // C12 s1-d: one-time scrub + global budget on session load, with the
+            // one-shot "N saved items had secrets removed" notice (advisor item 2).
+            if (loaded.isNotEmpty()) {
+                val changed = scrubSessionsOnce(context, loaded)
+                if (changed > 0) {
+                    val prefsFlag = context.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
+                    if (!prefsFlag.getBoolean("c12_scrub_notice_done", false)) {
+                        prefsFlag.edit().putBoolean("c12_scrub_notice_done", true).apply()
+                        com.codespace.ide.data.NotificationStore.add(
+                            title = "Saved chat data cleaned",
+                            body = changed.toString() + " saved items had secrets removed",
+                            severity = com.codespace.ide.data.NotificationStore.Severity.INFO,
+                            source = com.codespace.ide.data.NotificationStore.Source.AI,
+                            deduplicationKey = "c12-scrub-once",
+                        )
+                    }
+                }
+            }
             addAll(if (loaded.isEmpty()) listOf(newSession()) else loaded)
         }
     }
@@ -2085,6 +2297,18 @@ internal fun CopilotChatPanelInline(
                         }
                     }
                 }
+                // C12 s1-d: post-send attachment chips — tappable, read-only view
+                // of the stored copy (advisor item 2c: the sheet labels it
+                // "stored copy" / "stored copy, secrets redacted").
+                if (isUser && msg.attachments.isNotEmpty()) {
+                    ChatAttachmentChips(
+                        attachments = msg.attachments,
+                        onRemove = { },
+                        colors = colors,
+                        onOpen = { a -> viewStoredAttachment = a },
+                        readOnly = true,
+                    )
+                }
                 // R7-FEEDBACK: thumbs on assistant replies (hidden while find-filtering)
                 if (!isUser && !findActiveNow) {
                     ChatFeedbackRow(
@@ -2307,6 +2531,33 @@ internal fun CopilotChatPanelInline(
                         androidx.compose.material3.Text("OK", fontSize = 12.sp)
                     }
                 },
+            )
+        }
+        // C12 s1-d: post-send stored-copy sheet (read-only). In-session sent
+        // messages re-derive the stored view (storedCopyFor == what persistence
+        // stored); restored messages show the persisted snapshot content as-is.
+        val viewAtt = viewStoredAttachment
+        if (viewAtt != null) {
+            val storedInfo = remember(viewAtt) { storedCopyFor(viewAtt) }
+            val snapView = viewAtt.snapshot
+            val isRestored = snapView != null && snapView.fromPersist
+            val storedView = if (isRestored) null else storedInfo?.content
+            val redactedFlag = if (isRestored) {
+                val c = snapView?.content ?: ""
+                c == com.codespace.ide.chat.AttachmentSecrets.EXCLUDED_MARKER ||
+                    c.contains(com.codespace.ide.chat.AttachmentSecrets.REDACTED) ||
+                    c.contains(com.codespace.ide.chat.AttachmentSecrets.REDACTED_KEY_BLOCK)
+            } else (storedInfo?.redacted == true)
+            com.codespace.ide.ui.panels.AttachmentSheet(
+                attachment = viewAtt,
+                onEdit = { },
+                onReset = { },
+                onRemove = { },
+                onDismiss = { viewStoredAttachment = null },
+                colors = colors,
+                postSend = true,
+                postSendRedacted = redactedFlag,
+                storedContentOverride = storedView,
             )
         }
         // C12 s1-b: the pre-send AttachmentSheet — view/edit the attach-time copy

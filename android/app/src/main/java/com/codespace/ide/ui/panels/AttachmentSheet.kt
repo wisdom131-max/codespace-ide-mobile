@@ -54,6 +54,14 @@ internal fun AttachmentSheet(
     onRemove: () -> Unit,
     onDismiss: () -> Unit,
     colors: ChatPanelColors,
+    /** C12 s1-d (2026-10-08): POST-SEND mode — read-only stored-copy view. */
+    postSend: Boolean = false,
+    /** Post-send only, in-session sent messages: the stored view as persisted
+     * (what rode the send, redacted). Restored messages pass null — their
+     * snapshot.content already IS the persisted copy (fromPersist). */
+    storedContentOverride: String? = null,
+    /** Post-send only: the stored copy had something excluded or redacted. */
+    postSendRedacted: Boolean = false,
 ) {
     val snap: AttachmentSnapshot? = attachment.snapshot
     val isFileKind = attachment.kind == ChatAttachment.Kind.FILE
@@ -61,7 +69,10 @@ internal fun AttachmentSheet(
     val isMedia = attachment.kind == ChatAttachment.Kind.IMAGE || attachment.kind == ChatAttachment.Kind.AUDIO
 
     // The shown copy: the edited override when edited, else the attach-time copy.
-    val shown = snap?.editedContent ?: snap?.content ?: ""
+    // Post-send: the STORED view (override for in-session sent messages; the
+    // restored snapshot content for loaded-from-disk messages).
+    val shown = if (postSend) (storedContentOverride ?: (snap?.editedContent ?: snap?.content ?: ""))
+        else (snap?.editedContent ?: snap?.content ?: "")
 
     // Full length of the underlying basis: the file for FILE kind, the copy itself
     // for SELECTION (no file basis).
@@ -109,6 +120,19 @@ internal fun AttachmentSheet(
                         (if (snap != null && snap.edited) "  |  EDITED" else ""),
                     fontSize = 10.sp, color = colors.textSecondary,
                 )
+                // C12 s1-d (advisor item 2c): post-send label — "stored copy" /
+                // "stored copy, secrets redacted" whenever anything was excluded
+                // or redacted. The byte-exact-by-construction claim does NOT
+                // appear for excluded/redacted cases.
+                if (postSend) {
+                    Text(
+                        if (postSendRedacted) "stored copy, secrets redacted" else "stored copy",
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (postSendRedacted) colors.accent else colors.textSecondary,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
                 // change notice (advisor ruling wording)
                 if (isFileKind && snap != null && !snap.isBinary) {
                     if (snap.truncated) {
@@ -165,6 +189,30 @@ internal fun AttachmentSheet(
                         fontSize = 11.sp, color = colors.text,
                         modifier = Modifier.padding(top = 10.dp),
                     )
+                } else if (postSend) {
+                    // C12 s1-d: read-only stored view (editor disabled, no edit actions).
+                    OutlinedTextField(
+                        value = shown,
+                        onValueChange = { },
+                        readOnly = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .heightIn(max = 280.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontFamily = FontFamily.Monospace, fontSize = 11.sp,
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.accent,
+                            unfocusedBorderColor = colors.surface,
+                        ),
+                    )
+                    Text(
+                        "Read-only stored copy of what was sent. Attach the file again to edit a new copy.",
+                        fontSize = 10.sp, color = colors.textSecondary,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
                 } else {
                     OutlinedTextField(
                         value = shown,
@@ -193,14 +241,16 @@ internal fun AttachmentSheet(
             }
         },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (snap != null && snap.edited) {
-                    TextButton(onClick = onReset) { Text("Reset to attached version", fontSize = 11.sp) }
+            if (!postSend) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (snap != null && snap.edited) {
+                        TextButton(onClick = onReset) { Text("Reset to attached version", fontSize = 11.sp) }
+                    }
+                    TextButton(onClick = {
+                        onRemove()
+                        onDismiss()
+                    }) { Text("Remove attachment", fontSize = 11.sp, color = colors.accent) }
                 }
-                TextButton(onClick = {
-                    onRemove()
-                    onDismiss()
-                }) { Text("Remove attachment", fontSize = 11.sp, color = colors.accent) }
             }
         },
         dismissButton = {

@@ -106,6 +106,8 @@ internal fun ChatAttachmentChips(
     colors: ChatPanelColors,
     /** C12 s1-b (2026-10-08): chip body tap opens the AttachmentSheet. */
     onOpen: (ChatAttachment) -> Unit = { },
+    /** C12 s1-d (2026-10-08): post-send chips are read-only — no x/remove button. */
+    readOnly: Boolean = false,
 ) {
     Row(
         Modifier
@@ -148,18 +150,20 @@ internal fun ChatAttachmentChips(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    androidx.compose.foundation.layout.Box(
-                        modifier = Modifier
-                            .width(48.dp)
-                            .fillMaxHeight()
-                            .clickable { onRemove(att) },
-                        contentAlignment = androidx.compose.ui.Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Default.Close, "Remove attachment",
-                            tint = colors.textSecondary,
-                            modifier = Modifier.height(12.dp).width(12.dp),
-                        )
+                    if (!readOnly) {
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier
+                                .width(48.dp)
+                                .fillMaxHeight()
+                                .clickable { onRemove(att) },
+                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Default.Close, "Remove attachment",
+                                tint = colors.textSecondary,
+                                modifier = Modifier.height(12.dp).width(12.dp),
+                            )
+                        }
                     }
                 }
             }

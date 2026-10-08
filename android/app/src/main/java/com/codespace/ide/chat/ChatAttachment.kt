@@ -52,6 +52,10 @@ data class AttachmentSnapshot(
     val attachHash8k: String,
     val edited: Boolean = false,
     val editedContent: String? = null,
+    /** C12 s1-d: true when this snapshot came from a RESTORED stored copy (the
+     * post-send sheet then shows the persisted view verbatim instead of
+     * re-deriving it). Never set on live attach-time snapshots. */
+    val fromPersist: Boolean = false,
 ) {
     companion object {
         const val LOAD_CAP_BYTES = 64 * 1024
