@@ -158,6 +158,13 @@ internal fun AttachmentSheet(
                         fontSize = 11.sp, color = colors.text,
                         modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
                     )
+                } else if (snap != null && snap.isBinary) {
+                    // C12 s1-c: binary — editor disabled, read-only notice (ruling wording).
+                    Text(
+                        "Attached as binary \u2014 content cannot be edited or shown in the sheet.",
+                        fontSize = 11.sp, color = colors.text,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
                 } else {
                     OutlinedTextField(
                         value = shown,

@@ -1145,6 +1145,8 @@ internal fun CopilotChatPanelInline(
             projectRootPath?.let { com.codespace.ide.agent.AutoInstructionsProvider.isEnabled(context, it) } ?: true
         )
     }
+    // C12 s1-c (2026-10-08): one-shot binary attach warning dialog state.
+    var showBinaryAttachNotice by remember { mutableStateOf(false) }
     // C12 s1-b (2026-10-08): the open AttachmentSheet target (null = closed).
     // Snapshots are created AT ATTACH TIME via attachmentWithSnapshot() below;
     // the EDITED flag + override live inside the snapshot object itself.
@@ -2289,6 +2291,24 @@ internal fun CopilotChatPanelInline(
                 onOpen = { a -> openAttachment = a },
             )
         }
+        // C12 s1-c: attach-time binary warning (exact ruling wording)
+        if (showBinaryAttachNotice) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showBinaryAttachNotice = false },
+                title = { androidx.compose.material3.Text("Attached as binary", fontSize = 14.sp) },
+                text = {
+                    androidx.compose.material3.Text(
+                        "Attached as binary — content cannot be edited or shown in the sheet.",
+                        fontSize = 12.sp,
+                    )
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = { showBinaryAttachNotice = false }) {
+                        androidx.compose.material3.Text("OK", fontSize = 12.sp)
+                    }
+                },
+            )
+        }
         // C12 s1-b: the pre-send AttachmentSheet — view/edit the attach-time copy
         val openAtt = openAttachment
         if (openAtt != null) {
@@ -2335,7 +2355,12 @@ internal fun CopilotChatPanelInline(
             ChatAttachPickerDialog(
                 projectRoot = projectRootPath,
                 onPick = { a ->
-                    if (attachments.none { it.path == a.path }) attachments = attachments + attachmentWithSnapshot(a)
+                    val withSnap = attachmentWithSnapshot(a)
+                    if (attachments.none { it.path == withSnap.path }) attachments = attachments + withSnap
+                    // C12 s1-c: binary/non-text attach-time warning (own commit per ruling).
+                    if (withSnap.snapshot != null && withSnap.snapshot.isBinary) {
+                        showBinaryAttachNotice = true
+                    }
                     showAttachPicker = false
                 },
                 onPickSelection = { a ->
