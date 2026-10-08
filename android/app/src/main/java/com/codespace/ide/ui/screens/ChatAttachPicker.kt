@@ -2,6 +2,7 @@ package com.codespace.ide.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -103,6 +104,8 @@ internal fun ChatAttachmentChips(
     attachments: List<ChatAttachment>,
     onRemove: (ChatAttachment) -> Unit,
     colors: ChatPanelColors,
+    /** C12 s1-b (2026-10-08): chip body tap opens the AttachmentSheet. */
+    onOpen: (ChatAttachment) -> Unit = { },
 ) {
     Row(
         Modifier
@@ -117,9 +120,14 @@ internal fun ChatAttachmentChips(
                 shape = RoundedCornerShape(8.dp),
                 color = colors.surface,
                 border = androidx.compose.foundation.BorderStroke(1.dp, colors.accent),
+                // C12 s1-b, advisor item 6: the chip BODY is one large tap target
+                // (opens the AttachmentSheet) — the x removal is a SEPARATE
+                // trailing button with a 48dp touch target, so open-tap and
+                // remove-tap cannot be confused on a phone.
+                modifier = Modifier.clickable { onOpen(att) },
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 6.dp).height(48.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
@@ -133,19 +141,26 @@ internal fun ChatAttachmentChips(
                         modifier = Modifier.padding(end = 4.dp).height(12.dp).width(12.dp),
                     )
                     Text(
-                        att.relPath,
+                        att.relPath + if (att.snapshot != null && att.snapshot.edited) " (edited)" else "",
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         color = colors.text,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.width(6.dp))
-                    Icon(
-                        Icons.Default.Close, "Remove attachment",
-                        tint = colors.textSecondary,
-                        modifier = Modifier.height(12.dp).width(12.dp).clickable { onRemove(att) },
-                    )
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .width(48.dp)
+                            .fillMaxHeight()
+                            .clickable { onRemove(att) },
+                        contentAlignment = androidx.compose.ui.Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.Close, "Remove attachment",
+                            tint = colors.textSecondary,
+                            modifier = Modifier.height(12.dp).width(12.dp),
+                        )
+                    }
                 }
             }
         }

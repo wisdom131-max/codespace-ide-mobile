@@ -375,6 +375,24 @@ private fun registeredModelEntries(tokenStore: SecureTokenStore?): List<String> 
         }
 
 /**
+ * C12 s1-b (2026-10-08): attach-time snapshot creation — FILE attachments get the
+ * first 64 KB copy + first-8 KB view hash + binary sniff; SELECTION attachments
+ * snapshot their snippet; IMAGE/AUDIO get no snapshot (sheet shows an info row).
+ * Idempotent per attachment (an existing snapshot is kept).
+ */
+private fun attachmentWithSnapshot(att: com.codespace.ide.chat.ChatAttachment): com.codespace.ide.chat.ChatAttachment {
+    if (att.snapshot != null) return att
+    val snap = when (att.kind) {
+        com.codespace.ide.chat.ChatAttachment.Kind.FILE ->
+            com.codespace.ide.chat.AttachmentSnapshot.forFile(att.path)
+        com.codespace.ide.chat.ChatAttachment.Kind.SELECTION ->
+            com.codespace.ide.chat.AttachmentSnapshot.forSelection(att.selText ?: "")
+        else -> null
+    }
+    return if (snap == null) att else att.copy(snapshot = snap)
+}
+
+/**
  * G-C C-2 (advisor 2a): sanitize an endpoint base URL for DISPLAY and PERSISTED
  * bubble text — scheme://host[:port]/path only. Query strings and user-info are
  * stripped via Uri parsing (never string surgery) because bubbles persist into
@@ -1127,6 +1145,10 @@ internal fun CopilotChatPanelInline(
             projectRootPath?.let { com.codespace.ide.agent.AutoInstructionsProvider.isEnabled(context, it) } ?: true
         )
     }
+    // C12 s1-b (2026-10-08): the open AttachmentSheet target (null = closed).
+    // Snapshots are created AT ATTACH TIME via attachmentWithSnapshot() below;
+    // the EDITED flag + override live inside the snapshot object itself.
+    var openAttachment by remember { mutableStateOf<com.codespace.ide.chat.ChatAttachment?>(null) }
     // G-C C-1 (2026-10-08): per-endpoint targeted Refetch state — the set of
     // endpoint ids with a refresh IN FLIGHT (repeat taps ignored, advisor 2b)
     // and the last refresh-failure reason per endpoint (cleared on success).
@@ -1322,7 +1344,7 @@ internal fun CopilotChatPanelInline(
         val att = com.codespace.ide.chat.SkillsCatalog.buildContextAttachment(
             skill.context, projectRootPath, currentFilePath, context)
         if (att != null && attachments.none { it.path == att.path }) {
-            attachments = attachments + att
+            attachments = attachments + attachmentWithSnapshot(att)
         }
         showAttachPicker = false
     }
@@ -1619,7 +1641,7 @@ internal fun CopilotChatPanelInline(
                     com.codespace.ide.chat.ChatImageAttachments.importAudioFromUri(context, uri)
                 else
                     com.codespace.ide.chat.ChatImageAttachments.importFromUri(context, uri)
-                if (attachments.none { it.path == att.path }) attachments = attachments + att
+                if (attachments.none { it.path == att.path }) attachments = attachments + attachmentWithSnapshot(att)
             } catch (e: Exception) {
                 android.widget.Toast.makeText(context, e.message ?: "Could not attach media", android.widget.Toast.LENGTH_LONG).show()
             }
@@ -2224,11 +2246,11 @@ internal fun CopilotChatPanelInline(
                     color = colors.surface,
                     modifier = Modifier.clickable(enabled = pillNow.third.isNotBlank()) {
                         if (attachments.none { it.relPath == "git-diff" }) {
-                            attachments = attachments + com.codespace.ide.chat.ChatAttachment(
+                            attachments = attachments + attachmentWithSnapshot(com.codespace.ide.chat.ChatAttachment(
                                 path = "git", relPath = "git-diff", name = "git-diff",
                                 kind = com.codespace.ide.chat.ChatAttachment.Kind.SELECTION,
                                 selText = "Working diff vs HEAD:\n" + pillNow.third,
-                            )
+                            ))
                         }
                     },
                 ) {
@@ -2263,6 +2285,34 @@ internal fun CopilotChatPanelInline(
                 attachments = attachments,
                 onRemove = { a -> attachments = attachments.filterNot { it == a } },
                 colors = colors,
+                // C12 s1-b: chip body tap opens the sheet
+                onOpen = { a -> openAttachment = a },
+            )
+        }
+        // C12 s1-b: the pre-send AttachmentSheet — view/edit the attach-time copy
+        val openAtt = openAttachment
+        if (openAtt != null) {
+            com.codespace.ide.ui.panels.AttachmentSheet(
+                attachment = openAtt,
+                onEdit = { newContent ->
+                    attachments = attachments.map { a ->
+                        if (a == openAtt) {
+                            val snap = a.snapshot
+                            if (snap == null) a else a.copy(snapshot = snap.copy(edited = true, editedContent = newContent))
+                        } else a
+                    }
+                },
+                onReset = {
+                    attachments = attachments.map { a ->
+                        if (a == openAtt) {
+                            val snap = a.snapshot
+                            if (snap == null) a else a.copy(snapshot = snap.copy(edited = false, editedContent = null))
+                        } else a
+                    }
+                },
+                onRemove = { attachments = attachments.filterNot { it == openAtt } },
+                onDismiss = { openAttachment = null },
+                colors = colors,
             )
         }
         if (showStatusSheet) {
@@ -2285,11 +2335,11 @@ internal fun CopilotChatPanelInline(
             ChatAttachPickerDialog(
                 projectRoot = projectRootPath,
                 onPick = { a ->
-                    if (attachments.none { it.path == a.path }) attachments = attachments + a
+                    if (attachments.none { it.path == a.path }) attachments = attachments + attachmentWithSnapshot(a)
                     showAttachPicker = false
                 },
                 onPickSelection = { a ->
-                    if (attachments.none { it.path == a.path }) attachments = attachments + a
+                    if (attachments.none { it.path == a.path }) attachments = attachments + attachmentWithSnapshot(a)
                     showAttachPicker = false
                 },
                 onInsertPrompt = { text ->
@@ -2306,7 +2356,7 @@ internal fun CopilotChatPanelInline(
                     } else scope.launch {
                         val att = com.codespace.ide.ui.screens.ChatScreenshotCapture.captureNow(activity)
                         if (att == null) error = "Screenshot capture failed"
-                        else if (attachments.none { it.path == att.path }) attachments = attachments + att
+                        else if (attachments.none { it.path == att.path }) attachments = attachments + attachmentWithSnapshot(att)
                         showAttachPicker = false
                     }
                 },

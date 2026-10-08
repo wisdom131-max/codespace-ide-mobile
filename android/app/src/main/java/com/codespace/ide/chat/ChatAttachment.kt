@@ -23,8 +23,82 @@ data class ChatAttachment(
     val selText: String? = null,  // SELECTION only: the selected snippet
     /** IMAGE only: sniffed MIME type (image/jpeg, image/png, image/gif, image/webp). */
     val mimeType: String? = null,
+    /** C12 s1-b (2026-10-08): attach-time copy + edit state for the sheet. */
+    val snapshot: AttachmentSnapshot? = null,
 ) {
     enum class Kind { FILE, SELECTION, IMAGE, AUDIO }
+}
+
+/**
+ * C12 s1-b (owner-approved plan, advisor items 1/2/6): the ATTACH-TIME copy that
+ * the AttachmentSheet views and edits.
+ *
+ *  - content: the first SNAPSHOT_LOAD_CAP bytes decoded ("" for binary files) —
+ *    the VIEW/COMPARE basis, never silently sent: per advisor item 1 the UNEDITED
+ *    attachment keeps a FRESH DISK READ at send time (s1-e); the copy rides the
+ *    send ONLY when the user EDITED it (the override, visibly chosen in the sheet).
+ *  - truncated: file larger than the load cap — a partial copy, which is exactly
+ *    why Save-to-file is impossible for it (Stage-2 gate).
+ *  - isBinary: text sniff failed (invalid UTF-8 or a NUL in the first 8 KB).
+ *  - attachHash8k: first-8 KB hash AT ATTACH — VIEW/COMPARE basis only (the sheet's
+ *    change notice); never a send-input and never the Stage-2 conflict-gate hash.
+ *  - edited/editedContent: the user's override state — turns on the moment the
+ *    sheet's editor changes anything; Reset restores the attached version.
+ */
+data class AttachmentSnapshot(
+    val content: String,
+    val truncated: Boolean,
+    val isBinary: Boolean,
+    val attachHash8k: String,
+    val edited: Boolean = false,
+    val editedContent: String? = null,
+) {
+    companion object {
+        const val LOAD_CAP_BYTES = 64 * 1024
+        const val HASH_WINDOW_BYTES = 8 * 1024
+
+        /** Pure-Kotlin view/compare hash (SHA-256 hex of the first 8 KB). */
+        fun hash8k(bytes: ByteArray): String {
+            return try {
+                val md = java.security.MessageDigest.getInstance("SHA-256")
+                val win = if (bytes.size > HASH_WINDOW_BYTES) bytes.copyOf(HASH_WINDOW_BYTES) else bytes
+                md.digest(win).joinToString("") { String.format("%02x", it) }
+            } catch (_: Exception) { "" }
+        }
+
+        /**
+         * Build the attach-time snapshot for a FILE attachment. Text sniff:
+         * invalid UTF-8 or a NUL in the first 8 KB => binary (s1-c warns in the
+         * sheet; s1-b carries the flag). Reads at most LOAD_CAP_BYTES. Never
+         * throws — unreadable files snapshot as an empty, truncated=false copy.
+         */
+        fun forFile(path: String): AttachmentSnapshot {
+            return try {
+                val f = java.io.File(path)
+                if (!f.isFile || !f.canRead()) return AttachmentSnapshot("", false, true, "")
+                val all = f.readBytes()
+                val loaded = if (all.size > LOAD_CAP_BYTES) all.copyOf(LOAD_CAP_BYTES) else all
+                val win = if (all.size > HASH_WINDOW_BYTES) all.copyOf(HASH_WINDOW_BYTES) else all
+                val hash = hash8k(win)
+                if (win.contains(0.toByte())) return AttachmentSnapshot("", false, true, hash)
+                val decoded: String = try {
+                    java.nio.charset.Charset.forName("UTF-8").newDecoder()
+                        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                        .decode(java.nio.ByteBuffer.wrap(loaded)).toString()
+                } catch (_: java.nio.charset.CharacterCodingException) {
+                    return AttachmentSnapshot("", false, true, hash)
+                }
+                AttachmentSnapshot(decoded, all.size > LOAD_CAP_BYTES, false, hash)
+            } catch (_: Exception) {
+                AttachmentSnapshot("", false, true, "")
+            }
+        }
+
+        /** SELECTION snapshots edit the snippet in place — no file basis, no hash. */
+        fun forSelection(selText: String): AttachmentSnapshot =
+            AttachmentSnapshot(selText, false, false, "")
+    }
 }
 
 object ChatAttachmentInjector {
