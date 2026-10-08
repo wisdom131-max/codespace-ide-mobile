@@ -758,11 +758,13 @@ internal fun TerminalPane(
     var showSchemeMenu    by remember { mutableStateOf(false) }
     var activeScheme      by remember { mutableStateOf(TerminalSchemes.DARK) }
     // E17-b (2026-10-07, advisor): grant-vs-download choice for the first-run
-    // restore gate. 0 = no choice yet, 1 = grant access now, 2 = download fresh,
-    // 3 = dialog dismissed. The install THREAD polls grantChoiceMade (500ms).
+    // restore gate. The install THREAD polls grantChoiceMachine (500ms ticks).
     var showGrantChoice by remember { mutableStateOf(false) }
     var grantChoiceBackupMb by remember { mutableStateOf(0L) }
-    val grantChoiceMade = remember { java.util.concurrent.atomic.AtomicInteger(0) }
+    // E17-c (2026-10-08): the choice logic moved into InstallChoiceMachine (pure
+    // Kotlin, JVM-tested — E17cDialogStateMachineTest); this UI layer only renders
+    // the dialog and feeds the machine user taps. The install thread drives it.
+    val grantChoiceMachine = remember { com.codespace.ide.terminal.InstallChoiceMachine() }
     // kind 0 = E17-b grant-vs-download; kind 1 = E17-c retry-restore-vs-download
     var grantChoiceKind by remember { mutableStateOf(0) }
     var grantChoiceReason by remember { mutableStateOf("") }
@@ -1042,20 +1044,18 @@ internal fun TerminalPane(
                     // skips (reopen the tab to retry — the backup is untouched).
                     var e17FreshChosen = false
                     if (!com.codespace.ide.terminal.BackupManager.hasAllFilesAccess()) {
-                        grantChoiceMade.set(0)
+                        grantChoiceMachine.begin(0)
                         grantChoiceBackupMb = try {
                             com.codespace.ide.terminal.BackupManager.backupFile().length() / (1024 * 1024)
                         } catch (_: Exception) { 0L }
                         showGrantChoice = true
                         writeToDisplay(progressSession, "[Ubuntu] Container backup found, but \"All files access\" is not granted after the reinstall.\r\n[Ubuntu] Waiting for your choice: grant access to restore the backup, or download a fresh Ubuntu (~58 MB)...\r\n")
-                        var e17WaitMs = 0
-                        while (grantChoiceMade.get() == 0 && e17WaitMs < 600_000) {
+                        while (!grantChoiceMachine.tick()) {
                             try { Thread.sleep(500) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
-                            e17WaitMs += 500
                         }
                         showGrantChoice = false
-                        when (grantChoiceMade.get()) {
-                            1 -> {
+                        when (grantChoiceMachine.outcomeOrNull()) {
+                            com.codespace.ide.terminal.InstallChoice.GRANT_OR_RETRY -> {
                                 writeToDisplay(progressSession, "[Ubuntu] Grant \"All files access\" in the Settings screen that just opened — waiting up to 90s...\r\n")
                                 try {
                                     val gi = android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
@@ -1071,7 +1071,7 @@ internal fun TerminalPane(
                                 }
                                 writeToDisplay(progressSession, "[Ubuntu] ✓ Permission granted — restoring...\r\n")
                             }
-                            2 -> {
+                            com.codespace.ide.terminal.InstallChoice.DOWNLOAD_FRESH -> {
                                 e17FreshChosen = true
                                 writeToDisplay(progressSession, "[Ubuntu] Downloading a fresh Ubuntu (~58 MB) — your backup stays in shared storage (Settings → Restore can recover it later).\r\n")
                             }
@@ -1112,18 +1112,16 @@ internal fun TerminalPane(
                             writeToDisplay(progressSession, "\r\n[Ubuntu] \u2717 Backup restore FAILED (${restoreResult.message}).\r\n")
                             grantChoiceKind = 1
                             grantChoiceReason = restoreResult.message
-                            grantChoiceMade.set(0)
+                            grantChoiceMachine.begin(1, restoreResult.message)
                             showGrantChoice = true
                             writeToDisplay(progressSession, "[Ubuntu] Waiting for your choice: try restoring again, or download a fresh Ubuntu (~58 MB)...\r\n")
-                            var e17cWaitMs = 0
-                            while (grantChoiceMade.get() == 0 && e17cWaitMs < 600_000) {
+                            while (!grantChoiceMachine.tick()) {
                                 try { Thread.sleep(500) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
-                                e17cWaitMs += 500
                             }
                             showGrantChoice = false
-                            when (grantChoiceMade.get()) {
-                                1 -> writeToDisplay(progressSession, "[Ubuntu] Retrying the restore...\r\n\r\n")
-                                2 -> {
+                            when (grantChoiceMachine.outcomeOrNull()) {
+                                com.codespace.ide.terminal.InstallChoice.GRANT_OR_RETRY -> writeToDisplay(progressSession, "[Ubuntu] Retrying the restore...\r\n\r\n")
+                                com.codespace.ide.terminal.InstallChoice.DOWNLOAD_FRESH -> {
                                     writeToDisplay(progressSession, "[Ubuntu] First-time setup: downloading Ubuntu rootfs (~58 MB)...\r\n")
                                     ProotInstaller.install(ctx) { msg ->
                                         TerminalService.updateProgress(ctx, msg.take(60))
@@ -1684,10 +1682,10 @@ internal fun TerminalPane(
             // E17-b (2026-10-07, advisor): grant-vs-download choice — never a silent
             // rootfs download on mobile data. Shown when the install thread finds a
             // backup but no All-files-access grant; the choice lands in
-            // grantChoiceMade, which the thread polls. Outside-tap/back = skip.
+            // grantChoiceMachine, which the thread polls. Outside-tap/back = skip.
             if (showGrantChoice) {
                 AlertDialog(
-                    onDismissRequest = { grantChoiceMade.set(3) },
+                    onDismissRequest = { grantChoiceMachine.dismiss() },
                     title = { Text(if (grantChoiceKind == 0) "Storage permission needed" else "Backup restore failed") },
                     text = {
                         if (grantChoiceKind == 0) {
@@ -1703,12 +1701,12 @@ internal fun TerminalPane(
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = { grantChoiceMade.set(1) }) {
+                        TextButton(onClick = { grantChoiceMachine.choose(1) }) {
                             Text(if (grantChoiceKind == 0) "Grant access now" else "Try restore again")
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { grantChoiceMade.set(2) }) { Text("Download fresh (~58 MB)") }
+                        TextButton(onClick = { grantChoiceMachine.choose(2) }) { Text("Download fresh (~58 MB)") }
                     },
                 )
             }
