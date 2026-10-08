@@ -87,7 +87,30 @@ Re-presented options:
   the picker's built-in list source; bigger diff, extended JVM tests, EXPANDED batch.
 - Recommendation: **(a) for phase C + ship C-1b** so built-ins get the data savings
   immediately; fold (b) into phase D/E only if per-group Refetch for built-ins is
-  wanted in the picker. Owner decides.
+  wanted in the picker.
+- **RESOLVED by advisor 2026-10-08: (a) + C-1b, approved with conditions — owner
+  confirmation of C-4 still gates the build.** Conditions (all locked into the
+  build spec):
+  - **(i) Single cache per provider:** customs REUSE CustomEndpointStore's existing
+    live cache + fetchedAt; a NEW persisted cache is added ONLY for built-ins
+    (same prefs pattern). No duplicate cache for the same endpoint.
+  - **(ii) Invalidation triggers:** a provider's cache drops when its KEY changes
+    (ChatKeyPool add/remove/setActive for that provider), when an endpoint's BASE
+    URL changes (CustomEndpointStore.update), or when the ENDPOINT IS DELETED
+    (CustomEndpointStore.delete).
+  - **(iii) 404 / model-not-found auto-drop:** a model-not-found or 404 response on a
+    chat request drops that provider's cache (the stale-ID class that started the
+    9/6 work).
+  - **(iv) A FAILED FETCH NEVER ADVANCES fetchedAt** — only a successful fetch stamps
+    the time (a failed fetch keeps the previous timestamp so the window reflects
+    last-good, matching refreshLive's cache-preserving semantics).
+  - **Observability for the device round:** every cache-skip ("cache hit, within
+    window: <provider>, age <t>") and invalidation ("cache dropped: <provider>,
+    <trigger>") logs to the debug output channel so the owner can VERIFY the window
+    behavior on device without network tricks.
+  - **Commit structure:** separate revertable commits — C-1 (Refetch + in-flight
+    guard), C-1b (cache window + invalidations), C-2 (error bubble) — each green
+    on CI before the next.
 
 ---
 

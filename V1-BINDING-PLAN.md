@@ -139,14 +139,31 @@ crashed session names itself in the recovery notice.
    emits 633;A prompt-start / 633;E command-finished / P;Cwd marks) and already
    routes OSC sequences to app-side handlers (IdeTerminalBridge → TerminalSession
    OSC hooks).
-   - **Interactive terminal:** the mark clears when the app-side OSC handler receives
-     that session's first **633;A** (prompt render). A printf probe was REJECTED for
-     this: it cannot be made invisible or safe — a foreground program receives
-     injected bytes as stdin, a half-typed prompt line gets them appended mid-line,
-     and suppressing echo means mutating global pty state (stty -echo) inside the
-     user's own session. 633;A requires ZERO bytes written into the pty input and
-     proves MORE than bare output: bash forked, executed its rc files, ran the
-     integration hooks, and rendered a prompt.
+   - **Interactive terminal — TWO marks, both output-side (advisor gap 2026-10-08,
+     closed):** 633;A alone fires at the first prompt, BEFORE any access to the
+     bound path — a first-access freeze would land after a cleared mark. Fix, DONE
+     SAFELY (evaluated): the integration script gains a BOUNDED FIRST-ACCESS PROBE
+     at shell init, BEFORE the first prompt: when the launch env carries
+     `CODESPACE_BOUND_PROBE=<guestPath>` (added by launchArgs, bound sessions
+     only), the script runs `timeout 10 stat "$CODESPACE_BOUND_PROBE"` and emits a
+     SECOND mark, `633;BOUND_OK`, on success — a real metadata read through the
+     bind, ZERO bytes written to pty input (same output-side OSC mechanism as every
+     other 633 mark). App side: one new OSC hook (the onOscIdeOpen pattern — default
+     no-op in TerminalOutput, @Override in TerminalSession).
+     **CLEAR RULES:** `BOUND_OK` received → clear (the bind path was actually
+     probed). 633;A received but NO `BOUND_OK` → the probe failed or hung → mark
+     STAYS (conservative: a present-but-failed probe is exactly what the probe
+     exists to catch — bindings disable next start). No 633;A at all (integration
+     absent, e.g. partial restore) → the sustained-output fallback below clears,
+     and first-access freezes are UNCOVERED in that degraded state (stated).
+     **WHY IT IS SAFE:** stat is read-only; `timeout` bounds an ordinary hang; a
+     D-state FUSE hang freezes the shell BEFORE the first prompt — visually worse
+     than prompt-then-freeze, but the CORRECT guard outcome (mark never clears; one
+     restart recovers with binds off). Env var absent for unbound sessions → the
+     probe is a no-op, zero cost. A printf probe into pty INPUT remains REJECTED
+     (foreground programs receive injected bytes as stdin; half-typed lines get
+     them appended mid-line; suppressing echo means mutating global stty state in
+     the user's own session).
    - **Fallback (integration script absent, e.g. a partial restore):** if no 633;A
      arrives within 90s BUT the session produced sustained output (≥5 distinct
      output chunks over ≥30s of liveness), sustained responsiveness clears the mark
@@ -155,7 +172,9 @@ crashed session names itself in the recovery notice.
    - **Test-run path:** one-shot by construction — clear when the test process
      COMPLETES with a parsed exit code (success or failure of the tests is irrelevant;
      completion is the responsiveness proof). (Test spawns are non-interactive and
-     emit no 633 marks — the completion signal is the natural proof there.)
+     emit no 633 marks — but a test run NECESSARILY accesses the bound node_modules,
+     so a first-access freeze in the test path means no completion: the mark stays.
+     First-access coverage here is by construction.)
    - (MCP spawn, tool exec, DAP: UNBOUND in V1-b — no marks needed until a later
      phase opts them in.)
 3. On the NEXT app start, ANY still-present mark = that bound start never completed
@@ -173,9 +192,9 @@ bound start also trips the guard once — cost is one re-enable tap.
 - Mid-session freezes AFTER the clear signal (e.g. jest itself hanging the bound
   session later) — the mark is gone; that class stays with the revert-style
   isolation playbook (S1-c precedent).
-- 633;A proves the shell completed its rc files and rendered a prompt, not that the
-  BIND is healthy — a bind that maps fine at launch but misbehaves under load is
-  invisible to the guard.
+- BOUND_OK proves ONE metadata read through the bind, not heavy IO — a bind that
+  stats fine at launch but misbehaves at jest-scale read volume is invisible to the
+  guard.
 - A UI-thread ANR where the session keeps running: the probe round-trips fine, the
   mark clears, and the guard never sees the freeze.
 - A crash during the MOVE protocol itself is covered by the MOVE-MARK repair path
