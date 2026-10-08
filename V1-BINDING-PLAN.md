@@ -164,6 +164,15 @@ crashed session names itself in the recovery notice.
      (foreground programs receive injected bytes as stdin; half-typed lines get
      them appended mid-line; suppressing echo means mutating global stty state in
      the user's own session).
+     **FAST-FAIL REASONING (advisor 2026-10-08):** the probe DISTINGUISHES a fast
+     failure from a hang: the script captures stat's stderr and, on a fast nonzero
+     exit (not the timeout's 124), emits `633;BOUND_FAIL;<reason>` (bounded,
+     escaped) — so the guard's disable is not silent or generic: the next-start
+     notification/log says "bindings disabled: bound path unreadable (<reason>)".
+     NO mark at all remains the hang/crash class. The D-state/timeout limitation
+     stands as written above: an uninterruptible hang freezes the shell before the
+     prompt, the mark never clears, and no reason is available — recovery is the
+     same one-restart path either way.
    - **Fallback (integration script absent, e.g. a partial restore):** if no 633;A
      arrives within 90s BUT the session produced sustained output (≥5 distinct
      output chunks over ≥30s of liveness), sustained responsiveness clears the mark
@@ -238,7 +247,7 @@ copy is retained as `.moved-away` until the user deletes it.
 | # | Round | Carries |
 |---|---|---|
 | 1 | **Consolidated round** (unchanged, 8 checkpoints) | V0-f-c confirmation + the 7 other pending checkpoints |
-| 2 | **Combined WiFi round** | ORDER (ruling 2026-10-07): (a) NON-DESTRUCTIVE checks FIRST — including any KEY-DEPENDENT MK checks (a full uninstall wipes saved API keys BY DESIGN, so nothing key-dependent may run after the round-trip); (b) E17 uninstall/reinstall/restore round-trip; (c) on the FRESH install: E17-b + E17-c choice-dialog checks (backup MB + ~58 MB, both button paths, no-choice timeout aborts) and V1-a inert checks (launch args byte-identical, all consumers). NOTE: V1-a shares an APK with the E17 round-trip — if E17 fails, bisect by COMMIT REVERT, not by guessing. Proposal: if MK phases C–E and F are SHIPPED by then, their checks ride step (a) of this same round instead of getting their own. |
+| 2 | **Combined round** | ORDER (rulings 2026-10-07 + 2026-10-08): (a) NON-DESTRUCTIVE checks FIRST — including any KEY-DEPENDENT MK checks (a full uninstall wipes saved API keys BY DESIGN, so nothing key-dependent may run after the round-trip); (b) E17 uninstall/reinstall/restore round-trip; (c) on the FRESH install: E17-b choice-dialog checks and V1-a inert checks (launch args byte-identical, all consumers). SAME APK for steps (a) and (b) (advisor ruling: one build, no cross-round APK skew). The restore itself is LOCAL (the tarball comes from shared storage — no network needed), so step (b) can run OFFLINE; run on WiFi anyway as the fallback safety net. E17-c is verified by INSPECTION + a JVM state-machine unit test, NOT by on-device induction (advisor ruling 2026-10-08: backup-at-start writes into the CodespaceIDE folder at every launch — READ-verified: CodeSpaceApplication.onCreate → BackupManager.onAppStart writes prefs-backup/*.xml + version.txt into the folder and arms the "Back up now" prompt; an accidental "Back up now" during an induction window would overwrite the fake backup with a real one mid-test. The REAL backup under a renamed folder is never touched by the app — the risk is test integrity, not data loss — but the induction is dropped anyway; owner decides if he ever wants it re-proposed). NOTE: V1-a shares the round-2 APK — if E17 fails, bisect by COMMIT REVERT, not by guessing. G-C checks ride step (a) only if G-C shipped; F rides the round after B-E checks pass. |
 | 3 | **V1-b dedicated round** (kept per advisor 3c) | node_modules live bind + jest run; first gate: the re-test names the exact failing syscall from the widened capture. Sole focus, nothing else bundled. |
 
 That is 3 rounds between now and V1-b. The only NEW device time V1 asks for is the
