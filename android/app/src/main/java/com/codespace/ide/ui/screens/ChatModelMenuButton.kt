@@ -42,6 +42,10 @@ data class CustomMenuGroup(
     val live: List<String>,
     val manual: List<String>,
     val fetchedAtLabel: String,
+    /** G-C C-1 (2026-10-08): true while this group's refresh is in flight. */
+    val refreshing: Boolean = false,
+    /** G-C C-1: last refresh failure reason — cleared by the next success. */
+    val lastError: String = "",
 )
 
 /**
@@ -71,7 +75,7 @@ internal fun ChatModelMenuButton(
     customGroups: List<CustomMenuGroup> = emptyList(),
     onDeleteManualModel: (String) -> Unit = { },
     onAddManualModel: (String, String) -> Unit = { _, _ -> },
-    onRefetchCustom: () -> Unit = { },
+    onRefetchCustom: (String) -> Unit = { },
     colors: ChatPanelColors,
 ) {
     val isAuto = selectedModel == com.codespace.ide.chat.ChatModelSelection.AUTO_MODEL
@@ -210,11 +214,40 @@ internal fun ChatModelMenuButton(
                         text = { Text("＋ Add model ID…", fontSize = 11.sp, color = colors.textSecondary) },
                         onClick = { addText = ""; addFor = g.providerId },
                     )
-                    DropdownMenuItem(
-                        text = { Text("↻ Refetch " + g.label, fontSize = 11.sp, color = colors.textSecondary) },
-                        leadingIcon = { Icon(Icons.Default.Refresh, null, tint = colors.textSecondary) },
-                        onClick = { onRefetchCustom() },
-                    )
+                    // G-C C-1 (2026-10-08): a refresh IN FLIGHT ignores repeat
+                    // taps and shows an in-progress state (advisor condition 2b) —
+                    // one tap, one network call. A failed refresh keeps the cached
+                    // list + inline reason (advisor condition: failure never
+                    // silently degrades; manual entries always render).
+                    if (g.refreshing) {
+                        DropdownMenuItem(
+                            text = { Text("↻ Refreshing " + g.label + "…", fontSize = 11.sp, color = colors.textSecondary) },
+                            leadingIcon = { Icon(Icons.Default.Refresh, null, tint = colors.textSecondary) },
+                            onClick = { },
+                            enabled = false,
+                        )
+                    } else {
+                        DropdownMenuItem(
+                            text = { Text("↻ Refetch " + g.label, fontSize = 11.sp, color = colors.textSecondary) },
+                            leadingIcon = { Icon(Icons.Default.Refresh, null, tint = colors.textSecondary) },
+                            onClick = { onRefetchCustom(g.providerId) },
+                        )
+                    }
+                    if (g.lastError.isNotEmpty()) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "⚠ Refresh failed: " + g.lastError.take(60) + " (showing " + g.fetchedAtLabel + " copy)",
+                                    fontSize = 10.sp,
+                                    color = colors.textSecondary,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            onClick = { },
+                            enabled = false,
+                        )
+                    }
                 }
             }
             val rest = availModels.filter { it !in pinned && customPrefixes.none { p -> it.startsWith(p) } }

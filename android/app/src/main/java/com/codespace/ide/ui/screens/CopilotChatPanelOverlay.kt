@@ -378,7 +378,11 @@ private fun registeredModelEntries(tokenStore: SecureTokenStore?): List<String> 
  * MK-RESTRUCTURE B (2026-09-16): per-endpoint picker groups — live vs manual
  * model entries, labeled, from the per-endpoint registry + live cache.
  */
-internal fun buildCustomMenuGroups(availModels: List<String>): List<com.codespace.ide.ui.screens.CustomMenuGroup> {
+internal fun buildCustomMenuGroups(
+    availModels: List<String>,
+    refreshing: Set<String> = emptySet(),
+    refreshErrors: Map<String, String> = emptyMap(),
+): List<com.codespace.ide.ui.screens.CustomMenuGroup> {
     // MK PHASE B (2026-10-07): the picker's custom-endpoint group build now reads
     // the SHARED ModelCatalog facade instead of hitting CustomEndpointStore
     // directly (list/manualModels/liveModelsFetchedAt reads removed here). The
@@ -393,7 +397,11 @@ internal fun buildCustomMenuGroups(availModels: List<String>): List<com.codespac
         cal.timeInMillis = ts
         val fetchedAt = if (ts > 0) String.format("%02d:%02d",
             cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE)) else "not fetched"
-        groups.add(com.codespace.ide.ui.screens.CustomMenuGroup(pid, g.label, g.live, g.manual, fetchedAt))
+        groups.add(com.codespace.ide.ui.screens.CustomMenuGroup(
+            pid, g.label, g.live, g.manual, fetchedAt,
+            refreshing = g.endpointId in refreshing,
+            lastError = refreshErrors[g.endpointId] ?: "",
+        ))
     }
     return groups
 }
@@ -1076,6 +1084,11 @@ internal fun CopilotChatPanelInline(
             projectRootPath?.let { com.codespace.ide.agent.AutoInstructionsProvider.isEnabled(context, it) } ?: true
         )
     }
+    // G-C C-1 (2026-10-08): per-endpoint targeted Refetch state — the set of
+    // endpoint ids with a refresh IN FLIGHT (repeat taps ignored, advisor 2b)
+    // and the last refresh-failure reason per endpoint (cleared on success).
+    var customRefreshing by remember { mutableStateOf(setOf<String>()) }
+    var customRefreshErrors by remember { mutableStateOf(mapOf<String, String>()) }
     // R3-ATTACH: pending file attachments (clear on send) + implicit ctx toggle
     var attachments by remember(projectRootPath) {
         mutableStateOf<List<com.codespace.ide.chat.ChatAttachment>>(emptyList())
@@ -1723,7 +1736,8 @@ internal fun CopilotChatPanelInline(
                     },
                     onTogglePin = { pinnedModels = com.codespace.ide.chat.ChatModelSelection.togglePin(context, selectedModel) },
                     // MK-B: per-endpoint groups + manual model CRUD + refetch
-                    customGroups = buildCustomMenuGroups(availModels),
+                    // G-C C-1: refresh-in-flight + last-error flow through per group.
+                    customGroups = buildCustomMenuGroups(availModels, customRefreshing, customRefreshErrors),
                     onDeleteManualModel = { entry ->
                         val pid = entry.substringBefore(':')
                         val eid = com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(pid)
@@ -1740,7 +1754,41 @@ internal fun CopilotChatPanelInline(
                             if (entry !in availModels) availModels = availModels + entry
                         }
                     },
-                    onRefetchCustom = { liveModelsFetched = false },
+                    // G-C C-1 (2026-10-08): targeted per-group Refetch through the
+                    // phase-B facade — refreshLive is CACHE-PRESERVING (a failure
+                    // writes nothing and returns the surviving cache), the fetcher
+                    // is a direct key-failover transport call that stamps the cache
+                    // only on success, and the in-flight guard ignores repeat taps.
+                    onRefetchCustom = { pid ->
+                        val eid = com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(pid) ?: return@ChatModelMenuButton
+                        if (customRefreshing.contains(eid)) return@ChatModelMenuButton
+                        customRefreshing = customRefreshing + eid
+                        scope.launch {
+                            val provider = com.codespace.ide.chat.providers.CustomOpenAiProvider(eid)
+                            val base = com.codespace.ide.chat.CustomEndpointStore.byId(eid)?.baseUrl
+                            val outcome = com.codespace.ide.chat.ModelCatalog.refreshLive(eid) {
+                                if (base.isNullOrBlank()) throw IllegalStateException("endpoint has no base URL")
+                                val live = com.codespace.ide.chat.ChatKeyFailover.execute(provider.id, tokenStore) { k ->
+                                    com.codespace.ide.chat.providers.OpenAiCompatibleTransport.fetchModelList(provider.modelsUrl(base), k).take(80)
+                                }
+                                com.codespace.ide.chat.CustomEndpointStore.setLiveModels(eid, live)
+                                live
+                            }
+                            customRefreshing = customRefreshing - eid
+                            when (outcome) {
+                                is com.codespace.ide.chat.ModelCatalog.RefreshOutcome.Ok -> {
+                                    customRefreshErrors = customRefreshErrors - eid
+                                    // groupEntries splits from availModels — replace this
+                                    // endpoint's slice so the group shows the fresh list.
+                                    availModels = (availModels.filter { !it.startsWith(pid + ":") } +
+                                        outcome.models.map { "$pid:$it" }).distinct()
+                                }
+                                is com.codespace.ide.chat.ModelCatalog.RefreshOutcome.Failed -> {
+                                    customRefreshErrors = customRefreshErrors + (eid to outcome.reason)
+                                }
+                            }
+                        }
+                    },
                 )
                 Spacer(Modifier.width(8.dp))
                 Icon(
