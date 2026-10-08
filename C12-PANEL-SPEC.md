@@ -41,14 +41,28 @@ selText plaintext leak.
   `[content not stored: secret-looking file]`.
 - Token REDACTION (best-effort, stated in plan and sheet copy): `sk-`, `AKIA`,
   `hf_`, `AIza`, `xox`, `eyJ` (JWT), `ghp_`, `-----BEGIN PRIVATE KEY-----` blocks.
+- Redaction is TWO-TIER (advisor 2026-10-08, scrub scope):
+  - **Attachment copies + selection snippets:** the FULL set (sk-, AKIA, hf_, AIza,
+    xox, eyJ, ghp_, BEGIN PRIVATE KEY blocks) — best-effort, as already ruled.
+  - **MESSAGE TEXT (user AND assistant): HIGH-CONFIDENCE ONLY:** private key
+    blocks, AKIA, ghp_, and hf_/sk-/AIza ONLY above a realistic minimum length
+    (proposal: sk-≥20 chars, hf_≥17, AIza≥30 after the prefix); eyJ is NEVER
+    applied to message text. A scrub must NEVER rewrite ordinary code or prose —
+    the tier exists to catch leaked credentials, not to police conversations.
 - Eviction, TWO tiers (advisor item 5): PER SESSION, keep stored copies for the
   LAST ~10 attachments or ~200 KB total, whichever hits first; PLUS a GLOBAL cap
-  across ALL sessions (proposal: ~1 MB total, owner may adjust), OLDEST evicted
-  first (by message timestamp). Evicted copies → marker that says WHY:
+  across ALL sessions, SET TO 512 KB (advisor 2026-10-08 — everything loads at app
+  start; adjustable later with evidence), OLDEST evicted first (by message
+  timestamp). Evicted copies → marker that says WHY:
   `[content evicted to save space — attach again to view]`. FAILED/EXCLUDED entries
   never advance the byte budget beyond their marker.
-- JVM tests: every pattern, exclusion match, eviction order, per-session AND global
-  byte-budget accounting, oldest-first ordering.
+- JVM tests (in the CI unit-test step, BEFORE any build ships): (a) a CORPUS of
+  ordinary code and prose that must come out UNCHANGED through both tiers (base64
+  fragments, short sk- look-alikes, ordinary eyJ-free text, config samples); (b)
+  realistic secrets that MUST be caught in both tiers; (c) idempotence (a second
+  scrub pass changes nothing); (d) eviction order, per-session AND global
+  byte-budget accounting, oldest-first ordering; (e) every pattern, exclusion
+  match.
 
 ### C12-s1-b. Attach-time copy + tappable chips + the AttachmentSheet (pre-send)
 - Attach time: read up to 64 KB (text sniff: invalid UTF-8 or NUL in first 8 KB →
@@ -99,11 +113,17 @@ selText plaintext leak.
   The "byte-exact by construction" claim does NOT appear for excluded/redacted cases.
 - msgFromJson ignores unknown fields both ways (old blobs load; new blobs on old
   builds degrade to descriptor behavior).
-- **ONE-TIME SCRUB (advisor item 4):** on SESSION LOAD, the redaction rules run
-  over every EXISTING persisted text field — old selText snippets first (today's
-  plaintext leak), then any stored copies — and the scrubbed sessions are
-  rewritten to storage in the same pass. Idempotent; no marker added when nothing
-  matched.
+- **ONE-TIME SCRUB (advisor item 4, scope refined 2026-10-08):** on SESSION LOAD,
+  the redaction rules run over every EXISTING persisted text and the scrubbed
+  sessions are rewritten to storage in the same pass — ATTACHMENT COPIES and
+  SELECTION SNIPPETS get the FULL set; MESSAGE TEXT (user and assistant) gets the
+  HIGH-CONFIDENCE tier only (key blocks, AKIA, ghp_, length-gated hf_/sk-/AIza;
+  never eyJ; never ordinary code or prose). Idempotent; no marker added when
+  nothing matched.
+- **One-time user notice (advisor item 2):** when the scrub changed ANYTHING, the
+  user sees it exactly once: "N saved items had secrets removed" (NotificationStore
+  entry + a one-shot prefs flag; mechanism SUSPECT until build). No notice when
+  nothing changed.
   **What it changes:** in-app storage (the `copilot_chat` prefs blobs) stops
   carrying old secrets from the first load after this ships, and stays scrubbed.
   **What it does NOT change:** backup files ALREADY on shared storage keep their
@@ -156,8 +176,9 @@ e: revert send path (disk read returns; sheet still works on the copy for displa
 
 ## 3. STAGE 2 (after V2 editor IO) — write-back + Open in editor
 
-**Status: amended per advisor item 3 (2026-10-08) — RETURNS FOR APPROVAL; not yet
-owner-approved.**
+**Status: advisor-accepted 2026-10-08 with the notes below; owner Stage-2 approval
+of item 3 confirmed. Builds after V2, with its own READ pass against V2's shipped
+API.**
 
 ### Capabilities
 - "Save to file" in the PRE-SEND sheet writes the copy back to the REAL project
@@ -167,8 +188,17 @@ owner-approved.**
   owns the actual IO. Exact writer signature re-READ against V2's shipped API at
   build time.
 - **Advisor item 3a:** Save to file is DISABLED unless the ENTIRE file was loaded
-  into the in-memory copy (no truncation — files at/over the 64 KB snapshot cap or
-  send caps show Save disabled with the reason: "only part of this file is loaded").
+  into the in-memory copy (no truncation). Per the 2026-10-08 note: files ABOVE the
+  64 KB load cap can still be VIEWED and EDITED FOR SENDING (within the send caps)
+  but can NEVER be saved back; the disabled Save shows that reason: "only part of
+  this file is loaded". A file whose send-cap truncation exceeds its load (fully
+  loaded, but >12000 chars) also cannot be saved — same reason line, "only part
+  of this file would be written" is NOT silently assumed; the Save writes the
+  WHOLE in-memory copy or nothing.
+- **Advisor note (2026-10-08), hash timing:** the FULL-FILE length + hash is taken
+  AT ATTACH TIME, only for files that FULLY loaded (≤64 KB). Over-cap files never
+  receive a full hash, which is exactly why they can never Save; the first-8 KB
+  view hash stays view-only and is never used by the conflict gate.
 - **Advisor item 3b:** Save writes ONLY from the in-memory EDITING copy — never
   from a stored/redacted/persisted copy (the post-send sheet has no Save action at
   all; its copies are display-only by design).
