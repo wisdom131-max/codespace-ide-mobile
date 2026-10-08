@@ -111,6 +111,12 @@ Re-presented options:
   - **Commit structure:** separate revertable commits — C-1 (Refetch + in-flight
     guard), C-1b (cache window + invalidations), C-2 (error bubble) — each green
     on CI before the next.
+  - **BUILD HOLD (advisor ruling 2026-10-08):** NO G-C code until round-1 device
+    results are back; planning and docs continue. If the owner overrules, the
+    unverified commits that would ride round 2 are: G-C = 3 (C-1, C-1b, C-2, picked
+    up by round 2a's picker checks), E17-c state-machine extraction + JVM tests = 1
+    (JVM-verified, no device checks of its own), V1-a = 2 (picked up by round 2c's
+    inert checks).
 
 ---
 
