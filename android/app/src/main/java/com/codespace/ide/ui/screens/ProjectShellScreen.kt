@@ -3980,14 +3980,20 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
     val filteredLogs = if (selectedChannel == "all") logs else logs.filter { it.contains("[$selectedChannel]") }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(headerBg).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("OUTPUT", fontSize = 11.sp, color = headerText, modifier = Modifier.weight(1f))
-            // P50-4: Show ALL channels (was .take(4) which hid lsp + terminal)
-            // P50-3: ctags-lsp logs go to "lsp" channel — user must be able to filter to it
-            // 2026-10-09: "chat" added — scrub run lines ("scrub: checked N sessions,
-            // changed M") and [model-cache] window/drop lines log to the chat channel;
-            // B5/B7 verification reads them here.
-            val channels = listOf("all", "build", "git", "debug", "lsp", "terminal", "chat")
+        // 2026-10-09 (advisor item 7): on PORTRAIT phones the single header row
+        // squeezed the weighted "OUTPUT" title into a vertical column and made the
+        // header too tall. Portrait now stacks two compact lines: title + action
+        // icons on line 1, channel chips on their own horizontally scrollable
+        // line 2 (nothing hidden, scrollable instead). LANDSCAPE keeps the original
+        // single-row layout exactly as it was.
+        val isPortrait = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+        // P50-4: Show ALL channels (was .take(4) which hid lsp + terminal)
+        // P50-3: ctags-lsp logs go to "lsp" channel — user must be able to filter to it
+        // 2026-10-09: "chat" added — scrub run lines ("scrub: checked N sessions,
+        // changed M") and [model-cache] window/drop lines log to the chat channel;
+        // B5/B7 verification reads them here.
+        val channels = listOf("all", "build", "git", "debug", "lsp", "terminal", "chat")
+        val channelChips: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
             channels.forEach { ch ->
                 val isActive = selectedChannel == ch
                 Text(
@@ -3999,7 +4005,8 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
                         .padding(horizontal = 4.dp),
                 )
             }
-            Spacer(Modifier.width(8.dp))
+        }
+        val actionIcons: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
             // P50-4: Copy to clipboard button
             Icon(
                 Icons.Default.ContentCopy, null,
@@ -4044,6 +4051,30 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
             )
             Spacer(Modifier.width(6.dp))
             Icon(Icons.Default.Delete, null, tint = headerText, modifier = Modifier.size(16.dp).clickable { AppOutputLog.clear() })
+        }
+        if (isPortrait) {
+            // Portrait: two short lines — title never wraps or collapses, chips
+            // scroll horizontally, header stays compact (3dp vertical padding).
+            Column(Modifier.fillMaxWidth().background(headerBg).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("OUTPUT", fontSize = 11.sp, color = headerText)
+                    Spacer(Modifier.weight(1f))
+                    actionIcons()
+                }
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    channelChips()
+                }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().background(headerBg).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("OUTPUT", fontSize = 11.sp, color = headerText, modifier = Modifier.weight(1f))
+                channelChips()
+                Spacer(Modifier.width(8.dp))
+                actionIcons()
+            }
         }
         HorizontalDivider(color = dividerClr)
         LazyColumn(Modifier.fillMaxSize().padding(8.dp), state = listState) {
