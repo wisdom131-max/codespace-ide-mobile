@@ -889,6 +889,74 @@ internal fun TerminalPane(
         currentView.value?.post { currentView.value?.onScreenUpdated() }
     }
 
+    // ── F3 (owner-approved 2026-10-09): per-tab LIVE cwd tracking + persistence ──
+    // IntelliJ workingDirectoryFlow pattern: every 633 P;Cwd report updates this
+    // map; the debounced persist writes count/order/names/active/cwd — so process
+    // death restores the SAME tabs (a closed tab STAYS closed: the save happens at
+    // close time), each spawning a fresh shell AT its last live cwd.
+    val liveCwds = java.util.Collections.synchronizedMap(HashMap<String, String>())
+    val cwdPersistArmed = java.util.concurrent.atomic.AtomicBoolean(false)
+    // F3: suppresses the active-switch persist until restore finished (an early
+    // persist would clobber the not-yet-spawned tabs out of the store).
+    var f3RestoreDone by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    fun persistTabs() {
+        scope.launch { TerminalSessionStore.save(context, projectId, activeId, tabs.map {
+            TerminalSessionStore.SavedTab(
+                it.id, it.name,
+                // F3: the tab's LIVE cwd (633 P;Cwd) wins; then its creation-time dir;
+                // then the active root; "/root" is the unresolved fallback.
+                liveCwds[it.id] ?: it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root",
+                it.lockedRootPath)
+        }) }
+    }
+
+    fun scheduleCwdPersist() {
+        // Coalescing debounce: the FIRST change arms one 2s-delayed save; later
+        // changes inside the window are absorbed because persistTabs re-reads the
+        // live map when it runs.
+        if (!cwdPersistArmed.compareAndSet(false, true)) return
+        scope.launch {
+            kotlinx.coroutines.delay(2000)
+            cwdPersistArmed.set(false)
+            persistTabs()
+        }
+    }
+
+    fun attachCwdTracking(tabId: String, session: TerminalSession) {
+        val state = com.codespace.ide.terminal.shellintegration.ShellIntegrationState.forSession(session) ?: return
+        com.codespace.ide.diagnostics.AppOutputLog.log("F3 cwd-tracking attached for tab '$tabId'", "terminal")
+        state.addListener { kind ->
+            if (kind == com.codespace.ide.terminal.shellintegration.ShellIntegrationState.ChangeKind.CWD) {
+                val cwd = state.currentCwd
+                if (cwd != null) {
+                    liveCwds[tabId] = cwd
+                    scheduleCwdPersist()
+                }
+            }
+        }
+    }
+
+    /**
+     * F3 sequential restore signal: TRUE once this tab's shell has rendered its
+     * first prompt — operationalized as the session's FIRST 633 P;Cwd report (the
+     * same signal the status strip trusts; it accompanies the first prompt). Re-reads
+     * the tab BY ID every poll so the placeholder -> real-session in-place swap of the
+     * first-tab upgrade path is picked up automatically.
+     */
+    suspend fun awaitTabFirstPrompt(tabId: String, timeoutMs: Long): Boolean {
+        val start = android.os.SystemClock.elapsedRealtime()
+        while (android.os.SystemClock.elapsedRealtime() - start < timeoutMs) {
+            val tab = tabs.firstOrNull { it.id == tabId }
+            if (tab != null) {
+                val state = com.codespace.ide.terminal.shellintegration.ShellIntegrationState.forSession(tab.session)
+                if (state?.currentCwd != null) return true
+            }
+            kotlinx.coroutines.delay(250L)
+        }
+        return false
+    }
+
     // Part B: toggle a terminal's lock to a workspace root. Lock persists in
     // TerminalSessionStore and feeds workDir/$WORKSPACE_PATH at every session
     // (re)creation. No live-cd of a running shell (VS Code model, confirmed).
@@ -914,9 +982,7 @@ internal fun TerminalPane(
                 writeToDisplay(session, "\r\n[LOCK-DIAG] '$root' is not reachable inside Ubuntu (no bind mount covers it) - ide open will resolve against the current cwd\r\n")
             }
         }
-        scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
-            TerminalSessionStore.SavedTab(it.id, it.name, it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
-        }) }
+        persistTabs()
     }
 
     fun renameTab(id: String, newName: String) {
@@ -943,10 +1009,12 @@ internal fun TerminalPane(
             com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(context, session, onOpenFileAtLine!!)
         }
         tabs[idx] = old.copy(session = session, client = client, initialWorkDir = null)
+        // F3: the fresh shell's cwd is unknown until its first P;Cwd report — drop
+        // the dead shell's last report so persist never writes a stale path for it.
+        liveCwds.remove(tabId)
         com.codespace.ide.diagnostics.AppOutputLog.log("F1 safety-net: tab '${old.name}' relaunched in /root (previous --cwd shell died early)", "terminal")
-        scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
-            TerminalSessionStore.SavedTab(it.id, it.name, it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
-        }) }
+        attachCwdTracking(tabId, session)
+        persistTabs()
     }
 
     fun attachEarlyExitSafetyNet(tabId: String, wd: String?, client: SimpleTerminalSessionClient) {
@@ -995,12 +1063,11 @@ internal fun TerminalPane(
                 com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!)
             }
             attachEarlyExitSafetyNet(id, wd, client)
+            attachCwdTracking(id, session)
             tabs.add(TabSession(id, "Ubuntu", session, client, lockedRootPath = lockedRoot, initialWorkDir = wd))
             activeId = id
             // Phase 4: persist after opening a new tab
-            scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
-                TerminalSessionStore.SavedTab(it.id, it.name, it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
-            }) }
+            persistTabs()
             return
         }
 
@@ -1303,6 +1370,7 @@ internal fun TerminalPane(
                 val wd = validLock ?: savedWorkDir ?: loadWorkspacePath(ctx, projectId)
                 val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
                 attachEarlyExitSafetyNet(id, wd, client)
+                attachCwdTracking(id, session)
                 TerminalStartupProbe.mark("real session created — proot forking")
                 client.firstFrameProbe = { TerminalStartupProbe.mark("first-frame — prompt visible, session usable") }
                 if (onOpenFileAtLine != null) {
@@ -1388,7 +1456,9 @@ internal fun TerminalPane(
                 }
                 tabs.clear()
                 tabs.addAll(rebuiltTabs)
+                rebuiltTabs.forEach { attachCwdTracking(it.id, it.session) }
                 activeId = rebuiltTabs.first().id
+                f3RestoreDone = true
             } catch (e: Throwable) {
                 // Session reattach failed (sessions may be dead/corrupted after OEM kill,
                 // or OOM on 3GB device with multiple surviving proot trees).
@@ -1425,10 +1495,17 @@ internal fun TerminalPane(
                 } else {
                     bootPrefs.edit().putBoolean("ubuntu_first_boot_completed", true).apply()
                     tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+                    // First boot: nothing saved to restore — open the persist phase.
+                    f3RestoreDone = true
                 }
             } else {
                 tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+                // Fresh install: no store yet — open the persist phase.
+                f3RestoreDone = true
             }
+            // (The showTapToStart path deliberately does NOT set the flag — the
+            // restore effect owns it there, and an early persist mid-restore would
+            // clobber the not-yet-spawned saved tabs.)
         }
     }
 
@@ -1447,15 +1524,33 @@ internal fun TerminalPane(
             showTapToStart = false
             TerminalStartupProbe.mark("spinner-hidden — terminal view composes")
             // Phase 4: try session restore (loop-guarded, crash-safe)
+            // F3 (2026-10-09, owner-approved): the full restore contract — SAME tab
+            // count, order, names, ACTIVE tab, and each tab's last live cwd (633
+            // P;Cwd persisted per tab on every change, debounced — never only on
+            // clean exit). Shells spawn ONE AT A TIME (owner decision): the saved
+            // ACTIVE tab first, then the rest in saved order; each next spawn waits
+            // for the previous tab's first prompt or a 15s per-tab cap, and a stuck
+            // tab is logged BY NAME and skipped, never blocking the others. A stale/
+            // unreachable saved cwd falls back to /root through the SAME F1
+            // host-side validation (forTerminal), with a log line naming the tab.
+            // NOT restorable (stated in the checklist): running processes and
+            // on-screen scrollback — restore spawns FRESH shells at the saved cwd.
             val restored = if (TerminalSessionStore.claimRestoreAttempt(context)) {
                 TerminalSessionStore.load(context, projectId)
-            } else emptyList()
-            TerminalStartupProbe.mark("store-restore loaded=${restored.size}")
-            if (restored.isNotEmpty()) {
+            } else TerminalSessionStore.DecodedTabs(null, emptyList())
+            TerminalStartupProbe.mark("store-restore loaded=${restored.tabs.size}")
+            if (restored.tabs.isNotEmpty()) {
                 // Part B: only re-apply a saved lock if that root still exists.
                 val activeRoots = com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(context, projectId)
-                // Restore each saved tab as a fresh Ubuntu session
-                restored.forEachIndexed { i, saved ->
+                // Spawn order: saved ACTIVE first, then the rest in saved order.
+                val savedActiveIdx = restored.tabs.indexOfFirst { it.id == restored.activeId }
+                val spawnOrder = buildList {
+                    if (savedActiveIdx >= 0) add(savedActiveIdx)
+                    restored.tabs.indices.forEach { if (it != savedActiveIdx) add(it) }
+                }
+                var restoredActiveNewId: String? = null
+                spawnOrder.forEachIndexed { pos, savedIdx ->
+                    val saved = restored.tabs[savedIdx]
                     val validLock = saved.lockedRoot?.takeIf { it in activeRoots }
                     // V0-f-a: restore each tab with ITS OWN persisted CWD, not the
                     // app's CURRENT active root — the save used to stamp every tab
@@ -1465,20 +1560,53 @@ internal fun TerminalPane(
                     // "/root" is the legacy placeholder for "unresolved" — treat it
                     // as absent so old saves degrade to init-at-active-root.
                     val savedWd = saved.workingDir.takeUnless { it == "/root" }
-                    if (i == 0) {
+                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                        "F3 restore: spawning tab '${saved.name}' (pos=${pos + 1}/${spawnOrder.size}, cwd=${savedWd ?: "/root (default)"})", "terminal")
+                    // Only the very FIRST spawn upgrades the initial placeholder tab
+                    // (the S1-c slow path — untouched; extra tabs spawn only after
+                    // its first prompt, so the placeholder path is never changed).
+                    if (pos == 0) {
                         tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id, lockedRoot = validLock, savedWorkDir = savedWd) }
                     } else {
                         addUbuntuTab(replaceTabId = null, lockedRoot = validLock, savedWorkDir = savedWd)
                     }
+                    // The new tab id: fast path appends at the end; the placeholder
+                    // upgrade keeps the placeholder's id.
+                    val newTabId = if (pos == 0) tabs.firstOrNull()?.id else tabs.lastOrNull()?.id
+                    if (newTabId == null) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log(
+                            "F3 restore: tab '${saved.name}' could not be created — skipping (logged, others continue)", "terminal")
+                        return@forEachIndexed
+                    }
+                    // Wait for THIS tab's first prompt before spawning the next (F3-c).
+                    val ready = awaitTabFirstPrompt(newTabId, 15_000L)
+                    if (ready) {
+                        com.codespace.ide.diagnostics.AppOutputLog.log("F3 restore: tab '${saved.name}' ready (first prompt seen)", "terminal")
+                    } else {
+                        com.codespace.ide.diagnostics.AppOutputLog.log(
+                            "F3 restore: tab '${saved.name}' showed no first prompt within 15s — moving on to the next tab", "terminal")
+                    }
+                    // Apply the saved name + record the restored active pointer.
+                    // (Done AFTER the await: the placeholder-upgrade thread swaps in
+                    // the real TabSession with the default name only once the shell
+                    // is up, so renaming earlier would be overwritten.)
+                    val idxNow = tabs.indexOfFirst { it.id == newTabId }
+                    if (idxNow >= 0) {
+                        tabs[idxNow] = tabs[idxNow].copy(name = saved.name)
+                        if (savedIdx == savedActiveIdx) restoredActiveNewId = newTabId
+                    }
                 }
-                // Re-apply saved names
-                restored.forEachIndexed { i, saved ->
-                    val tab = tabs.getOrNull(i) ?: return@forEachIndexed
-                    tabs[i] = tab.copy(name = saved.name)
+                // Restore the saved ACTIVE pointer (the first-tab upgrade defaults
+                // active to itself; the owner contract wants the saved active tab).
+                if (restoredActiveNewId != null && tabs.any { it.id == restoredActiveNewId }) {
+                    activeId = restoredActiveNewId
                 }
+                persistTabs()
             } else {
                 tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
             }
+            // F3: only now may an active-switch persist (see f3RestoreDone above).
+            f3RestoreDone = true
         }
     }
 
@@ -1487,6 +1615,17 @@ internal fun TerminalPane(
         showTapToStart = false
         autoStartCountdownDone = true
         tabs.firstOrNull()?.let { addUbuntuTab(replaceTabId = it.id) }
+        f3RestoreDone = true
+    }
+
+    // F3: persist when the user SWITCHES tabs — the active pointer is part of the
+    // restore contract ("which tab was active"). The f3RestoreDone guard blocks the
+    // initial emission AND any mid-restore change, so a partial tab set can never
+    // clobber the store before the saved set is fully spawned.
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.snapshotFlow { activeId }.collect {
+            if (f3RestoreDone) persistTabs()
+        }
     }
 
     // TP06 (2026-09-26): the actual kill, extracted so the confirm path and the
@@ -1505,9 +1644,7 @@ internal fun TerminalPane(
         sharedState.viewCache.remove(id) // P14-A: evict cached view so it can be GC'd
         if (activeId == id) activeId = tabs.getOrNull(idx - 1)?.id ?: tabs.first().id
         // Phase 4: persist updated tab list
-        scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
-            TerminalSessionStore.SavedTab(it.id, it.name, it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
-        }) }
+        persistTabs()
     }
 
     fun closeTab(id: String) {

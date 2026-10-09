@@ -48,31 +48,93 @@ object TerminalSessionStore {
         val crashCount: Int = 0,
     )
 
+    /** F3 (2026-10-09, owner-approved): decoded store payload. */
+    data class DecodedTabs(
+        /** The tab that was ACTIVE at save time (null = legacy store: use the first tab). */
+        val activeId: String?,
+        val tabs: List<SavedTab>,
+    )
+
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private fun projectKey(projectId: String): String = KEY_TABS_PREFIX + projectId
 
+    // ── Pure codec (F3: JVM-tested round-trip; no Context, no android APIs) ──
+
+    /**
+     * F3 store format: {"activeId": "...", "tabs": [...]}. The bare-ARRAY format
+     * (pre-F3) remains readable — decodeTabs treats it as activeId=null.
+     */
+    fun encodeTabs(activeId: String?, tabs: List<SavedTab>): String {
+        val arr = JSONArray()
+        tabs.forEach { t ->
+            arr.put(JSONObject().apply {
+                put("id",         t.id)
+                put("name",       t.name)
+                put("workingDir", t.workingDir)
+                put("lockedRoot", t.lockedRoot ?: JSONObject.NULL)
+                put("crashCount", t.crashCount)
+            })
+        }
+        return JSONObject().apply {
+            put("activeId", activeId ?: JSONObject.NULL)
+            put("tabs", arr)
+        }.toString()
+    }
+
+    /**
+     * @return null when the payload is unreadable/corrupt — the CALLER then starts
+     *         with one default tab and logs it (owner F3 condition a).
+     */
+    fun decodeTabs(raw: String?): DecodedTabs? {
+        if (raw == null) return null
+        return try {
+            val arr: JSONArray
+            val activeId: String?
+            val trimmed = raw.trim()
+            if (trimmed.startsWith("{")) {
+                val obj = JSONObject(trimmed)
+                arr = obj.optJSONArray("tabs") ?: return null
+                activeId = if (obj.isNull("activeId")) null else obj.optString("activeId", null)
+            } else {
+                // Legacy pre-F3 format: a bare array of tab objects, no active id.
+                arr = JSONArray(trimmed)
+                activeId = null
+            }
+            val result = mutableListOf<SavedTab>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                result.add(SavedTab(
+                    id         = obj.getString("id"),
+                    name       = obj.getString("name"),
+                    workingDir = obj.optString("workingDir", "/root"),
+                    lockedRoot = if (obj.isNull("lockedRoot")) null else obj.optString("lockedRoot", null),
+                    crashCount = obj.optInt("crashCount", 0),
+                ))
+            }
+            DecodedTabs(activeId, result)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     // ── Save ──────────────────────────────────────────────────────────────
 
     /**
-     * Persist the current tab list UNDER THE CURRENT PROJECT. Call this on every
-     * tab open/close/rename event and on app pause so state survives process death.
+     * Persist the tab list UNDER THE CURRENT PROJECT (count, order, names, active
+     * tab, per-tab CWD). Call on every structural change (open/close/rename) and
+     * on DEBOUNCED 633 P;Cwd changes — never only on clean exit (owner F3 condition a).
+     *
+     * Atomicity: SharedPreferences.edit().apply() writes the whole XML via a temp
+     * file + atomic rename inside Android's SharedPreferencesImpl — the temp-file-
+     * then-rename contract the owner asked for, without a second hand-rolled I/O
+     * path that could diverge from the reader.
      */
-    suspend fun save(ctx: Context, projectId: String, tabs: List<SavedTab>) = withContext(Dispatchers.IO) {
+    suspend fun save(ctx: Context, projectId: String, activeId: String?, tabs: List<SavedTab>) = withContext(Dispatchers.IO) {
         try {
-            val arr = JSONArray()
-            tabs.forEach { t ->
-                arr.put(JSONObject().apply {
-                    put("id",         t.id)
-                    put("name",       t.name)
-                    put("workingDir", t.workingDir)
-                    put("lockedRoot", t.lockedRoot ?: JSONObject.NULL)
-                    put("crashCount", t.crashCount)
-                })
-            }
-            prefs(ctx).edit().putString(projectKey(projectId), arr.toString()).apply()
-            Log.d(TAG, "Saved ${tabs.size} tabs for project $projectId")
+            prefs(ctx).edit().putString(projectKey(projectId), encodeTabs(activeId, tabs)).apply()
+            Log.d(TAG, "Saved ${tabs.size} tabs (active=$activeId) for project $projectId")
         } catch (e: Exception) {
             Log.w(TAG, "save() failed: ${e.message}")
         }
@@ -81,15 +143,16 @@ object TerminalSessionStore {
     // ── Load ──────────────────────────────────────────────────────────────
 
     /**
-     * Returns the CURRENT project's saved tab list, filtered to only entries
-     * eligible for restore (crashCount < MAX_CRASH_COUNT). Returns empty list if
-     * nothing saved or JSON is corrupted (corrupted entry → wipe + return empty).
+     * Returns the CURRENT project's saved payload (active tab id + tab list),
+     * filtered to only entries eligible for restore (crashCount < MAX_CRASH_COUNT).
+     * Returns empty tabs if nothing saved or JSON is corrupted (corrupt → wipe +
+     * one default tab at the caller).
      *
      * One-time legacy adoption: if this project has no per-project key yet but the
      * old global store exists, the global list is adopted for THIS project and the
      * global key is cleared — so exactly one project (the first to load) inherits it.
      */
-    suspend fun load(ctx: Context, projectId: String): List<SavedTab> = withContext(Dispatchers.IO) {
+    suspend fun load(ctx: Context, projectId: String): DecodedTabs = withContext(Dispatchers.IO) {
         try {
             val p = prefs(ctx)
             var raw = p.getString(projectKey(projectId), null)
@@ -103,35 +166,33 @@ object TerminalSessionStore {
                 }
                 raw = legacy
             }
-            if (raw == null) return@withContext emptyList()
-            val arr = JSONArray(raw)
+            if (raw == null) return@withContext DecodedTabs(null, emptyList())
+            val decoded = decodeTabs(raw)
+            if (decoded == null) {
+                // TP15 (2026-09-26): ACCEPTED TRADEOFF, recorded per the audit row — a
+                // corrupted store wipes this project's tab list (names/locks vanish) rather
+                // than risking a half-parsed restore. The warning log makes the wipe
+                // non-silent for diagnostics; rebuilding the tab layout is cheap and the
+                // store holds layout only, never session contents. The CALLER starts
+                // with one default tab (owner F3 condition a).
+                Log.w(TAG, "load() corrupted JSON — wiping project store; starting with one default tab")
+                wipe(ctx, projectId)
+                return@withContext DecodedTabs(null, emptyList())
+            }
             val result = mutableListOf<SavedTab>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val entry = SavedTab(
-                    id         = obj.getString("id"),
-                    name       = obj.getString("name"),
-                    workingDir = obj.optString("workingDir", "/root"),
-                    lockedRoot = if (obj.isNull("lockedRoot")) null else obj.optString("lockedRoot", null),
-                    crashCount = obj.optInt("crashCount", 0),
-                )
+            decoded.tabs.forEach { entry ->
                 if (entry.crashCount < MAX_CRASH_COUNT) {
                     result.add(entry)
                 } else {
                     Log.w(TAG, "Skipping tab '${entry.name}' — crashed ${entry.crashCount}x")
                 }
             }
-            Log.d(TAG, "Loaded ${result.size}/${arr.length()} eligible tabs for project $projectId")
-            result
+            Log.d(TAG, "Loaded ${result.size}/${decoded.tabs.size} eligible tabs for project $projectId (active=${decoded.activeId})")
+            DecodedTabs(decoded.activeId, result)
         } catch (e: Exception) {
-            // TP15 (2026-09-26): ACCEPTED TRADEOFF, recorded per the audit row — a
-            // corrupted store wipes this project's tab list (names/locks vanish) rather
-            // than risking a half-parsed restore. The warning log makes the wipe
-            // non-silent for diagnostics; rebuilding the tab layout is cheap and the
-            // store holds layout only, never session contents.
-            Log.w(TAG, "load() corrupted JSON — wiping project store: ${e.message}")
+            Log.w(TAG, "load() failed — wiping project store: ${e.message}")
             wipe(ctx, projectId)
-            emptyList()
+            DecodedTabs(null, emptyList())
         }
     }
 
