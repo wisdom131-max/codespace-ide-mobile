@@ -3984,7 +3984,10 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
             Text("OUTPUT", fontSize = 11.sp, color = headerText, modifier = Modifier.weight(1f))
             // P50-4: Show ALL channels (was .take(4) which hid lsp + terminal)
             // P50-3: ctags-lsp logs go to "lsp" channel — user must be able to filter to it
-            val channels = listOf("all", "build", "git", "debug", "lsp", "terminal")
+            // 2026-10-09: "chat" added — scrub run lines ("scrub: checked N sessions,
+            // changed M") and [model-cache] window/drop lines log to the chat channel;
+            // B5/B7 verification reads them here.
+            val channels = listOf("all", "build", "git", "debug", "lsp", "terminal", "chat")
             channels.forEach { ch ->
                 val isActive = selectedChannel == ch
                 Text(

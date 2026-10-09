@@ -358,7 +358,10 @@ private fun scrubSessionsOnce(ctx: Context, sessions: List<ChatSession>): Int {
     // ("Saved-chat secret scrub") after the foundation checkpoints pass; the
     // enable-and-verify is its own round checkpoint. Absent flag = scrub skipped.
     val prefs = ctx.getSharedPreferences(PREFS_CHAT, Context.MODE_PRIVATE)
-    if (!prefs.getBoolean("c12_scrub_enabled", false)) return 0
+    if (!prefs.getBoolean("c12_scrub_enabled", false)) {
+        com.codespace.ide.diagnostics.AppOutputLog.log("scrub: switch off — skipped", "chat")
+        return 0
+    }
     var changedItems = 0
     val evictMarker = com.codespace.ide.chat.AttachmentSecrets.EVICTED_MARKER
     // ── 1. redaction pass over every persisted text (idempotent: markers and
@@ -423,6 +426,10 @@ private fun scrubSessionsOnce(ctx: Context, sessions: List<ChatSession>): Int {
     }
     // ── 3. persist every affected session in the same pass ──
     saveSessions(ctx, sessions, null)
+    // Owner ruling 2026-10-09 (advisor): log EVERY run so B5 verifies even when
+    // nothing matched — "no notice" is a valid pass ONLY with this line present.
+    com.codespace.ide.diagnostics.AppOutputLog.log(
+        "scrub: checked " + sessions.size + " sessions, changed " + changedItems, "chat")
     return changedItems
 }
 
