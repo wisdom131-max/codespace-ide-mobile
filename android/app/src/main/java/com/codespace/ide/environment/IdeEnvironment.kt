@@ -51,8 +51,35 @@ object IdeEnvironment {
         // the nonce is terminal-session-only.
         extraEnv: List<String> = emptyList(),
     ): ProotEnv {
-        val (proot, args, envVars) = ProotInstaller.launchArgs(context)
         val workspacePath = resolveWorkspacePath(context, projectId, workDir)
+
+        // F1 (2026-10-09, owner-approved): the interactive shell now STARTS at the
+        // workspace folder via proot's own working-directory option (--cwd/-w), the
+        // unanimous pattern from the 7-project research (Termux Runtime.exec cwd,
+        // VS Code pty cwd, Zed pty_options). Only a HOST-VALIDATED guest path is
+        // passed; anything else falls back to /root with a log line naming the
+        // reason — never a silent wrong directory, never a doomed launch.
+        val validatedCwd = if (workspacePath != null) {
+            val hostDir = com.codespace.ide.resolver.PathDialects.guestToHost(
+                workspacePath,
+                ProotInstaller.rootfsDir(context).absolutePath,
+                context.filesDir.absolutePath,
+            )
+            val reason = checkGuestDirHostSide(hostDir)
+            if (reason == null) {
+                AppOutputLog.log("F1 --cwd='$workspacePath' (host-validated: isDirectory+canRead+list ok)", "terminal")
+                workspacePath
+            } else {
+                AppOutputLog.log("F1 --cwd validation FAILED for '$workspacePath' ($reason) — starting shell in /root", "terminal")
+                null
+            }
+        } else {
+            // Folder-less / SAF-only / unresolved project: honest /root start, no pty input.
+            AppOutputLog.log("F1 no guest workspace path (folder-less/SAF-only/unresolved project, projectId=$projectId workDir=$workDir) — starting shell in /root", "terminal")
+            null
+        }
+
+        val (proot, args, envVars) = ProotInstaller.launchArgs(context, validatedCwd)
 
         // DIAGNOSTIC: Log every step of workspace path resolution to identify
         // exactly where the chain breaks when WORKSPACE_PATH ends up empty.
@@ -76,6 +103,7 @@ object IdeEnvironment {
             args = enrichedArgs,
             envVars = enrichedEnv,
             workspacePath = workspacePath,
+            initialCwd = validatedCwd,
         )
     }
 
@@ -179,17 +207,51 @@ object IdeEnvironment {
     }
 
     /**
+     * F1-1b (owner condition, E17 lesson): HOST-side pre-launch validation of the
+     * directory proot will be told to start in. A real listing, not exists() alone —
+     * FUSE can report exists()==true while open()/getdents() fails. PURE function
+     * (no Android Context) so the JVM suite covers it directly.
+     *
+     * @return null when the directory is usable, else a short reason string. The
+     *         CALLER logs it and falls back to /root — this function never logs.
+     */
+    fun checkGuestDirHostSide(dir: java.io.File?): String? {
+        if (dir == null) return "host path is null"
+        return try {
+            if (!dir.exists()) return "does not exist on the host"
+            if (!dir.isDirectory) return "is not a directory"
+            if (!dir.canRead()) return "is not readable"
+            // exists() lies on FUSE — the LISTING is the real probe (E17 lesson).
+            val listing = dir.list()
+            if (listing == null) return "directory listing failed (I/O error)"
+            if (!dir.canRead()) return "read permission lost during listing"
+            null
+        } catch (e: Exception) {
+            "validation threw: ${e.message}"
+        }
+    }
+
+    /**
      * Build the fallback session.write() commands for WORKSPACE_PATH injection.
      * This is kept as a belt-and-suspenders fallback for sessions where the
      * env-arg injection might not have taken effect (e.g. fallback sessions).
      * Only call if the primary env-arg injection is NOT used.
+     *
+     * F1 (2026-10-09): the `cd "$WORKSPACE_PATH" && clear` line is DELETED.
+     * History: it was written for fallback sessions where the env-arg injection
+     * might not have taken effect — a belt-and-suspenders cd so the shell still
+     * landed in the workspace. That cd ran as STDIN-INJECTED pty input, which the
+     * guard-probe decision already rejected (injected bytes before the first
+     * prompt add noise to command events and arrive mid-render). With proot
+     * --cwd now set to the workspace at spawn (forTerminal), the cd is dead code.
+     * The export lines stay: they only re-apply env a rootfs profile might
+     * clobber, and they are silent in command events.
      */
     fun workspacePathFallbackCommands(workspacePath: String?): List<String> {
         if (workspacePath == null) return emptyList()
         return listOf(
             "export WORKSPACE_PATH=\"$workspacePath\"\n",
             "export PROJECT_FILES=\"$workspacePath\"\n",
-            "cd \"$workspacePath\" 2>/dev/null && clear || echo \"[LOCK-DIAG] cd to '$workspacePath' failed - not reachable inside Ubuntu, keeping current cwd\"\n",
             // D15-a: append, never clobber — 99-shell-integration.sh installs a
             // PROMPT_COMMAND wrapper that re-evaluates whatever it captured; a bare
             // assignment here destroyed it. With integration active the value composes
@@ -235,6 +297,8 @@ data class ProotEnv(
     val args: Array<String>,
     val envVars: Array<String>,
     val workspacePath: String?,
+    /** F1: the GUEST path actually passed to proot as --cwd (null = /root default). */
+    val initialCwd: String? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -242,7 +306,8 @@ data class ProotEnv(
         return proot == other.proot &&
             args.contentEquals(other.args) &&
             envVars.contentEquals(other.envVars) &&
-            workspacePath == other.workspacePath
+            workspacePath == other.workspacePath &&
+            initialCwd == other.initialCwd
     }
 
     override fun hashCode(): Int {
@@ -250,6 +315,7 @@ data class ProotEnv(
         result = 31 * result + args.contentHashCode()
         result = 31 * result + envVars.contentHashCode()
         result = 31 * result + (workspacePath?.hashCode() ?: 0)
+        result = 31 * result + (initialCwd?.hashCode() ?: 0)
         return result
     }
 }

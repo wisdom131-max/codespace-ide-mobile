@@ -1607,22 +1607,24 @@ exit 0
      * The JNI code does: execvp(cmdStr, argv) where argv[0] is args[0].
      * Without this the args are shifted by 1 and proot fails immediately.
      */
-    fun launchArgs(context: Context): Triple<String, Array<String>, Array<String>> {
-        val nativeDir = context.applicationInfo.nativeLibraryDir
-        val proot     = "$nativeDir/libproot.so"
-        val loader    = "$nativeDir/libproot-loader.so"
-        val rootfs    = rootfsDir(context).absolutePath
-        val tmpDir    = File(context.cacheDir, "proot-tmp").apply { mkdirs() }.absolutePath
-        val hostFiles = context.filesDir.absolutePath
-        val selinuxDir = File(context.cacheDir, "fake-selinux").apply { mkdirs() }.absolutePath
-
-        // Log for diagnosis — this is how v13 handoff confirmed PROOT_LOADER was empty
-        Log.d(TAG, "launchArgs: nativeDir=$nativeDir")
-        Log.d(TAG, "launchArgs: proot=$proot  exists=${File(proot).exists()}")
-        Log.d(TAG, "launchArgs: loader=$loader  exists=${File(loader).exists()}")
-        Log.d(TAG, "launchArgs: rootfs=$rootfs  bashExists=${File(rootfs, "usr/bin/bash").exists()}")
-
-        val args = arrayOf(
+    /**
+     * F1: PURE arg-array builder (no Android Context) — the JVM suite proves here
+     * that a null [initialGuestCwd] keeps the array byte-identical to the pre-F1
+     * build (--cwd=/root, -w /root) and that a custom cwd only changes exactly
+     * those two entries, verbatim, with no quoting or mangling (proot takes argv
+     * elements, not a shell string — spaces, quotes and unicode pass through).
+     */
+    fun buildProotArgs(
+        rootfs: String,
+        tmpDir: String,
+        hostFiles: String,
+        selinuxDir: String,
+        initialGuestCwd: String?,
+    ): Array<String> {
+        // F1: the single source of the proot working directory. null -> /root keeps
+        // every byte of the array identical to the pre-F1 build (JVM-tested).
+        val cwdValue = initialGuestCwd ?: "/root"
+        return arrayOf(
             "proot",
             "--kill-on-exit",
             // --link2symlink REMOVED (r5): this flag makes proot queue all hardlinks as
@@ -1640,7 +1642,7 @@ exit 0
             // Ubuntu 25.04 ships with a compatible linker — no interception needed.
             "--change-id=0:0",
             "--rootfs=$rootfs",
-            "--cwd=/root",
+            "--cwd=$cwdValue",
             "--bind=/dev",
             "--bind=/proc",
             "--bind=/sys",
@@ -1655,7 +1657,7 @@ exit 0
             "--bind=/sdcard",
             // -w sets the initial working directory inside proot to /root.
             // Without this getcwd() fails — proot can't map the host cwd into guest space.
-            "-w", "/root",
+            "-w", cwdValue,
             // --bind=/proc/self/cwd:/proc/self/cwd — RESTORED (2026-07-03). This was
             // silently dropped in commit 8f0f5ba (2026-06-30, "Samsung fix" cleanup) even
             // though it's the actual fix for Samsung/TECNO kernel 5.15 blocking SYS_getcwd
@@ -1680,6 +1682,36 @@ exit 0
             "MOZ_FAKE_NO_SANDBOX=1",
             "/bin/bash", "--login"
         )
+    }
+
+    /**
+     * F1 (2026-10-09, owner-approved): [initialGuestCwd] threads the interactive
+     * terminal's workspace folder into proot's working-directory option. NULL (the
+     * default for every existing caller — MCP spawn, tool exec, IDE environment,
+     * DAP, gradle test-debug) keeps the args BYTE-IDENTICAL to the pre-F1 build:
+     * --cwd=/root and -w /root. Only IdeEnvironment.forTerminal (interactive
+     * terminals) passes a value, after host-side validation (see
+     * IdeEnvironment.checkGuestDirHostSide).
+     */
+    fun launchArgs(
+        context: Context,
+        initialGuestCwd: String? = null,
+    ): Triple<String, Array<String>, Array<String>> {
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val proot     = "$nativeDir/libproot.so"
+        val loader    = "$nativeDir/libproot-loader.so"
+        val rootfs    = rootfsDir(context).absolutePath
+        val tmpDir    = File(context.cacheDir, "proot-tmp").apply { mkdirs() }.absolutePath
+        val hostFiles = context.filesDir.absolutePath
+        val selinuxDir = File(context.cacheDir, "fake-selinux").apply { mkdirs() }.absolutePath
+
+        // Log for diagnosis — this is how v13 handoff confirmed PROOT_LOADER was empty
+        Log.d(TAG, "launchArgs: nativeDir=$nativeDir")
+        Log.d(TAG, "launchArgs: proot=$proot  exists=${File(proot).exists()}")
+        Log.d(TAG, "launchArgs: loader=$loader  exists=${File(loader).exists()}")
+        Log.d(TAG, "launchArgs: rootfs=$rootfs  bashExists=${File(rootfs, "usr/bin/bash").exists()}")
+
+        val args = buildProotArgs(rootfs, tmpDir, hostFiles, selinuxDir, initialGuestCwd)
 
         val envVars = arrayOf(
             "PROOT_LOADER=$loader",

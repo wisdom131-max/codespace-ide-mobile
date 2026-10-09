@@ -74,6 +74,18 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     var firstFrameProbe: (() -> Unit)? = null
     var onTitleChanged: ((String?) -> Unit)? = null
     var onSessionFinished: (() -> Unit)? = null
+    /** F1-1c safety net: creation time of this session (elapsed-realtime ms). */
+    val createdAtMs: Long = android.os.SystemClock.elapsedRealtime()
+    /** F1-1c: one-shot guard so the safety net relaunches a dying --cwd at most ONCE. */
+    @kotlin.jvm.Volatile var relaunchedAfterEarlyExit: Boolean = false
+    /**
+     * F1-1c safety net: fires on EVERY unexpected (not expectedTeardown) session
+     * finish with the exit code, from the session reader thread. Separate from
+     * [onSessionFinished] on purpose — the active-view binding reassigns that
+     * callback whenever a tab becomes visible, which would clobber a hook attached
+     * at creation; this one survives the rebind.
+     */
+    @kotlin.jvm.Volatile var onEarlyExit: ((Int) -> Unit)? = null
     /** EXIT-9 FALSE-ALARM FIX (2026-10-03): true when the APP is intentionally
      *  closing/replacing this session — the SESSION FINISHED diag must then label
      *  it an expected teardown, never a crash / lmkd-OOM kill. */
@@ -104,6 +116,10 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     override fun onSessionFinished(finishedSession: TerminalSession) {
         // Phase N: Notify terminal session ended
         val exitCode = finishedSession.exitStatus
+        // F1-1c: fire the early-exit hook on every UNEXPECTED finish, before the
+        // expectedTeardown/diag branches — the safety net must see it even while
+        // the EXIT-9 diagnostics below run.
+        if (!expectedTeardown) onEarlyExit?.invoke(exitCode)
         // EXIT-9 FALSE-ALARM FIX (2026-10-03): an INTENTIONAL teardown (placeholder
         // replaced by the real Ubuntu session, reattach cleanup, tab close) was
         // previously SIGKILLed -> exit=-9 -> "SIGNAL-DEATH signal=9 (lmkd/OOM kill)"
@@ -909,6 +925,43 @@ internal fun TerminalPane(
         if (idx >= 0) tabs[idx] = tabs[idx].copy(name = trimmed)
     }
 
+    // ── F1-1c safety net (owner-approved 2026-10-09) ─────────────────────────
+    // A shell launched with a non-/root --cwd that dies within RELAUNCH_WINDOW is
+    // relaunched ONCE at /root and logged, so a bad (but host-valid-looking) cwd can
+    // never leave the user with a dead terminal tab.
+    val f1RelaunchWindowMs = 5_000L
+
+    fun relaunchSessionInPlace(tabId: String) {
+        val idx = tabs.indexOfFirst { it.id == tabId }
+        if (idx < 0) return
+        val old = tabs[idx]
+        // Intentional teardown of the (already dead or dying) old session.
+        old.client.expectedTeardown = true
+        try { old.session.finishIfRunning() } catch (_: Throwable) {}
+        val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = null) ?: createTerminalSession(context, isUbuntu = true, workDir = null, projectId = projectId))
+        if (onOpenFileAtLine != null) {
+            com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(context, session, onOpenFileAtLine!!)
+        }
+        tabs[idx] = old.copy(session = session, client = client, initialWorkDir = null)
+        com.codespace.ide.diagnostics.AppOutputLog.log("F1 safety-net: tab '${old.name}' relaunched in /root (previous --cwd shell died early)", "terminal")
+        scope.launch { TerminalSessionStore.save(context, projectId, tabs.map {
+            TerminalSessionStore.SavedTab(it.id, it.name, it.initialWorkDir ?: loadWorkspacePath(context, projectId) ?: "/root", it.lockedRootPath)
+        }) }
+    }
+
+    fun attachEarlyExitSafetyNet(tabId: String, wd: String?, client: SimpleTerminalSessionClient) {
+        if (wd == null || wd == "/root") return
+        client.onEarlyExit = { exitCode ->
+            val early = android.os.SystemClock.elapsedRealtime() - client.createdAtMs < f1RelaunchWindowMs
+            if (early && exitCode != 0 && !client.relaunchedAfterEarlyExit) {
+                client.relaunchedAfterEarlyExit = true
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "F1 safety-net: shell started with --cwd='$wd' exited early (exit=$exitCode within ${f1RelaunchWindowMs / 1000}s) — relaunching tab in /root", "terminal")
+                android.os.Handler(android.os.Looper.getMainLooper()).post { relaunchSessionInPlace(tabId) }
+            }
+        }
+    }
+
 
     // Ubuntu proot is the ONLY terminal environment this app ships (bash/ash removed —
     // see AGENTS.md). This single function handles both cases:
@@ -941,6 +994,7 @@ internal fun TerminalPane(
             if (onOpenFileAtLine != null) {
                 com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!)
             }
+            attachEarlyExitSafetyNet(id, wd, client)
             tabs.add(TabSession(id, "Ubuntu", session, client, lockedRootPath = lockedRoot, initialWorkDir = wd))
             activeId = id
             // Phase 4: persist after opening a new tab
@@ -1248,6 +1302,7 @@ internal fun TerminalPane(
                 // V0-f-a: same wd precedence chain as fast/warm paths.
                 val wd = validLock ?: savedWorkDir ?: loadWorkspacePath(ctx, projectId)
                 val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
+                attachEarlyExitSafetyNet(id, wd, client)
                 TerminalStartupProbe.mark("real session created — proot forking")
                 client.firstFrameProbe = { TerminalStartupProbe.mark("first-frame — prompt visible, session usable") }
                 if (onOpenFileAtLine != null) {

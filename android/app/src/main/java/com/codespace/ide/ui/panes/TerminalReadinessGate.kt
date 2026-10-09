@@ -28,10 +28,34 @@ internal suspend fun awaitTerminalReadiness(
     maxWaitMs: Long = 30_000L,
 ): Boolean {
     val start = android.os.SystemClock.elapsedRealtime()
+    // F1 item 3 (advisor, 2026-10-09): a session #2-style silent 30s stall (ok=false,
+    // gate-pass logs nothing until the cap) left no evidence of WHICH condition was
+    // stuck. Rate-limited diagnostics: exactly one line at 2s naming every false
+    // condition, one more near the cap — never per-poll spam.
+    var warned2s = false
+    var warnedCap = false
     while (true) {
+        val activityOk = activityResumed()
+        val serviceOk = serviceBound()
         val installBusy = com.codespace.ide.terminal.ProotInstaller.installingTabId != null
-        if (activityResumed() && serviceBound() && !installBusy) return true
-        if (android.os.SystemClock.elapsedRealtime() - start >= maxWaitMs) return false
+        if (activityOk && serviceOk && !installBusy) return true
+        val elapsed = android.os.SystemClock.elapsedRealtime() - start
+        if (!warned2s && elapsed >= 2_000L) {
+            warned2s = true
+            val stuck = buildList {
+                if (!activityOk) add("activity-not-resumed")
+                if (!serviceOk) add("service-not-bound")
+                if (installBusy) add("install-busy (tab=" + com.codespace.ide.terminal.ProotInstaller.installingTabId + ")")
+            }.joinToString(" + ")
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "terminal-readiness gate: waited ${elapsed}ms, still waiting on: $stuck", "terminal")
+        }
+        if (!warnedCap && elapsed >= maxWaitMs - 5_000L) {
+            warnedCap = true
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "terminal-readiness gate: ${elapsed}ms — approaching the ${maxWaitMs}ms cap, starting anyway (safety)", "terminal")
+        }
+        if (elapsed >= maxWaitMs) return false
         delay(pollMs)
     }
 }
