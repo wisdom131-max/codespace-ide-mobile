@@ -1598,8 +1598,11 @@ internal fun TerminalPane(
                 }
                 // Restore the saved ACTIVE pointer (the first-tab upgrade defaults
                 // active to itself; the owner contract wants the saved active tab).
-                if (restoredActiveNewId != null && tabs.any { it.id == restoredActiveNewId }) {
-                    activeId = restoredActiveNewId
+                // Smart-cast rule (#2724 family): the loop var is closure-captured,
+                // so capture a plain local before the null check.
+                val restoredActive = restoredActiveNewId
+                if (restoredActive != null && tabs.any { it.id == restoredActive }) {
+                    activeId = restoredActive
                 }
                 persistTabs()
             } else {
