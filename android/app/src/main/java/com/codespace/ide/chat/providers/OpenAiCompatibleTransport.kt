@@ -274,10 +274,15 @@ internal object OpenAiCompatibleTransport {
         if (resp.code == 402) {
             val vendorDetail = parts.first
             val withDetail = if (vendorDetail.isNotBlank()) "\n(" + vendorDetail + ")" else ""
+            // Advisor item 3 (2026-10-10): the owner hit 402s with several NEW
+            // keys — because provider credits belong to the ACCOUNT, not the key.
+            // One plain line prevents the "make another key" dead end. Endpoint
+            // identity ("Sent via: <label>") is added by the panel's G-C C-2
+            // prefix (label + sanitized URL), which this message rides under.
             return com.codespace.ide.chat.ChatHttpException(
                 resp.code,
                 "This request failed: the provider account for this key is OUT OF CREDITS (monthly limit reached or billing issue). " +
-                    "The request was not processed. Top up the provider account, or switch key / model / provider in Settings." + withDetail,
+                    "The request was not processed. Credits belong to the provider ACCOUNT, not the key \u2014 creating a new key on the same account will not help; top up that account or switch to a different provider." + withDetail,
                 retryAfterMs(resp),
             )
         }
