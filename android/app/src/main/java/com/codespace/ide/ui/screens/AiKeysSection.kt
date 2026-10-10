@@ -159,6 +159,27 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                         }) { Text("Set primary active") }
                     }
                     if (hasKey) {
+                        // Advisor item 4 (2026-10-10): "Test this key" for the
+                        // PRIMARY slot of custom endpoints — status code + redacted
+                        // vendor message + the HF ACCOUNT NAME, so "new key, same
+                        // 402" is answerable in-app. The key never leaves the
+                        // request; the result carries no key material.
+                        if (provider is com.codespace.ide.chat.providers.CustomOpenAiProvider) {
+                            TextButton(onClick = {
+                                val kkey = tokenStore.aiKey(provider.id.uppercase()) ?: return@TextButton
+                                val st0 = uiStates[provider.id] ?: state
+                                uiStates[provider.id] = st0.copy(slotChecks = st0.slotChecks + (provider.id.uppercase() to "testing\u2026"))
+                                scope.launch {
+                                    val ep = com.codespace.ide.chat.CustomEndpointStore.byId(
+                                        com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(provider.id) ?: "")
+                                    val r = com.codespace.ide.chat.KeyProbe.probe(ep?.baseUrl ?: "", kkey)
+                                    val line = "HTTP " + (r.httpStatus?.toString() ?: "\u2014") + " \u00b7 " + r.message +
+                                        (r.accountName?.let { " \u00b7 HF account: " + it } ?: "")
+                                    val st1 = uiStates[provider.id] ?: st0
+                                    uiStates[provider.id] = st1.copy(slotChecks = st1.slotChecks + (provider.id.uppercase() to line))
+                                }
+                            }) { Text("Test this key") }
+                        }
                         TextButton(onClick = {
                             tokenStore.setAiKey(provider.id.uppercase(), null)
                             if (com.codespace.ide.chat.ChatKeyPool.activeSuffix(provider.id) == provider.id.uppercase()) {
@@ -170,6 +191,32 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                             }
                             uiStates[provider.id] = AiKeyUiState(liveStatus = LiveStatus.UNCHECKED)
                         }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                    }
+                }
+                // Advisor item 4: make the ACTIVE slot unmistakable — when no
+                // manual active key is set, the PRIMARY slot is active by default;
+                // that was previously invisible. Adding a key does NOT activate it
+                // (addKey never calls setActive) — the badge states who is active.
+                if (provider is com.codespace.ide.chat.providers.CustomOpenAiProvider && hasKey) {
+                    val actSuf = com.codespace.ide.chat.ChatKeyPool.activeSuffix(provider.id)
+                    if (actSuf == null) {
+                        Text(
+                            "\u25cf Active (default): primary key \u2014 tried first; failover picks the next key only when it fails",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                        )
+                    }
+                    // The primary slot's "Test this key" result (stored under the
+                    // slot-1 suffix) — shown here because the primary key has no
+                    // extra-slot row of its own.
+                    state.slotChecks[provider.id.uppercase()]?.let {
+                        Text(
+                            "primary key test: " + it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                        )
                     }
                 }
 
@@ -214,14 +261,23 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                             scope.launch {
                                 val st0 = uiStates[provider.id] ?: state
                                 uiStates[provider.id] = st0.copy(slotChecks = st0.slotChecks + (suf to "checking\u2026"))
-                                val result = try {
+                                // Advisor item 4 (2026-10-10): custom endpoints use
+                                // KeyProbe — status code + redacted vendor message +
+                                // HF account name (whoami). Built-ins keep fetchModels.
+                                val result = if (provider is com.codespace.ide.chat.providers.CustomOpenAiProvider) {
+                                    val ep = com.codespace.ide.chat.CustomEndpointStore.byId(
+                                        com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(provider.id) ?: "")
+                                    val r = com.codespace.ide.chat.KeyProbe.probe(ep?.baseUrl ?: "", kkey)
+                                    "HTTP " + (r.httpStatus?.toString() ?: "\u2014") + " \u00b7 " + r.message +
+                                        (r.accountName?.let { " \u00b7 HF account: " + it } ?: "")
+                                } else try {
                                     val m = provider.fetchModels(kkey)
                                     if (m.isNotEmpty()) "live: " + m.size + " models" else "reachable, 0 models"
                                 } catch (e: Exception) { "\u2717 " + (e.message ?: "failed").take(80) }
                                 val st1 = uiStates[provider.id] ?: st0
                                 uiStates[provider.id] = st1.copy(slotChecks = st1.slotChecks + (suf to result))
                             }
-                        }) { Text("Test") }
+                        }) { Text("Test this key") }
                         IconButton(onClick = {
                             com.codespace.ide.chat.ChatKeyPool.removeKey(tokenStore, provider.id, suf)
                             com.codespace.ide.chat.ChatKeyFailover.clearCooldowns()
