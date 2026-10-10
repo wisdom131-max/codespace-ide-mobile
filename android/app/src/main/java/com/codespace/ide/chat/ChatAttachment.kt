@@ -107,8 +107,13 @@ data class AttachmentSnapshot(
 
 object ChatAttachmentInjector {
 
-    private const val MAX_FILE_CHARS = 12000
-    private const val MAX_TOTAL_CHARS = 24000
+    // PUBLIC since 2026-10-10 (B3 fix): the sheet's notice code and its JVM tests
+    // must share the EXACT send caps the injector enforces — a private constant
+    // let the sheet drift (hardcoded 12000) from the real cap.
+    const val SEND_CAP_PER_FILE = 12000
+    const val SEND_CAP_PER_MESSAGE = 24000
+    private const val MAX_FILE_CHARS = SEND_CAP_PER_FILE
+    private const val MAX_TOTAL_CHARS = SEND_CAP_PER_MESSAGE
 
     /** "#src/Main.kt" style tokens — require an extension so normal hashtags stay intact. */
     private val HASH_TOKEN = Regex("#([A-Za-z0-9_\\-./]+\\.[A-Za-z0-9]+)")

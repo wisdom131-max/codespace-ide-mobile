@@ -62,6 +62,12 @@ internal fun AttachmentSheet(
     storedContentOverride: String? = null,
     /** Post-send only: the stored copy had something excluded or redacted. */
     postSendRedacted: Boolean = false,
+    /**
+     * B3 FIX (2026-10-10): sendable chars already consumed by the message's
+     * OTHER attachments — the per-message cap is shared, so this attachment's
+     * truncation notice needs it. Pre-send only; defaults to 0.
+     */
+    otherAttachmentChars: Int = 0,
 ) {
     val snap: AttachmentSnapshot? = attachment.snapshot
     val isFileKind = attachment.kind == ChatAttachment.Kind.FILE
@@ -73,14 +79,6 @@ internal fun AttachmentSheet(
     // restored snapshot content for loaded-from-disk messages).
     val shown = if (postSend) (storedContentOverride ?: (snap?.editedContent ?: snap?.content ?: ""))
         else (snap?.editedContent ?: snap?.content ?: "")
-
-    // Full length of the underlying basis: the file for FILE kind, the copy itself
-    // for SELECTION (no file basis).
-    val fullLen = remember(attachment) {
-        if (isFileKind) {
-            try { java.io.File(attachment.path).length().toInt() } catch (_: Exception) { shown.length }
-        } else shown.length
-    }
 
     // Change notice: first-8 KB hash NOW vs at attach (VIEW basis only — never a
     // send input). One bounded 8 KB read per sheet open; binary/truncated files
@@ -115,9 +113,12 @@ internal fun AttachmentSheet(
                     .verticalScroll(rememberScrollState())
             ) {
                 // header: kind, size, edit state
+                // B3 FIX (2026-10-10): the header counts CHARS of the copy being
+                // viewed (the send basis) — never the on-disk BYTE length, which
+                // lied for every multibyte file and for stale-disk edits.
                 Text(
-                    "kind: " + kindLabel + "  |  size: " + (if (fullLen > 0) fullLen.toString() else "n/a") + " chars" +
-                        (if (snap != null && snap.edited) "  |  EDITED" else ""),
+                    "kind: " + kindLabel + "  |  " +
+                        com.codespace.ide.chat.AttachmentSheetNotices.sizeHeaderChars(shown.length, snap != null && snap.edited),
                     fontSize = 10.sp, color = colors.textSecondary,
                 )
                 // C12 s1-d (advisor item 2c): post-send label — "stored copy" /
@@ -156,18 +157,17 @@ internal fun AttachmentSheet(
                         )
                     }
                 }
-                // "showing X of N characters" counter over the capped view
-                Text(
-                    "showing " + shown.length + " of " + fullLen + " characters",
-                    fontSize = 10.sp, color = colors.textSecondary,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-                // send-portion notice (advisor item 2): exactly what rides the send
-                val sendCap = 12000
-                if (!isMedia && shown.length > sendCap) {
+                // B3 FIX (2026-10-10): ONE notice line, computed by the pure
+                // AttachmentSheetNotices against the REAL injector caps (12k per
+                // file / 24k per message, shared across attachments). NULL —
+                // nothing rendered — when the full copy rides the send: a
+                // 17-character file must NEVER show a truncation counter.
+                val counterText = if (!isMedia && !postSend)
+                    com.codespace.ide.chat.AttachmentSheetNotices.counterLine(shown.length, otherAttachmentChars)
+                else null
+                if (counterText != null) {
                     Text(
-                        "Only the first " + sendCap + " characters will be sent; the rest is not included. " +
-                            "Edits past character " + sendCap + " stay in the copy but are not sent.",
+                        counterText,
                         fontSize = 10.sp, color = colors.accent,
                         modifier = Modifier.padding(top = 6.dp),
                     )

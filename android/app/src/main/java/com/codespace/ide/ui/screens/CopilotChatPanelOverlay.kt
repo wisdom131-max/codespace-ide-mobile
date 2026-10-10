@@ -2589,30 +2589,64 @@ internal fun CopilotChatPanelInline(
                 storedContentOverride = storedView,
             )
         }
-        // C12 s1-b: the pre-send AttachmentSheet — view/edit the attach-time copy
+        // C12 s1-b: the pre-send AttachmentSheet — view/edit the attach-time copy.
+        // B3 FIX (2026-10-10): the sheet binds `openAttachment`, but onEdit/onReset
+        // replace the list element with a NEW data-class instance — openAttachment
+        // kept the STALE original forever, so the sheet displayed the original text
+        // while `attachments` moved on, and the `a == openAtt` guard stopped matching
+        // after the FIRST edit, silently DROPPING every keystroke that followed
+        // (typed characters appeared to be cut off; the send rode only the first
+        // edit). The handlers now re-point openAttachment at the updated instance on
+        // every mutation so the sheet always binds the LIVE copy.
         val openAtt = openAttachment
         if (openAtt != null) {
+            // B3 FIX: the shared per-message budget — sendable chars the OTHER
+            // attachments consume, so this one's truncation notice reflects the
+            // real injector caps (24k total, 12k per file).
+            val otherChars = remember(openAttachment, attachments.size) {
+                attachments.filter { it != openAtt && it.kind == com.codespace.ide.chat.ChatAttachment.Kind.FILE }
+                    .sumOf { a ->
+                        val s = a.snapshot
+                        val len = (if (s != null && s.edited) (s.editedContent ?: s.content) else s?.content ?: "")?.length ?: 0
+                        com.codespace.ide.chat.AttachmentSheetNotices.sendableChars(len)
+                    }
+            }
             com.codespace.ide.ui.panels.AttachmentSheet(
                 attachment = openAtt,
                 onEdit = { newContent ->
+                    var updated: com.codespace.ide.chat.ChatAttachment? = null
                     attachments = attachments.map { a ->
                         if (a == openAtt) {
                             val snap = a.snapshot
-                            if (snap == null) a else a.copy(snapshot = snap.copy(edited = true, editedContent = newContent))
+                            if (snap == null) a
+                            else {
+                                val na = a.copy(snapshot = snap.copy(edited = true, editedContent = newContent))
+                                updated = na
+                                na
+                            }
                         } else a
                     }
+                    if (updated != null) openAttachment = updated
                 },
                 onReset = {
+                    var updated: com.codespace.ide.chat.ChatAttachment? = null
                     attachments = attachments.map { a ->
                         if (a == openAtt) {
                             val snap = a.snapshot
-                            if (snap == null) a else a.copy(snapshot = snap.copy(edited = false, editedContent = null))
+                            if (snap == null) a
+                            else {
+                                val na = a.copy(snapshot = snap.copy(edited = false, editedContent = null))
+                                updated = na
+                                na
+                            }
                         } else a
                     }
+                    if (updated != null) openAttachment = updated
                 },
                 onRemove = { attachments = attachments.filterNot { it == openAtt } },
                 onDismiss = { openAttachment = null },
                 colors = colors,
+                otherAttachmentChars = otherChars,
             )
         }
         if (showStatusSheet) {
