@@ -110,6 +110,12 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
         )
     }
 
+    // Advisor item 2 (2026-10-10): post-save activation prompt state. The FIRST
+    // key added while NO active key is set activates automatically; any later
+    // save shows "Saved. Set it active now?" — an explicit user choice.
+    var askActivateProvider by remember { mutableStateOf<String?>(null) }
+    var askActivateSlot by remember { mutableStateOf<String?>(null) }
+
     Text("AI Providers", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
 
     // MK-v2 (2026-09-16): custom endpoints are a CRUD registry (VS Code Language
@@ -313,6 +319,30 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
                     )
                 }
+                // Advisor item 2 (2026-10-10): the post-save prompt — visible
+                // right where the key list lives, with the slot's label.
+                if (askActivateProvider == provider.id && askActivateSlot != null) {
+                    val askSuf = askActivateSlot
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Saved. Set \u201c" + com.codespace.ide.chat.ChatKeyPool.label(askSuf).ifEmpty { askSuf } + "\u201d active now?",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = {
+                            com.codespace.ide.chat.ChatKeyPool.setActive(provider.id, askSuf)
+                            askActivateProvider = null
+                            askActivateSlot = null
+                        }) { Text("Set active") }
+                        TextButton(onClick = {
+                            askActivateProvider = null
+                            askActivateSlot = null
+                        }) { Text("Not now") }
+                    }
+                }
                 if (state.addingKey) {
                     OutlinedTextField(
                         value = state.addLabel,
@@ -366,6 +396,15 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                                         suf, state.addLabel.trim().ifEmpty { "Key " + suf.substringAfterLast('_') })
                                     com.codespace.ide.chat.ChatKeyFailover.clearCooldowns()
                                     if (!savedKeyIds.contains(provider.id)) savedKeyIds.add(provider.id)
+                                    // Advisor item 2 (2026-10-10): first key on an
+                                    // endpoint with NO active key activates itself;
+                                    // later saves ask the user explicitly.
+                                    if (com.codespace.ide.chat.ChatKeyPool.activeSuffix(provider.id) == null) {
+                                        com.codespace.ide.chat.ChatKeyPool.setActive(provider.id, suf)
+                                    } else {
+                                        askActivateProvider = provider.id
+                                        askActivateSlot = suf
+                                    }
                                     uiStates[provider.id] = cur.copy(
                                         addingKey = false, addDraft = "", addLabel = "", addError = null,
                                         slotChecks = cur.slotChecks + (suf to "checking\u2026"),
