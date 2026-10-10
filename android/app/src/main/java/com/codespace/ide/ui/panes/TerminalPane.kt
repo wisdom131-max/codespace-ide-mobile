@@ -986,7 +986,14 @@ internal fun TerminalPane(
     fun renameTab(id: String, newName: String) {
         val trimmed = newName.trim().ifBlank { "Ubuntu" }
         val idx = tabs.indexOfFirst { it.id == id }
-        if (idx >= 0) tabs[idx] = tabs[idx].copy(name = trimmed)
+        if (idx >= 0) {
+            tabs[idx] = tabs[idx].copy(name = trimmed)
+            // F3 (advisor review 2026-10-10): names are part of the restore
+            // contract — persist immediately, or a rename followed straight by
+            // process death (no tab switch to trigger the activeId flow) was
+            // silently lost before this line.
+            persistTabs()
+        }
     }
 
     // ── F1-1c safety net (owner-approved 2026-10-09; advisor fix 2026-10-10) ──
