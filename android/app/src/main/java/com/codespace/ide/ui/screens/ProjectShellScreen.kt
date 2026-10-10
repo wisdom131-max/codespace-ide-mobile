@@ -4473,7 +4473,15 @@ private fun StatusBarContent(
                         com.codespace.ide.data.SecureTokenStore(sbCtx)
                     )
                     val pid = m.substringBefore(':', "")
-                    (com.codespace.ide.chat.ChatProviderRegistry.byId(pid)?.displayName ?: pid) + " \u00b7 " + m.substringAfter(':')
+                    // Advisor item 2 (2026-10-10): provider name ONCE + long model
+                    // ids middle-shortened. Custom endpoints show their ENDPOINT
+                    // LABEL — the registry displayName "Custom · <label>" double-
+                    // printed "Custom" for the legacy endpoint (label literally
+                    // "Custom"): the bar read "AI: Custom · Custom · Qwen/...".
+                    val prov = com.codespace.ide.chat.ChatProviderRegistry.byId(pid)
+                    val providerLabel = if (prov is com.codespace.ide.chat.providers.CustomOpenAiProvider)
+                        prov.endpointLabel else (prov?.displayName ?: pid)
+                    com.codespace.ide.chat.ChatModelSelection.statusStripLabel(providerLabel, m.substringAfter(':'))
                 } catch (_: Exception) { null }
             }
             if (aiLabel != null) {

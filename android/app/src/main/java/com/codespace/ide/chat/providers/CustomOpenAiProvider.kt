@@ -40,6 +40,13 @@ class CustomOpenAiProvider(
             return "Custom · " + (ep?.label ?: "Endpoint")
         }
 
+    /** Advisor item 2 (2026-10-10): the endpoint's label ALONE, for one-line
+     *  status surfaces — displayName is section-formatted ("Custom · label")
+     *  and double-printed "Custom" on the status bar for the legacy endpoint
+     *  whose label is literally "Custom". */
+    val endpointLabel: String
+        get() = CustomEndpointStore.byId(endpointId)?.label ?: "Endpoint"
+
     // Placeholder until the user picks a real model from their server's live
     // /models list (the picker merges live models automatically). Clearly
     // non-real so a misconfigured send fails with the SERVER's error text,

@@ -79,6 +79,29 @@ object ChatModelSelection {
      * the Settings provider switch: active provider's default, then the first
      * available provider's default.
      */
+    // ── STATUS-STRIP LABEL (B3 round follow-up, advisor item 2, 2026-10-10) ──
+    // Pure display helpers for the shell status bar. JVM-tested.
+
+    /**
+     * One-line status label: "<provider> · <model>". The provider name appears
+     * ONCE (custom endpoints show their endpoint label — the old render showed
+     * "Custom · Custom · Qwen/..." because the legacy endpoint's label was
+     * literally "Custom" and the registry displayName prefixed it with
+     * "Custom · " again). Long model ids are shortened FROM THE MIDDLE (head
+     * + … + tail) so both the namespace ("Qwen/") and the distinguishing tail
+     * stay visible — an end cut would hide the part that tells models apart.
+     */
+    fun statusStripLabel(providerLabel: String, modelId: String, maxModelChars: Int = 26): String =
+        providerLabel + " · " + shortenMiddle(modelId, maxModelChars)
+
+    /** Middle-shorten: "Qwen/Qwen2.5-Coder-32B-Instruct" -> "Qwen/Qwen2.5-C…r-32B-Instruct" style. */
+    fun shortenMiddle(s: String, max: Int): String {
+        if (max < 5 || s.length <= max) return s
+        val tail = (max - 1) / 2   // 25 -> 12 for max 26
+        val head = max - 1 - tail  // 13
+        return s.take(head) + "…" + s.takeLast(tail)
+    }
+
     fun resolveAuto(context: Context, model: String, tokenStore: com.codespace.ide.data.SecureTokenStore?): String {
         if (model != AUTO_MODEL) return model
         return try {
