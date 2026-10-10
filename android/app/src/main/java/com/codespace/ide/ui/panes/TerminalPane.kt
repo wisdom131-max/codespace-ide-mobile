@@ -74,8 +74,6 @@ internal class SimpleTerminalSessionClient : TerminalSessionClient {
     var firstFrameProbe: (() -> Unit)? = null
     var onTitleChanged: ((String?) -> Unit)? = null
     var onSessionFinished: (() -> Unit)? = null
-    /** F1-1c safety net: creation time of this session (elapsed-realtime ms). */
-    val createdAtMs: Long = android.os.SystemClock.elapsedRealtime()
     /** F1-1c: one-shot guard so the safety net relaunches a dying --cwd at most ONCE. */
     @kotlin.jvm.Volatile var relaunchedAfterEarlyExit: Boolean = false
     /**
@@ -991,11 +989,15 @@ internal fun TerminalPane(
         if (idx >= 0) tabs[idx] = tabs[idx].copy(name = trimmed)
     }
 
-    // ── F1-1c safety net (owner-approved 2026-10-09) ─────────────────────────
-    // A shell launched with a non-/root --cwd that dies within RELAUNCH_WINDOW is
-    // relaunched ONCE at /root and logged, so a bad (but host-valid-looking) cwd can
-    // never leave the user with a dead terminal tab.
-    val f1RelaunchWindowMs = 5_000L
+    // ── F1-1c safety net (owner-approved 2026-10-09; advisor fix 2026-10-10) ──
+    // A shell launched with a non-/root --cwd that dies BEFORE ITS FIRST PROMPT
+    // (no 633;A mark seen — proot chdir failure, dead rootfs bind) is relaunched
+    // ONCE at /root and logged, so a bad (but host-valid-looking) cwd can never
+    // leave the user with a dead terminal tab. Advisor fix: NEVER relaunch after a
+    // prompt has been shown (a shell the owner used, then crashed, stays as-is),
+    // and user-intentional ends never trigger it either — a typed `exit` requires
+    // a prompt (blocked by the same flag) and closeTab/placeholder-replacement
+    // set expectedTeardown, which suppresses onEarlyExit upstream.
 
     fun relaunchSessionInPlace(tabId: String) {
         val idx = tabs.indexOfFirst { it.id == tabId }
@@ -1017,14 +1019,15 @@ internal fun TerminalPane(
         persistTabs()
     }
 
-    fun attachEarlyExitSafetyNet(tabId: String, wd: String?, client: SimpleTerminalSessionClient) {
+    fun attachEarlyExitSafetyNet(tabId: String, wd: String?, client: SimpleTerminalSessionClient, session: TerminalSession) {
         if (wd == null || wd == "/root") return
         client.onEarlyExit = { exitCode ->
-            val early = android.os.SystemClock.elapsedRealtime() - client.createdAtMs < f1RelaunchWindowMs
-            if (early && exitCode != 0 && !client.relaunchedAfterEarlyExit) {
+            val state = com.codespace.ide.terminal.shellintegration.ShellIntegrationState.forSession(session)
+            val promptSeen = state?.promptStartSeen == true
+            if (!promptSeen && !client.relaunchedAfterEarlyExit) {
                 client.relaunchedAfterEarlyExit = true
                 com.codespace.ide.diagnostics.AppOutputLog.log(
-                    "F1 safety-net: shell started with --cwd='$wd' exited early (exit=$exitCode within ${f1RelaunchWindowMs / 1000}s) — relaunching tab in /root", "terminal")
+                    "F1 safety-net: shell started with --cwd='$wd' died before its first prompt (exit=$exitCode) — relaunching tab in /root", "terminal")
                 android.os.Handler(android.os.Looper.getMainLooper()).post { relaunchSessionInPlace(tabId) }
             }
         }
@@ -1062,7 +1065,7 @@ internal fun TerminalPane(
             if (onOpenFileAtLine != null) {
                 com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(ctx, session, onOpenFileAtLine!!)
             }
-            attachEarlyExitSafetyNet(id, wd, client)
+            attachEarlyExitSafetyNet(id, wd, client, session)
             attachCwdTracking(id, session)
             tabs.add(TabSession(id, "Ubuntu", session, client, lockedRootPath = lockedRoot, initialWorkDir = wd))
             activeId = id
@@ -1369,7 +1372,7 @@ internal fun TerminalPane(
                 // V0-f-a: same wd precedence chain as fast/warm paths.
                 val wd = validLock ?: savedWorkDir ?: loadWorkspacePath(ctx, projectId)
                 val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = wd) ?: createTerminalSession(ctx, isUbuntu = true, workDir = wd, projectId = projectId))
-                attachEarlyExitSafetyNet(id, wd, client)
+                attachEarlyExitSafetyNet(id, wd, client, session)
                 attachCwdTracking(id, session)
                 TerminalStartupProbe.mark("real session created — proot forking")
                 client.firstFrameProbe = { TerminalStartupProbe.mark("first-frame — prompt visible, session usable") }

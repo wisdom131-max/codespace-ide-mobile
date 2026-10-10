@@ -112,6 +112,9 @@ class ShellIntegrationState internal constructor(
      */
     enum class ChangeKind { CWD, OUTPUT_START, COMMAND_COMPLETE }
 
+    /** F1-1c safety net: true once the first 633;A (prompt-start) mark arrived. */
+    @kotlin.jvm.Volatile var promptStartSeen: Boolean = false
+
     private val listeners = java.util.concurrent.CopyOnWriteArrayList<(ChangeKind) -> Unit>()
 
     /**
@@ -163,7 +166,13 @@ class ShellIntegrationState internal constructor(
         synchronized(this) {
             eventsTotal++
             when (event) {
-                is ShellIntegrationEvent.PromptStart -> phase = Phase.PROMPT
+                is ShellIntegrationEvent.PromptStart -> {
+                    // F1-1c safety net (advisor fix 2026-10-10): the first 633;A mark
+                    // proves the shell reached its prompt — after this, an unexpected
+                    // session death must NOT trigger a /root relaunch.
+                    promptStartSeen = true
+                    phase = Phase.PROMPT
+                }
                 is ShellIntegrationEvent.PromptEnd -> { /* stay: prompt painted, awaiting input */ }
                 is ShellIntegrationEvent.CommandOutputStart -> {
                     phase = Phase.COMMAND_OUTPUT
