@@ -250,7 +250,8 @@ object BackupTar {
 
     /**
      * Writer fix (advisor 1e): never descend through symlinked directories —
-     * the old walkTopDown followed bin -> usr/bin and emitted bin/* duplicates,
+     * the old walkTopDown followed the bin link into usr/bin and emitted duplicate
+     * entries under bin, one for every file there,
      * bloating the archive and creating the exact restore hazard above. The
      * restore still ACCEPTS old archives (extract resolves them); new backups
      * simply stop carrying traversal entries.
