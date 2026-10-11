@@ -1882,39 +1882,95 @@ internal fun TerminalPane(
             )
         }
 
+        // E17 DEVICE FIX (2026-10-11, advisor item 2): the E17-b/c choice dialog
+        // was accidentally nested INSIDE the rename branch ("if (renameTargetId != null)")
+        // and therefore NEVER composed on device — the owner saw only the terminal
+        // text "Waiting for your choice" with no buttons. It now renders at pane
+        // level, and the same choices are INLINE buttons right below the tab bar
+        // so they are always visible in the terminal itself.
+        if (showGrantChoice) {
+            AlertDialog(
+                onDismissRequest = { grantChoiceMachine.dismiss() },
+                title = { Text(if (grantChoiceKind == 0) "Storage permission needed" else "Backup restore failed") },
+                text = {
+                    if (grantChoiceKind == 0) {
+                        Text(
+                            "A container backup (${grantChoiceBackupMb} MB) was found in shared storage, but the app no longer has the \"All files access\" permission after the reinstall.\n\n" +
+                                "Grant access to restore your backup (the Settings screen opens), or download a fresh Ubuntu (~58 MB) on your connection."
+                        )
+                    } else {
+                        Text(
+                            "The container backup could not be restored: ${grantChoiceReason}\n\n" +
+                                "Try restoring again, or download a fresh Ubuntu (~58 MB) on your connection. The backup stays in shared storage either way."
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { grantChoiceMachine.choose(1) }) {
+                        Text(if (grantChoiceKind == 0) "Grant access now" else "Try restore again")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { grantChoiceMachine.choose(2) }) { Text("Download fresh (~58 MB)") }
+                },
+            )
+        }
+        // INLINE choice buttons — always visible while the install thread waits.
+        if (showGrantChoice) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF252526))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (grantChoiceKind == 0)
+                        "Backup found (${grantChoiceBackupMb} MB) — grant access to restore it."
+                    else
+                        "Restore failed — try again or download fresh.",
+                    color = Color(0xFFCCCCCC),
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Button(onClick = { grantChoiceMachine.choose(1) }) {
+                    Text(if (grantChoiceKind == 0) "Grant access" else "Try restore again")
+                }
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = { grantChoiceMachine.choose(2) }) {
+                    Text("Download fresh (~58 MB)", fontSize = 11.sp)
+                }
+            }
+        }
+        // PERSISTENT one-tap restore (advisor item 2, owner requirement): a backup
+        // exists in shared storage but no container is installed, and nothing is
+        // waiting or running — one tap re-runs the restore flow on the Ubuntu tab.
+        if (!showGrantChoice &&
+            com.codespace.ide.terminal.BackupManager.hasBackup() &&
+            !com.codespace.ide.terminal.ProotInstaller.isInstalled(ctx) &&
+            !com.codespace.ide.terminal.ProotInstaller.isInstallRunning()
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF252526))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "A container backup was found, but no Ubuntu is installed on this device.",
+                    color = Color(0xFFCCCCCC),
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Button(onClick = {
+                    val ubuntuTab = tabs.firstOrNull { it.name == "Ubuntu" }
+                    addUbuntuTab(replaceTabId = ubuntuTab?.id)
+                }) { Text("Restore backup") }
+            }
+        }
         // Rename dialog
         if (renameTargetId != null) {
-            // E17-b (2026-10-07, advisor): grant-vs-download choice — never a silent
-            // rootfs download on mobile data. Shown when the install thread finds a
-            // backup but no All-files-access grant; the choice lands in
-            // grantChoiceMachine, which the thread polls. Outside-tap/back = skip.
-            if (showGrantChoice) {
-                AlertDialog(
-                    onDismissRequest = { grantChoiceMachine.dismiss() },
-                    title = { Text(if (grantChoiceKind == 0) "Storage permission needed" else "Backup restore failed") },
-                    text = {
-                        if (grantChoiceKind == 0) {
-                            Text(
-                                "A container backup (${grantChoiceBackupMb} MB) was found in shared storage, but the app no longer has the \"All files access\" permission after the reinstall.\n\n" +
-                                    "Grant access to restore your backup (the Settings screen opens), or download a fresh Ubuntu (~58 MB) on your connection."
-                            )
-                        } else {
-                            Text(
-                                "The container backup could not be restored: ${grantChoiceReason}\n\n" +
-                                    "Try restoring again, or download a fresh Ubuntu (~58 MB) on your connection. The backup stays in shared storage either way."
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { grantChoiceMachine.choose(1) }) {
-                            Text(if (grantChoiceKind == 0) "Grant access now" else "Try restore again")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { grantChoiceMachine.choose(2) }) { Text("Download fresh (~58 MB)") }
-                    },
-                )
-            }
             // Rotation fix (#8): see color scheme picker above for rationale.
             key(configuration.orientation) {
             AlertDialog(
