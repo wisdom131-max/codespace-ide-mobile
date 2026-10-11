@@ -1236,7 +1236,7 @@ fun ExplorerSidePanel(
                                         note = "directory NOT deleted (device-critical path)"
                                     } else if (!inSafeZone) {
                                         note = "directory NOT deleted (outside app/user storage zones)"
-                                    } else if (hostDir.deleteRecursively()) {
+                                    } else if (com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(hostDir).ok) {
                                         note = "directory deleted"
                                     }
                                 }

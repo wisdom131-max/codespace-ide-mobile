@@ -668,7 +668,10 @@ object ProotInstaller {
             Log.d(TAG, "Downloaded ${tarXzFile.length()} bytes")
 
             onProgress("Extracting Ubuntu rootfs\u2026")
-            rootfs.deleteRecursively()
+            // 2026-10-11 advisor A: symlink-safe wipe — deleteRecursively walks
+            // THROUGH directory links (FileTreeWalk follows them) and its
+            // bottom-up pass asserts on dangling links left by its own deletion.
+            com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(rootfs)
             rootfs.mkdirs()
 
             // Force GC before opening the XZ decompressor — free any download-phase garbage.

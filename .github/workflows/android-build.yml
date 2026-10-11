@@ -58,7 +58,7 @@ jobs:
         # the WHOLE unit-test source set — a broken legacy test source fails here,
         # which is exactly what we want to surface.
         working-directory: android
-        run: ./gradlew testProdDebugUnitTest --tests "com.codespace.ide.terminal.shellintegration.*" --tests "com.codespace.ide.chat.ModelCatalogTest" --tests "com.codespace.ide.terminal.BackupTarTest" --stacktrace
+        run: ./gradlew testProdDebugUnitTest --tests "com.codespace.ide.terminal.shellintegration.*" --tests "com.codespace.ide.chat.ModelCatalogTest" --tests "com.codespace.ide.terminal.BackupTarTest" --tests "com.codespace.ide.terminal.ContainerSafetyTest" --stacktrace
 
       - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v4

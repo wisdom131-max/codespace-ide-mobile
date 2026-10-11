@@ -610,7 +610,7 @@ fun SettingsScreen(
                                         try {
                                             // Wipe rootfs dir and version marker
                                             val rootfsDir = ProotInstaller.rootfsDir(context)
-                                            rootfsDir.deleteRecursively()
+                                            com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(rootfsDir)
                                             val versionFile = java.io.File(context.filesDir, ".ubuntu_version")
                                             versionFile.delete()
                                             // Reinstall

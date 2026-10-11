@@ -444,7 +444,7 @@ class ScmState(private val context: Context) {
                 if (!overwrite) {
                     return@withContext false to "Destination '" + destDir + "' already exists (left over from a previous clone). Tick 'Overwrite existing' to delete it and re-clone, or pick another destination."
                 }
-                if (!destDirFile.deleteRecursively()) {
+                if (!com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(destDirFile).ok) {
                     return@withContext false to "Could not delete the existing destination '" + destDir + "'. Remove it manually and retry."
                 }
             }

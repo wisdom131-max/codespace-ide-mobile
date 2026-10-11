@@ -1010,10 +1010,28 @@ internal fun TerminalPane(
         val idx = tabs.indexOfFirst { it.id == tabId }
         if (idx < 0) return
         val old = tabs[idx]
+        // E (2026-10-11): a damaged container must NEVER be relaunched into —
+        // check health first and offer Restore/Download instead of a retry loop.
+        val rootfsForHealth = ProotInstaller.rootfsDir(context)
+        val health = com.codespace.ide.terminal.ContainerSafety.healthOf(rootfsForHealth)
+        if (!health.ok) {
+            val verdict = "Ubuntu is damaged: restore needed (missing ${health.missingCritical.joinToString(", ")})"
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[SAFETY-NET] refusing to relaunch into a damaged container — $verdict\n[SAFETY-NET] health: ${health.lines.joinToString("; ")}",
+                "terminal",
+            )
+            writeToDisplay(tabs[idx].session, "\r\n[Ubuntu] \u2717 $verdict\r\n[Ubuntu] Use the Restore backup button below, or download a fresh Ubuntu.\r\n")
+            return
+        }
         // Intentional teardown of the (already dead or dying) old session.
         old.client.expectedTeardown = true
         try { old.session.finishIfRunning() } catch (_: Throwable) {}
-        val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = null) ?: createTerminalSession(context, isUbuntu = true, workDir = null, projectId = projectId))
+        // E (2026-10-11): the retry is FORCED to /root. The old call passed
+        // workDir=null, which the factory re-resolved to the SAME saved project
+        // path the dead shell was launched with — the 14:15 relaunch died on
+        // '--cwd=/sdcard/My codespace app 3' a second time. "/root" passes
+        // through workspaceToGuest as-is and host-validates as the guest /root.
+        val (session, client) = (boundService?.createSession(isUbuntu = true, projectId = projectId, workDir = "/root") ?: createTerminalSession(context, isUbuntu = true, workDir = "/root", projectId = projectId))
         if (onOpenFileAtLine != null) {
             com.codespace.ide.terminal.IdeTerminalBridge.attachOscIdeOpen(context, session, onOpenFileAtLine!!)
         }
@@ -1021,7 +1039,26 @@ internal fun TerminalPane(
         // F3: the fresh shell's cwd is unknown until its first P;Cwd report — drop
         // the dead shell's last report so persist never writes a stale path for it.
         liveCwds.remove(tabId)
-        com.codespace.ide.diagnostics.AppOutputLog.log("F1 safety-net: tab '${old.name}' relaunched in /root (previous --cwd shell died early)", "terminal")
+        com.codespace.ide.diagnostics.AppOutputLog.log("F1 safety-net: tab '${old.name}' relaunched with FORCED --cwd=/root (previous --cwd shell died early)", "terminal")
+        // E (2026-10-11): the relaunch is a DIAGNOSTIC, not a retry loop — if the
+        // /root shell ALSO dies before its first prompt, the failure was never
+        // cwd-related: report a damaged container, never relaunch again.
+        client.onEarlyExit = { _ ->
+            val st = com.codespace.ide.terminal.shellintegration.ShellIntegrationState.forSession(session)
+            if (st?.promptStartSeen != true) {
+                val h = com.codespace.ide.terminal.ContainerSafety.healthOf(rootfsForHealth)
+                val verdict = if (!h.ok) {
+                    "Ubuntu is damaged: restore needed (missing ${h.missingCritical.joinToString(", ")})"
+                } else {
+                    "Ubuntu failed to start even in /root — likely damaged; restore the container"
+                }
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[SAFETY-NET] relaunch in /root also died before its first prompt — $verdict\n[SAFETY-NET] health: ${h.lines.joinToString("; ")}",
+                    "terminal",
+                )
+                writeToDisplay(session, "\r\n[Ubuntu] \u2717 $verdict\r\n")
+            }
+        }
         attachCwdTracking(tabId, session)
         persistTabs()
     }
@@ -1236,9 +1273,43 @@ internal fun TerminalPane(
                             TerminalService.updateProgress(ctx, msg.take(60))
                             writeToDisplay(progressSession, "  $msg\r\n")
                         }
-                        if (restoreResult.ok) {
+                        if (restoreResult.ok && restoreResult.healthy) {
                             writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Restored from backup! Launching...\r\n\r\n")
                             restoreOk = true
+                        } else if (restoreResult.ok && !restoreResult.healthy) {
+                            // C (2026-10-11): the swap happened, but the backup itself
+                            // contains a DAMAGED container (missing env/bin/lib...).
+                            // NEVER launch proot into it — the 147 MB backup restored
+                            // "successfully" on device and proot died on
+                            // execve /usr/bin/env. Same explicit choice: restore
+                            // again vs download fresh.
+                            writeToDisplay(progressSession, "\r\n[Ubuntu] \u2717 Ubuntu is damaged: restore needed — the backup contains an incomplete container (${restoreResult.message}).\r\n")
+                            writeToDisplay(progressSession, "[Ubuntu] The restored container is NOT usable as-is; it was NOT launched.\r\n")
+                            grantChoiceKind = 1
+                            grantChoiceReason = "the backup contains a damaged container — restore cannot fix it, only a fresh Ubuntu (or a different backup) can"
+                            grantChoiceMachine.begin(1, grantChoiceReason)
+                            showGrantChoice = true
+                            writeToDisplay(progressSession, "[Ubuntu] Waiting for your choice: try restoring again, or download a fresh Ubuntu (~58 MB)...\r\n")
+                            while (!grantChoiceMachine.tick()) {
+                                try { Thread.sleep(500) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
+                            }
+                            showGrantChoice = false
+                            when (grantChoiceMachine.outcomeOrNull()) {
+                                com.codespace.ide.terminal.InstallChoice.GRANT_OR_RETRY -> writeToDisplay(progressSession, "[Ubuntu] Retrying the restore...\r\n\r\n")
+                                com.codespace.ide.terminal.InstallChoice.DOWNLOAD_FRESH -> {
+                                    writeToDisplay(progressSession, "[Ubuntu] Downloading a fresh Ubuntu (~58 MB)...\r\n")
+                                    ProotInstaller.install(ctx) { msg ->
+                                        TerminalService.updateProgress(ctx, msg.take(60))
+                                        writeToDisplay(progressSession, "  $msg\r\n")
+                                    }
+                                    writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Installation complete! Launching...\r\n\r\n")
+                                    restoreOk = true
+                                }
+                                else -> {
+                                    writeToDisplay(progressSession, "[Ubuntu] No choice made — install skipped. Reopen this tab to retry.\r\n")
+                                    return@Thread
+                                }
+                            }
                         } else {
                             writeToDisplay(progressSession, "\r\n[Ubuntu] \u2717 Backup restore FAILED (${restoreResult.message}).\r\n")
                             grantChoiceKind = 1
@@ -1358,6 +1429,18 @@ internal fun TerminalPane(
                 // Do NOT stop TerminalService here — it must stay alive for the proot session.
                 // TerminalService is stopped only when TerminalPane is disposed (all tabs closed).
                 if (!installFailed) TerminalService.updateProgress(ctx, "Ubuntu terminal active")
+            }
+            // C (2026-10-11): NEVER fork a proot session after a failed install or
+            // restore — the post below used to run unconditionally, launching
+            // proot into whatever half-state was on disk (execve ENOSYS storm).
+            // The progress tab keeps the failure text; the persistent Restore
+            // backup / Download buttons stay available on it.
+            if (installFailed) {
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[SETUP-GUARD] session creation skipped — installFailed=true (no valid Ubuntu)",
+                    "terminal",
+                )
+                return@Thread
             }
             TerminalStartupProbe.mark("setup-thread done — real session about to be created")
             android.os.Handler(android.os.Looper.getMainLooper()).post {

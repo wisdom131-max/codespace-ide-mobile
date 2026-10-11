@@ -189,70 +189,71 @@ object BackupManager {
             onProgress("Nothing to back up — Ubuntu isn't installed yet.")
             return
         }
+        // D (2026-10-11): NEVER back up a damaged container — the 147 MB backup
+        // was written over a partially-broken rootfs and then overwrote the
+        // good 435 MB backup in place. The same health gate that guards the
+        // proot launch guards the backup writer.
+        val health = ContainerSafety.healthOf(rootfs)
+        if (!health.ok) {
+            val msg = "Refusing to back up: the container is damaged (missing ${health.missingCritical.joinToString(", ")}). Restore it first — the existing backup was NOT touched."
+            onProgress("\u2717 $msg")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[BACKUP-DIAG] $msg", "terminal")
+            return
+        }
         backupDir().mkdirs()
         val tmp = File(backupDir(), "$BACKUP_FILE.tmp")
-        tmp.delete()
+        ContainerSafety.deleteTreeSafe(tmp)
 
         var filesWritten = 0
-        var totalBytes = 0L
         GzipCompressorOutputStream(tmp.outputStream()).use { gz ->
             TarArchiveOutputStream(gz).use { tar ->
                 tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
                 tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_STAR)
-                rootfs.walkTopDown()
-                    // E17 writer fix (2026-10-11): the old walk followed dir
-                    // symlinks (the bin link into usr/bin) and emitted one
-                    // duplicate entry under bin per file there
-                    // duplicates — the exact restore hazard. The restore still
-                    // ACCEPTS old archives; new backups stop carrying them.
-                    .onEnter { !java.nio.file.Files.isSymbolicLink(it.toPath()) }
-                    .forEach { file ->
-                    if (file == rootfs) return@forEach
-                    val relPath = file.relativeTo(rootfs).path
-                    // Skip proc/sys/dev virtual mounts — never real files worth archiving,
-                    // and walking into them can hang or explode in apparent size.
-                    if (relPath.startsWith("proc/") || relPath.startsWith("sys/") || relPath.startsWith("dev/")) {
-                        return@forEach
-                    }
-                    // TP12 (2026-09-26): skip guest secrets (directory and children) —
-                    // see GUEST_SECRET_PATHS above.
-                    if (GUEST_SECRET_PATHS.any { relPath == it || relPath.startsWith("$it/") }) {
-                        return@forEach
-                    }
-                    runCatching {
-                        when {
-                            java.nio.file.Files.isSymbolicLink(file.toPath()) -> {
-                                val link = java.nio.file.Files.readSymbolicLink(file.toPath())
-                                val symEntry = TarArchiveEntry(relPath, TarArchiveEntry.LF_SYMLINK)
-                                symEntry.linkName = link.toString()
-                                tar.putArchiveEntry(symEntry)
-                                tar.closeArchiveEntry()
-                            }
-                            file.isDirectory -> {
-                                tar.putArchiveEntry(TarArchiveEntry(file, relPath))
-                                tar.closeArchiveEntry()
-                            }
-                            else -> {
-                                val entry = TarArchiveEntry(file, relPath)
-                                entry.size = file.length()
-                                if (file.canExecute()) entry.mode = entry.mode or 0b001_001_001
-                                tar.putArchiveEntry(entry)
-                                file.inputStream().use { it.copyTo(tar) }
-                                tar.closeArchiveEntry()
-                                totalBytes += file.length()
-                            }
-                        }
-                        filesWritten++
-                        if (filesWritten % 500 == 0) {
-                            onProgress("Backed up $filesWritten files (${totalBytes / (1024 * 1024)} MB)...")
-                        }
-                    }.onFailure { Log.w(TAG, "Skipped ${file.path}: ${it.message}") }
+                // E17 writer fix (2026-10-11): shares the EXACT writer with the JVM
+                // suite (BackupTar.writeRootfs). walkTopDown follows directory
+                // symlinks (bin duplicates on restore), and its onEnter hook DROPS
+                // the symlinked directories entirely — how a new backup could
+                // silently lose bin/lib/sbin/lib64. BackupTar's recursive visit
+                // emits every symlink and never descends through one.
+                filesWritten = BackupTar.writeRootfs(rootfs, tar, GUEST_SECRET_PATHS) { msg ->
+                    onProgress(msg)
                 }
             }
         }
-        tmp.renameTo(backupFile())
-        onProgress("\u2713 Backup complete: $filesWritten files, ${backupFile().length() / (1024 * 1024)} MB \u2192 ${backupFile().path}")
-        NotificationStore.add("Backup complete", "$filesWritten files saved to ${backupFile().name}", NotificationStore.Type.BACKUP)
+        // D (2026-10-11): a backup file is NEVER overwritten in place. The
+        // finished tarball is VERIFIED (readable, sane entry count, bash+env
+        // present) before the swap; the previous backup is kept aside as
+        // container-backup.prev until the new one has proven itself.
+        if (filesWritten <= 0) {
+            tmp.delete()
+            onProgress("\u2717 Backup failed: no files were written. The existing backup was NOT touched.")
+            return
+        }
+        val verify = ContainerSafety.verifyBackupArchive(tmp)
+        if (!verify.ok) {
+            tmp.delete()
+            val msg = "Backup NOT saved: the written archive failed verification (${verify.verdict}). The existing backup was NOT touched."
+            onProgress("\u2717 $msg")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[BACKUP-DIAG] $msg", "terminal")
+            return
+        }
+        val target = backupFile()
+        val prev = File(backupDir(), "$BACKUP_FILE.prev")
+        if (target.exists()) {
+            prev.delete()
+            if (!target.renameTo(prev)) {
+                tmp.delete()
+                onProgress("\u2717 Backup NOT saved: the previous backup could not be kept aside. Nothing was overwritten.")
+                return
+            }
+        }
+        if (!tmp.renameTo(target)) {
+            prev.renameTo(target)  // roll back
+            onProgress("\u2717 Backup NOT saved: the new archive could not be moved into place. The previous backup was kept.")
+            return
+        }
+        onProgress("\u2713 Backup complete: $filesWritten files, ${target.length() / (1024 * 1024)} MB \u2192 ${target.path} (previous kept as ${prev.name})")
+        NotificationStore.add("Backup complete", "$filesWritten files saved to ${target.name}", NotificationStore.Type.BACKUP)
     }
 
     /**
@@ -269,6 +270,12 @@ object BackupManager {
         val symlinkWarnings: Int,
         val ok: Boolean,
         val message: String,
+        /** C (2026-10-11): ok = the swap happened; healthy = the restored
+         *  container passes the full key-file health check (bash AND env AND
+         *  the directory links). A restore can be ok=true healthy=false — that
+         *  is the "backup of a damaged container" case, and the caller must
+         *  NOT launch proot into it. */
+        val healthy: Boolean = true,
         /** E17 grant gate: true when the ONLY reason for failure is the missing
          *  All-files-access grant. Callers use it to wait/retry instead of falling
          *  straight through to a fresh install. */
@@ -308,6 +315,7 @@ object BackupManager {
      * aborts with the live rootfs untouched.
      */
     fun restoreBackup(context: Context, onProgress: (String) -> Unit): RestoreResult {
+        val startedAt = android.os.SystemClock.elapsedRealtime()
         // E17 grant gate (2026-10-07): the backup tarball lives in shared storage;
         // without the All-files-access grant FUSE lets exists() pass and open()
         // fail EACCES mid-restore. Refuse UP FRONT with a typed result so callers
@@ -326,6 +334,10 @@ object BackupManager {
         }
         val rootfs = ProotInstaller.rootfsDir(context)
         onProgress("Restoring container from backup (${f.length() / (1024 * 1024)} MB)...")
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[RESTORE-DIAG] restore start: backupBytes=${f.length()} rootfsExists=${rootfs.exists()}",
+            "terminal",
+        )
         // S1-b RESTORE-DIAG (2026-10-04, owner finding A): the full-uninstall restore
         // failure had no captured signature. Space is the prime suspect — the RG02
         // atomic swap needs room for the tmp extraction AND the staged old rootfs at the
@@ -345,8 +357,24 @@ object BackupManager {
         }
         // RG02: extract to a SIBLING temp dir (same filesystem → atomic renames).
         val tmp = File(rootfs.parentFile, "rootfs.restore.tmp")
-        tmp.deleteRecursively()
-        if (!tmp.mkdirs()) {
+        val oldDir = File(rootfs.parentFile, "rootfs.restore.old")
+        // 2026-10-11 advisor A+B: recover any half-finished swap FIRST (crash
+        // between the two renames), and clear stale temp state with the
+        // SYMLINK-SAFE delete. The old tmp.deleteRecursively() crashed with
+        // FileTreeWalk's AssertionError on a stale temp dir that contained both
+        // the bin link and its target subtree (bottom-up walk deleted the target
+        // first, then required the now-dangling link to be a directory) — an Error
+        // that sailed past catch(Exception) and killed the setup thread. The
+        // stale-temp delete also DELETED THROUGH directory symlinks.
+        val recovery = ContainerSafety.recoverHalfSwap(rootfs, oldDir, tmp)
+        com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] half-swap recovery: $recovery", "terminal")
+        Log.d(TAG, "[RESTORE-DIAG] half-swap recovery: $recovery")
+        onProgress(recovery)
+        val staleDelete = ContainerSafety.deleteTreeSafe(tmp)
+        if (!staleDelete.ok) {
+            Log.w(TAG, "[RESTORE-DIAG] stale temp cleanup: ${staleDelete.failed} entries could not be deleted")
+        }
+        if (!tmp.exists() && !tmp.mkdirs()) {
             return RestoreResult(0, 0, 0, false, "Could not create restore temp dir ${tmp.path}")
         }
 
@@ -365,7 +393,7 @@ object BackupManager {
         // and the LIVE container is untouched (the old code destroyed the live
         // rootfs first and reported success over a half-extracted container).
         if (fileFailures > 0 || !ext.bashOk) {
-            tmp.deleteRecursively()
+            ContainerSafety.deleteTreeSafe(tmp)
             val reason = if (fileFailures > 0) {
                 "$fileFailures of ${ext.totalEntries} entries could not be written " +
                     "(${ext.processed} processed, ${ext.duplicatesSkipped} duplicates skipped)." +
@@ -375,7 +403,11 @@ object BackupManager {
             }
             val msg = "Restore FAILED: $reason The current container was NOT modified; the backup file is untouched."
             onProgress("\u2717 $msg")
-            com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] $msg", "terminal")
+            val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[RESTORE-DIAG] $msg [processed=${ext.processed} of ${ext.totalEntries} entries, duplicates skipped=${ext.duplicatesSkipped}, elapsed=${elapsed / 1000}s]",
+                "terminal",
+            )
             return RestoreResult(filesWritten, fileFailures, symlinkWarnings, false, msg)
         }
 
@@ -384,24 +416,24 @@ object BackupManager {
         // container is not left deleted.
         if (rootfs.exists()) {
             val oldDir = File(rootfs.parentFile, "rootfs.restore.old")
-            oldDir.deleteRecursively()
+            ContainerSafety.deleteTreeSafe(oldDir)
             if (!rootfs.renameTo(oldDir)) {
-                tmp.deleteRecursively()
+                ContainerSafety.deleteTreeSafe(tmp)
                 val msg = "Restore FAILED: could not stage the old container for replacement. Nothing was modified."
                 onProgress("\u2717 $msg")
                 return RestoreResult(filesWritten, 0, symlinkWarnings, false, msg)
             }
             if (!tmp.renameTo(rootfs)) {
                 oldDir.renameTo(rootfs)  // roll back
-                tmp.deleteRecursively()
+                ContainerSafety.deleteTreeSafe(tmp)
                 val msg = "Restore FAILED: could not swap in the restored container. The original container was kept."
                 onProgress("\u2717 $msg")
                 return RestoreResult(filesWritten, 0, symlinkWarnings, false, msg)
             }
-            oldDir.deleteRecursively()
+            ContainerSafety.deleteTreeSafe(oldDir)
         } else {
             if (!tmp.renameTo(rootfs)) {
-                tmp.deleteRecursively()
+                ContainerSafety.deleteTreeSafe(tmp)
                 val msg = "Restore FAILED: could not place the restored container at ${rootfs.path}"
                 onProgress("\u2717 $msg")
                 return RestoreResult(filesWritten, 0, symlinkWarnings, false, msg)
@@ -411,9 +443,30 @@ object BackupManager {
         val warnNote = if (symlinkWarnings > 0) " ($symlinkWarnings symlinks skipped — see logcat)" else ""
         val dupNote = if (ext.duplicatesSkipped > 0) ", ${ext.duplicatesSkipped} duplicate entries skipped" else ""
         val verifyNote = " — key files: ${ext.verifyLines.joinToString(", ")}"
-        onProgress("\u2713 Restore complete: $filesWritten files$dupNote$warnNote$verifyNote")
+        val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
+        // C (2026-10-11): post-restore CONTAINER HEALTH — extraction success plus a
+        // present bash is NOT proof of a usable container. The 147 MB backup
+        // restored "successfully" on device and proot was launched against a
+        // gutted rootfs (execve /usr/bin/env ENOSYS). Health goes to Output with
+        // the restore result, and the verdict travels in the typed result so the
+        // caller can refuse to launch a damaged container.
+        val health = ContainerSafety.healthOf(rootfs)
+        val healthNote = if (health.ok) {
+            " — container health: healthy"
+        } else {
+            " — container health: DAMAGED (missing: ${health.missingCritical.joinToString(", ")})"
+        }
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[RESTORE-DIAG] restore end: ok=true healthy=${health.ok} files=$filesWritten " +
+                "processed=${ext.processed} of ${ext.totalEntries} duplicatesSkipped=${ext.duplicatesSkipped} " +
+                "symlinkWarnings=$symlinkWarnings elapsed=${elapsed / 1000}s\n" +
+                "[RESTORE-DIAG] container health: ${health.lines.joinToString("; ")}\n" +
+                "[RESTORE-DIAG] final state: ${health.verdict}",
+            "terminal",
+        )
+        onProgress("\u2713 Restore complete: $filesWritten files$dupNote$warnNote$verifyNote$healthNote")
         NotificationStore.add("Restore complete", "$filesWritten files restored from backup$dupNote$warnNote", NotificationStore.Type.BACKUP)
-        return RestoreResult(filesWritten, 0, symlinkWarnings, true, "Restored $filesWritten files$dupNote$warnNote$verifyNote")
+        return RestoreResult(filesWritten, 0, symlinkWarnings, true, "Restored $filesWritten files$dupNote$warnNote$verifyNote$healthNote", healthy = health.ok)
     }
 
     /**

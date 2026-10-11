@@ -310,13 +310,13 @@ object WorkspaceManager {
 
     /** Permanently deletes a single trash entry. */
     fun purgeTrashEntry(projectDir: File, entry: TrashEntry) {
-        File(trashDir(projectDir), entry.trashedName).deleteRecursively()
+        com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(File(trashDir(projectDir), entry.trashedName))
         removeTrashIndexEntry(projectDir, entry.trashedName)
     }
 
     /** Empties the entire trash for [projectDir]. */
     fun emptyTrash(projectDir: File) {
-        trashDir(projectDir).listFiles()?.forEach { it.deleteRecursively() }
+        trashDir(projectDir).listFiles()?.forEach { com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(it) }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -420,12 +420,12 @@ object WorkspaceManager {
 
     /** Permanently deletes a trashed project. Cannot be undone. */
     fun purgeTrashedProject(context: Context, entry: TrashedProject): Boolean {
-        return entry.trashedDir.deleteRecursively()
+        return com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(entry.trashedDir).ok
     }
 
     /** Empties the entire project trash bin. */
     fun emptyProjectTrash(context: Context) {
-        projectsTrashDir(context).listFiles()?.forEach { it.deleteRecursively() }
+        projectsTrashDir(context).listFiles()?.forEach { com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(it) }
     }
 
     /** Formats a byte count into a human-readable string. */

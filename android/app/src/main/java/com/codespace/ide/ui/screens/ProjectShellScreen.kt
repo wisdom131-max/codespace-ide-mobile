@@ -5322,7 +5322,7 @@ private fun handlePanelMenuAction(
             scope.launch {
                 onShowNotification("Cleaning build artifacts...", "info")
                 com.codespace.ide.diagnostics.AppOutputLog.log("Clean: removing build/ directory", "build")
-                try { java.io.File(projectRootPath, "build").deleteRecursively() } catch (_: Exception) {}
+                try { com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(java.io.File(projectRootPath, "build")) } catch (_: Exception) {}
                 onShowNotification("Clean complete", "success")
             }
         }
