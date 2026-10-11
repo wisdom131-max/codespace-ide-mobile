@@ -50,7 +50,11 @@ class BackupTarTest {
                 entries.forEach { (name, kind, data) ->
                     when (kind) {
                         "dir" -> {
-                            tar.putArchiveEntry(TarArchiveEntry(name))
+                            // TarArchiveEntry only treats a name as a directory
+                            // when it ends with "/" — without it the "directory"
+                            // arrives as a zero-byte FILE (exactly the bug class
+                            // this suite guards against).
+                            tar.putArchiveEntry(TarArchiveEntry(if (name.endsWith("/")) name else "$name/"))
                             tar.closeArchiveEntry()
                         }
                         "link" -> {

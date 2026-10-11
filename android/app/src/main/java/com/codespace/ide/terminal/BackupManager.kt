@@ -201,7 +201,8 @@ object BackupManager {
                 tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_STAR)
                 rootfs.walkTopDown()
                     // E17 writer fix (2026-10-11): the old walk followed dir
-                    // symlinks (bin -> usr/bin) and emitted bin/* traversal
+                    // symlinks (the bin link into usr/bin) and emitted one
+                    // duplicate entry under bin per file there
                     // duplicates — the exact restore hazard. The restore still
                     // ACCEPTS old archives; new backups stop carrying them.
                     .onEnter { !java.nio.file.Files.isSymbolicLink(it.toPath()) }
@@ -352,7 +353,7 @@ object BackupManager {
         // E17 device fix (2026-10-11): two-pass extraction through BackupTar —
         // scan (totals + symlink map) then extract (dirs/files, symlinks
         // DEFERRED last, traversal entries resolved, duplicates skipped and
-        // counted). The owner's 435 MB backup (old writer, bin/* traversal
+        // counted). The owner's 435 MB backup (old writer, entries under bin
         // entries) is accepted by design.
         val scan = BackupTar.scan(f)
         val ext = BackupTar.extract(f, tmp, scan) { msg -> onProgress(msg) }

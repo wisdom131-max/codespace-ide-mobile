@@ -177,9 +177,13 @@ object BackupTar {
                         } else if (!entry.isSymbolicLink) {
                             // Resolve through the archive's own symlinks; a guest
                             // directory symlink must not shadow the real file.
-                            val resolvedName = resolveThroughSymlinks(name, symlinkMap) ?: name
-                            val outFile = com.codespace.ide.util.CanonicalPaths.safeEntryDestination(dest, resolvedName)
-                            if (outFile == null) {
+                            // A resolution that ESCAPES the root is REJECTED —
+                            // never written, never faked as a real directory.
+                            val resolvedName = resolveThroughSymlinks(name, symlinkMap)
+                            val outFile = resolvedName?.let {
+                                com.codespace.ide.util.CanonicalPaths.safeEntryDestination(dest, it)
+                            }
+                            if (resolvedName == null || outFile == null) {
                                 // escapes the destination root — rejected, never written
                                 failures.add("rejected (escape): $name")
                             } else if (!written.add(resolvedName)) {
@@ -216,7 +220,8 @@ object BackupTar {
         var symlinksCreated = 0; var symlinkWarnings = 0
         scan.symlinks.forEach { info ->
             val outFile = com.codespace.ide.util.CanonicalPaths.safeEntryDestination(dest, info.name)
-            if (outFile == null) {
+            if (outFile == null || !symlinkTargetStaysInsideRoot(info.name, info.target)) {
+                // escapes the destination root — the link is never created
                 symlinkWarnings++
             } else {
                 runCatching {
@@ -246,6 +251,25 @@ object BackupTar {
         )
     }
 
+    /**
+     * A symlink target that climbs above the link's parent out of the root must
+     * never be created (absolute GUEST targets are fine — they are rootfs-relative
+     * under proot, exactly like the live container).
+     */
+    internal fun symlinkTargetStaysInsideRoot(linkPath: String, target: String): Boolean {
+        if (target.startsWith("/")) return true
+        var depth = linkPath.split('/').filter { it.isNotEmpty() && it != "." }.size - 1
+        if (depth < 0) depth = 0
+        for (seg in target.split('/')) {
+            when {
+                seg == ".." -> { if (depth == 0) return false; depth-- }
+                seg.isEmpty() || seg == "." -> {}
+                else -> depth++
+            }
+        }
+        return true
+    }
+
     private fun countEscapes(failures: List<String>): Int =
         failures.count { it.startsWith("rejected (escape)") }
 
@@ -263,44 +287,51 @@ object BackupTar {
         skipPrefixes: List<String>,
         onProgress: (String) -> Unit,
     ): Int {
-        var filesWritten = 0
-        var totalBytes = 0L
-        rootfs.walkTopDown()
-            .onEnter { !Files.isSymbolicLink(it.toPath()) }
-            .forEach { file ->
-                if (file == rootfs) return@forEach
-                val relPath = file.relativeTo(rootfs).path
-                if (relPath.startsWith("proc/") || relPath.startsWith("sys/") || relPath.startsWith("dev/")) return@forEach
-                if (skipPrefixes.any { relPath == it || relPath.startsWith("$it/") }) return@forEach
-                runCatching {
-                    when {
-                        Files.isSymbolicLink(file.toPath()) -> {
-                            val link = Files.readSymbolicLink(file.toPath())
-                            val symEntry = TarArchiveEntry(relPath, TarArchiveEntry.LF_SYMLINK)
-                            symEntry.linkName = link.toString()
-                            tar.putArchiveEntry(symEntry)
-                            tar.closeArchiveEntry()
-                        }
-                        file.isDirectory -> {
-                            tar.putArchiveEntry(TarArchiveEntry(file, relPath))
-                            tar.closeArchiveEntry()
-                        }
-                        else -> {
-                            val entry = TarArchiveEntry(file, relPath)
-                            entry.size = file.length()
-                            if (file.canExecute()) entry.mode = entry.mode or 0b001_001_001
-                            tar.putArchiveEntry(entry)
-                            file.inputStream().use { it.copyTo(tar) }
-                            tar.closeArchiveEntry()
-                            totalBytes += file.length()
-                        }
+        val counter = WriteCounter()
+        // Depth-first WITHOUT following directory symlinks. Kotlin's walkTopDown
+        // cannot express this: its onEnter hook suppresses the directory NODE
+        // itself, which would silently DROP every rootfs symlink (bin, lib...)
+        // from the archive. The symlink is EMITTED here, its children never.
+        fun visit(file: File) {
+            val relPath = file.relativeTo(rootfs).path
+            if (relPath.startsWith("proc/") || relPath.startsWith("sys/") || relPath.startsWith("dev/")) return
+            if (skipPrefixes.any { relPath == it || relPath.startsWith("$it/") }) return
+            runCatching {
+                when {
+                    Files.isSymbolicLink(file.toPath()) -> {
+                        val link = Files.readSymbolicLink(file.toPath())
+                        val symEntry = TarArchiveEntry(relPath, TarArchiveEntry.LF_SYMLINK)
+                        symEntry.linkName = link.toString()
+                        tar.putArchiveEntry(symEntry)
+                        tar.closeArchiveEntry()
                     }
-                    filesWritten++
-                    if (filesWritten % 500 == 0) onProgress("Backed up $filesWritten files (${totalBytes / (1024 * 1024)} MB)...")
+                    file.isDirectory -> {
+                        tar.putArchiveEntry(TarArchiveEntry(file, relPath))
+                        tar.closeArchiveEntry()
+                    }
+                    else -> {
+                        val entry = TarArchiveEntry(file, relPath)
+                        entry.size = file.length()
+                        if (file.canExecute()) entry.mode = entry.mode or 0b001_001_001
+                        tar.putArchiveEntry(entry)
+                        file.inputStream().use { it.copyTo(tar) }
+                        tar.closeArchiveEntry()
+                        counter.totalBytes += file.length()
+                    }
                 }
+                counter.filesWritten++
+                if (counter.filesWritten % 500 == 0) onProgress("Backed up ${counter.filesWritten} files (${counter.totalBytes / (1024 * 1024)} MB)...")
             }
-        return filesWritten
+            if (file.isDirectory && !Files.isSymbolicLink(file.toPath())) {
+                file.listFiles()?.forEach { visit(it) }
+            }
+        }
+        rootfs.listFiles()?.forEach { visit(it) }
+        return counter.filesWritten
     }
+
+    /** Mutable counters shared with the local visit function above. */
+    private class WriteCounter(var filesWritten: Int = 0, var totalBytes: Long = 0L)
 
     /** Tiny indirection so the JVM suite can hit the same open path as device. */
     object GzipOpen {
