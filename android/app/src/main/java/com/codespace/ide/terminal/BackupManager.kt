@@ -199,7 +199,13 @@ object BackupManager {
             TarArchiveOutputStream(gz).use { tar ->
                 tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
                 tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_STAR)
-                rootfs.walkTopDown().forEach { file ->
+                rootfs.walkTopDown()
+                    // E17 writer fix (2026-10-11): the old walk followed dir
+                    // symlinks (bin -> usr/bin) and emitted bin/* traversal
+                    // duplicates — the exact restore hazard. The restore still
+                    // ACCEPTS old archives; new backups stop carrying them.
+                    .onEnter { !java.nio.file.Files.isSymbolicLink(it.toPath()) }
+                    .forEach { file ->
                     if (file == rootfs) return@forEach
                     val relPath = file.relativeTo(rootfs).path
                     // Skip proc/sys/dev virtual mounts — never real files worth archiving,
@@ -343,79 +349,30 @@ object BackupManager {
             return RestoreResult(0, 0, 0, false, "Could not create restore temp dir ${tmp.path}")
         }
 
-        var filesWritten = 0
-        var fileFailures = 0
-        var symlinkWarnings = 0
-        // S1-b RESTORE-DIAG: capture the FIRST hard file failure's real exception —
-        // the old code counted failures and logged the entry name but swallowed the
-        // throwable, so a disk-full / EACCES verdict was invisible in the report.
-        var firstFailureDetail: String? = null
-        GzipCompressorInputStream(f.inputStream()).use { gz ->
-            TarArchiveInputStream(gz).use { tar ->
-                var entry = tar.nextEntry
-                while (entry != null) {
-                    // RG07 (P2a): entry names arrive from a backup archive file and were
-                    // used RAW at the extraction sink — a crafted archive could write
-                    // outside rootfs. Contain every destination (ProotInstaller.kt:107
-                    // boundary); rejected entries are logged and skipped (nextEntry
-                    // skips their data).
-                    val outFile = com.codespace.ide.util.CanonicalPaths.safeEntryDestination(rootfs, entry.name)
-                    if (outFile == null) {
-                        Log.w(TAG, "Rejected rootfs tar entry (escape attempt): ${entry.name}")
-                        entry = tar.nextEntry
-                        continue
-                    }
-                    var entryFailed = false
-                    when {
-                        entry.isDirectory -> if (!outFile.exists() && !outFile.mkdirs()) entryFailed = true
-                        entry.isSymbolicLink -> {
-                            // RG02: symlink creation is best-effort (kernels block the
-                            // syscall on some devices) — counted as a WARNING, not a
-                            // hard failure, but no longer invisible.
-                            runCatching {
-                                val link = outFile.toPath()
-                                val target = java.nio.file.Paths.get(entry.linkName)
-                                outFile.parentFile?.mkdirs()
-                                if (java.nio.file.Files.exists(link) || java.nio.file.Files.isSymbolicLink(link))
-                                    java.nio.file.Files.delete(link)
-                                java.nio.file.Files.createSymbolicLink(link, target)
-                            }.onFailure { symlinkWarnings++; Log.w(TAG, "Symlink restore failed ${entry.name}: ${it.message}") }
-                        }
-                        else -> {
-                            outFile.parentFile?.mkdirs()
-                            val copyOutcome = runCatching {
-                                outFile.outputStream().use { out -> tar.copyTo(out) }
-                                if ((entry.mode and 0b001_001_001) != 0) outFile.setExecutable(true, false)
-                                outFile.setReadable(true, false)
-                            }
-                            // RG02: a failed FILE copy is a HARD failure — the old code
-                            // logged and continued, producing a broken container.
-                            if (copyOutcome.isFailure) {
-                                fileFailures++
-                                val cause = copyOutcome.exceptionOrNull()
-                                Log.e(TAG, "Restore failed ${entry.name}: ${cause?.javaClass?.simpleName}: ${cause?.message}")
-                                if (firstFailureDetail == null) {
-                                    firstFailureDetail = "${cause?.javaClass?.simpleName}: ${cause?.message} (entry ${entry.name})"
-                                }
-                                entryFailed = true
-                            }
-                        }
-                    }
-                    if (entryFailed) return@use
-                    filesWritten++
-                    if (filesWritten % 500 == 0) onProgress("Restored $filesWritten files...")
-                    entry = tar.nextEntry
-                }
-            }
-        }
+        // E17 device fix (2026-10-11): two-pass extraction through BackupTar —
+        // scan (totals + symlink map) then extract (dirs/files, symlinks
+        // DEFERRED last, traversal entries resolved, duplicates skipped and
+        // counted). The owner's 435 MB backup (old writer, bin/* traversal
+        // entries) is accepted by design.
+        val scan = BackupTar.scan(f)
+        val ext = BackupTar.extract(f, tmp, scan) { msg -> onProgress(msg) }
+        val filesWritten = ext.filesWritten
+        val fileFailures = ext.fileFailures
+        val symlinkWarnings = ext.symlinkWarnings
 
         // RG02: any hard file failure ABORTS — the temp extraction is discarded
         // and the LIVE container is untouched (the old code destroyed the live
         // rootfs first and reported success over a half-extracted container).
-        if (fileFailures > 0) {
+        if (fileFailures > 0 || !ext.bashOk) {
             tmp.deleteRecursively()
-            val detailNote = firstFailureDetail?.let { " First failure: $it." } ?: ""
-            val msg = "Restore FAILED: $fileFailures of ${filesWritten + fileFailures} entries could not be written. The current container was NOT modified; the backup file is untouched.$detailNote"
+            val reason = if (fileFailures > 0) {
+                "$fileFailures of ${ext.totalEntries} entries could not be written " +
+                    "(${ext.processed} processed, ${ext.duplicatesSkipped} duplicates skipped)." +
+                    (ext.firstFailure?.let { " First failure: $it." } ?: "")
+            } else {
+                "the archive extracted without file errors but is missing usr/bin/bash — not a working container."
+            }
+            val msg = "Restore FAILED: $reason The current container was NOT modified; the backup file is untouched."
             onProgress("\u2717 $msg")
             com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] $msg", "terminal")
             return RestoreResult(filesWritten, fileFailures, symlinkWarnings, false, msg)
@@ -451,9 +408,11 @@ object BackupManager {
         }
 
         val warnNote = if (symlinkWarnings > 0) " ($symlinkWarnings symlinks skipped — see logcat)" else ""
-        onProgress("\u2713 Restore complete: $filesWritten files.$warnNote")
-        NotificationStore.add("Restore complete", "$filesWritten files restored from backup$warnNote", NotificationStore.Type.BACKUP)
-        return RestoreResult(filesWritten, 0, symlinkWarnings, true, "Restored $filesWritten files$warnNote")
+        val dupNote = if (ext.duplicatesSkipped > 0) ", ${ext.duplicatesSkipped} duplicate entries skipped" else ""
+        val verifyNote = " — key files: ${ext.verifyLines.joinToString(", ")}"
+        onProgress("\u2713 Restore complete: $filesWritten files$dupNote$warnNote$verifyNote")
+        NotificationStore.add("Restore complete", "$filesWritten files restored from backup$dupNote$warnNote", NotificationStore.Type.BACKUP)
+        return RestoreResult(filesWritten, 0, symlinkWarnings, true, "Restored $filesWritten files$dupNote$warnNote$verifyNote")
     }
 
     /**
@@ -517,6 +476,16 @@ object BackupManager {
             restorePrefs(context)
             setContainerPrompt(context, true)
         } else {
+            // SAFETY GATE (2026-10-11, advisor E17 item 0): a fresh install that
+            // has not restored its container yet must NEVER rewrite prefs-backup —
+            // if live prefs somehow gained data before the restore landed (a
+            // project picked, a prefs write), the else-branch would back the
+            // FRESH-INSTALL prefs over the good backup. No container = backup
+            // writes skipped; the next start after a successful restore resumes.
+            val containerReady = runCatching { ProotInstaller.isInstalled(context) }.getOrDefault(false)
+            if (!containerReady) {
+                Log.w(TAG, "RG05 onAppStart: container not installed (fresh install / restore pending) — prefs-backup refresh SKIPPED to protect the backup")
+            } else {
             val prefsBackup = backupPrefs(context)
             if (!prefsBackup.ok) {
                 Log.w(TAG, "RG05 onAppStart: prefs backup reported ${prefsBackup.failedNames.size} failure(s) — launch continues; see the ERROR line above")
@@ -526,6 +495,7 @@ object BackupManager {
             val stale = !hasBackup() ||
                 System.currentTimeMillis() - backupFile().lastModified() >= 7L * 24 * 60 * 60 * 1000
             if (rootfs.exists() && stale) setContainerPrompt(context, true)
+            }
         }
         marker.parentFile?.mkdirs()
         try {
