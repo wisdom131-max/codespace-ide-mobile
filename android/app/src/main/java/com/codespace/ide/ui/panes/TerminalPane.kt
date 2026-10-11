@@ -1947,7 +1947,7 @@ internal fun TerminalPane(
         // waiting or running — one tap re-runs the restore flow on the Ubuntu tab.
         if (!showGrantChoice &&
             com.codespace.ide.terminal.BackupManager.hasBackup() &&
-            !com.codespace.ide.terminal.ProotInstaller.isInstalled(ctx) &&
+            !com.codespace.ide.terminal.ProotInstaller.isInstalled(context) &&
             !com.codespace.ide.terminal.ProotInstaller.isInstallRunning()
         ) {
             Row(

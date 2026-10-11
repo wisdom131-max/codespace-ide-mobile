@@ -167,10 +167,11 @@ object BackupTar {
             TarArchiveInputStream(raw).use { tar ->
                 var entry: TarArchiveEntry? = tar.nextEntry
                 while (entry != null) {
-                    val name = normalize(entry.name)
+                    val cur: TarArchiveEntry = entry
+                    val name = normalize(cur.name)
                     if (name.isNotEmpty()) {
                         processed++
-                        if (entry.isDirectory) {
+                        if (cur.isDirectory) {
                             val outFile = com.codespace.ide.util.CanonicalPaths.safeEntryDestination(dest, name)
                             if (outFile != null && (outFile.exists() || outFile.mkdirs())) dirsWritten++
                         } else if (!entry.isSymbolicLink) {
@@ -187,7 +188,7 @@ object BackupTar {
                                 outFile.parentFile?.mkdirs()
                                 val outcome = runCatching {
                                     outFile.outputStream().use { out -> tar.copyTo(out) }
-                                    if ((entry.mode and 0b001_001_001) != 0) outFile.setExecutable(true, false)
+                                    if ((cur.mode and 0b001_001_001) != 0) outFile.setExecutable(true, false)
                                     outFile.setReadable(true, false)
                                 }
                                 if (outcome.isFailure) {
@@ -304,7 +305,7 @@ object BackupTar {
     /** Tiny indirection so the JVM suite can hit the same open path as device. */
     object GzipOpen {
         fun open(file: File): InputStream =
-            org.apache.commons.compress.utils.IOUtils.buffer(
+            java.io.BufferedInputStream(
                 org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream(file.inputStream())
             )
     }
