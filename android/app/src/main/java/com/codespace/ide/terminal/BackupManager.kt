@@ -207,7 +207,7 @@ object BackupManager {
         val rootfs = ProotInstaller.rootfsDir(context)
         if (!rootfs.exists()) {
             onProgress("Nothing to back up — Ubuntu isn't installed yet.")
-            return
+            return CreateBackupOutcome.REFUSED_EMPTY
         }
         // D (2026-10-11): NEVER back up a damaged container — the 147 MB backup
         // was written over a partially-broken rootfs and then overwrote the
