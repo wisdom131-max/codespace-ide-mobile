@@ -165,6 +165,35 @@ class ContainerSafetyTest {
         assertTrue(report.contains("stale restore temp"))
     }
 
+    /** Swap completed but the OLD tree was never deleted (crash before cleanup): old discarded, container untouched. */
+    @Test
+    fun halfSwapRecoveryDiscardsLeftoverOld() {
+        val base = tempDir("b5")
+        val rootfs = makeContainer(base, healthy = true)
+        val before = File(rootfs, "usr/bin/bash").readText()
+        val leftoverOld = makeContainer(File(base, "x"), healthy = true).let {
+            val m = File(base, "rootfs.restore.old")
+            it.renameTo(m)
+            m
+        }
+        val report = ContainerSafety.recoverHalfSwap(rootfs, leftoverOld, File(base, "rootfs.restore.tmp"))
+        assertTrue(rootfs.exists())
+        assertEquals(before, File(rootfs, "usr/bin/bash").readText())
+        assertFalse(leftoverOld.exists())
+        assertTrue(report.contains("staged old container discarded"))
+    }
+
+    /** Fresh state (no rootfs, no leftovers): recovery is a clean no-op report. */
+    @Test
+    fun halfSwapRecoveryOnFreshStateIsNoOp() {
+        val base = tempDir("b6")
+        val report = ContainerSafety.recoverHalfSwap(
+            File(base, "rootfs"), File(base, "rootfs.restore.old"), File(base, "rootfs.restore.tmp"),
+        )
+        assertTrue(report.contains("fresh install state"))
+        assertFalse("recovery must not conjure a container from nothing", File(base, "rootfs").exists())
+    }
+
     // ── C: container health ───────────────────────────────────────────────
 
     @Test

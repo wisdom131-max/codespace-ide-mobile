@@ -2041,7 +2041,10 @@ internal fun TerminalPane(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "A container backup was found, but no Ubuntu is installed on this device.",
+                    // Advisor item 2 (2026-10-11): size + date of the EXACT file
+                    // about to be restored, so the wrong-file restore is visible
+                    // before it happens (435 MB from Oct 9 vs a stray 147 MB file).
+                    "A container backup was found (${com.codespace.ide.terminal.BackupManager.backupInfo() ?: "unreadable"}), but no Ubuntu is installed on this device.",
                     color = Color(0xFFCCCCCC),
                     fontSize = 12.sp,
                     modifier = Modifier.weight(1f),

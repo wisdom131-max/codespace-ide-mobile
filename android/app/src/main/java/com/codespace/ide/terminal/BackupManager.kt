@@ -62,6 +62,22 @@ object BackupManager {
 
     fun deleteBackup(): Boolean = backupFile().let { !it.exists() || it.delete() }
 
+    /** D follow-up (advisor 2026-10-11 item 3): typed createBackup outcome so the
+     *  UI can implement the small-backup confirmation flow instead of guessing
+     *  from progress strings. */
+    enum class CreateBackupOutcome {
+        SAVED,
+        /** The new archive is much smaller than the existing backup — NOTHING was
+         *  overwritten; the user must tap again to confirm (forceOverwriteSmaller). */
+        SHRINK_CONFIRMATION_NEEDED,
+        /** The container failed the health gate — backup refused, existing file untouched. */
+        REFUSED_DAMAGED,
+        REFUSED_EMPTY,
+        FAILED_VERIFY,
+        FAILED_MOVE,
+        FAILED_STAGE_PREVIOUS,
+    }
+
     // ── Owner finding (B) (2026-10-01): downloaded LSP server files live guest-side
     // under /opt and were LOST on full uninstall — the container restore can fail or
     // the container backup can be older than the newest server installs, and nothing
@@ -183,7 +199,11 @@ object BackupManager {
      * file first and renames atomically on success, so an interrupted backup never leaves a
      * corrupt file behind that a later restore would silently fail (or partially fail) on.
      */
-    fun createBackup(context: Context, onProgress: (String) -> Unit) {
+    fun createBackup(
+        context: Context,
+        onProgress: (String) -> Unit,
+        forceOverwriteSmaller: Boolean = false,
+    ): CreateBackupOutcome {
         val rootfs = ProotInstaller.rootfsDir(context)
         if (!rootfs.exists()) {
             onProgress("Nothing to back up — Ubuntu isn't installed yet.")
@@ -198,7 +218,7 @@ object BackupManager {
             val msg = "Refusing to back up: the container is damaged (missing ${health.missingCritical.joinToString(", ")}). Restore it first — the existing backup was NOT touched."
             onProgress("\u2717 $msg")
             com.codespace.ide.diagnostics.AppOutputLog.log("[BACKUP-DIAG] $msg", "terminal")
-            return
+            return CreateBackupOutcome.REFUSED_DAMAGED
         }
         backupDir().mkdirs()
         val tmp = File(backupDir(), "$BACKUP_FILE.tmp")
@@ -227,7 +247,7 @@ object BackupManager {
         if (filesWritten <= 0) {
             tmp.delete()
             onProgress("\u2717 Backup failed: no files were written. The existing backup was NOT touched.")
-            return
+            return CreateBackupOutcome.REFUSED_EMPTY
         }
         val verify = ContainerSafety.verifyBackupArchive(tmp)
         if (!verify.ok) {
@@ -235,25 +255,42 @@ object BackupManager {
             val msg = "Backup NOT saved: the written archive failed verification (${verify.verdict}). The existing backup was NOT touched."
             onProgress("\u2717 $msg")
             com.codespace.ide.diagnostics.AppOutputLog.log("[BACKUP-DIAG] $msg", "terminal")
-            return
+            return CreateBackupOutcome.FAILED_VERIFY
         }
         val target = backupFile()
         val prev = File(backupDir(), "$BACKUP_FILE.prev")
+        // Advisor item 3 (2026-10-11): a new archive much smaller than the one it
+        // would replace is the signature of backing up a gutted container (the
+        // 435 MB -> 147 MB overwrite). Refuse the swap once; the caller re-invokes
+        // with forceOverwriteSmaller after an explicit confirmation.
+        if (target.exists() && !forceOverwriteSmaller &&
+            tmp.length() * 10 < target.length() * 6
+        ) {
+            val newMb = tmp.length() / (1024 * 1024)
+            val oldMb = target.length() / (1024 * 1024)
+            tmp.delete()
+            val msg = "Backup NOT saved yet: the new archive would be $newMb MB, much smaller than the current backup ($oldMb MB). " +
+                "This can mean the container lost files. Tap \"Back up now\" again to confirm replacing it — the current file will be kept as container-backup.prev either way."
+            onProgress("\u2717 $msg")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[BACKUP-DIAG] shrink confirmation: new=$newMb MB vs current=$oldMb MB — nothing overwritten", "terminal")
+            return CreateBackupOutcome.SHRINK_CONFIRMATION_NEEDED
+        }
         if (target.exists()) {
             prev.delete()
             if (!target.renameTo(prev)) {
                 tmp.delete()
                 onProgress("\u2717 Backup NOT saved: the previous backup could not be kept aside. Nothing was overwritten.")
-                return
+                return CreateBackupOutcome.FAILED_STAGE_PREVIOUS
             }
         }
         if (!tmp.renameTo(target)) {
             prev.renameTo(target)  // roll back
             onProgress("\u2717 Backup NOT saved: the new archive could not be moved into place. The previous backup was kept.")
-            return
+            return CreateBackupOutcome.FAILED_MOVE
         }
         onProgress("\u2713 Backup complete: $filesWritten files, ${target.length() / (1024 * 1024)} MB \u2192 ${target.path} (previous kept as ${prev.name})")
         NotificationStore.add("Backup complete", "$filesWritten files saved to ${target.name}", NotificationStore.Type.BACKUP)
+        return CreateBackupOutcome.SAVED
     }
 
     /**
@@ -349,10 +386,19 @@ object BackupManager {
             val diag = "[RESTORE-DIAG] restore start: backupMb=${f.length() / (1024 * 1024)} usableMb=$usableMb rootfsExists=${rootfs.exists()}"
             Log.d(TAG, diag)
             com.codespace.ide.diagnostics.AppOutputLog.log(diag, "terminal")
-            if (usableMb < 300) {
-                val warn = "[RESTORE-DIAG] LOW SPACE WARNING: ${usableMb}MB usable — the atomic swap needs room for the temp extraction plus the staged old rootfs; restore may fail mid-way"
-                Log.w(TAG, warn)
-                com.codespace.ide.diagnostics.AppOutputLog.log(warn, "terminal")
+        }.also {
+            // Advisor item 7 (2026-10-11): a REAL refusal with plain words, not a
+            // logcat warning. The restore needs room for the decompressed
+            // extraction (~3x the tarball is the safe envelope on this device's
+            // FUSE storage) PLUS the staged old container until the swap lands.
+            val usableMb = (ProotInstaller.rootfsDir(context).parentFile?.usableSpace ?: 0L) / (1024 * 1024)
+            val neededMb = (f.length() / (1024 * 1024)) * 3
+            if (usableMb < neededMb) {
+                val msg = "Restore needs about $neededMb MB of free space, but this device has only $usableMb MB. " +
+                    "Free some space (old downloads, unused apps) and try again — nothing was changed and the backup is untouched."
+                onProgress("\u2717 $msg")
+                com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] space refusal: needs~${neededMb}MB, usable=${usableMb}MB", "terminal")
+                return RestoreResult(0, 0, 0, false, msg)
             }
         }
         // RG02: extract to a SIBLING temp dir (same filesystem → atomic renames).
@@ -411,6 +457,24 @@ object BackupManager {
             return RestoreResult(filesWritten, fileFailures, symlinkWarnings, false, msg)
         }
 
+        // Advisor item 5a (2026-10-11): the health gate runs BEFORE the swap, not
+        // after it. A damaged backup (the 147 MB file) now aborts with the LIVE
+        // container untouched and the backup untouched — previously the swap
+        // happened first, so a failed health check had already replaced the
+        // live rootfs with the damaged one.
+        val health = ContainerSafety.healthOf(tmp)
+        if (!health.ok) {
+            ContainerSafety.deleteTreeSafe(tmp)
+            val msg = "Restore FAILED: the backup contains a damaged container — missing ${health.missingCritical.joinToString(", ")}. " +
+                "The current container was NOT modified; the backup file is untouched. " +
+                "Restore a different backup file (for example the original 435 MB copy from Documents) or download a fresh Ubuntu."
+            onProgress("\u2717 $msg")
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[RESTORE-DIAG] pre-swap health gate refused: ${health.verdict}\n[RESTORE-DIAG] health: ${health.lines.joinToString("; ")}",
+                "terminal",
+            )
+            return RestoreResult(filesWritten, 0, symlinkWarnings, false, msg)
+        }
         // RG02: atomic swap — live rootfs only disappears once the full
         // replacement exists. If any rename fails, roll back so the live
         // container is not left deleted.
@@ -444,13 +508,9 @@ object BackupManager {
         val dupNote = if (ext.duplicatesSkipped > 0) ", ${ext.duplicatesSkipped} duplicate entries skipped" else ""
         val verifyNote = " — key files: ${ext.verifyLines.joinToString(", ")}"
         val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
-        // C (2026-10-11): post-restore CONTAINER HEALTH — extraction success plus a
-        // present bash is NOT proof of a usable container. The 147 MB backup
-        // restored "successfully" on device and proot was launched against a
-        // gutted rootfs (execve /usr/bin/env ENOSYS). Health goes to Output with
-        // the restore result, and the verdict travels in the typed result so the
-        // caller can refuse to launch a damaged container.
-        val health = ContainerSafety.healthOf(rootfs)
+        // C (2026-10-11): the health verdict travels with the typed result (the
+        // gate itself ran pre-swap above; tmp was moved verbatim into rootfs, so
+        // the pre-swap report IS the final state).
         val healthNote = if (health.ok) {
             " — container health: healthy"
         } else {
@@ -464,7 +524,10 @@ object BackupManager {
                 "[RESTORE-DIAG] final state: ${health.verdict}",
             "terminal",
         )
+        // Advisor item 4 (2026-10-11): the final verdict in PLAIN WORDS in the
+        // terminal itself (every onProgress line lands there), not just Output.
         onProgress("\u2713 Restore complete: $filesWritten files$dupNote$warnNote$verifyNote$healthNote")
+        onProgress("Your Ubuntu container is restored and usable. Projects and tools are back; nothing else to do.")
         NotificationStore.add("Restore complete", "$filesWritten files restored from backup$dupNote$warnNote", NotificationStore.Type.BACKUP)
         return RestoreResult(filesWritten, 0, symlinkWarnings, true, "Restored $filesWritten files$dupNote$warnNote$verifyNote$healthNote", healthy = health.ok)
     }

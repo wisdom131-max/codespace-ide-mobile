@@ -457,6 +457,9 @@ fun SettingsScreen(
             Text("Container Backup", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             var backupInfo by remember { mutableStateOf(BackupManager.backupInfo()) }
             var backupStatus by remember { mutableStateOf("") }
+            // Advisor item 3 (2026-10-11): armed when createBackup reports
+            // SHRINK_CONFIRMATION_NEEDED — the NEXT "Back up now" tap confirms.
+            var confirmShrinkBackup by remember { mutableStateOf(false) }
             var backupRunning by remember { mutableStateOf(false) }
             var showRestoreConfirm by remember { mutableStateOf(false) }
 
@@ -477,7 +480,12 @@ fun SettingsScreen(
                                 if (!prefsBackup.ok) {
                                     backupStatus = "Prefs backup failed for ${prefsBackup.failedNames.size} file(s) — see logcat (BackupManager)"
                                 }
-                                BackupManager.createBackup(context) { msg -> backupStatus = msg }
+                                val outcome = BackupManager.createBackup(
+                                    context,
+                                    { msg -> backupStatus = msg },
+                                    forceOverwriteSmaller = confirmShrinkBackup,
+                                )
+                                confirmShrinkBackup = outcome == BackupManager.CreateBackupOutcome.SHRINK_CONFIRMATION_NEEDED
                             }
                             backupInfo = BackupManager.backupInfo()
                             backupRunning = false
@@ -511,7 +519,12 @@ fun SettingsScreen(
                                 if (!prefsBackup.ok) {
                                     backupStatus = "Prefs backup failed for ${prefsBackup.failedNames.size} file(s) — see logcat (BackupManager)"
                                 }
-                                BackupManager.createBackup(context) { msg -> backupStatus = msg }
+                                val outcome = BackupManager.createBackup(
+                                    context,
+                                    { msg -> backupStatus = msg },
+                                    forceOverwriteSmaller = confirmShrinkBackup,
+                                )
+                                confirmShrinkBackup = outcome == BackupManager.CreateBackupOutcome.SHRINK_CONFIRMATION_NEEDED
                             }
                             backupInfo = BackupManager.backupInfo()
                             backupRunning = false
