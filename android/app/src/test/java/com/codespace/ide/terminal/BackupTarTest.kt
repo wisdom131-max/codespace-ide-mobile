@@ -18,7 +18,7 @@ import java.nio.file.Files
  * E17 device round-trip (2026-10-11, advisor item 1a): reproduce the EXACT
  * archive shape that failed on the owner's device — a backup made by the OLD
  * writer, whose walkTopDown followed the "bin -> usr/bin" directory symlink and
- * emitted bin/* traversal entries ordered AFTER the symlink itself:
+ * emitted traversal entries under bin (one per file there) ordered AFTER the
  *
  *   ./                       (dir)
  *   bin -> usr/bin           (symlink)
