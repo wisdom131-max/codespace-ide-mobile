@@ -106,20 +106,20 @@ class BackupTarTest {
         )
         val dest = tempDir("restore-dest")
         val scan = BackupTar.scan(archive)
-        assertEquals(6, scan.totalEntries, "scan totals (the './' header is rejected, not counted)")
+        assertEquals(6, scan.totalEntries)
         val result = BackupTar.extract(archive, dest, scan) { }
 
-        assertEquals(0, result.fileFailures, "no file failures — the device bug is fixed")
-        assertEquals(1, result.duplicatesSkipped, "the traversal duplicate is skipped, counted, not silent")
-        assertTrue(result.bashOk, "usr/bin/bash must exist")
-        assertEquals(1, result.symlinksCreated, "bin -> usr/bin symlink created (deferred, after files)")
+        assertEquals(0, result.fileFailures)
+        assertEquals(1, result.duplicatesSkipped)
+        assertTrue(result.bashOk)
+        assertEquals(1, result.symlinksCreated)
         // The traversal entry landed at its REAL destination...
         assertEquals(
             "apt script",
             File(dest, "usr/bin/add-apt-repository").readText(),
         )
         // ...and bin is a symlink, NOT a directory stuffed with duplicates.
-        assertTrue(Files.isSymbolicLink(File(dest, "bin").toPath()), "bin is a symlink")
+        assertTrue(Files.isSymbolicLink(File(dest, "bin").toPath()))
         assertTrue(result.verifyLines.any { it.startsWith("bash ") && it.endsWith("\u2713") })
     }
 
@@ -139,9 +139,9 @@ class BackupTarTest {
         val result = BackupTar.extract(archive, dest, scan) { }
 
         assertEquals(0, result.fileFailures)
-        assertTrue(result.rejectedEntries >= 1, "the escaping entry is rejected")
-        assertFalse(File(dest, "x/l/evil").exists(), "nothing written through the escaping symlink")
-        assertTrue(result.bashOk, "the innocent entries still restore")
+        assertTrue(result.rejectedEntries >= 1)
+        assertFalse(File(dest, "x/l/evil").exists())
+        assertTrue(result.bashOk)
     }
 
     /** 1b: guest-ABSOLUTE symlink targets resolve INSIDE the root, never the host root. */
@@ -184,8 +184,8 @@ class BackupTarTest {
         archive.writeBytes(bytes.toByteArray())
         val names = entryNames(archive).map { it.first }
 
-        assertTrue(names.none { it.startsWith("bin/") }, "no traversal entries through bin")
-        assertTrue(names.contains("bin"), "the bin symlink itself is kept")
+        assertTrue(names.none { it.startsWith("bin/") })
+        assertTrue(names.contains("bin"))
         assertTrue(names.contains("usr/bin/bash"))
     }
 
@@ -204,11 +204,11 @@ class BackupTarTest {
         val result = BackupTar.extract(archive, dest, scan) { }
         dest.setWritable(true)
 
-        assertEquals(2, result.fileFailures, "every file failure is counted (no early abort)")
-        assertEquals(2, result.totalEntries, "totals come from the scan pass")
-        assertEquals(2, result.processed, "processed counts every entry it saw")
-        assertFalse(result.bashOk, "bash never landed — the swap must be refused")
-        assertTrue(result.firstFailure!!.contains("usr/bin/bash"), "first failure names its entry")
+        assertEquals(2, result.fileFailures)
+        assertEquals(2, result.totalEntries)
+        assertEquals(2, result.processed)
+        assertFalse(result.bashOk)
+        assertTrue(result.firstFailure!!.contains("usr/bin/bash"))
     }
 
     /** 1c: post-swap verify reports node/python3 as present/absent, bash required. */
@@ -223,7 +223,7 @@ class BackupTarTest {
         val scan = BackupTar.scan(archive)
         val result = BackupTar.extract(archive, dest, scan) { }
         assertTrue(result.bashOk)
-        assertTrue(result.verifyLines.any { it.startsWith("node ") && it.endsWith("\u2014") }, "node reported absent, not fatal")
+        assertTrue(result.verifyLines.any { it.startsWith("node ") && it.endsWith("\u2014") })
         assertTrue(result.verifyLines.any { it.startsWith("python3 ") && it.endsWith("\u2014") })
     }
 }
