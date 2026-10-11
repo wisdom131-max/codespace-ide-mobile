@@ -57,10 +57,27 @@ object BackupManager {
         val mb = f.length() / (1024.0 * 1024.0)
         val date = java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault())
             .format(java.util.Date(f.lastModified()))
-        return "%.1f MB • %s".format(mb, date)
+        // Advisor item 2 (2026-10-11): SIZE is the primary identifier; the
+        // date is labelled "modified" because the Files app resets it on copy —
+        // it is never an integrity check.
+        return "%.1f MB (modified %s)".format(mb, date)
     }
 
     fun deleteBackup(): Boolean = backupFile().let { !it.exists() || it.delete() }
+
+    /** Advisor item 3 (2026-10-11): the previous generation, kept after every
+     *  successful backup. Restoring it is an explicit owner choice — never a
+     *  silent fallback. */
+    fun previousBackupFile(): File = File(backupDir(), "$BACKUP_FILE.prev")
+
+    fun previousBackupInfo(): String? {
+        val f = previousBackupFile()
+        if (!f.exists()) return null
+        val mb = f.length() / (1024.0 * 1024.0)
+        val date = java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(f.lastModified()))
+        return "%.1f MB (modified %s)".format(mb, date)
+    }
 
     /** D follow-up (advisor 2026-10-11 item 3): typed createBackup outcome so the
      *  UI can implement the small-backup confirmation flow instead of guessing
@@ -351,7 +368,14 @@ object BackupManager {
      * dir and swapped ATOMICALLY on success; any hard file-write failure
      * aborts with the live rootfs untouched.
      */
-    fun restoreBackup(context: Context, onProgress: (String) -> Unit): RestoreResult {
+    fun restoreBackup(
+        context: Context,
+        onProgress: (String) -> Unit,
+        // Advisor item 3 (2026-10-11): restore reads container-backup.tar.gz ONLY;
+        // the previous generation (.prev) is a separate, clearly-labeled owner
+        // choice — never a silent fallback.
+        usePrevious: Boolean = false,
+    ): RestoreResult {
         val startedAt = android.os.SystemClock.elapsedRealtime()
         // E17 grant gate (2026-10-07): the backup tarball lives in shared storage;
         // without the All-files-access grant FUSE lets exists() pass and open()
@@ -364,12 +388,24 @@ object BackupManager {
             onProgress("Restore needs the \"All files access\" permission.")
             return RestoreResult(0, 0, 0, false, msg, needsGrant = true)
         }
-        val f = backupFile()
+        val f = if (usePrevious) File(backupDir(), "$BACKUP_FILE.prev") else backupFile()
         if (!f.exists()) {
             onProgress("No backup found at ${f.path}")
             return RestoreResult(0, 0, 0, false, "No backup found at ${f.path}")
         }
         val rootfs = ProotInstaller.rootfsDir(context)
+        // Advisor item 3 (2026-10-11): EXACT file identity at restore start —
+        // path, size in BYTES (the primary identifier), modified time (labelled
+        // as modified; Android's Files app can reset it on copy, so it is NEVER
+        // treated as an integrity check).
+        val fModified = java.text.SimpleDateFormat("MMM d, yyyy HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date(f.lastModified()))
+        onProgress("Restoring from: ${f.name}")
+        onProgress("  Size: ${f.length()} bytes (${f.length() / (1024.0 * 1024.0).toInt()} MB) — modified $fModified")
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[RESTORE-DIAG] file identity: path=${f.path} bytes=${f.length()} modified=$fModified usePrevious=$usePrevious",
+            "terminal",
+        )
         onProgress("Restoring container from backup (${f.length() / (1024 * 1024)} MB)...")
         com.codespace.ide.diagnostics.AppOutputLog.log(
             "[RESTORE-DIAG] restore start: backupBytes=${f.length()} rootfsExists=${rootfs.exists()}",
@@ -527,7 +563,20 @@ object BackupManager {
         // Advisor item 4 (2026-10-11): the final verdict in PLAIN WORDS in the
         // terminal itself (every onProgress line lands there), not just Output.
         onProgress("\u2713 Restore complete: $filesWritten files$dupNote$warnNote$verifyNote$healthNote")
-        onProgress("Your Ubuntu container is restored and usable. Projects and tools are back; nothing else to do.")
+        // Full plain summary: entries, duplicates, links, health, next steps.
+        onProgress("Summary:")
+        onProgress("  Files restored: $filesWritten (of ${ext.totalEntries} entries in the backup; ${ext.duplicatesSkipped} duplicate entries skipped)")
+        onProgress("  Symlinks created: ${ext.symlinksCreated} (warnings: $symlinkWarnings)")
+        onProgress("  Health check: bash ${if (File(rootfs, "usr/bin/bash").exists()) "PRESENT" else "MISSING"}; " +
+            "env ${if (File(rootfs, "usr/bin/env").exists()) "PRESENT" else "MISSING"}; " +
+            "node ${if (File(rootfs, "usr/bin/node").exists()) "PRESENT" else "not found"}; " +
+            "python3 ${if (File(rootfs, "usr/bin/python3").exists()) "PRESENT" else "not found"}")
+        onProgress("  Time taken: ${elapsed / 1000}s")
+        if (symlinkWarnings == 0) {
+            onProgress("Your Ubuntu container is restored and usable. Projects and tools are back; nothing else to do.")
+        } else {
+            onProgress("Container restored, but $symlinkWarnings symlink(s) could not be created — some tools may misbehave; report this if you see errors.")
+        }
         NotificationStore.add("Restore complete", "$filesWritten files restored from backup$dupNote$warnNote", NotificationStore.Type.BACKUP)
         return RestoreResult(filesWritten, 0, symlinkWarnings, true, "Restored $filesWritten files$dupNote$warnNote$verifyNote$healthNote", healthy = health.ok)
     }

@@ -462,6 +462,10 @@ fun SettingsScreen(
             var confirmShrinkBackup by remember { mutableStateOf(false) }
             var backupRunning by remember { mutableStateOf(false) }
             var showRestoreConfirm by remember { mutableStateOf(false) }
+            // Advisor item 3 (2026-10-11): .prev is a SEPARATE, clearly-labelled
+            // restore choice — never a silent fallback.
+            var showPrevRestoreConfirm by remember { mutableStateOf(false) }
+            var prevBackupInfo by remember { mutableStateOf(BackupManager.previousBackupInfo()) }
 
             // RG05 (2026-09-26): prompt surface — armed by BackupManager.onAppStart on
             // version change, fresh-install restore, or a missing/stale (>7d) container
@@ -539,13 +543,30 @@ fun SettingsScreen(
                     ) { Text("Restore") }
                 }
             }
+            if (prevBackupInfo != null) {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    OutlinedButton(
+                        enabled = !backupRunning,
+                        onClick = { showPrevRestoreConfirm = true },
+                    ) { Text("Restore previous backup") }
+                }
+            }
 
             if (showRestoreConfirm) {
                 key(orientation) {
                 AlertDialog(
                     onDismissRequest = { showRestoreConfirm = false },
                     title = { Text("Restore container?") },
-                    text = { Text("This replaces your current Ubuntu container with the last backup. Anything installed or changed since that backup will be lost.") },
+                    text = {
+                        // Advisor item 2 (2026-10-11): SIZE primary; date labelled
+                        // "modified" (Files can reset it on copy — never an
+                        // integrity check).
+                        val info = BackupManager.backupInfo()
+                        Text(
+                            "Restore this backup: ${info ?: "unreadable"}\n\n" +
+                                "It replaces your current Ubuntu container. Anything installed or changed since that backup will be lost."
+                        )
+                    },
                     confirmButton = {
                         TextButton(onClick = {
                             showRestoreConfirm = false
@@ -565,6 +586,35 @@ fun SettingsScreen(
                     },
                 )
                 }
+            }
+
+            if (showPrevRestoreConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showPrevRestoreConfirm = false },
+                    title = { Text("Restore PREVIOUS backup?") },
+                    text = {
+                        Text(
+                            "This restores container-backup.prev — the generation before your current backup (${prevBackupInfo ?: "unknown"}).\n\n" +
+                                "It replaces your current Ubuntu container. This is a separate file; your current backup is untouched."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showPrevRestoreConfirm = false
+                            backupRunning = true
+                            scope.launch {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    val rres = BackupManager.restoreBackup(context, { msg -> backupStatus = msg }, usePrevious = true)
+                                    if (!rres.ok) backupStatus = "Previous-backup restore failed: " + rres.message.take(200)
+                                }
+                                backupRunning = false
+                            }
+                        }) { Text("Restore previous") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showPrevRestoreConfirm = false }) { Text("Cancel") }
+                    },
+                )
             }
 
             HorizontalDivider()
