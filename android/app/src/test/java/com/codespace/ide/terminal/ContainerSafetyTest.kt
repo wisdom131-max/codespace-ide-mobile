@@ -34,6 +34,8 @@ class ContainerSafetyTest {
         if (!healthy) File(rootfs, "usr/bin/env").delete()
         Files.createSymbolicLink(File(rootfs, "bin").toPath(), java.nio.file.Paths.get("usr/bin"))
         Files.createSymbolicLink(File(rootfs, "lib").toPath(), java.nio.file.Paths.get("usr/lib"))
+        Files.createSymbolicLink(File(rootfs, "sbin").toPath(), java.nio.file.Paths.get("usr/sbin"))
+        Files.createSymbolicLink(File(rootfs, "lib64").toPath(), java.nio.file.Paths.get("usr/lib64"))
         return rootfs
     }
 
