@@ -1269,10 +1269,14 @@ internal fun TerminalPane(
                     // outside-tap/no choice = install skipped (backup untouched).
                     var restoreOk = false
                     while (!restoreOk) {
-                        val restoreResult = BackupManager.restoreBackup(ctx) { msg ->
+                        // NOTE (trailing-lambda pitfall, same family as the
+                        // refreshLive red): usePrevious is now the LAST parameter,
+                        // so onProgress MUST be passed by name — a trailing lambda
+                        // would bind to the Boolean instead.
+                        val restoreResult = BackupManager.restoreBackup(ctx, onProgress = { msg ->
                             TerminalService.updateProgress(ctx, msg.take(60))
                             writeToDisplay(progressSession, "  $msg\r\n")
-                        }
+                        })
                         if (restoreResult.ok && restoreResult.healthy) {
                             writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Restored from backup! Launching...\r\n\r\n")
                             restoreOk = true
