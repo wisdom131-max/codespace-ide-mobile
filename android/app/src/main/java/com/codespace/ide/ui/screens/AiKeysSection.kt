@@ -321,8 +321,8 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
                 }
                 // Advisor item 2 (2026-10-10): the post-save prompt — visible
                 // right where the key list lives, with the slot's label.
-                if (askActivateProvider == provider.id && askActivateSlot != null) {
-                    val askSuf = askActivateSlot
+                val askSuf = askActivateSlot
+                if (askActivateProvider == provider.id && askSuf != null) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
