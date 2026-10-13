@@ -73,7 +73,10 @@ jobs:
           SIZE=$(stat -c%s ubuntu.tar.xz)
           if [ "$SIZE" != "57831960" ]; then echo "SIZE MISMATCH: $SIZE"; rm -f ubuntu.tar.xz; exit 1; fi
           echo "5ab35b90cd9a9f180656261ba400a135c4c01c2da4b74522118342f985c2d328  ubuntu.tar.xz" | sha256sum -c -
-          if [ ! -d ubuntu-questing-aarch64 ]; then tar -xJf ubuntu.tar.xz; fi
+          # Device nodes under /dev/ need mknod (root); the unprivileged runner
+          # cannot create them and the app's own extractor skips special files
+          # anyway — exclude them so the extraction succeeds for the JVM tests.
+          if [ ! -d ubuntu-questing-aarch64 ]; then tar -xJf ubuntu.tar.xz --exclude='ubuntu-questing-aarch64/dev/*'; fi
           test -f ubuntu-questing-aarch64/usr/bin/bash
           echo "QUESTING_ROOTFS=$HOME/questing-rootfs/ubuntu-questing-aarch64" >> "$GITHUB_ENV"
 
