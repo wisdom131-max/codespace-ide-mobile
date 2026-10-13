@@ -2067,7 +2067,7 @@ internal fun TerminalPane(
                     if (grantChoiceKind == 0)
                         "Backup found (${grantChoiceBackupMb} MB) — grant access to restore it."
                     else if (grantChoiceKind == 2)
-                        "Backup failed the check, but no working Ubuntu is installed — restore anyway or download fresh.",
+                        "Backup failed the check, but no working Ubuntu is installed — restore anyway or download fresh."
                     else
                         "Restore failed — try again or download fresh.",
                     color = Color(0xFFCCCCCC),
