@@ -138,9 +138,13 @@ class RealAssetBackupTest {
                     link.linkName = "usr/bin"
                     tar.putArchiveEntry(link)
                     tar.closeArchiveEntry()
-                    // OLD-WRITER SHAPE: traversal duplicates reached through bin/.
+                    // OLD-WRITER SHAPE 1: traversal entries reached through the
+                    // bin/ link — they resolve to a NESTED guest path (usr/bin/usr/bin/...),
+                    // never escape the root, and never overwrite the real file.
                     entry("bin/usr/bin/bash", "CORRUPT-DUPLICATE".toByteArray())
-                    entry("bin/usr/bin/env", "CORRUPT-DUPLICATE".toByteArray())
+                    // OLD-WRITER SHAPE 2: an EXACT duplicate entry name (tar walked
+                    // the same file twice) — the extractor must SKIP it.
+                    entry("usr/bin/bash", "EXACT-DUPLICATE".toByteArray())
                 }
             }
         }
@@ -148,14 +152,18 @@ class RealAssetBackupTest {
         val dest = File(base, "restored")
         val scan = BackupTar.scan(archive)
         val ext = BackupTar.extract(archive, dest, scan) { }
-        assertTrue("traversal duplicates must be detected", ext.duplicatesSkipped >= 2)
-        assertEquals("no file failures", 0, ext.fileFailures)
+        assertTrue("exact duplicate entries must be skipped", ext.duplicatesSkipped >= 1)
+        assertEquals("no file failures — traversal entries resolve or are rejected, never fatal", 0, ext.fileFailures)
         val h = ContainerSafety.healthOf(dest)
         assertTrue("gate must pass despite the duplicate entries: $h", h.ok)
         assertEquals(
-            "the real bash must win over the corrupt duplicate",
+            "the real bash must win over the corrupt duplicates",
             bashBytes.size.toLong(),
             File(dest, "usr/bin/bash").length(),
+        )
+        assertFalse(
+            "the traversal duplicate must NOT overwrite the real env",
+            "CORRUPT-DUPLICATE".toByteArray().contentEquals(File(dest, "usr/bin/env").readBytes()),
         )
         val manifest = ContainerSafety.manifestCheck(scan, ext)
         assertTrue("every entry must still be accounted: ${manifest.detail}", manifest.ok)
