@@ -68,7 +68,7 @@ object BackupTar {
     )
 
     /** Normalize an archive entry name: strip leading "./", drop "." segments. */
-    private fun normalize(name: String): String =
+    internal fun normalize(name: String): String =
         name.split('/').filter { it.isNotEmpty() && it != "." }.joinToString("/")
 
     /**

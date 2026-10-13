@@ -220,11 +220,23 @@ object ContainerSafety {
     data class ManifestReport(val ok: Boolean, val detail: String)
 
     fun manifestCheck(scan: BackupTar.ScanResult, ext: BackupTar.ExtractResult): ManifestReport {
-        val accounted = ext.processed + ext.duplicatesSkipped + ext.rejectedEntries
-        val unaccounted = scan.totalEntries - accounted
+        // ADVISOR 2026-10-13 (caught by RealAssetBackupTest): the old formula
+        // ADDED duplicatesSkipped and rejectedEntries on top of processed — but
+        // extract() already counts every entry it sees (duplicates and escape
+        // rejects included) in processed. The old formula over-counted by
+        // duplicates + rejects, so ANY old-writer archive containing duplicate
+        // entries was refused as "unaccounted" even after a perfectly healthy
+        // extraction — a production bug that would have re-blocked the owner's
+        // restore. Correct universe: entries the scan accepted (scan.totalEntries)
+        // plus entries it rejected; entries that normalize to an EMPTY name never
+        // reach extract() and must be added back; everything else is in processed.
+        val emptyRejected = scan.rejectedNames.count { BackupTar.normalize(it).isEmpty() }
+        val universe = scan.totalEntries + scan.rejectedNames.size
+        val accounted = ext.processed + emptyRejected
+        val unaccounted = universe - accounted
         val symlinksOk = ext.symlinksCreated + ext.symlinkWarnings <= scan.symlinks.size
         val dirsOk = ext.dirsWritten <= scan.dirs + ext.totalEntries  // implicit parents allowed, archive dirs never exceeded
-        val detail = "manifest: ${scan.totalEntries} entries — processed=${ext.processed}, " +
+        val detail = "manifest: ${universe} entries — processed=${ext.processed}, " +
             "duplicatesSkipped=${ext.duplicatesSkipped}, rejected=${ext.rejectedEntries}, unaccounted=$unaccounted; " +
             "dirs written=${ext.dirsWritten} (archive dirs=${scan.dirs}); " +
             "symlinks created=${ext.symlinksCreated} warnings=${ext.symlinkWarnings} (archive symlinks=${scan.symlinks.size})"
