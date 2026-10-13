@@ -51,6 +51,32 @@ jobs:
         working-directory: android
         run: ./gradlew assembleProdDebug --stacktrace --no-build-cache
 
+      # ADVISOR 2026-10-13 (item 1): REAL-ASSET fixtures. The pinned Ubuntu
+      # arm64 asset that "Download fresh" installs — fetched, size+SHA-256
+      # verified, extracted and cached — replaces hand-made fixtures that
+      # encoded an x86 lib64 assumption the gate then rejected every healthy
+      # arm64 restore with ("missing lib64"). Tests skip (assumeTrue) when the
+      # variable is absent, so local JVM runs stay green and honest.
+      - name: Cache pinned Ubuntu rootfs for real-asset tests
+        uses: actions/cache@v4
+        with:
+          path: ~/questing-rootfs
+          key: questing-aarch64-57831960-5ab35b90cd9a9f180656261ba400a135c4c01c2da4b74522118342f985c2d328
+
+      - name: Fetch + verify + extract pinned Ubuntu asset
+        run: |
+          mkdir -p "$HOME/questing-rootfs"
+          cd "$HOME/questing-rootfs"
+          if [ ! -f ubuntu.tar.xz ]; then
+            curl -sL -o ubuntu.tar.xz https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz
+          fi
+          SIZE=$(stat -c%s ubuntu.tar.xz)
+          if [ "$SIZE" != "57831960" ]; then echo "SIZE MISMATCH: $SIZE"; rm -f ubuntu.tar.xz; exit 1; fi
+          echo "5ab35b90cd9a9f180656261ba400a135c4c01c2da4b74522118342f985c2d328  ubuntu.tar.xz" | sha256sum -c -
+          if [ ! -d ubuntu-questing-aarch64 ]; then tar -xJf ubuntu.tar.xz; fi
+          test -f ubuntu-questing-aarch64/usr/bin/bash
+          echo "QUESTING_ROOTFS=$HOME/questing-rootfs/ubuntu-questing-aarch64" >> "$GITHUB_ENV"
+
       - name: JVM unit tests (D15 shell-integration + MK model-catalog suites)
         # D15-a: runs the pure-Kotlin OSC 633 parser matrix host-side. MK phase B
         # (2026-10-07): adds the ModelCatalog merge/dedupe + refresh-semantics suite.
@@ -58,7 +84,7 @@ jobs:
         # the WHOLE unit-test source set — a broken legacy test source fails here,
         # which is exactly what we want to surface.
         working-directory: android
-        run: ./gradlew testProdDebugUnitTest --tests "com.codespace.ide.terminal.shellintegration.*" --tests "com.codespace.ide.chat.ModelCatalogTest" --tests "com.codespace.ide.terminal.BackupTarTest" --tests "com.codespace.ide.terminal.ContainerSafetyTest" --stacktrace
+        run: ./gradlew testProdDebugUnitTest --tests "com.codespace.ide.terminal.shellintegration.*" --tests "com.codespace.ide.chat.ModelCatalogTest" --tests "com.codespace.ide.terminal.BackupTarTest" --tests "com.codespace.ide.terminal.ContainerSafetyTest" --tests "com.codespace.ide.terminal.RealAssetBackupTest" --stacktrace
 
       - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v4

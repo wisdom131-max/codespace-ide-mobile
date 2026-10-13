@@ -1268,18 +1268,65 @@ internal fun TerminalPane(
                     // again" vs "Download fresh (~58 MB)". Every retry is a user tap;
                     // outside-tap/no choice = install skipped (backup untouched).
                     var restoreOk = false
+                    // ADVISOR 2026-10-13 (items 3/4b): one-shot sources from the
+                    // restore row (picker copy / previous generation) + the
+                    // restore-anyway confirmation flag. Retries reuse the same
+                    // source so the owner sees the SAME file re-verified.
+                    val rowSource = com.codespace.ide.terminal.BackupManager.consumePickedSource()
+                    val rowUsePrev = com.codespace.ide.terminal.BackupManager.consumeUsePrevious()
+                    var restoreAnyway = false
                     while (!restoreOk) {
                         // NOTE (trailing-lambda pitfall, same family as the
                         // refreshLive red): usePrevious is now the LAST parameter,
                         // so onProgress MUST be passed by name — a trailing lambda
                         // would bind to the Boolean instead.
-                        val restoreResult = BackupManager.restoreBackup(ctx, onProgress = { msg ->
-                            TerminalService.updateProgress(ctx, msg.take(60))
-                            writeToDisplay(progressSession, "  $msg\r\n")
-                        })
+                        val restoreResult = BackupManager.restoreBackup(
+                            ctx,
+                            onProgress = { msg ->
+                                TerminalService.updateProgress(ctx, msg.take(60))
+                                writeToDisplay(progressSession, "  $msg\r\n")
+                            },
+                            usePrevious = rowUsePrev,
+                            sourceFile = rowSource,
+                            restoreAnyway = restoreAnyway,
+                        )
                         if (restoreResult.ok && restoreResult.healthy) {
                             writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Restored from backup! Launching...\r\n\r\n")
                             restoreOk = true
+                        } else if (restoreResult.verdict == com.codespace.ide.terminal.BackupManager.RestoreVerdict.NEEDS_RESTORE_ANYWAY) {
+                            // ADVISOR 2026-10-13 (item 3): NOTHING TO LOSE — the
+                            // backup failed the gate BUT no working container is
+                            // installed either. Dead-end refusal helps nobody:
+                            // explicit choice, Restore anyway vs Download fresh.
+                            // The backup file stays untouched either way.
+                            grantChoiceKind = 2
+                            grantChoiceReason = restoreResult.message
+                            grantChoiceMachine.begin(2, restoreResult.message)
+                            showGrantChoice = true
+                            writeToDisplay(progressSession, "[Ubuntu] Waiting for your choice: restore this backup anyway, or download a fresh Ubuntu (~58 MB)...\r\n")
+                            while (!grantChoiceMachine.tick()) {
+                                try { Thread.sleep(500) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
+                            }
+                            showGrantChoice = false
+                            when (grantChoiceMachine.outcomeOrNull()) {
+                                com.codespace.ide.terminal.InstallChoice.GRANT_OR_RETRY -> {
+                                    writeToDisplay(progressSession, "[Ubuntu] Restoring anyway (nothing to lose)...\r\n\r\n")
+                                    restoreAnyway = true
+                                }
+                                com.codespace.ide.terminal.InstallChoice.DOWNLOAD_FRESH -> {
+                                    writeToDisplay(progressSession, "[Ubuntu] Downloading a fresh Ubuntu (~58 MB)...\r\n")
+                                    ProotInstaller.install(ctx) { msg ->
+                                        TerminalService.updateProgress(ctx, msg.take(60))
+                                        writeToDisplay(progressSession, "  $msg\r\n")
+                                    }
+                                    writeToDisplay(progressSession, "\r\n[Ubuntu] \u2713 Installation complete! Launching...\r\n\r\n")
+                                    restoreOk = true
+                                }
+                                else -> {
+                                    writeToDisplay(progressSession, "[Ubuntu] No choice made — install skipped. Reopen this tab to retry.\r\n")
+                                    return@Thread
+                                }
+                            }
                         } else if (restoreResult.ok && !restoreResult.healthy) {
                             // C (2026-10-11): the swap happened, but the backup itself
                             // contains a DAMAGED container (missing env/bin/lib...).
@@ -1978,9 +2025,14 @@ internal fun TerminalPane(
         if (showGrantChoice) {
             AlertDialog(
                 onDismissRequest = { grantChoiceMachine.dismiss() },
-                title = { Text(if (grantChoiceKind == 0) "Storage permission needed" else "Backup restore failed") },
+                title = { Text(when (grantChoiceKind) { 0 -> "Storage permission needed"; 2 -> "Restore this backup anyway?"; else -> "Backup restore failed" }) },
                 text = {
-                    if (grantChoiceKind == 0) {
+                    if (grantChoiceKind == 2) {
+                        Text(
+                            "${grantChoiceReason}\n\n" +
+                                "There is no working Ubuntu installed, so installing this backup cannot make things worse. The backup file itself is never modified."
+                        )
+                    } else if (grantChoiceKind == 0) {
                         Text(
                             "A container backup (${grantChoiceBackupMb} MB) was found in shared storage, but the app no longer has the \"All files access\" permission after the reinstall.\n\n" +
                                 "Grant access to restore your backup (the Settings screen opens), or download a fresh Ubuntu (~58 MB) on your connection."
@@ -1994,7 +2046,7 @@ internal fun TerminalPane(
                 },
                 confirmButton = {
                     TextButton(onClick = { grantChoiceMachine.choose(1) }) {
-                        Text(if (grantChoiceKind == 0) "Grant access now" else "Try restore again")
+                        Text(when (grantChoiceKind) { 0 -> "Grant access now"; 2 -> "Restore anyway"; else -> "Try restore again" })
                     }
                 },
                 dismissButton = {
@@ -2014,6 +2066,8 @@ internal fun TerminalPane(
                 Text(
                     if (grantChoiceKind == 0)
                         "Backup found (${grantChoiceBackupMb} MB) — grant access to restore it."
+                    else if (grantChoiceKind == 2)
+                        "Backup failed the check, but no working Ubuntu is installed — restore anyway or download fresh.",
                     else
                         "Restore failed — try again or download fresh.",
                     color = Color(0xFFCCCCCC),
@@ -2021,7 +2075,7 @@ internal fun TerminalPane(
                     modifier = Modifier.weight(1f),
                 )
                 Button(onClick = { grantChoiceMachine.choose(1) }) {
-                    Text(if (grantChoiceKind == 0) "Grant access" else "Try restore again")
+                    Text(when (grantChoiceKind) { 0 -> "Grant access"; 2 -> "Restore anyway"; else -> "Try restore again" })
                 }
                 Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = { grantChoiceMachine.choose(2) }) {
@@ -2055,8 +2109,84 @@ internal fun TerminalPane(
                 )
                 Button(onClick = {
                     val ubuntuTab = tabs.firstOrNull { it.name == "Ubuntu" }
+                    com.codespace.ide.terminal.BackupManager.usePreviousOnNextRestore = false
+                    com.codespace.ide.terminal.BackupManager.pickedSource = null
                     addUbuntuTab(replaceTabId = ubuntuTab?.id)
                 }) { Text("Restore backup") }
+            }
+            // ADVISOR 2026-10-13 (item 4b): the previous generation and the system
+            // file picker sit right here too — the owner NEVER copies files by
+            // hand. The picker copies the chosen file into cacheDir and the
+            // restore runs from THAT copy; stored backups stay untouched.
+            val prevInfo = com.codespace.ide.terminal.BackupManager.previousBackupInfo()
+            if (prevInfo != null) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF252526))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Previous backup (container-backup.tar.gz.prev): $prevInfo",
+                        color = Color(0xFFCCCCCC),
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(onClick = {
+                        com.codespace.ide.terminal.BackupManager.usePreviousOnNextRestore = true
+                        com.codespace.ide.terminal.BackupManager.pickedSource = null
+                        val ubuntuTab = tabs.firstOrNull { it.name == "Ubuntu" }
+                        addUbuntuTab(replaceTabId = ubuntuTab?.id)
+                    }) { Text("Restore previous") }
+                }
+            }
+            val pickBackupLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                if (uri != null) {
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val dst = java.io.File(context.cacheDir, "picked-backup.tar.gz")
+                        try {
+                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                java.io.FileOutputStream(dst).use { output -> input.copyTo(output) }
+                            } ?: throw java.io.IOException("cannot open the picked file")
+                            com.codespace.ide.terminal.BackupManager.pickedSource = dst
+                            com.codespace.ide.terminal.BackupManager.usePreviousOnNextRestore = false
+                            tabs.firstOrNull { it.name == "Ubuntu" }?.session?.let { s ->
+                                writeToDisplay(s, "\r\n[Ubuntu] Picked backup copied (${dst.length() / (1024 * 1024)} MB) — starting restore...\r\n")
+                            }
+                            addUbuntuTab(replaceTabId = null)
+                        } catch (e: Exception) {
+                            dst.delete()
+                            tabs.firstOrNull { it.name == "Ubuntu" }?.session?.let { s ->
+                                writeToDisplay(s, "\r\n[Ubuntu] Could not read the picked file: ${e.message}\r\n")
+                            }
+                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                "[BACKUP-DIAG] picked-file copy failed: ${e.message}", "terminal",
+                            )
+                        }
+                    }
+                }
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF252526))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Or pick a backup file yourself (Documents, Downloads...) — it is copied first; your stored backups are not touched.",
+                    color = Color(0xFFCCCCCC),
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Button(onClick = {
+                    runCatching {
+                        pickBackupLauncher.launch(arrayOf("application/gzip", "application/x-gzip", "application/x-tar", "application/octet-stream"))
+                    }
+                }) { Text("Choose file...") }
             }
         }
         // Rename dialog

@@ -35,7 +35,11 @@ class ContainerSafetyTest {
         Files.createSymbolicLink(File(rootfs, "bin").toPath(), java.nio.file.Paths.get("usr/bin"))
         Files.createSymbolicLink(File(rootfs, "lib").toPath(), java.nio.file.Paths.get("usr/lib"))
         Files.createSymbolicLink(File(rootfs, "sbin").toPath(), java.nio.file.Paths.get("usr/sbin"))
-        Files.createSymbolicLink(File(rootfs, "lib64").toPath(), java.nio.file.Paths.get("usr/lib64"))
+        // ADVISOR 2026-10-13 (item 1): arm64-accurate fixture — the REAL pinned
+        // asset has NO lib64 (verified: 57,831,960-byte ubuntu-questing-aarch64
+        // tarball, zero lib64 entries; the loader is /lib/ld-linux-aarch64.so.1).
+        // The hand-made lib64 symlink here encoded an x86 assumption that made
+        // the gate reject every healthy arm64 container.
         return rootfs
     }
 

@@ -149,6 +149,75 @@ object BackupTar {
     }
 
     /**
+     * ADVISOR 2026-10-13 (item 4c): READ-ONLY archive inspection for the
+     * "Check backup" button — no extraction, no writes. Reports top-level
+     * names, symlink entries, counts, and the critical binaries the gate
+     * needs (bash, env) straight from the entry names.
+     */
+    data class InspectReport(
+        val ok: Boolean,
+        val sizeBytes: Long,
+        val modifiedMs: Long,
+        val topLevel: List<String>,
+        val symlinks: List<SymlinkInfo>,
+        val totalEntries: Int,
+        val dirs: Int,
+        val files: Int,
+        val hasBash: Boolean,
+        val hasEnv: Boolean,
+        val rejected: List<String>,
+        val error: String?,
+    )
+
+    fun inspect(archiveFile: File): InspectReport {
+        val topLevel = LinkedHashSet<String>()
+        val symlinks = ArrayList<SymlinkInfo>()
+        val rejected = ArrayList<String>()
+        var total = 0; var dirs = 0; var files = 0
+        var hasBash = false; var hasEnv = false
+        try {
+            GzipOpen.open(archiveFile).use { raw ->
+                TarArchiveInputStream(raw).use { tar ->
+                    var entry: TarArchiveEntry? = tar.nextEntry
+                    while (entry != null) {
+                        val name = normalize(entry.name)
+                        if (name.isEmpty()) {
+                            rejected.add(entry.name)
+                        } else if (com.codespace.ide.util.CanonicalPaths.safeEntryDestination(File("/"), entry.name) == null) {
+                            rejected.add(entry.name)
+                        } else {
+                            topLevel.add(name.substringBefore('/'))
+                            when {
+                                entry.isDirectory -> { dirs++; total++ }
+                                entry.isSymbolicLink -> {
+                                    symlinks.add(SymlinkInfo(name, entry.linkName ?: ""))
+                                    total++
+                                }
+                                else -> { files++; total++ }
+                            }
+                            if (name == "usr/bin/bash") hasBash = true
+                            if (name == "usr/bin/env") hasEnv = true
+                        }
+                        entry = tar.nextEntry
+                    }
+                }
+            }
+            return InspectReport(
+                ok = true, sizeBytes = archiveFile.length(), modifiedMs = archiveFile.lastModified(),
+                topLevel = topLevel.toList(), symlinks = symlinks, totalEntries = total,
+                dirs = dirs, files = files, hasBash = hasBash, hasEnv = hasEnv,
+                rejected = rejected, error = null,
+            )
+        } catch (e: Exception) {
+            return InspectReport(
+                ok = false, sizeBytes = archiveFile.length(), modifiedMs = archiveFile.lastModified(),
+                topLevel = emptyList(), symlinks = emptyList(), totalEntries = 0, dirs = 0, files = 0,
+                hasBash = false, hasEnv = false, rejected = emptyList(), error = "${e.message}",
+            )
+        }
+    }
+
+    /**
      * Pass B: extract directories and files (in archive order, parents
      * auto-created), then create the DEFERRED symlinks. No file write can pass
      * through a symlink because none exists yet; traversal entries resolve

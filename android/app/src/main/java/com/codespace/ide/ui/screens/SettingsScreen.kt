@@ -68,6 +68,7 @@ import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.chat.ChatProvider
 import com.codespace.ide.chat.ChatProviderRegistry
 import com.codespace.ide.terminal.BackupManager
+import com.codespace.ide.terminal.BackupTar
 import com.codespace.ide.terminal.ProotInstaller
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -549,6 +550,86 @@ fun SettingsScreen(
                         enabled = !backupRunning,
                         onClick = { showPrevRestoreConfirm = true },
                     ) { Text("Restore previous backup") }
+                }
+            }
+            // ADVISOR 2026-10-13 (item 4c): READ-ONLY check — reads the archive and
+            // prints top-level entries, symlinks, counts and what the gate would
+            // say, WITHOUT writing anything. Output goes to the Output panel.
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                OutlinedButton(
+                    enabled = !backupRunning,
+                    onClick = {
+                        backupRunning = true
+                        scope.launch {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                backupStatus = "Checking backup (read-only)..."
+                                val f = BackupManager.backupFile()
+                                val r = BackupTar.inspect(f)
+                                if (!r.ok) {
+                                    backupStatus = "Check failed: the archive could not be read — ${r.error ?: "unknown error"}"
+                                } else {
+                                    val lines = mutableListOf<String>()
+                                    lines.add("=== Check backup: ${f.name} ===")
+                                    lines.add("Size: %.1f MB (modified %s)".format(
+                                        r.sizeBytes / (1024.0 * 1024.0),
+                                        java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault())
+                                            .format(java.util.Date(r.modifiedMs))))
+                                    lines.add("Top-level entries: ${r.topLevel.joinToString(", ")}")
+                                    lines.add("Counts: ${r.totalEntries} entries — ${r.dirs} directories, ${r.files} files, ${r.symlinks.size} symlinks")
+                                    if (r.symlinks.isNotEmpty()) {
+                                        lines.add("Symlinks (first 12): " + r.symlinks.take(12).joinToString("; ") { "${it.name} -> ${it.target}" })
+                                    }
+                                    lines.add("Critical: usr/bin/bash ${if (r.hasBash) "present" else "MISSING"}, usr/bin/env ${if (r.hasEnv) "present" else "MISSING"}")
+                                    if (r.rejected.isNotEmpty()) lines.add("Rejected entries: ${r.rejected.take(5).joinToString("; ")}")
+                                    val gate = if (r.hasBash && r.hasEnv)
+                                        "the gate would PASS (bash and env found — lib64 is NOT required on arm64)"
+                                    else
+                                        "the gate would REFUSE (missing ${if (!r.hasBash) "usr/bin/bash" else "usr/bin/env"} — restore would need the nothing-to-lose path or a different file)"
+                                    lines.add("Gate verdict: $gate")
+                                    lines.forEach { com.codespace.ide.diagnostics.AppOutputLog.log("[CHECK-BACKUP] $it", "backup") }
+                                    backupStatus = "Check backup: ${r.totalEntries} entries, bash ${if (r.hasBash) "ok" else "MISSING"}, env ${if (r.hasEnv) "ok" else "MISSING"} — full report in the Output panel"
+                                }
+                            }
+                            backupRunning = false
+                        }
+                    },
+                    modifier = Modifier.padding(end = 8.dp),
+                ) { Text("Check backup") }
+                if (prevBackupInfo != null) {
+                    OutlinedButton(
+                        enabled = !backupRunning,
+                        onClick = {
+                            backupRunning = true
+                            scope.launch {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    backupStatus = "Checking previous backup (read-only)..."
+                                    val f = BackupManager.previousBackupFile()
+                                    val r = BackupTar.inspect(f)
+                                    if (!r.ok) {
+                                        backupStatus = "Check failed: the archive could not be read — ${r.error ?: "unknown error"}"
+                                    } else {
+                                        val lines = mutableListOf<String>()
+                                        lines.add("=== Check backup: ${f.name} ===")
+                                        lines.add("Size: %.1f MB (modified %s)".format(
+                                            r.sizeBytes / (1024.0 * 1024.0),
+                                            java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault())
+                                                .format(java.util.Date(r.modifiedMs))))
+                                        lines.add("Top-level entries: ${r.topLevel.joinToString(", ")}")
+                                        lines.add("Counts: ${r.totalEntries} entries — ${r.dirs} directories, ${r.files} files, ${r.symlinks.size} symlinks")
+                                        lines.add("Critical: usr/bin/bash ${if (r.hasBash) "present" else "MISSING"}, usr/bin/env ${if (r.hasEnv) "present" else "MISSING"}")
+                                        val gate = if (r.hasBash && r.hasEnv)
+                                            "the gate would PASS (bash and env found — lib64 is NOT required on arm64)"
+                                        else
+                                            "the gate would REFUSE (missing ${if (!r.hasBash) "usr/bin/bash" else "usr/bin/env"})"
+                                        lines.add("Gate verdict: $gate")
+                                        lines.forEach { com.codespace.ide.diagnostics.AppOutputLog.log("[CHECK-BACKUP] $it", "backup") }
+                                        backupStatus = "Check previous: ${r.totalEntries} entries, bash ${if (r.hasBash) "ok" else "MISSING"}, env ${if (r.hasEnv) "ok" else "MISSING"} — full report in the Output panel"
+                                    }
+                                }
+                                backupRunning = false
+                            }
+                        },
+                    ) { Text("Check previous") }
                 }
             }
 

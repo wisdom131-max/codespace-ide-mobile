@@ -131,6 +131,7 @@ object ContainerSafety {
      */
     fun healthOf(rootfs: File): HealthReport {
         val missing = ArrayList<String>()
+        val warnings = ArrayList<String>()
         val lines = ArrayList<String>()
         fun check(relative: String, critical: Boolean) {
             val f = File(rootfs, relative)
@@ -140,24 +141,94 @@ object ContainerSafety {
         }
         check("usr/bin/bash", critical = true)
         check("usr/bin/env", critical = true)
-        // Directory links: bin/lib/sbin/lib64 — present as LINK (preferred) or as a
-        // real directory (accepted; the restore maps links that failed to create to
-        // nothing, but a usrmerge container also works with real dirs).
-        for (link in listOf("bin", "lib", "sbin", "lib64")) {
+        // ADVISOR 2026-10-13 (item 2c): the hardcoded path list shrinks to what the
+        // REAL pinned asset proves. The gate previously required bin/lib/sbin/lib64
+        // and rejected the owner's healthy arm64 restore with "missing lib64" —
+        // Ubuntu aarch64 HAS NO /lib64 (its loader is /lib/ld-linux-aarch64.so.1);
+        // verified against the pinned asset (57,831,960 bytes, zero lib64 entries,
+        // top level: bin->usr/bin, lib->usr/lib, sbin->usr/sbin + real dirs).
+        // Critical = only bash + env. Everything else is a WARNING, never a
+        // refusal; lib64 is informational (absent is NORMAL on arm64).
+        for (link in listOf("bin", "lib", "sbin")) {
             val f = File(rootfs, link)
             val isLink = Files.isSymbolicLink(f.toPath())
             val isDir = f.isDirectory
             lines.add("$link ${if (isLink) "symlink ok" else if (isDir) "real directory" else "MISSING"}")
-            if (!isLink && !isDir) missing.add(link)
+            if (!isLink && !isDir) warnings.add("$link missing (expected a usrmerge symlink or directory)")
         }
+        val lib64 = File(rootfs, "lib64")
+        lines.add("lib64 " + when {
+            Files.isSymbolicLink(lib64.toPath()) -> "symlink ok"
+            lib64.isDirectory -> "real directory"
+            else -> "absent (normal on arm64)"
+        })
         check("usr/bin/node", critical = false)
         check("usr/bin/python3", critical = false)
-        return HealthReport(ok = missing.isEmpty(), missingCritical = missing, lines = lines)
+        return HealthReport(ok = missing.isEmpty(), missingCritical = missing, warnings = warnings, lines = lines)
     }
 
-    data class HealthReport(val ok: Boolean, val missingCritical: List<String>, val lines: List<String>) {
+    data class HealthReport(
+        val ok: Boolean,
+        val missingCritical: List<String>,
+        /** Non-fatal observations (missing usrmerge links etc.) — never a refusal. */
+        val warnings: List<String>,
+        val lines: List<String>,
+    ) {
         val verdict: String
             get() = if (ok) "healthy" else "damaged (missing: ${missingCritical.joinToString(", ")})"
+    }
+
+    /**
+     * ADVISOR 2026-10-13 (item 2b): functional smoke test BEFORE the swap, using
+     * the SAME proot the app uses (ProotInstaller.execTyped with a rootfs
+     * override): runs /usr/bin/env true and bash -c 'echo ok' with a timeout,
+     * no network. On hosts that cannot exec the container's binaries (JVM unit
+     * tests on an x86_64 runner testing arm64 content) [ran] is false and the
+     * caller treats it as UNVERIFIED, never as a pass — honesty over a green
+     * checkmark that proves nothing.
+     */
+    data class SmokeReport(val ran: Boolean, val ok: Boolean, val detail: String)
+
+    fun smokeTest(context: android.content.Context, rootfs: File): SmokeReport {
+        return try {
+            val r = ProotInstaller.execTyped(
+                context,
+                "/usr/bin/env true && /bin/bash -c 'echo codespace-smoke-ok'",
+                timeoutSeconds = 25,
+                logTag = "restore-smoke",
+                rootfsOverride = rootfs,
+            )
+            when {
+                r.launchError != null -> SmokeReport(ran = false, ok = false, detail = "smoke test could not start: ${r.launchError}")
+                r.timedOut -> SmokeReport(ran = true, ok = false, detail = "smoke test timed out after 25s")
+                r.exitCode == 0 && r.stdout.contains("codespace-smoke-ok") ->
+                    SmokeReport(ran = true, ok = true, detail = "proot ran 'env true' and 'bash -c echo ok' successfully")
+                else -> SmokeReport(ran = true, ok = false, detail = "smoke test failed: exit=${r.exitCode} output=${r.stdout.take(200)}")
+            }
+        } catch (e: Exception) {
+            SmokeReport(ran = false, ok = false, detail = "smoke test could not run: ${e.message}")
+        }
+    }
+
+    /**
+     * ADVISOR 2026-10-13 (item 2a): manifest check from the archive itself —
+     * EVERY entry must be accounted for (extracted, or counted as a duplicate
+     * or security-rejected), and the symlink accounting must not exceed what
+     * the scan found. Phantom inflation (more written than the archive holds)
+     * or silent drops (unaccounted > 0) both fail the check.
+     */
+    data class ManifestReport(val ok: Boolean, val detail: String)
+
+    fun manifestCheck(scan: BackupTar.ScanResult, ext: BackupTar.ExtractResult): ManifestReport {
+        val accounted = ext.processed + ext.duplicatesSkipped + ext.rejectedEntries
+        val unaccounted = scan.totalEntries - accounted
+        val symlinksOk = ext.symlinksCreated + ext.symlinkWarnings <= scan.symlinks.size
+        val dirsOk = ext.dirsWritten <= scan.dirs + ext.totalEntries  // implicit parents allowed, archive dirs never exceeded
+        val detail = "manifest: ${scan.totalEntries} entries — processed=${ext.processed}, " +
+            "duplicatesSkipped=${ext.duplicatesSkipped}, rejected=${ext.rejectedEntries}, unaccounted=$unaccounted; " +
+            "dirs written=${ext.dirsWritten} (archive dirs=${scan.dirs}); " +
+            "symlinks created=${ext.symlinksCreated} warnings=${ext.symlinkWarnings} (archive symlinks=${scan.symlinks.size})"
+        return ManifestReport(ok = unaccounted == 0 && symlinksOk && dirsOk, detail = detail)
     }
 
     // ────────────────────────────────────────────────────────────────────

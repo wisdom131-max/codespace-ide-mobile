@@ -1699,11 +1699,15 @@ exit 0
     fun launchArgs(
         context: Context,
         initialGuestCwd: String? = null,
+        // ADVISOR 2026-10-13 (item 2b): restore's pre-swap smoke test runs the
+        // SAME proot against the TEMP rootfs; null = the live rootfs (default,
+        // every existing call site unchanged).
+        rootfsOverride: File? = null,
     ): Triple<String, Array<String>, Array<String>> {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val proot     = "$nativeDir/libproot.so"
         val loader    = "$nativeDir/libproot-loader.so"
-        val rootfs    = rootfsDir(context).absolutePath
+        val rootfs    = (rootfsOverride ?: rootfsDir(context)).absolutePath
         val tmpDir    = File(context.cacheDir, "proot-tmp").apply { mkdirs() }.absolutePath
         val hostFiles = context.filesDir.absolutePath
         val selinuxDir = File(context.cacheDir, "fake-selinux").apply { mkdirs() }.absolutePath
@@ -1842,8 +1846,9 @@ exit 0
         logTag: String = "proot",
         onLine: ((String) -> Unit)? = null,
         onProcess: ((Process) -> Unit)? = null,
+        rootfsOverride: File? = null,
     ): ProotResult {
-        val (proot, baseArgs, envVars) = launchArgs(context)
+        val (proot, baseArgs, envVars) = launchArgs(context, rootfsOverride = rootfsOverride)
         // Drop fd/1 and fd/2 binds (same fix as the interactive terminal):
         // binding guest /dev/stdout|stderr to the JVM's unredirected pipes
         // produces "can't sanitize binding" warnings and breaks 2>/dev/null.

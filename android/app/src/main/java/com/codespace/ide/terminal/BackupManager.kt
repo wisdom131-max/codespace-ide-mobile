@@ -79,6 +79,15 @@ object BackupManager {
         return "%.1f MB (modified %s)".format(mb, date)
     }
 
+    /** ADVISOR 2026-10-13 (item 4b): one-shot restore-source requests set by the
+     *  restore row (system file picker / previous-generation button) and consumed
+     *  by the install thread when it calls restoreBackup — the row itself never
+     *  runs a restore outside that thread. */
+    @Volatile var pickedSource: java.io.File? = null
+    @Volatile var usePreviousOnNextRestore: Boolean = false
+    fun consumePickedSource(): java.io.File? { val f = pickedSource; pickedSource = null; return f }
+    fun consumeUsePrevious(): Boolean { val v = usePreviousOnNextRestore; usePreviousOnNextRestore = false; return v }
+
     /** D follow-up (advisor 2026-10-11 item 3): typed createBackup outcome so the
      *  UI can implement the small-backup confirmation flow instead of guessing
      *  from progress strings. */
@@ -318,12 +327,33 @@ object BackupManager {
      * created (device kernels block symlink syscalls — logged, not fatal,
      * same tolerance as the pre-P3a code but now VISIBLE in the report).
      */
+    /** ADVISOR 2026-10-13 (items 2-3): typed restore verdict so the UI can act
+     *  without parsing message strings. */
+    enum class RestoreVerdict {
+        /** Swap happened, smoke/health verified — safe to launch. */
+        OK_HEALTHY,
+        /** Swap happened; the smoke test could not RUN on this host (e.g. JVM
+         *  unit tests, missing proot) — health check alone passed. */
+        OK_UNVERIFIED,
+        /** Nothing-to-lose restore: installed anyway, smoke test FAILED — the
+         *  caller must offer Download fresh and NOT launch. */
+        OK_SMOKE_FAILED,
+        /** Gate refused while a VALID container is installed (protect the good one). */
+        REFUSED_GATE_LIVE_VALID,
+        /** Gate failed with NO valid container installed: the caller offers
+         *  "Restore anyway" vs "Download fresh" (nothing to lose). */
+        NEEDS_RESTORE_ANYWAY,
+        FAILED,
+    }
+
     data class RestoreResult(
         val filesWritten: Int,
         val fileFailures: Int,
         val symlinkWarnings: Int,
         val ok: Boolean,
         val message: String,
+        /** ADVISOR 2026-10-13: verdict; keep [ok]/[healthy] consistent with it. */
+        val verdict: RestoreVerdict = RestoreVerdict.FAILED,
         /** C (2026-10-11): ok = the swap happened; healthy = the restored
          *  container passes the full key-file health check (bash AND env AND
          *  the directory links). A restore can be ok=true healthy=false — that
@@ -375,6 +405,13 @@ object BackupManager {
         // the previous generation (.prev) is a separate, clearly-labeled owner
         // choice — never a silent fallback.
         usePrevious: Boolean = false,
+        // ADVISOR 2026-10-13 (item 4b): a file picked via the system picker (a
+        // copy in cacheDir) — restores from it WITHOUT touching the shared-storage
+        // backup. Null = the standard files.
+        sourceFile: File? = null,
+        // ADVISOR 2026-10-13 (item 3): the "Restore anyway" confirmation for the
+        // nothing-to-lose path (gate failed, no valid container installed).
+        restoreAnyway: Boolean = false,
     ): RestoreResult {
         val startedAt = android.os.SystemClock.elapsedRealtime()
         // E17 grant gate (2026-10-07): the backup tarball lives in shared storage;
@@ -388,7 +425,7 @@ object BackupManager {
             onProgress("Restore needs the \"All files access\" permission.")
             return RestoreResult(0, 0, 0, false, msg, needsGrant = true)
         }
-        val f = if (usePrevious) File(backupDir(), "$BACKUP_FILE.prev") else backupFile()
+        val f = sourceFile ?: if (usePrevious) File(backupDir(), "$BACKUP_FILE.prev") else backupFile()
         if (!f.exists()) {
             onProgress("No backup found at ${f.path}")
             return RestoreResult(0, 0, 0, false, "No backup found at ${f.path}")
@@ -493,23 +530,57 @@ object BackupManager {
             return RestoreResult(filesWritten, fileFailures, symlinkWarnings, false, msg)
         }
 
-        // Advisor item 5a (2026-10-11): the health gate runs BEFORE the swap, not
-        // after it. A damaged backup (the 147 MB file) now aborts with the LIVE
-        // container untouched and the backup untouched — previously the swap
-        // happened first, so a failed health check had already replaced the
-        // live rootfs with the damaged one.
-        val health = ContainerSafety.healthOf(tmp)
-        if (!health.ok) {
+        // ADVISOR 2026-10-13 (item 2a): manifest check from the archive itself —
+        // every entry accounted for, symlink/dir counts sane. Runs before the
+        // swap; a phantom or dropped entry aborts with the LIVE container and
+        // the backup both untouched.
+        val manifest = ContainerSafety.manifestCheck(scan, ext)
+        com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] ${manifest.detail}", "terminal")
+        if (!manifest.ok) {
             ContainerSafety.deleteTreeSafe(tmp)
-            val msg = "Restore FAILED: the backup contains a damaged container — missing ${health.missingCritical.joinToString(", ")}. " +
-                "The current container was NOT modified; the backup file is untouched. " +
-                "Restore a different backup file (for example the original 435 MB copy from Documents) or download a fresh Ubuntu."
+            val msg = "Restore FAILED: the backup's manifest does not add up. The current container was NOT modified; the backup file is untouched."
+            onProgress("\u2717 ${manifest.detail}")
             onProgress("\u2717 $msg")
-            com.codespace.ide.diagnostics.AppOutputLog.log(
-                "[RESTORE-DIAG] pre-swap health gate refused: ${health.verdict}\n[RESTORE-DIAG] health: ${health.lines.joinToString("; ")}",
-                "terminal",
-            )
-            return RestoreResult(filesWritten, 0, symlinkWarnings, false, msg)
+            return RestoreResult(filesWritten, 0, symlinkWarnings, false, msg, verdict = RestoreVerdict.FAILED)
+        }
+
+        // ADVISOR 2026-10-13 (item 2b/2c): the gate = critical health (bash+env
+        // only, arm64-accurate — no lib64 requirement) PLUS a functional smoke
+        // test with the SAME proot the app uses, both BEFORE the swap.
+        val health = ContainerSafety.healthOf(tmp)
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[RESTORE-DIAG] pre-swap health: ${health.lines.joinToString("; ")}\n[RESTORE-DIAG] verdict: ${health.verdict}",
+            "terminal",
+        )
+        val smoke = ContainerSafety.smokeTest(context, tmp)
+        com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] smoke: ran=${smoke.ran} ok=${smoke.ok} — ${smoke.detail}", "terminal")
+        val gateOk = health.ok && (!smoke.ran || smoke.ok)
+        if (!gateOk) {
+            val gateDetail = health.missingCritical.joinToString(", ") +
+                (if (health.warnings.isNotEmpty()) "; warnings: ${health.warnings.joinToString("; ")}" else "") +
+                "; smoke: ${smoke.detail}"
+            val liveValid = rootfs.exists() && ContainerSafety.healthOf(rootfs).ok
+            if (liveValid && !restoreAnyway) {
+                // A working container is installed: NEVER overwrite it with a gate-failing backup.
+                ContainerSafety.deleteTreeSafe(tmp)
+                val msg = "Restore REFUSED: the backup fails the verification gate ($gateDetail). " +
+                    "Your current Ubuntu container works, so it was NOT overwritten. The backup file is untouched."
+                onProgress("\u2717 $msg")
+                return RestoreResult(filesWritten, 0, symlinkWarnings, false, msg, verdict = RestoreVerdict.REFUSED_GATE_LIVE_VALID)
+            }
+            if (!liveValid && !restoreAnyway) {
+                // ADVISOR 2026-10-13 (item 3): NOTHING TO LOSE — no valid container
+                // is installed, so a dead-end refusal helps nobody. Typed result:
+                // the UI offers "Restore anyway" vs "Download fresh".
+                ContainerSafety.deleteTreeSafe(tmp)
+                val msg = "The backup failed the verification gate ($gateDetail), but no working Ubuntu is installed either — " +
+                    "there is nothing to lose. You can install this backup anyway, or download a fresh Ubuntu (~58 MB). The backup file is untouched."
+                onProgress("\u2717 $msg")
+                return RestoreResult(0, 0, symlinkWarnings, false, msg, verdict = RestoreVerdict.NEEDS_RESTORE_ANYWAY)
+            }
+            // restoreAnyway=true (nothing-to-lose path): install the backup
+            // regardless; the final verdict below reflects the smoke outcome.
+            onProgress("! You chose Restore anyway (no working container to protect): installing the backup regardless.")
         }
         // RG02: atomic swap — live rootfs only disappears once the full
         // replacement exists. If any rename fails, roll back so the live
@@ -578,7 +649,24 @@ object BackupManager {
             onProgress("Container restored, but $symlinkWarnings symlink(s) could not be created — some tools may misbehave; report this if you see errors.")
         }
         NotificationStore.add("Restore complete", "$filesWritten files restored from backup$dupNote$warnNote", NotificationStore.Type.BACKUP)
-        return RestoreResult(filesWritten, 0, symlinkWarnings, true, "Restored $filesWritten files$dupNote$warnNote$verifyNote$healthNote", healthy = health.ok)
+        val verdict = when {
+            gateOk && smoke.ran && smoke.ok -> RestoreVerdict.OK_HEALTHY
+            !smoke.ran -> RestoreVerdict.OK_UNVERIFIED
+            else -> RestoreVerdict.OK_SMOKE_FAILED
+        }
+        val smokeNote = when (verdict) {
+            RestoreVerdict.OK_HEALTHY -> "\u2713 Smoke test: proot ran 'env true' and 'bash -c echo ok' — the container REALLY works."
+            RestoreVerdict.OK_UNVERIFIED -> "Smoke test could not run on this host — the health check alone passed."
+            RestoreVerdict.OK_SMOKE_FAILED -> "\u2717 Smoke test FAILED after installing anyway: the container is not usable. A fresh Ubuntu download is recommended."
+            else -> ""
+        }
+        onProgress(smokeNote)
+        return RestoreResult(
+            filesWritten, 0, symlinkWarnings, true,
+            "Restored $filesWritten files$dupNote$warnNote$verifyNote$healthNote",
+            verdict = verdict,
+            healthy = verdict != RestoreVerdict.OK_SMOKE_FAILED,
+        )
     }
 
     /**
