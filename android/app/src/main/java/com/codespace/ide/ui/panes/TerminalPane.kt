@@ -1305,7 +1305,7 @@ internal fun TerminalPane(
                                 }
                                 com.codespace.ide.terminal.InstallChoice.SKIPPED_TIMEOUT ->
                                     writeToDisplay(progressSession, "[Ubuntu] No choice in 5 seconds — restoring automatically (turn it off in Settings > Container Backup > Restore automatically).\r\n\r\n")
-                                com.codespace.ide.terminal.InstallChoice.SKIPPED_DISMISSED -> {
+                                com.codespace.ide.terminal.InstallChoice.SKIPPED_DISMISSED, null -> {
                                     writeToDisplay(progressSession, "[Ubuntu] Restore cancelled — install skipped. Reopen this tab to retry.\r\n")
                                     return@Thread
                                 }

@@ -172,10 +172,14 @@ object BackupTar {
         val error: String?,
     )
 
-    fun inspect(archiveFile: File): InspectReport = GzipOpen.open(archiveFile).use { inspectStream(it) }
+    fun inspect(archiveFile: File): InspectReport =
+        GzipOpen.open(archiveFile).use { inspectStream(it, archiveFile.length(), archiveFile.lastModified()) }
 
-    /** Bug 4 (owner round 2026-10-14): Check backup works on a PICKED stream (Settings > Container Backup). */
-    fun inspectStream(input: java.io.InputStream): InspectReport {
+    /** Bug 4 (owner round 2026-10-14): Check backup works on a PICKED stream (Settings > Container Backup).
+     *  A stream has no size/mtime of its own — callers that KNOW them pass them in
+     *  (the File delegate does), streams default to -1 (the picker reports its own
+     *  size line via the ContentResolver). */
+    fun inspectStream(input: java.io.InputStream, sizeBytes: Long = -1L, modifiedMs: Long = -1L): InspectReport {
         val topLevel = LinkedHashSet<String>()
         val symlinks = ArrayList<SymlinkInfo>()
         val rejected = ArrayList<String>()
@@ -209,14 +213,14 @@ object BackupTar {
                 }
             }
             return InspectReport(
-                ok = true, sizeBytes = archiveFile.length(), modifiedMs = archiveFile.lastModified(),
+                ok = true, sizeBytes = sizeBytes, modifiedMs = modifiedMs,
                 topLevel = topLevel.toList(), symlinks = symlinks, totalEntries = total,
                 dirs = dirs, files = files, hasBash = hasBash, hasEnv = hasEnv,
                 rejected = rejected, error = null,
             )
         } catch (e: Exception) {
             return InspectReport(
-                ok = false, sizeBytes = archiveFile.length(), modifiedMs = archiveFile.lastModified(),
+                ok = false, sizeBytes = sizeBytes, modifiedMs = modifiedMs,
                 topLevel = emptyList(), symlinks = emptyList(), totalEntries = 0, dirs = 0, files = 0,
                 hasBash = false, hasEnv = false, rejected = emptyList(), error = "${e.message}",
             )

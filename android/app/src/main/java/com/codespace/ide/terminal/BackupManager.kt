@@ -406,6 +406,7 @@ object BackupManager {
         REFUSED_INSTALLED,
         /** Bug 1b: another restore is already running — this call was refused. */
         ALREADY_RUNNING,
+        FAILED,
     }
 
     data class RestoreResult(
