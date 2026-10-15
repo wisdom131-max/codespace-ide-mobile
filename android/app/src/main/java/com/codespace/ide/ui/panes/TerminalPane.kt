@@ -385,10 +385,22 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                                 onFileLinkTap?.invoke(resolved.first.absolutePath, resolved.second)
                                 return
                             }
+                            // Advisor 1e (2026-10-15): a missing file must be VISIBLE,
+                            // not silent — the owner tapped a link and got nothing.
+                            com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "unresolved: no branch matched '" + linkToken.take(80) + "'")
+                            v.mTermSession?.write("\r\n[Link] File not found: " + linkToken.trim().trimEnd(':', ',', ';') + "\r\n")
                         }
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (t: Throwable) {
+                // Advisor 1e (2026-10-15): a tap must NEVER close the app. The old
+                // catch swallowed only Exception — an Error (AssertionError family)
+                // would have escaped this boundary. Contain Throwable, pin it in the
+                // persistent crumb log, keep the app alive.
+                com.codespace.ide.diagnostics.CrumbLog.crumb(
+                    "tap", "resolution threw " + t.javaClass.simpleName + ": " + (t.message ?: "").take(120),
+                )
+            }
         }
         v.requestFocus()
         val imm = v.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
