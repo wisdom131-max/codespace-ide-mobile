@@ -141,4 +141,49 @@ class InstallChoiceMachineTest {
         m.choose(1) // too late — must not resurrect the dialog outcome
         assertEquals(InstallChoice.SKIPPED_TIMEOUT, m.outcomeOrNull())
     }
+
+    // ── Advisor follow-up (2026-10-15): the countdown pauses while the app is
+    //    backgrounded — background seconds never count, and it can NEVER
+    //    resolve (start a restore) while inactive. ────────────────────────────
+
+    @Test
+    fun countdownFreezesWhileBackgroundedAndResumesWhereItLeftOff() {
+        var now = 0L
+        val m = InstallChoiceMachine(clock = { now })
+        m.begin(3, timeoutMs = 5_000)
+        // a whole minute passes with the app in the background
+        now = 60_000
+        assertFalse("background time must never resolve the countdown", m.tick(active = false))
+        now = 60_200
+        assertFalse(m.tick(active = false))
+        // back to the foreground: only 200ms have accrued, then 4600 more...
+        now = 60_400
+        assertFalse(m.tick(active = true))
+        now = 65_000
+        assertFalse("4800 of 5000 ms accrued — still awaiting", m.tick(active = true))
+        // ...and the LAST stretch fires it — only after REAL foreground time
+        now = 65_300
+        assertTrue(m.tick(active = true))
+        assertEquals(InstallChoice.SKIPPED_TIMEOUT, m.outcomeOrNull())
+    }
+
+    @Test
+    fun backgroundedCountdownNeverStartsARestore() {
+        var now = 0L
+        val m = InstallChoiceMachine(clock = { now })
+        m.begin(3, timeoutMs = 5_000)
+        // hours pass in the background: 5000ms would have passed 4320 times over
+        repeat(100) { i ->
+            now = i * 60_000L
+            assertFalse(m.tick(active = false))
+        }
+        assertTrue(m.awaiting)
+        assertNull(m.outcomeOrNull())
+        // the owner returns: the 5 seconds start counting NOW, not from launch
+        now += 4_999
+        assertFalse(m.tick(active = true))
+        now += 1
+        assertTrue(m.tick(active = true))
+        assertEquals(InstallChoice.SKIPPED_TIMEOUT, m.outcomeOrNull())
+    }
 }

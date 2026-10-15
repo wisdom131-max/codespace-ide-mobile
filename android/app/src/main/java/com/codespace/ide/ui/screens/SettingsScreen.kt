@@ -477,10 +477,23 @@ fun SettingsScreen(
             var pickedUri by remember { mutableStateOf<android.net.Uri?>(null) }
             var pickedReport by remember { mutableStateOf("") }
             var showPickedRestoreConfirm by remember { mutableStateOf(false) }
-            val pickBackupLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-                androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
-            ) { uri ->
-                if (uri != null) {
+            // Advisor follow-up (2026-10-15): a picked file from a NON-LOCAL
+            // provider (Drive, Dropbox...) is read TWICE over the owner's
+            // connection — he gets a Continue/Cancel warning BEFORE anything is read.
+            var showCloudWarn by remember { mutableStateOf(false) }
+            var cloudWarnUri by remember { mutableStateOf<android.net.Uri?>(null) }
+            // The device's OWN storage/Downloads/Media providers read locally —
+            // everything else (Drive, Dropbox, OneDrive...) streams over the
+            // network and gets the warning dialog first.
+            val isLocalProvider: (android.net.Uri) -> Boolean = { uri ->
+                val a = uri.authority ?: ""
+                a == "com.android.externalstorage.documents" ||
+                    a == "com.android.providers.downloads.documents" ||
+                    a == "media" ||
+                    a == "com.android.providers.media.module"
+            }
+            val runPickedCheck: (android.net.Uri) -> Unit = { uri: android.net.Uri ->
+                run {
                     pickedUri = uri
                     backupRunning = true
                     scope.launch {
@@ -518,6 +531,18 @@ fun SettingsScreen(
                         }
                         backupRunning = false
                         showPickedRestoreConfirm = true
+                    }
+                }
+            }
+            val pickBackupLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                if (uri != null) {
+                    if (isLocalProvider(uri)) {
+                        runPickedCheck(uri)
+                    } else {
+                        cloudWarnUri = uri
+                        showCloudWarn = true
                     }
                 }
             }
@@ -714,6 +739,35 @@ fun SettingsScreen(
             }
 
             // Bug 4: the picked file was Checked — now the explicit restore confirm.
+            if (showCloudWarn && cloudWarnUri != null) {
+                androidx.compose.runtime.key(orientation) {
+                AlertDialog(
+                    onDismissRequest = { showCloudWarn = false; cloudWarnUri = null },
+                    title = { Text("Cloud file \u2014 read it anyway?") },
+                    text = {
+                        val nm = runCatching { BackupManager.queryPickedName(context, cloudWarnUri!!) }.getOrNull() ?: "the picked file"
+                        val sz = runCatching { BackupManager.queryPickedSize(context, cloudWarnUri!!) }.getOrNull() ?: -1L
+                        Text(
+                            "\u201C$nm\u201D${if (sz >= 0) " (${sz / (1024 * 1024)} MB)" else ""} comes from a cloud provider (Drive or similar), not from this device\u2019s storage.\n\n" +
+                                "Checking and restoring reads it TWICE over your connection \u2014 that can use a lot of mobile data and may be slow. Nothing is copied to the device; if the connection drops, the restore stops with an error and nothing is changed.\n\n" +
+                                "Continue?"
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val u = cloudWarnUri
+                            showCloudWarn = false
+                            cloudWarnUri = null
+                            if (u != null) runPickedCheck(u)
+                        }) { Text("Continue") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showCloudWarn = false; cloudWarnUri = null }) { Text("Cancel") }
+                    },
+                )
+                }
+            }
+
             if (showPickedRestoreConfirm) {
                 androidx.compose.runtime.key(orientation) {
                 AlertDialog(

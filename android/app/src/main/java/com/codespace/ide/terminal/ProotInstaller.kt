@@ -133,8 +133,14 @@ object ProotInstaller {
                File(rootfsDir(context), "usr/bin/bash").exists()
     }
 
-    /** Advisor review of 3b34e27 (2026-10-15): LEGACY detection — a healthy
-     *  rootfs (usr/bin/bash present) whose marker is ABSENT (containers restored
+    /** Advisor follow-up (2026-10-15): the adoption bar = THE SAME critical
+     *  health the restore gate uses (ContainerSafety.healthOf.ok: bash AND env,
+     *  warnings never pass a damaged container) — bash alone would adopt the
+     *  leftover of a half-finished restore. A rootfs with bash but NO env is
+     *  DAMAGED and goes to the restore/download path.
+     *
+     *  Advisor review of 3b34e27 (2026-10-15): LEGACY detection — a healthy
+     *  rootfs whose marker is ABSENT (containers restored
      *  by builds before the marker fix, e.g. b068d06) or STALE (marker holds an
      *  older app version after an update). Such a container is ADOPTED (marker
      *  written with the CURRENT version), never restored over, never re-downloaded,
@@ -142,7 +148,7 @@ object ProotInstaller {
      *  CANNOT trigger an upgrade or reinstall flow: a version mismatch means
      *  "adopt", not "re-install". */
     fun rootfsHealthy(context: Context): Boolean =
-        File(rootfsDir(context), "usr/bin/bash").exists()
+        com.codespace.ide.terminal.ContainerSafety.healthOf(rootfsDir(context)).ok
 
     /**
      * ONE writer for the installed marker (owner round 2026-10-14, bug 1a):

@@ -1316,7 +1316,10 @@ internal fun TerminalPane(
                             writeToDisplay(progressSession, "[Ubuntu] Restoring in 5 seconds — restore now, or start fresh instead.\r\n")
                             grantChoiceMachine.begin(3, timeoutMs = 5_000)
                             showGrantChoice = true
-                            while (!grantChoiceMachine.tick()) {
+                            // Advisor follow-up: the countdown runs ONLY while
+                            // the app is foreground and resumed; backgrounded
+                            // time is frozen and no restore ever fires unseen.
+                            while (!grantChoiceMachine.tick(active = com.codespace.ide.AppForeground.resumed)) {
                                 try { Thread.sleep(200) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
                             }
                             showGrantChoice = false
@@ -1338,7 +1341,7 @@ internal fun TerminalPane(
                             writeToDisplay(progressSession, "[Ubuntu] Found your backup ($bInfo) — choose what to do.\r\n")
                             grantChoiceMachine.begin(3, timeoutMs = 600_000)
                             showGrantChoice = true
-                            while (!grantChoiceMachine.tick()) {
+                            while (!grantChoiceMachine.tick(active = com.codespace.ide.AppForeground.resumed)) {
                                 try { Thread.sleep(200) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
                             }
                             showGrantChoice = false

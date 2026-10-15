@@ -277,6 +277,16 @@ class MainActivity : FragmentActivity() {
         if (code !in 200..299) throw java.io.IOException("reportCrash returned HTTP $code")
     }
 
+    override fun onStart() {
+        super.onStart()
+        AppForeground.resumed = true
+    }
+
+    override fun onStop() {
+        AppForeground.resumed = false
+        super.onStop()
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         updateSystemUIForOrientation(newConfig.orientation)

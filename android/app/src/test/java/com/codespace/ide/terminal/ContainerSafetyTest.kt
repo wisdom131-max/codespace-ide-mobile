@@ -217,6 +217,20 @@ class ContainerSafetyTest {
         assertTrue(ContainerSafety.healthOf(rootfs).ok)
     }
 
+    @Test
+    fun adoptionBarRejectsBashOnlyLeftover() {
+        // Advisor follow-up 2026-10-15: the ADOPTION bar (ProotInstaller
+        // .rootfsHealthy delegates to healthOf().ok) = the same critical health
+        // as the restore gate — bash AND env. The 14:15-crash leftover had bash
+        // but NO env: it is DAMAGED and must go to the restore/download path,
+        // never be adopted.
+        val base = tempDir("c2-adopt")
+        val rootfs = makeContainer(base, healthy = false)
+        assertTrue("leftover must really have bash", File(rootfs, "usr/bin/bash").exists())
+        assertFalse("bash alone must NOT pass the adoption bar", ContainerSafety.healthOf(rootfs).ok)
+        assertTrue(ContainerSafety.healthOf(rootfs).missingCritical.contains("usr/bin/env"))
+    }
+
     // ── D: backup verification ─────────────────────────────────────────────
 
     /** Build a minimal tar.gz with the given file entries. */

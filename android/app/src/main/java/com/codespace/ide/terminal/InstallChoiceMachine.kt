@@ -39,7 +39,9 @@ class InstallChoiceMachine(
     var reason: String = ""
         private set
 
-    private var deadline: Long = 0L
+    private var timeoutMs: Long = 0L
+    private var elapsedMs: Long = 0L
+    private var lastTick: Long = 0L
     private var outcome: InstallChoice? = null
 
     val resolved: Boolean get() = state == State.RESOLVED
@@ -51,7 +53,9 @@ class InstallChoiceMachine(
         this.kind = kind
         this.reason = reason
         this.outcome = null
-        this.deadline = clock() + timeoutMs
+        this.timeoutMs = timeoutMs
+        this.elapsedMs = 0L
+        this.lastTick = clock()
         this.state = State.AWAITING_CHOICE
     }
 
@@ -74,13 +78,28 @@ class InstallChoiceMachine(
     }
 
     /**
-     * Driver poll: resolves SKIPPED_TIMEOUT once the deadline passes and reports
-     * whether the machine is resolved. Call from the install-thread poll loop.
+     * Driver poll: resolves SKIPPED_TIMEOUT once the AWAITING time accumulates
+     * to the timeout and reports whether the machine is resolved. Call from the
+     * install-thread poll loop.
+     *
+     * Advisor follow-up (2026-10-15): [active] = the app is in the foreground.
+     * The timeout now runs on ACCUMULATED foreground time: while active=false
+     * the clock is frozen (background seconds never count) and the machine can
+     * never resolve — so a restore cannot start while the app is backgrounded.
+     * With active=true on every tick this behaves exactly like the old
+     * wall-clock deadline.
      */
-    fun tick(): Boolean {
-        if (state == State.AWAITING_CHOICE && clock() >= deadline) {
-            outcome = InstallChoice.SKIPPED_TIMEOUT
-            state = State.RESOLVED
+    fun tick(active: Boolean = true): Boolean {
+        if (state == State.AWAITING_CHOICE) {
+            val now = clock()
+            if (active) {
+                elapsedMs += (now - lastTick)
+                if (elapsedMs >= timeoutMs) {
+                    outcome = InstallChoice.SKIPPED_TIMEOUT
+                    state = State.RESOLVED
+                }
+            }
+            lastTick = now
         }
         return state == State.RESOLVED
     }
