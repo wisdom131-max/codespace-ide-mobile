@@ -16,6 +16,8 @@ REQUIRED = [
     "com.codespace.ide.data.SessionStateStoreTest",
     "com.codespace.ide.debug.DAPClientTest",
     "com.codespace.ide.debug.NodeDAPAdapterTest",
+    "com.codespace.ide.debug.LegacyDebugAdapterTest",
+    "com.codespace.ide.debug.UniversalDebugManagerTest",
     "com.codespace.ide.environment.GuestCwdHostCheckTest",
     "com.codespace.ide.resolver.HostResolutionTest",
     "com.codespace.ide.resolver.PathDialectsTest",
