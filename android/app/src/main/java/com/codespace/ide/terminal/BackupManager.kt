@@ -116,10 +116,20 @@ object BackupManager {
      *  version marker (written by install AND on restore success); a tab that
      *  opens while a restore runs WAITS and re-decides — it never starts its
      *  own restore. Pure JVM-testable (TabInstallDecisionTest). */
-    enum class TabInstallAction { ATTACH_INSTALLED, WAIT_FOR_RESTORE, RESTORE_BACKUP, FRESH_INSTALL }
-    fun decideTabInstall(hasBackup: Boolean, isInstalled: Boolean, restoreRunning: Boolean): TabInstallAction {
+    enum class TabInstallAction { ATTACH_INSTALLED, WAIT_FOR_RESTORE, RESTORE_BACKUP, FRESH_INSTALL, ADOPT_LEGACY }
+    fun decideTabInstall(
+        hasBackup: Boolean,
+        isInstalled: Boolean,
+        restoreRunning: Boolean,
+        legacyRootfs: Boolean = false,
+    ): TabInstallAction {
         if (isInstalled) return TabInstallAction.ATTACH_INSTALLED
         if (restoreRunning) return TabInstallAction.WAIT_FOR_RESTORE
+        // Advisor review of 3b34e27: a healthy rootfs with a missing/stale marker
+        // (pre-marker-build container, or an app update) is ADOPTED — it takes
+        // precedence over a restore: a working container is never silently
+        // replaced, and no notice, restore or download ever runs for it.
+        if (legacyRootfs) return TabInstallAction.ADOPT_LEGACY
         return if (hasBackup) TabInstallAction.RESTORE_BACKUP else TabInstallAction.FRESH_INSTALL
     }
 
@@ -650,8 +660,32 @@ object BackupManager {
         // DEFERRED last, traversal entries resolved, duplicates skipped and
         // counted). The owner's 435 MB backup (old writer, entries under bin
         // entries) is accepted by design.
-        val scan = BackupTar.scanStream(opener())
-        val ext = BackupTar.extractStream(opener(), tmp, scan) { msg -> onProgress(msg) }
+        // Advisor review of 3b34e27 (gap 4): a PICKED STREAM (cloud/Drive file,
+        // flaky connection) can DIE mid-read. Both passes open a FRESH stream
+        // (the opener is re-invoked), so a cloud source is read twice — by design,
+        // no local copy is made. An interruption here is TYPED (never an uncaught
+        // exception in the install thread): the partial temp dir is cleaned up,
+        // the live container was never touched (the swap is still ahead), and
+        // the pane's failure dialog waits for the owner's tap — NO auto-retry.
+        val scan: BackupTar.ScanResult
+        val ext: BackupTar.ExtractResult
+        try {
+            scan = BackupTar.scanStream(opener())
+            ext = BackupTar.extractStream(opener(), tmp, scan) { msg -> onProgress(msg) }
+        } catch (e: Exception) {
+            ContainerSafety.deleteTreeSafe(tmp)
+            val msg = "Restore FAILED: the backup could not be read to the end (${e.message}). " +
+                "For a cloud or Drive file this is usually a dropped connection mid-stream; the file may be large or the connection slow. " +
+                "The current container was NOT modified; the backup file is untouched. Tap Try restore again to retry from the start."
+            onProgress("\u2717 $msg")
+            val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[RESTORE-DIAG] stream read failed: ${e.javaClass.simpleName}: ${e.message} [elapsed=${elapsed / 1000}s]",
+                "terminal",
+            )
+            Log.w(TAG, "[RESTORE-DIAG] stream read failed", e)
+            return RestoreResult(0, 0, 0, false, msg, verdict = RestoreVerdict.FAILED)
+        }
         val filesWritten = ext.filesWritten
         val fileFailures = ext.fileFailures
         val symlinkWarnings = ext.symlinkWarnings

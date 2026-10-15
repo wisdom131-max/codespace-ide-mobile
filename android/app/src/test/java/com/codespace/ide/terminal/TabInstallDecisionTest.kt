@@ -120,6 +120,69 @@ class TabInstallDecisionTest {
         )
     }
 
+    // ── Advisor review of 3b34e27 (2026-10-15): LEGACY CONTAINERS ────────────
+    // The owner's live container was restored by b068d06, which never wrote the
+    // marker: healthy rootfs, marker ABSENT. A stale marker (app update) is the
+    // same input (pane-side: !isInstalled && rootfsHealthy). Both are ADOPTED.
+
+    @Test
+    fun legacyContainerWithoutMarkerIsAdoptedNeverRestored() {
+        // Healthy rootfs + no/stale marker + a backup on disk: the decision MUST
+        // be adoption — never RESTORE_BACKUP (which would replace a working
+        // container) and never the 5-second notice.
+        assertEquals(
+            BackupManager.TabInstallAction.ADOPT_LEGACY,
+            BackupManager.decideTabInstall(hasBackup = true, isInstalled = false, restoreRunning = false, legacyRootfs = true),
+        )
+    }
+
+    @Test
+    fun adoptionBeatsRestoreEvenWithBackupPresent() {
+        val a = BackupManager.decideTabInstall(hasBackup = true, isInstalled = false, restoreRunning = false, legacyRootfs = true)
+        // The order inside decideTabInstall is the contract: isInstalled >
+        // restoreRunning > LEGACY > hasBackup. A working container outranks a
+        // found backup every time.
+        assert(a == BackupManager.TabInstallAction.ADOPT_LEGACY && a != BackupManager.TabInstallAction.RESTORE_BACKUP)
+    }
+
+    @Test
+    fun adoptedLegacyContainerAttachesOnEveryLaterTab() {
+        // Adoption writes the marker (pane handler) -> isInstalled true forever
+        // after: tab 2, 3, 4 attach, no notice, no restore, no re-download.
+        assertEquals(
+            BackupManager.TabInstallAction.ATTACH_INSTALLED,
+            BackupManager.decideTabInstall(hasBackup = true, isInstalled = true, restoreRunning = false),
+        )
+    }
+
+    @Test
+    fun legacyContainerWaitsWhileARestoreRuns() {
+        // A restore in flight outranks adoption too (the swap will replace the
+        // rootfs; adopting mid-swap would stamp a half-state).
+        assertEquals(
+            BackupManager.TabInstallAction.WAIT_FOR_RESTORE,
+            BackupManager.decideTabInstall(hasBackup = true, isInstalled = false, restoreRunning = true, legacyRootfs = true),
+        )
+    }
+
+    @Test
+    fun brokenRootfsWithoutMarkerStillOffersRestore() {
+        // legacyRootfs=false means usr/bin/bash is ABSENT (no healthy rootfs) —
+        // the backup path is the honest decision again.
+        assertEquals(
+            BackupManager.TabInstallAction.RESTORE_BACKUP,
+            BackupManager.decideTabInstall(hasBackup = true, isInstalled = false, restoreRunning = false, legacyRootfs = false),
+        )
+    }
+
+    @Test
+    fun brokenRootfsWithoutMarkerOrBackupInstallsFresh() {
+        assertEquals(
+            BackupManager.TabInstallAction.FRESH_INSTALL,
+            BackupManager.decideTabInstall(hasBackup = false, isInstalled = false, restoreRunning = false, legacyRootfs = false),
+        )
+    }
+
     // ── Bug 3: the auto-restore notice machine (kind 3, injectable clock) ─────
 
     @Test

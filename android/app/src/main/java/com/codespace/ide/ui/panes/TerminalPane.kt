@@ -1200,10 +1200,19 @@ internal fun TerminalPane(
                 // success too). A tab that opens while a restore runs WAITS and
                 // re-decides; it never starts a second restore (that replaced
                 // the rootfs and destroyed freshly-made changes).
+                // Advisor review of 3b34e27: LEGACY input — a healthy rootfs with
+                // a missing/stale marker (pre-marker-build container like the
+                // owner's b068d06 restore, or an app update). Never adopted while
+                // an install or restore is mid-flight in another tab.
+                val legacyHealthy = !com.codespace.ide.terminal.ProotInstaller.isInstalled(ctx) &&
+                    !com.codespace.ide.terminal.ProotInstaller.isInstallRunning() &&
+                    !com.codespace.ide.terminal.BackupManager.isRestoreRunning() &&
+                    com.codespace.ide.terminal.ProotInstaller.rootfsHealthy(ctx)
                 var setupDecision = com.codespace.ide.terminal.BackupManager.decideTabInstall(
                     com.codespace.ide.terminal.BackupManager.hasBackup(),
                     com.codespace.ide.terminal.ProotInstaller.isInstalled(ctx),
                     com.codespace.ide.terminal.BackupManager.isRestoreRunning(),
+                    legacyRootfs = legacyHealthy,
                 )
                 if (setupDecision == com.codespace.ide.terminal.BackupManager.TabInstallAction.WAIT_FOR_RESTORE) {
                     writeToDisplay(progressSession, "[Ubuntu] A restore is already running in another tab — this tab will attach when it finishes.\r\n")
@@ -1212,11 +1221,26 @@ internal fun TerminalPane(
                         com.codespace.ide.terminal.BackupManager.hasBackup(),
                         com.codespace.ide.terminal.ProotInstaller.isInstalled(ctx),
                         false,
+                        legacyRootfs = legacyHealthy,
                     )
                     writeToDisplay(progressSession, if (setupDecision == com.codespace.ide.terminal.BackupManager.TabInstallAction.ATTACH_INSTALLED)
                         "[Ubuntu] ✓ Restore finished — launching your Ubuntu.\r\n\r\n" else
                         "[Ubuntu] The restore in the other tab did not produce a usable container — continuing setup...\r\n",
                     )
+                }
+                // Advisor review of 3b34e27: ADOPT the legacy container — write the
+                // missing marker with the CURRENT version, then attach. No restore,
+                // no notice, no re-download; the backup file is never touched. This
+                // also retires the version-mismatch path: an app UPDATE adopts the
+                // container instead of re-installing it.
+                if (setupDecision == com.codespace.ide.terminal.BackupManager.TabInstallAction.ADOPT_LEGACY) {
+                    com.codespace.ide.terminal.ProotInstaller.writeVersionMarker(ctx)
+                    writeToDisplay(progressSession, "[Ubuntu] \u2713 Found your existing Ubuntu (installed by an older build) \u2014 adopted. No restore, no re-download.\r\n\r\n")
+                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                        "[ADOPT-DIAG] legacy healthy rootfs adopted (bash present, marker absent/stale) \u2014 marker written, attach path taken",
+                        "terminal",
+                    )
+                    setupDecision = com.codespace.ide.terminal.BackupManager.TabInstallAction.ATTACH_INSTALLED
                 }
                 if (setupDecision == com.codespace.ide.terminal.BackupManager.TabInstallAction.RESTORE_BACKUP) {
                     // A previous container backup exists in shared storage (survives uninstall) —
@@ -2105,7 +2129,10 @@ internal fun TerminalPane(
         // text "Waiting for your choice" with no buttons. It now renders at pane
         // level, and the same choices are INLINE buttons right below the tab bar
         // so they are always visible in the terminal itself.
-        if (showGrantChoice) {
+        // Advisor review of 3b34e27: kind 3 (auto-restore notice) renders as the
+        // INLINE panel only — the modal dialog's else-branch text ("Backup
+        // restore failed") must never appear for a healthy backup notice.
+        if (showGrantChoice && grantChoiceKind != 3) {
             AlertDialog(
                 onDismissRequest = { grantChoiceMachine.dismiss() },
                 title = { Text(when (grantChoiceKind) { 0 -> "Storage permission needed"; 2 -> "Restore this backup anyway?"; else -> "Backup restore failed" }) },
@@ -2166,6 +2193,20 @@ internal fun TerminalPane(
                 OutlinedButton(onClick = { grantChoiceMachine.choose(2) }) {
                     Text(if (grantChoiceKind == 3) "Start fresh instead (~58 MB)" else "Download fresh (~58 MB)", fontSize = 11.sp)
                 }
+            }
+            // Advisor review of 3b34e27: the notice MUST have a plain Cancel /
+            // Keep-current option — a visible button, not only the back-press.
+            if (grantChoiceKind == 3) {
+                Text(
+                    "Cancel keeps everything exactly as it is \u2014 the install is skipped and nothing changes. Reopen this tab to try again.",
+                    color = Color(0xFF888888),
+                    fontSize = 10.sp,
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
+                TextButton(
+                    onClick = { grantChoiceMachine.dismiss() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Cancel \u2014 keep as is", fontSize = 11.sp) }
             }
         }
         // Bug 2 (owner round 2026-10-14): ONE compact, DISMISSIBLE line. Shows

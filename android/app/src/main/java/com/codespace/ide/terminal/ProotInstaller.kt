@@ -133,6 +133,17 @@ object ProotInstaller {
                File(rootfsDir(context), "usr/bin/bash").exists()
     }
 
+    /** Advisor review of 3b34e27 (2026-10-15): LEGACY detection — a healthy
+     *  rootfs (usr/bin/bash present) whose marker is ABSENT (containers restored
+     *  by builds before the marker fix, e.g. b068d06) or STALE (marker holds an
+     *  older app version after an update). Such a container is ADOPTED (marker
+     *  written with the CURRENT version), never restored over, never re-downloaded,
+     *  and never shown the auto-restore notice. The version content therefore
+     *  CANNOT trigger an upgrade or reinstall flow: a version mismatch means
+     *  "adopt", not "re-install". */
+    fun rootfsHealthy(context: Context): Boolean =
+        File(rootfsDir(context), "usr/bin/bash").exists()
+
     /**
      * ONE writer for the installed marker (owner round 2026-10-14, bug 1a):
      * restoreBackup MUST write the same marker install() writes, or isInstalled()
