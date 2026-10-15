@@ -20,13 +20,13 @@ class CrumbLogTest {
 
     @Test
     fun crumbsAppendInOrderWithTimestampAndTag() {
-        CrumbLog.writeCrumbed(tmp.root, "tap", "link token='spantest.txt:1'")
+        CrumbLog.writeCrumbed(tmp.root, "tap", "link text='spantest.txt:1'")
         CrumbLog.writeCrumbed(tmp.root, "open-file", "opening /x/spantest.txt:1")
         val lines = File(tmp.root, "crumb-log.txt").readLines()
         assertEquals(2, lines.size)
         // Timestamp shape is MM-dd HH:mm:ss.SSS (CI-proven: October lines start with "10").
         assertTrue(lines[0].matches(Regex("""\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[tap].*""")))
-        assertTrue(lines[0].contains("[tap] link token='spantest.txt:1'"))
+        assertTrue(lines[0].contains("[tap] link text='spantest.txt:1'"))
         assertTrue(lines[1].contains("[open-file] opening /x/spantest.txt:1"))
     }
 

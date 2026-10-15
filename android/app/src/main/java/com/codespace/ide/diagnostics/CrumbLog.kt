@@ -79,12 +79,9 @@ object CrumbLog {
             if (len > maxBytes) {
                 val old = File(dir, FILE_NAME + OLD_SUFFIX)
                 old.delete()
-                if (!f.renameTo(old)) {
-                    // Rotation refused (should not happen in app-private storage):
-                    // truncate in place rather than grow unbounded.
-                    f.writeText(line)
-                } else {
-                    // .old is capped too: past KEEP_OLD_BYTES it is truncated
+                val rotated = f.renameTo(old)
+                if (rotated) {
+                    // .old is capped too: past keepOldBytes it is truncated
                     // head-first so the newest part survives.
                     val oldLen = old.length()
                     if (oldLen > keepOldBytes) {
@@ -95,6 +92,11 @@ object CrumbLog {
                         old.writeBytes(tail)
                     }
                 }
+                // INVARIANT (CI-proven, bfa232f red): after a rotation the current
+                // file ALWAYS exists and holds the newest breadcrumb — renameTo moves
+                // it away, so recreate it with the triggering line. A refused rename
+                // truncates in place instead of growing unbounded.
+                f.writeText(line)
             }
         }
     }
