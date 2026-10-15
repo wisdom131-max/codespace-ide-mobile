@@ -252,7 +252,10 @@ object IdeTerminalBridge {
      * tap catch).
      */
     fun parseFileLinkToken(token: String): Pair<String, Int> {
-        val clean = token.trim().trimEnd(':', ',', ';')
+        // CI-proven (6cafa41 red): "path ," left a TRAILING SPACE after the comma
+        // was stripped — the resolved path then never matched a real file. Punctuation
+        // AND whitespace are both stripped from the end, repeatedly.
+        val clean = token.trim().trimEnd { it == ':' || it == ',' || it == ';' || it.isWhitespace() }
         val lastColon = clean.lastIndexOf(':')
         if (lastColon > 0) {
             val candidatePath = clean.substring(0, lastColon)

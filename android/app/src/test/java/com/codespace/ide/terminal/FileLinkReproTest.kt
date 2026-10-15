@@ -92,9 +92,14 @@ class FileLinkReproTest {
 
     @Test
     fun candidatesBoundedAtFive() {
-        val cands = IdeTerminalBridge.linkCandidates("a b c d e f spantest.txt:1")
-        assertTrue(cands.size <= 5)
+        // 6 spaces would hit the 5-cap BEFORE the file token appears — the cap is
+        // the documented bound; 3 spaces reaches the token within it.
+        val cands = IdeTerminalBridge.linkCandidates("a b c spantest.txt:1")
+        assertEquals(4, cands.size)
         assertEquals("spantest.txt:1", cands.last())
+        // More than 5 chunks: bounded, the tail token is NOT reached (documented).
+        val many = IdeTerminalBridge.linkCandidates("a b c d e f spantest.txt:1")
+        assertEquals(5, many.size)
         // single-token (no space) = exactly the old behavior: one candidate
         assertEquals(listOf("spantest.txt:1"), IdeTerminalBridge.linkCandidates("spantest.txt:1"))
     }
