@@ -88,6 +88,64 @@ object BackupManager {
     fun consumePickedSource(): java.io.File? { val f = pickedSource; pickedSource = null; return f }
     fun consumeUsePrevious(): Boolean { val v = usePreviousOnNextRestore; usePreviousOnNextRestore = false; return v }
 
+    /** Bug 4 (owner round 2026-10-14): a SAF-picked backup uri — restored from the
+     *  STREAM, never a 200+ MB cache copy. One-shot like pickedSource. */
+    @Volatile var pickedUri: android.net.Uri? = null
+    fun consumePickedUri(): android.net.Uri? { val u = pickedUri; pickedUri = null; return u }
+
+    /** Bug 2 (owner round 2026-10-14): the restore row's per-LAUNCH dismissal —
+     *  process lifetime, NOT persisted (next launch shows the row again). */
+    @Volatile var restoreRowDismissed: Boolean = false
+
+    // ── Bug 1b (owner round 2026-10-14): SINGLE-FLIGHT restore lock ──────────
+    // A restore replaces the rootfs; two at once, or a restore while a second
+    // tab waits in the install flow, is how "second tab re-restores" destroyed
+    // freshly-made changes. One restore at a time, process-wide.
+    private val restoreLock = Any()
+    @Volatile private var restoreRunning = false
+    fun isRestoreRunning(): Boolean = restoreRunning
+    fun awaitRestoreDone(timeoutMs: Long = 15 * 60 * 1000L) {
+        val deadline = android.os.SystemClock.elapsedRealtime() + timeoutMs
+        while (restoreRunning && android.os.SystemClock.elapsedRealtime() < deadline) {
+            try { Thread.sleep(500) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); return }
+        }
+    }
+
+    /** Bug 1a/d (owner round 2026-10-14): PURE tab-install decision — the single
+     *  source of truth every pane consults. isInstalled = healthy rootfs + the
+     *  version marker (written by install AND on restore success); a tab that
+     *  opens while a restore runs WAITS and re-decides — it never starts its
+     *  own restore. Pure JVM-testable (TabInstallDecisionTest). */
+    enum class TabInstallAction { ATTACH_INSTALLED, WAIT_FOR_RESTORE, RESTORE_BACKUP, FRESH_INSTALL }
+    fun decideTabInstall(hasBackup: Boolean, isInstalled: Boolean, restoreRunning: Boolean): TabInstallAction {
+        if (isInstalled) return TabInstallAction.ATTACH_INSTALLED
+        if (restoreRunning) return TabInstallAction.WAIT_FOR_RESTORE
+        return if (hasBackup) TabInstallAction.RESTORE_BACKUP else TabInstallAction.FRESH_INSTALL
+    }
+
+    /** Bug 3 (owner round 2026-10-14): "Restore automatically" — default ON. */
+    fun autoRestoreEnabled(context: Context): Boolean =
+        context.getSharedPreferences("container_backup", Context.MODE_PRIVATE).getBoolean("auto_restore", true)
+    fun setAutoRestore(context: Context, enabled: Boolean) {
+        context.getSharedPreferences("container_backup", Context.MODE_PRIVATE).edit().putBoolean("auto_restore", enabled).apply()
+    }
+
+    /** Bug 4 (owner round 2026-10-14): the picked file's display name (null = unknown). */
+    fun queryPickedName(context: Context, uri: android.net.Uri): String? = try {
+        context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && c.moveToFirst()) c.getString(idx) else null
+        }
+    } catch (_: Exception) { null }
+
+    /** Bug 4: the picked file's size in bytes, -1 = the provider does not report it. */
+    fun queryPickedSize(context: Context, uri: android.net.Uri): Long = try {
+        context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val idx = c.getColumnIndex(android.provider.OpenableColumns.SIZE)
+            if (idx >= 0 && c.moveToFirst() && !c.isNull(idx)) c.getLong(idx) else -1L
+        } ?: -1L
+    } catch (_: Exception) { -1L }
+
     /** D follow-up (advisor 2026-10-11 item 3): typed createBackup outcome so the
      *  UI can implement the small-backup confirmation flow instead of guessing
      *  from progress strings. */
@@ -343,7 +401,11 @@ object BackupManager {
         /** Gate failed with NO valid container installed: the caller offers
          *  "Restore anyway" vs "Download fresh" (nothing to lose). */
         NEEDS_RESTORE_ANYWAY,
-        FAILED,
+        /** Bug 1c: a healthy container is installed and this restore was not an
+         *  explicit owner choice (Settings > Container Backup confirm) — refused. */
+        REFUSED_INSTALLED,
+        /** Bug 1b: another restore is already running — this call was refused. */
+        ALREADY_RUNNING,
     }
 
     data class RestoreResult(
@@ -412,40 +474,125 @@ object BackupManager {
         // ADVISOR 2026-10-13 (item 3): the "Restore anyway" confirmation for the
         // nothing-to-lose path (gate failed, no valid container installed).
         restoreAnyway: Boolean = false,
+        // Bug 4 (owner round 2026-10-14): restore straight from a SAF-picked uri —
+        // NO 200+ MB cache copy; validated by CONTENT (gzip magic), never by
+        // name or MIME; free space checked from the reported size.
+        sourceUri: android.net.Uri? = null,
+        // Bug 1c (owner round 2026-10-14): TRUE only for the explicit Settings >
+        // Container Backup confirm — the ONE path allowed to replace a healthy
+        // installed container. Every other call is refused while one is installed.
+        explicit: Boolean = false,
+    ): RestoreResult {
+        // Bug 1b: SINGLE-FLIGHT — one restore at a time, process-wide. A second
+        // restore (another tab racing through the install flow) replaces the
+        // rootfs under the first one's feet: changes lost, shells broken.
+        synchronized(restoreLock) {
+            if (restoreRunning) {
+                val msg = "A restore is already running in another tab — this one was refused, nothing was changed."
+                onProgress("✗ $msg")
+                return RestoreResult(0, 0, 0, false, msg, verdict = RestoreVerdict.ALREADY_RUNNING)
+            }
+            restoreRunning = true
+        }
+        try {
+            return restoreBackupInner(context, onProgress, usePrevious, sourceFile, restoreAnyway, sourceUri, explicit)
+        } finally {
+            restoreRunning = false
+        }
+    }
+
+    private fun restoreBackupInner(
+        context: Context,
+        onProgress: (String) -> Unit,
+        usePrevious: Boolean = false,
+        sourceFile: File? = null,
+        restoreAnyway: Boolean = false,
+        sourceUri: android.net.Uri? = null,
+        explicit: Boolean = false,
     ): RestoreResult {
         val startedAt = android.os.SystemClock.elapsedRealtime()
         // E17 grant gate (2026-10-07): the backup tarball lives in shared storage;
         // without the All-files-access grant FUSE lets exists() pass and open()
         // fail EACCES mid-restore. Refuse UP FRONT with a typed result so callers
         // can wait for the grant and retry instead of burning the attempt.
-        if (!hasAllFilesAccess()) {
+        if (sourceUri == null && !hasAllFilesAccess()) {
             val msg = "All files access not granted \u2014 the backup lives in shared storage and cannot be read without it. Grant \"All files access\" (the Settings screen the app opened at launch) and restore again."
             Log.w(TAG, "[RESTORE-DIAG] E17 gate: restore refused, All files access not granted")
             com.codespace.ide.diagnostics.AppOutputLog.log("[RESTORE-DIAG] E17 gate: restore refused, All files access not granted", "terminal")
             onProgress("Restore needs the \"All files access\" permission.")
             return RestoreResult(0, 0, 0, false, msg, needsGrant = true)
         }
-        val f = sourceFile ?: if (usePrevious) File(backupDir(), "$BACKUP_FILE.prev") else backupFile()
-        if (!f.exists()) {
+        // Bug 1c (owner round 2026-10-14): a restore NEVER runs over a healthy
+        // installed container unless the owner chose it explicitly in Settings >
+        // Container Backup (a confirm that says what will be lost and to close
+        // running terminals first). Nothing was changed on refusal.
+        if (!explicit && !restoreAnyway && ProotInstaller.isInstalled(context)) {
+            val msg = "A healthy Ubuntu container is already installed — restoring is only offered in Settings > Container Backup, where the confirmation says what will be lost. Nothing was changed."
+            onProgress("✗ $msg")
+            return RestoreResult(0, 0, 0, false, msg, verdict = RestoreVerdict.REFUSED_INSTALLED)
+        }
+        val f: File? = if (sourceUri != null) null else (sourceFile ?: if (usePrevious) File(backupDir(), "$BACKUP_FILE.prev") else backupFile())
+        if (f != null && !f.exists()) {
             onProgress("No backup found at ${f.path}")
             return RestoreResult(0, 0, 0, false, "No backup found at ${f.path}")
+        }
+        // Bug 4 (owner round 2026-10-14): the archive opener + identity. A uri
+        // source streams from the picker (no copy) and is validated by CONTENT —
+        // the first two bytes must be the gzip magic (1f 8b); the detected MIME
+        // and size are REPORTED, never used as the decision.
+        val fLabel: String
+        val fBytes: Long
+        val opener: () -> java.io.InputStream
+        if (sourceUri != null) {
+            val nm = queryPickedName(context, sourceUri) ?: "picked file"
+            val bytes = queryPickedSize(context, sourceUri)
+            val head = try {
+                context.contentResolver.openInputStream(sourceUri)?.use { s ->
+                    val b = ByteArray(2)
+                    var off = 0
+                    while (off < 2) { val r = s.read(b, off, 2 - off); if (r < 0) break; off += r }
+                    if (off < 2) throw java.io.IOException("the file is too short to be a backup archive")
+                    b
+                } ?: throw java.io.IOException("cannot open the picked file")
+            } catch (e: Exception) {
+                val msg = "Could not read the picked file: ${e.message}"
+                onProgress("✗ $msg")
+                return RestoreResult(0, 0, 0, false, msg)
+            }
+            if (head[0] != 0x1F.toByte() || head[1] != 0x8B.toByte()) {
+                val mime = try { context.contentResolver.getType(sourceUri) ?: "unknown" } catch (_: Exception) { "unknown" }
+                val sizeText = if (bytes >= 0) "$bytes bytes" else "unknown size"
+                val msg = "This is not a container backup — it is not a gzip archive. Detected: MIME type \"$mime\", $sizeText, name \"$nm\". Expected container-backup.tar.gz (a .tar.gz archive)."
+                onProgress("✗ $msg")
+                return RestoreResult(0, 0, 0, false, msg)
+            }
+            fLabel = nm
+            fBytes = bytes
+            opener = { context.contentResolver.openInputStream(sourceUri) ?: throw java.io.IOException("cannot open the picked file") }
+        } else {
+            val ff = f!!
+            fLabel = ff.name
+            fBytes = ff.length()
+            opener = { java.io.FileInputStream(ff) }
         }
         val rootfs = ProotInstaller.rootfsDir(context)
         // Advisor item 3 (2026-10-11): EXACT file identity at restore start —
         // path, size in BYTES (the primary identifier), modified time (labelled
         // as modified; Android's Files app can reset it on copy, so it is NEVER
         // treated as an integrity check).
-        val fModified = java.text.SimpleDateFormat("MMM d, yyyy HH:mm:ss", java.util.Locale.getDefault())
-            .format(java.util.Date(f.lastModified()))
-        onProgress("Restoring from: ${f.name}")
-        onProgress("  Size: ${f.length()} bytes (${f.length() / (1024.0 * 1024.0).toInt()} MB) — modified $fModified")
+        val fPath = f?.path ?: sourceUri.toString()
+        val fModified = if (f != null) java.text.SimpleDateFormat("MMM d, yyyy HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date(f.lastModified())) else "unknown (picked file)"
+        onProgress("Restoring from: $fLabel")
+        onProgress("  Size: ${if (fBytes >= 0) "${fBytes} bytes (${fBytes / (1024 * 1024)} MB)" else "unknown"} — modified $fModified")
         com.codespace.ide.diagnostics.AppOutputLog.log(
-            "[RESTORE-DIAG] file identity: path=${f.path} bytes=${f.length()} modified=$fModified usePrevious=$usePrevious",
+            "[RESTORE-DIAG] file identity: path=$fPath bytes=$fBytes modified=$fModified usePrevious=$usePrevious",
             "terminal",
         )
-        onProgress("Restoring container from backup (${f.length() / (1024 * 1024)} MB)...")
+        if (fBytes >= 0) onProgress("Restoring container from backup (${fBytes / (1024 * 1024)} MB)...")
+        else onProgress("Restoring container from the picked file (size not reported)...")
         com.codespace.ide.diagnostics.AppOutputLog.log(
-            "[RESTORE-DIAG] restore start: backupBytes=${f.length()} rootfsExists=${rootfs.exists()}",
+            "[RESTORE-DIAG] restore start: backupBytes=$fBytes rootfsExists=${rootfs.exists()}",
             "terminal",
         )
         // S1-b RESTORE-DIAG (2026-10-04, owner finding A): the full-uninstall restore
@@ -456,7 +603,7 @@ object BackupManager {
         // actual verdict, and this line explains them when they fire.
         runCatching {
             val usableMb = (rootfs.parentFile?.usableSpace ?: 0L) / (1024 * 1024)
-            val diag = "[RESTORE-DIAG] restore start: backupMb=${f.length() / (1024 * 1024)} usableMb=$usableMb rootfsExists=${rootfs.exists()}"
+            val diag = "[RESTORE-DIAG] restore start: backupMb=${if (fBytes >= 0) fBytes / (1024 * 1024) else -1} usableMb=$usableMb rootfsExists=${rootfs.exists()}"
             Log.d(TAG, diag)
             com.codespace.ide.diagnostics.AppOutputLog.log(diag, "terminal")
         }.also {
@@ -465,8 +612,8 @@ object BackupManager {
             // extraction (~3x the tarball is the safe envelope on this device's
             // FUSE storage) PLUS the staged old container until the swap lands.
             val usableMb = (ProotInstaller.rootfsDir(context).parentFile?.usableSpace ?: 0L) / (1024 * 1024)
-            val neededMb = (f.length() / (1024 * 1024)) * 3
-            if (usableMb < neededMb) {
+            val neededMb = if (fBytes >= 0) (fBytes / (1024 * 1024)) * 3 else -1
+            if (neededMb >= 0 && usableMb < neededMb) {
                 val msg = "Restore needs about $neededMb MB of free space, but this device has only $usableMb MB. " +
                     "Free some space (old downloads, unused apps) and try again — nothing was changed and the backup is untouched."
                 onProgress("\u2717 $msg")
@@ -502,8 +649,8 @@ object BackupManager {
         // DEFERRED last, traversal entries resolved, duplicates skipped and
         // counted). The owner's 435 MB backup (old writer, entries under bin
         // entries) is accepted by design.
-        val scan = BackupTar.scan(f)
-        val ext = BackupTar.extract(f, tmp, scan) { msg -> onProgress(msg) }
+        val scan = BackupTar.scanStream(opener())
+        val ext = BackupTar.extractStream(opener(), tmp, scan) { msg -> onProgress(msg) }
         val filesWritten = ext.filesWritten
         val fileFailures = ext.fileFailures
         val symlinkWarnings = ext.symlinkWarnings
@@ -611,6 +758,15 @@ object BackupManager {
             }
         }
 
+        // Bug 1a (owner round 2026-10-14): THE install marker — the same one
+        // install() writes, from the ONE shared writer. Without it isInstalled()
+        // stays false forever after a restore and every new tab re-restores
+        // (rootfs replaced: changes lost, running shells broken).
+        ProotInstaller.writeVersionMarker(context)
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[RESTORE-DIAG] install marker written on restore success — isInstalled() is true from now on",
+            "terminal",
+        )
         val warnNote = if (symlinkWarnings > 0) " ($symlinkWarnings symlinks skipped — see logcat)" else ""
         val dupNote = if (ext.duplicatesSkipped > 0) ", ${ext.duplicatesSkipped} duplicate entries skipped" else ""
         val verifyNote = " — key files: ${ext.verifyLines.joinToString(", ")}"

@@ -775,6 +775,8 @@ internal fun TerminalPane(
     // restore gate. The install THREAD polls grantChoiceMachine (500ms ticks).
     var showGrantChoice by remember { mutableStateOf(false) }
     var grantChoiceBackupMb by remember { mutableStateOf(0L) }
+    // Bug 3 (owner round 2026-10-14): the auto-restore notice's description line.
+    var grantChoiceBackupInfo by remember { mutableStateOf("") }
     // E17-c (2026-10-08): the choice logic moved into InstallChoiceMachine (pure
     // Kotlin, JVM-tested — E17cDialogStateMachineTest); this UI layer only renders
     // the dialog and feeds the machine user taps. The install thread drives it.
@@ -1192,7 +1194,31 @@ internal fun TerminalPane(
                     android.util.Log.d("TerminalPane", diag)
                     com.codespace.ide.diagnostics.AppOutputLog.log(diag, "terminal")
                 }
-                if (isFirstTimeInstall && BackupManager.hasBackup()) {
+                // Bug 1a/1b/1d (owner round 2026-10-14): the ONE decision every
+                // tab consults — decideTabInstall reads the install marker
+                // (healthy rootfs + .ubuntu_version, now written on restore
+                // success too). A tab that opens while a restore runs WAITS and
+                // re-decides; it never starts a second restore (that replaced
+                // the rootfs and destroyed freshly-made changes).
+                var setupDecision = com.codespace.ide.terminal.BackupManager.decideTabInstall(
+                    com.codespace.ide.terminal.BackupManager.hasBackup(),
+                    com.codespace.ide.terminal.ProotInstaller.isInstalled(ctx),
+                    com.codespace.ide.terminal.BackupManager.isRestoreRunning(),
+                )
+                if (setupDecision == com.codespace.ide.terminal.BackupManager.TabInstallAction.WAIT_FOR_RESTORE) {
+                    writeToDisplay(progressSession, "[Ubuntu] A restore is already running in another tab — this tab will attach when it finishes.\r\n")
+                    com.codespace.ide.terminal.BackupManager.awaitRestoreDone()
+                    setupDecision = com.codespace.ide.terminal.BackupManager.decideTabInstall(
+                        com.codespace.ide.terminal.BackupManager.hasBackup(),
+                        com.codespace.ide.terminal.ProotInstaller.isInstalled(ctx),
+                        false,
+                    )
+                    writeToDisplay(progressSession, if (setupDecision == com.codespace.ide.terminal.BackupManager.TabInstallAction.ATTACH_INSTALLED)
+                        "[Ubuntu] ✓ Restore finished — launching your Ubuntu.\r\n\r\n" else
+                        "[Ubuntu] The restore in the other tab did not produce a usable container — continuing setup...\r\n",
+                    )
+                }
+                if (setupDecision == com.codespace.ide.terminal.BackupManager.TabInstallAction.RESTORE_BACKUP) {
                     // A previous container backup exists in shared storage (survives uninstall) —
                     // restore it instead of downloading a fresh Ubuntu rootfs from scratch. This is
                     // what makes every GitHub Actions rebuild's forced uninstall/reinstall NOT wipe
@@ -1246,6 +1272,63 @@ internal fun TerminalPane(
                             else -> {
                                 writeToDisplay(progressSession, "[Ubuntu] No choice made — install skipped. Reopen this tab to retry.\r\n")
                                 return@Thread
+                            }
+                        }
+                    }
+                    // Bug 3 (owner round 2026-10-14): AUTO-RESTORE NOTICE —
+                    // visible and cancellable, default ON (Settings > Container
+                    // Backup > "Restore automatically"). The 5-second countdown
+                    // defaults to RESTORE; [Restore now] starts immediately;
+                    // [Start fresh instead] downloads Ubuntu. With the default
+                    // off the same dialog waits with NO countdown and a timeout
+                    // SKIPS the install (a choice is always a tap).
+                    if (!e17FreshChosen) {
+                        val bInfo = com.codespace.ide.terminal.BackupManager.backupInfo() ?: "unreadable"
+                        val autoOn = com.codespace.ide.terminal.BackupManager.autoRestoreEnabled(ctx)
+                        grantChoiceKind = 3
+                        grantChoiceBackupInfo = bInfo
+                        if (autoOn) {
+                            writeToDisplay(progressSession, "[Ubuntu] Found your backup ($bInfo).\r\n")
+                            writeToDisplay(progressSession, "[Ubuntu] Restoring in 5 seconds — restore now, or start fresh instead.\r\n")
+                            grantChoiceMachine.begin(3, timeoutMs = 5_000)
+                            showGrantChoice = true
+                            while (!grantChoiceMachine.tick()) {
+                                try { Thread.sleep(200) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
+                            }
+                            showGrantChoice = false
+                            when (grantChoiceMachine.outcomeOrNull()) {
+                                com.codespace.ide.terminal.InstallChoice.GRANT_OR_RETRY ->
+                                    writeToDisplay(progressSession, "[Ubuntu] Restoring now...\r\n\r\n")
+                                com.codespace.ide.terminal.InstallChoice.DOWNLOAD_FRESH -> {
+                                    e17FreshChosen = true
+                                    writeToDisplay(progressSession, "[Ubuntu] Starting fresh instead — downloading Ubuntu (~58 MB)...\r\n\r\n")
+                                }
+                                com.codespace.ide.terminal.InstallChoice.SKIPPED_TIMEOUT ->
+                                    writeToDisplay(progressSession, "[Ubuntu] No choice in 5 seconds — restoring automatically (turn it off in Settings > Container Backup > Restore automatically).\r\n\r\n")
+                                com.codespace.ide.terminal.InstallChoice.SKIPPED_DISMISSED -> {
+                                    writeToDisplay(progressSession, "[Ubuntu] Restore cancelled — install skipped. Reopen this tab to retry.\r\n")
+                                    return@Thread
+                                }
+                            }
+                        } else {
+                            writeToDisplay(progressSession, "[Ubuntu] Found your backup ($bInfo) — choose what to do.\r\n")
+                            grantChoiceMachine.begin(3, timeoutMs = 600_000)
+                            showGrantChoice = true
+                            while (!grantChoiceMachine.tick()) {
+                                try { Thread.sleep(200) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
+                            }
+                            showGrantChoice = false
+                            when (grantChoiceMachine.outcomeOrNull()) {
+                                com.codespace.ide.terminal.InstallChoice.GRANT_OR_RETRY ->
+                                    writeToDisplay(progressSession, "[Ubuntu] Restoring now...\r\n\r\n")
+                                com.codespace.ide.terminal.InstallChoice.DOWNLOAD_FRESH -> {
+                                    e17FreshChosen = true
+                                    writeToDisplay(progressSession, "[Ubuntu] Starting fresh instead — downloading Ubuntu (~58 MB)...\r\n\r\n")
+                                }
+                                else -> {
+                                    writeToDisplay(progressSession, "[Ubuntu] No choice made — install skipped. Reopen this tab to retry.\r\n")
+                                    return@Thread
+                                }
                             }
                         }
                     }
@@ -1391,7 +1474,7 @@ internal fun TerminalPane(
                         }
                     }
                     }
-                } else if (isFirstTimeInstall) {
+                } else if (setupDecision == com.codespace.ide.terminal.BackupManager.TabInstallAction.FRESH_INSTALL) {
                     // P24: explicitly tell user no backup was found — so a ~250MB download
                     // is expected and not mistaken for a bug or unnecessary reinstall.
                     writeToDisplay(progressSession, "[Ubuntu] No container backup found in /sdcard/CodespaceIDE/ — fresh install.\r\n")
@@ -2068,6 +2151,8 @@ internal fun TerminalPane(
                         "Backup found (${grantChoiceBackupMb} MB) — grant access to restore it."
                     else if (grantChoiceKind == 2)
                         "Backup failed the check, but no working Ubuntu is installed — restore anyway or download fresh."
+                    else if (grantChoiceKind == 3)
+                        "Found your backup ($grantChoiceBackupInfo). Restore it, or start fresh instead?"
                     else
                         "Restore failed — try again or download fresh.",
                     color = Color(0xFFCCCCCC),
@@ -2075,21 +2160,27 @@ internal fun TerminalPane(
                     modifier = Modifier.weight(1f),
                 )
                 Button(onClick = { grantChoiceMachine.choose(1) }) {
-                    Text(when (grantChoiceKind) { 0 -> "Grant access"; 2 -> "Restore anyway"; else -> "Try restore again" })
+                    Text(when (grantChoiceKind) { 0 -> "Grant access"; 2 -> "Restore anyway"; 3 -> "Restore now"; else -> "Try restore again" })
                 }
                 Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = { grantChoiceMachine.choose(2) }) {
-                    Text("Download fresh (~58 MB)", fontSize = 11.sp)
+                    Text(if (grantChoiceKind == 3) "Start fresh instead (~58 MB)" else "Download fresh (~58 MB)", fontSize = 11.sp)
                 }
             }
         }
-        // PERSISTENT one-tap restore (advisor item 2, owner requirement): a backup
-        // exists in shared storage but no container is installed, and nothing is
-        // waiting or running — one tap re-runs the restore flow on the Ubuntu tab.
+        // Bug 2 (owner round 2026-10-14): ONE compact, DISMISSIBLE line. Shows
+        // only when a backup exists AND no healthy container is installed — with
+        // the marker fix (bug 1a) a finished restore sets isInstalled() and this
+        // row disappears on its own. The ✕ dismisses it for THIS launch
+        // (BackupManager.restoreRowDismissed — process lifetime, NOT persisted:
+        // the next launch shows it again). Restore / Choose file / Check backup
+        // live permanently in Settings > Container Backup.
         if (!showGrantChoice &&
+            !com.codespace.ide.terminal.BackupManager.restoreRowDismissed &&
             com.codespace.ide.terminal.BackupManager.hasBackup() &&
             !com.codespace.ide.terminal.ProotInstaller.isInstalled(context) &&
-            !com.codespace.ide.terminal.ProotInstaller.isInstallRunning()
+            !com.codespace.ide.terminal.ProotInstaller.isInstallRunning() &&
+            !com.codespace.ide.terminal.BackupManager.isRestoreRunning()
         ) {
             Row(
                 Modifier
@@ -2099,10 +2190,7 @@ internal fun TerminalPane(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    // Advisor item 2 (2026-10-11): size + date of the EXACT file
-                    // about to be restored, so the wrong-file restore is visible
-                    // before it happens (435 MB from Oct 9 vs a stray 147 MB file).
-                    "A container backup was found (${com.codespace.ide.terminal.BackupManager.backupInfo() ?: "unreadable"}), but no Ubuntu is installed on this device.",
+                    "Backup found (${com.codespace.ide.terminal.BackupManager.backupInfo() ?: "unreadable"}) — no Ubuntu installed.",
                     color = Color(0xFFCCCCCC),
                     fontSize = 12.sp,
                     modifier = Modifier.weight(1f),
@@ -2113,80 +2201,10 @@ internal fun TerminalPane(
                     com.codespace.ide.terminal.BackupManager.pickedSource = null
                     addUbuntuTab(replaceTabId = ubuntuTab?.id)
                 }) { Text("Restore backup") }
-            }
-            // ADVISOR 2026-10-13 (item 4b): the previous generation and the system
-            // file picker sit right here too — the owner NEVER copies files by
-            // hand. The picker copies the chosen file into cacheDir and the
-            // restore runs from THAT copy; stored backups stay untouched.
-            val prevInfo = com.codespace.ide.terminal.BackupManager.previousBackupInfo()
-            if (prevInfo != null) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF252526))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "Previous backup (container-backup.tar.gz.prev): $prevInfo",
-                        color = Color(0xFFCCCCCC),
-                        fontSize = 12.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Button(onClick = {
-                        com.codespace.ide.terminal.BackupManager.usePreviousOnNextRestore = true
-                        com.codespace.ide.terminal.BackupManager.pickedSource = null
-                        val ubuntuTab = tabs.firstOrNull { it.name == "Ubuntu" }
-                        addUbuntuTab(replaceTabId = ubuntuTab?.id)
-                    }) { Text("Restore previous") }
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = { com.codespace.ide.terminal.BackupManager.restoreRowDismissed = true }) {
+                    Text("✕", fontSize = 12.sp)
                 }
-            }
-            val pickBackupLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-                contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
-            ) { uri ->
-                if (uri != null) {
-                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        val dst = java.io.File(context.cacheDir, "picked-backup.tar.gz")
-                        try {
-                            context.contentResolver.openInputStream(uri)?.use { input ->
-                                java.io.FileOutputStream(dst).use { output -> input.copyTo(output) }
-                            } ?: throw java.io.IOException("cannot open the picked file")
-                            com.codespace.ide.terminal.BackupManager.pickedSource = dst
-                            com.codespace.ide.terminal.BackupManager.usePreviousOnNextRestore = false
-                            tabs.firstOrNull { it.name == "Ubuntu" }?.session?.let { s ->
-                                writeToDisplay(s, "\r\n[Ubuntu] Picked backup copied (${dst.length() / (1024 * 1024)} MB) — starting restore...\r\n")
-                            }
-                            addUbuntuTab(replaceTabId = null)
-                        } catch (e: Exception) {
-                            dst.delete()
-                            tabs.firstOrNull { it.name == "Ubuntu" }?.session?.let { s ->
-                                writeToDisplay(s, "\r\n[Ubuntu] Could not read the picked file: ${e.message}\r\n")
-                            }
-                            com.codespace.ide.diagnostics.AppOutputLog.log(
-                                "[BACKUP-DIAG] picked-file copy failed: ${e.message}", "terminal",
-                            )
-                        }
-                    }
-                }
-            }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF252526))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Or pick a backup file yourself (Documents, Downloads...) — it is copied first; your stored backups are not touched.",
-                    color = Color(0xFFCCCCCC),
-                    fontSize = 12.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                Button(onClick = {
-                    runCatching {
-                        pickBackupLauncher.launch(arrayOf("application/gzip", "application/x-gzip", "application/x-tar", "application/octet-stream"))
-                    }
-                }) { Text("Choose file...") }
             }
         }
         // Rename dialog

@@ -53,6 +53,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -467,6 +468,59 @@ fun SettingsScreen(
             // restore choice — never a silent fallback.
             var showPrevRestoreConfirm by remember { mutableStateOf(false) }
             var prevBackupInfo by remember { mutableStateOf(BackupManager.previousBackupInfo()) }
+            // Bug 3 (owner round 2026-10-14): "Restore automatically" — default ON;
+            // drives the 5-second notice on the Ubuntu tab.
+            var autoRestore by remember { mutableStateOf(BackupManager.autoRestoreEnabled(context)) }
+            // Bug 4 (owner round 2026-10-14): a SAF-picked backup — Checked and
+            // restored FROM THE STREAM (no 200+ MB copy). Any file, any name:
+            // validated by content (gzip), never by MIME or extension.
+            var pickedUri by remember { mutableStateOf<android.net.Uri?>(null) }
+            var pickedReport by remember { mutableStateOf("") }
+            var showPickedRestoreConfirm by remember { mutableStateOf(false) }
+            val pickBackupLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                if (uri != null) {
+                    pickedUri = uri
+                    backupRunning = true
+                    scope.launch {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            // CHECK BACKUP ON THE PICKED FILE (owner round 2026-10-14,
+                            // previously owed): stream-inspect entries, counts and the
+                            // gate binaries — then the confirm offers the restore.
+                            try {
+                                val nm = BackupManager.queryPickedName(context, uri) ?: "picked file"
+                                val bytes = BackupManager.queryPickedSize(context, uri)
+                                val lines = ArrayList<String>()
+                                lines.add("=== Check picked backup: $nm ===")
+                                lines.add("  Size: ${if (bytes >= 0) "$bytes bytes (${bytes / (1024 * 1024)} MB)" else "not reported"}")
+                                val report = context.contentResolver.openInputStream(uri)?.use { s ->
+                                    BackupTar.inspectStream(s)
+                                }
+                                if (report == null) {
+                                    lines.add("  ERROR: could not open the picked file.")
+                                } else {
+                                    lines.add("  Entries: ${report.totalEntries} — ${report.dirs} directories, ${report.files} files, ${report.symlinks.size} symlinks")
+                                    lines.add("  Critical: bash ${if (report.hasBash) "ok" else "MISSING"}, env ${if (report.hasEnv) "ok" else "MISSING"}")
+                                    lines.add("  Top-level: ${report.topLevel.joinToString().take(120)}")
+                                    if (report.error != null) lines.add("  ERROR: ${report.error}")
+                                }
+                                pickedReport = lines.joinToString("\n")
+                            } catch (e: Exception) {
+                                val mime = try { context.contentResolver.getType(uri) ?: "unknown" } catch (_: Exception) { "unknown" }
+                                val bytes = BackupManager.queryPickedSize(context, uri)
+                                pickedReport = "Not a readable backup archive: ${e.message}. " +
+                                    "Detected MIME type \"$mime\", ${if (bytes >= 0) "$bytes bytes" else "unknown size"}. " +
+                                    "Expected container-backup.tar.gz (a .tar.gz archive)."
+                            }
+                            com.codespace.ide.diagnostics.AppOutputLog.log(pickedReport, "terminal")
+                            backupStatus = pickedReport.lineSequence().firstOrNull() ?: "Check finished — see the Output panel"
+                        }
+                        backupRunning = false
+                        showPickedRestoreConfirm = true
+                    }
+                }
+            }
 
             // RG05 (2026-09-26): prompt surface — armed by BackupManager.onAppStart on
             // version change, fresh-install restore, or a missing/stale (>7d) container
@@ -632,6 +686,69 @@ fun SettingsScreen(
                     ) { Text("Check previous") }
                 }
             }
+            // Bug 4 (owner round 2026-10-14): choose ANY file (*/*) — checked by
+            // CONTENT, restored from the stream; your stored backups are never
+            // touched and no 200+ MB copy is made.
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                OutlinedButton(
+                    enabled = !backupRunning,
+                    onClick = { runCatching { pickBackupLauncher.launch(arrayOf("*/*")) } },
+                ) { Text("Choose backup file... (check + restore)") }
+            }
+            Text(
+                "Any file, any name — validated by content, not by type or extension. It is read directly; your stored backups are not touched.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            // Bug 3 (owner round 2026-10-14): the auto-restore toggle — default ON.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Restore automatically", Modifier.weight(1f))
+                Switch(
+                    checked = autoRestore,
+                    onCheckedChange = { on -> autoRestore = on; BackupManager.setAutoRestore(context, on) },
+                )
+            }
+
+            // Bug 4: the picked file was Checked — now the explicit restore confirm.
+            if (showPickedRestoreConfirm) {
+                androidx.compose.runtime.key(orientation) {
+                AlertDialog(
+                    onDismissRequest = { showPickedRestoreConfirm = false; pickedUri = null },
+                    title = { Text("Restore the picked file?") },
+                    text = {
+                        Text(
+                            (pickedReport.take(700)) + "\n\n" +
+                                "It REPLACES your current Ubuntu container; everything changed since that backup will be lost. Close Ubuntu terminal tabs first. Your stored backups are not touched."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showPickedRestoreConfirm = false
+                            val uri = pickedUri
+                            pickedUri = null
+                            if (uri != null) {
+                                backupRunning = true
+                                scope.launch {
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        val rres = BackupManager.restoreBackup(context, { msg -> backupStatus = msg }, sourceUri = uri, explicit = true)
+                                        if (!rres.ok) backupStatus = "Picked-file restore failed: " + rres.message.take(200)
+                                    }
+                                    backupInfo = BackupManager.backupInfo()
+                                    backupRunning = false
+                                }
+                            }
+                        }) { Text("Restore it") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showPickedRestoreConfirm = false; pickedUri = null }) { Text("Cancel") }
+                    },
+                )
+                }
+            }
 
             if (showRestoreConfirm) {
                 key(orientation) {
@@ -645,7 +762,8 @@ fun SettingsScreen(
                         val info = BackupManager.backupInfo()
                         Text(
                             "Restore this backup: ${info ?: "unreadable"}\n\n" +
-                                "It replaces your current Ubuntu container. Anything installed or changed since that backup will be lost."
+                                "It REPLACES your current Ubuntu container. Everything installed or changed in Ubuntu since that backup will be LOST (new packages, container-side files).\n\n" +
+                                "Close your Ubuntu terminal tabs first — running shells break when the container is replaced."
                         )
                     },
                     confirmButton = {
@@ -655,7 +773,7 @@ fun SettingsScreen(
                             scope.launch {
                                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                     BackupManager.restorePrefs(context)
-                                    val rres = BackupManager.restoreBackup(context, onProgress = { msg -> backupStatus = msg })
+                                    val rres = BackupManager.restoreBackup(context, onProgress = { msg -> backupStatus = msg }, explicit = true)
                                     if (!rres.ok) backupStatus = "Restore failed: " + rres.message.take(200)
                                 }
                                 backupRunning = false
@@ -676,7 +794,7 @@ fun SettingsScreen(
                     text = {
                         Text(
                             "This restores container-backup.prev — the generation before your current backup (${prevBackupInfo ?: "unknown"}).\n\n" +
-                                "It replaces your current Ubuntu container. This is a separate file; your current backup is untouched."
+                                "It REPLACES your current Ubuntu container; everything installed or changed since that backup will be lost. Close Ubuntu terminal tabs first. This is a separate file; your current backup is untouched."
                         )
                     },
                     confirmButton = {
@@ -685,7 +803,7 @@ fun SettingsScreen(
                             backupRunning = true
                             scope.launch {
                                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                    val rres = BackupManager.restoreBackup(context, { msg -> backupStatus = msg }, usePrevious = true)
+                                    val rres = BackupManager.restoreBackup(context, { msg -> backupStatus = msg }, usePrevious = true, explicit = true)
                                     if (!rres.ok) backupStatus = "Previous-backup restore failed: " + rres.message.take(200)
                                 }
                                 backupRunning = false

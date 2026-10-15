@@ -120,11 +120,14 @@ object BackupTar {
      * Pass A: scan the archive for names, types, the symlink map and totals.
      * Reads the whole stream (data skipped); the caller reopens for pass B.
      */
-    fun scan(archiveFile: File): ScanResult {
+    fun scan(archiveFile: File): ScanResult = GzipOpen.open(archiveFile).use { scanStream(it) }
+
+    /** Bug 4 (owner round 2026-10-14): scan a stream straight from a SAF picker — no 200+ MB cache copy. */
+    fun scanStream(input: java.io.InputStream): ScanResult {
         var total = 0; var dirs = 0; var files = 0
         val symlinks = ArrayList<SymlinkInfo>()
         val rejected = ArrayList<String>()
-        GzipOpen.open(archiveFile).use { raw ->
+        GzipOpen.openStream(input).use { raw ->
             TarArchiveInputStream(raw).use { tar ->
                 var entry: TarArchiveEntry? = tar.nextEntry
                 while (entry != null) {
@@ -169,14 +172,17 @@ object BackupTar {
         val error: String?,
     )
 
-    fun inspect(archiveFile: File): InspectReport {
+    fun inspect(archiveFile: File): InspectReport = GzipOpen.open(archiveFile).use { inspectStream(it) }
+
+    /** Bug 4 (owner round 2026-10-14): Check backup works on a PICKED stream (Settings > Container Backup). */
+    fun inspectStream(input: java.io.InputStream): InspectReport {
         val topLevel = LinkedHashSet<String>()
         val symlinks = ArrayList<SymlinkInfo>()
         val rejected = ArrayList<String>()
         var total = 0; var dirs = 0; var files = 0
         var hasBash = false; var hasEnv = false
         try {
-            GzipOpen.open(archiveFile).use { raw ->
+            GzipOpen.openStream(input).use { raw ->
                 TarArchiveInputStream(raw).use { tar ->
                     var entry: TarArchiveEntry? = tar.nextEntry
                     while (entry != null) {
@@ -223,7 +229,11 @@ object BackupTar {
      * through a symlink because none exists yet; traversal entries resolve
      * through the scan-pass symlink map instead.
      */
-    fun extract(archiveFile: File, dest: File, scan: ScanResult, onProgress: (String) -> Unit): ExtractResult {
+    fun extract(archiveFile: File, dest: File, scan: ScanResult, onProgress: (String) -> Unit): ExtractResult =
+        GzipOpen.open(archiveFile).use { extractStream(it, dest, scan, onProgress) }
+
+    /** Bug 4 (owner round 2026-10-14): extract from a stream — restore reads the picked file directly. */
+    fun extractStream(input: java.io.InputStream, dest: File, scan: ScanResult, onProgress: (String) -> Unit): ExtractResult {
         val symlinkMap = HashMap<String, String>()
         scan.symlinks.forEach { symlinkMap[it.name] = it.target }
         val written = HashSet<String>()
@@ -232,7 +242,7 @@ object BackupTar {
         var firstFailure: String? = null
         val failures = ArrayList<String>()
 
-        GzipOpen.open(archiveFile).use { raw ->
+        GzipOpen.openStream(input).use { raw ->
             TarArchiveInputStream(raw).use { tar ->
                 var entry: TarArchiveEntry? = tar.nextEntry
                 while (entry != null) {
@@ -404,6 +414,12 @@ object BackupTar {
 
     /** Tiny indirection so the JVM suite can hit the same open path as device. */
     object GzipOpen {
+        /** Bug 4 (owner 2026-10-14): streams validated by CONTENT (gzip magic), never by name or MIME. */
+        fun openStream(input: java.io.InputStream): InputStream =
+            java.io.BufferedInputStream(
+                org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream(input)
+            )
+
         fun open(file: File): InputStream =
             java.io.BufferedInputStream(
                 org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream(file.inputStream())

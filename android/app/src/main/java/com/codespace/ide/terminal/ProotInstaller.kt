@@ -133,6 +133,17 @@ object ProotInstaller {
                File(rootfsDir(context), "usr/bin/bash").exists()
     }
 
+    /**
+     * ONE writer for the installed marker (owner round 2026-10-14, bug 1a):
+     * restoreBackup MUST write the same marker install() writes, or isInstalled()
+     * stays false forever after a restore and EVERY new tab re-entered the
+     * install flow and restored again (rootfs replaced — changes lost, running
+     * shells broken). This is the single source of truth both paths write.
+     */
+    fun writeVersionMarker(context: Context) {
+        File(context.filesDir, ".ubuntu_version").writeText(VERSION)
+    }
+
     /** No-op: binaries are in nativeLibraryDir (Gradle packages them automatically) */
     fun ensureBinaries(context: Context) {
         val nativeDir = context.applicationInfo.nativeLibraryDir
@@ -1219,7 +1230,7 @@ object ProotInstaller {
             runCatching { provisionJsDebug(context, rootfs) }
                 .onFailure { Log.w(TAG, "js-debug provision failed: ${it.message}") }
 
-            versionFile.writeText(VERSION)
+            writeVersionMarker(context)  // bug 1a (owner 2026-10-14): the ONE marker writer
             onProgress("Ubuntu ready: $filesWritten files extracted \u2713")
             NotificationStore.add("Ubuntu ready", "Container started — $filesWritten files extracted", NotificationStore.Type.UBUNTU_STATUS)
             // ── Write CODEBASE_MAP.md into Ubuntu home ─────────────────────────────
