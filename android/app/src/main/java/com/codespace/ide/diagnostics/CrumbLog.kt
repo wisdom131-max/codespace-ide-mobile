@@ -48,7 +48,7 @@ object CrumbLog {
     // (file paths, "link text='x.kt:42'") are never touched.
     private val KEY_ASSIGN = Regex("""(?i)\b([a-z0-9_-]*(?:api|secret|access|auth|private)[a-z0-9_-]*|[a-z0-9_-]*(?:key|token|password|credential)[a-z0-9_-]*|authorization)\s*[=:]\s*[^\s,;]+""")
     private val BEARER = Regex("""(?i)\b(bearer)\s+[^\s,;]+""")
-    private val KEY_PREFIX = Regex("""\b(sk|pk|rk)[-_][A-Za-z0-9-]{16,}""")
+    private val KEY_PREFIX = Regex("""\b(sk|pk|rk)[-_][_A-Za-z0-9-]{16,}""")
 
     @Volatile
     private var dir: File? = null

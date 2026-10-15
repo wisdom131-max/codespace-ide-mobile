@@ -24,7 +24,8 @@ class CrumbLogTest {
         CrumbLog.writeCrumbed(tmp.root, "open-file", "opening /x/spantest.txt:1")
         val lines = File(tmp.root, "crumb-log.txt").readLines()
         assertEquals(2, lines.size)
-        assertTrue(lines[0].startsWith("2"))
+        // Timestamp shape is MM-dd HH:mm:ss.SSS (CI-proven: October lines start with "10").
+        assertTrue(lines[0].matches(Regex("""\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[tap].*""")))
         assertTrue(lines[0].contains("[tap] link token='spantest.txt:1'"))
         assertTrue(lines[1].contains("[open-file] opening /x/spantest.txt:1"))
     }
@@ -34,7 +35,7 @@ class CrumbLogTest {
         // Small caps so the test is fast; same code path as production.
         val cap = 400
         repeat(60) { i ->
-            CrumbLog.writeCrumbed(tmp.root, "loop", "filler line number $i with some padding text to grow the file")
+            CrumbLog.writeCrumbed(tmp.root, "loop", "filler line number $i with some padding text to grow the file", maxBytes = cap)
         }
         val f = File(tmp.root, "crumb-log.txt")
         assertTrue("current file stays under the cap", f.length() <= cap + 200)
