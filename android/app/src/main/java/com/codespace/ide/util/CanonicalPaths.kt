@@ -169,8 +169,12 @@ object CanonicalPaths {
      * guest->host and canonicalize that. Returns null when neither resolves.
      */
     fun canonicalHostKey(context: Context, path: String): String? {
-        val host = if (File(path).exists()) File(path)
-            else com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, path)
-        return if (host.exists()) canonical(host) else null
+        // Advisor 1c audit (2026-10-15): the ONLY canonical family member without
+        // a catch — guestToHostPath must never throw out of an identity lookup.
+        return try {
+            val host = if (File(path).exists()) File(path)
+                else com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, path)
+            if (host.exists()) canonical(host) else null
+        } catch (_: Exception) { null }
     }
 }

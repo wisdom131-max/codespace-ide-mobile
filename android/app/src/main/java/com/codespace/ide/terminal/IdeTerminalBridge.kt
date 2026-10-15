@@ -243,25 +243,34 @@ object IdeTerminalBridge {
         return out
     }
 
+    /**
+     * Advisor 1b (2026-10-15): the token parse, extracted PURE so the exact
+     * device repro strings are JVM-testable. Splits an optional :line suffix
+     * off the token; a line longer than 6 digits is treated as NOT a line
+     * (toInt() would overflow on "Main.kt:999999999999" — that was an
+     * NumberFormatException escaping the parse, caught only by the outer
+     * tap catch).
+     */
+    fun parseFileLinkToken(token: String): Pair<String, Int> {
+        val clean = token.trim().trimEnd(':', ',', ';')
+        val lastColon = clean.lastIndexOf(':')
+        if (lastColon > 0) {
+            val candidatePath = clean.substring(0, lastColon)
+            val candidateLine = clean.substring(lastColon + 1)
+            if (candidateLine.isNotEmpty() && candidateLine.length <= 6 && candidateLine.all { it.isDigit() }) {
+                return Pair(candidatePath, candidateLine.toInt())
+            }
+        }
+        return Pair(clean, -1)
+    }
+
     private fun resolveSingleToken(
         context: Context,
         session: com.termux.terminal.TerminalSession?,
         token: String,
         projectId: String?,
     ): Pair<File, Int>? {
-        val clean = token.trim().trimEnd(':', ',', ';')
-        // Split optional :line suffix
-        var pathPart = clean
-        var lineNum = -1
-        val lastColon = clean.lastIndexOf(':')
-        if (lastColon > 0) {
-            val candidatePath = clean.substring(0, lastColon)
-            val candidateLine = clean.substring(lastColon + 1)
-            if (candidateLine.isNotEmpty() && candidateLine.all { it.isDigit() }) {
-                pathPart = candidatePath
-                lineNum = candidateLine.toInt()
-            }
-        }
+        val (pathPart, lineNum) = parseFileLinkToken(token)
         val appCtx = context.applicationContext
         // TAP-DIAG: every step logs to the Output tab (terminal channel) so the next
         // on-device test pinpoints exactly WHERE resolution fails instead of failing
