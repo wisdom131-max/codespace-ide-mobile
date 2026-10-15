@@ -368,11 +368,20 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                     // Same tap position, same extracted word: try to resolve it as a
                     // project file path (absolute host / proot-guest / session-cwd-relative).
                     if (onFileLinkTap != null) {
+                        // Advisor A.2 (2026-10-15): breadcrumb BEFORE the risky
+                        // action — the last line before a death is its boundary.
+                        com.codespace.ide.diagnostics.CrumbLog.crumb(
+                            "tap", "link text='" + (spanToken ?: word).take(80) + "' span=" + (spanToken != null) +
+                                " " + com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(v.context),
+                        )
                         val linkToken = (spanToken ?: word).trim()
                         if (linkToken.isNotEmpty() && (linkToken.contains('/') || linkToken.contains('.'))) {
                             val resolved = com.codespace.ide.terminal.IdeTerminalBridge
                                 .resolveTappedFileLink(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke())
                             if (resolved != null) {
+                                com.codespace.ide.diagnostics.CrumbLog.crumb(
+                                    "tap", "resolved -> open " + resolved.first.absolutePath + ":" + resolved.second,
+                                )
                                 onFileLinkTap?.invoke(resolved.first.absolutePath, resolved.second)
                                 return
                             }

@@ -17,6 +17,7 @@ REQUIRED = [
     "com.codespace.ide.debug.DAPClientTest",
     "com.codespace.ide.debug.NodeDAPAdapterTest",
     "com.codespace.ide.terminal.TimestampedBackupNameTest",
+    "com.codespace.ide.diagnostics.CrumbLogTest",
     "com.codespace.ide.debug.LegacyDebugAdapterTest",
     "com.codespace.ide.debug.UniversalDebugManagerTest",
     "com.codespace.ide.environment.GuestCwdHostCheckTest",

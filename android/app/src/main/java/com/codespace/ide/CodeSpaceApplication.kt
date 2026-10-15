@@ -38,6 +38,10 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             .build()
 
     override fun onCreate() {
+        // Advisor A.2 (2026-10-15, approved): persistent breadcrumb log init FIRST —
+        // it reads the previous process exit (ApplicationExitInfo) and pins it on
+        // disk before anything else can fail.
+        com.codespace.ide.diagnostics.CrumbLog.logStartup(this)
         // RG05/RG06 (2026-09-26): auto prefs-backup + fresh-install restore must run
         // BEFORE any store init — the first load of each prefs/JSON store then sees the
         // restored state (restores through the prefs API; never overwrites a surviving

@@ -298,6 +298,7 @@ object BackupManager {
         onProgress: (String) -> Unit,
         forceOverwriteSmaller: Boolean = false,
     ): CreateBackupOutcome {
+        com.codespace.ide.diagnostics.CrumbLog.crumb("backup", "createBackup start " + com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(context))
         val rootfs = ProotInstaller.rootfsDir(context)
         if (!rootfs.exists()) {
             onProgress("Nothing to back up — Ubuntu isn't installed yet.")
@@ -452,6 +453,7 @@ object BackupManager {
         onProgress: (String) -> Unit,
         neverOverwrite: List<File> = emptyList(),
     ): TimestampedBackupResult {
+        com.codespace.ide.diagnostics.CrumbLog.crumb("backup", "createTimestampedBackup start")
         val rootfs = ProotInstaller.rootfsDir(context)
         if (!rootfs.exists()) {
             onProgress("Nothing to back up — Ubuntu isn't installed yet.")
@@ -606,6 +608,11 @@ object BackupManager {
         // installed container. Every other call is refused while one is installed.
         explicit: Boolean = false,
     ): RestoreResult {
+        com.codespace.ide.diagnostics.CrumbLog.crumb(
+            "restore",
+            "restoreBackup start usePrevious=$usePrevious sourceFile=" + (sourceFile?.name ?: "null") +
+                " sourceUri=" + (sourceUri != null) + " restoreAnyway=$restoreAnyway explicit=$explicit",
+        )
         // Bug 1b: SINGLE-FLIGHT — one restore at a time, process-wide. A second
         // restore (another tab racing through the install flow) replaces the
         // rootfs under the first one's feet: changes lost, shells broken.

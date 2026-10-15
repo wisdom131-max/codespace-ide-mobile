@@ -1373,7 +1373,16 @@ object LspManager {
         Thread(r, "LSP-Restart")
     }
 
-    fun startServer(context: Context, language: Language, workspacePath: String, projectId: String? = null): Boolean =
+    fun startServer(context: Context, language: Language, workspacePath: String, projectId: String? = null): Boolean {
+        // Advisor A.2 (2026-10-15): LSP start spawns node/JVM servers — the biggest
+        // memory spike the app can cause. Breadcrumb it before it happens.
+        com.codespace.ide.diagnostics.CrumbLog.crumb(
+            "lsp", "startServer " + language.displayName + " " + com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(context),
+        )
+        return startServerInner(context, language, workspacePath, projectId)
+    }
+
+    private fun startServerInner(context: Context, language: Language, workspacePath: String, projectId: String? = null): Boolean =
         synchronized(lifecycleLock) { startServerLocked(context, language, workspacePath, projectId) }
 
     private fun startServerLocked(context: Context, language: Language, workspacePath: String, projectId: String?): Boolean {

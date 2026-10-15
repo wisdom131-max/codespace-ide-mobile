@@ -4983,6 +4983,8 @@ private fun PssEditorColumn(
                 // PR08 (P4a-2): defense in depth — an empty/blank path can never
                 // enter the tab chain, whatever the calling surface sends.
                 if (filePath.isBlank()) return@jtp
+                // Advisor A.2 (2026-10-15): breadcrumb BEFORE opening the file.
+                com.codespace.ide.diagnostics.CrumbLog.crumb("open-file", "opening " + filePath + ":" + line)
                 val targetCanon = canonicalPathOrSelf(filePath)
                 val existingTab = editorTabs.firstOrNull { canonicalPathOrSelf(it) == targetCanon }
                 val resolvedPath = existingTab ?: filePath
