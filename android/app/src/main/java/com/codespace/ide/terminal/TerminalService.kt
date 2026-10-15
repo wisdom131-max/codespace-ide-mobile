@@ -386,6 +386,25 @@ class TerminalService : Service() {
             synchronized(liveSessions) { liveSessions.add(TrackedSession(session, projectId)) }
         }
 
+        /** Advisor 4c (2026-10-15): project-INDEPENDENT live-shell count for the
+         *  restore-over-healthy gate — a restore replaces the rootfs EVERY running
+         *  shell depends on, so shells in ALL projects count, not just the active
+         *  project's. Prunes finished sessions first, like getLiveUbuntuSessions. */
+        fun liveSessionCount(): Int = synchronized(liveSessions) {
+            liveSessions.removeAll { !it.session.isRunning }
+            liveSessions.size
+        }
+
+        /** Advisor 4c (2026-10-15): "Close them and continue" — finishes every live
+         *  shell and returns how many were closed. Safe to call with none running. */
+        fun finishAllLiveSessions(): Int = synchronized(liveSessions) {
+            liveSessions.removeAll { !it.session.isRunning }
+            val toClose = liveSessions.toList()
+            liveSessions.clear()
+            toClose.forEach { runCatching { it.session.finishIfRunning() } }
+            toClose.size
+        }
+
         private const val CHANNEL_ID      = "termux_notification_channel"
         private const val NOTIF_ID        = 1337   // 0x539 — matches Termux exactly
         private const val EXTRA_TEXT      = "notif_text"

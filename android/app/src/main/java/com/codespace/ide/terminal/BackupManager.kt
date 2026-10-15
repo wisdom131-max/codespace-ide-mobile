@@ -317,39 +317,12 @@ object BackupManager {
         backupDir().mkdirs()
         val tmp = File(backupDir(), "$BACKUP_FILE.tmp")
         ContainerSafety.deleteTreeSafe(tmp)
-
-        var filesWritten = 0
-        GzipCompressorOutputStream(tmp.outputStream()).use { gz ->
-            TarArchiveOutputStream(gz).use { tar ->
-                tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
-                tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_STAR)
-                // E17 writer fix (2026-10-11): shares the EXACT writer with the JVM
-                // suite (BackupTar.writeRootfs). walkTopDown follows directory
-                // symlinks (bin duplicates on restore), and its onEnter hook DROPS
-                // the symlinked directories entirely — how a new backup could
-                // silently lose bin/lib/sbin/lib64. BackupTar's recursive visit
-                // emits every symlink and never descends through one.
-                filesWritten = BackupTar.writeRootfs(rootfs, tar, GUEST_SECRET_PATHS) { msg ->
-                    onProgress(msg)
-                }
-            }
-        }
-        // D (2026-10-11): a backup file is NEVER overwritten in place. The
-        // finished tarball is VERIFIED (readable, sane entry count, bash+env
-        // present) before the swap; the previous backup is kept aside as
-        // container-backup.prev until the new one has proven itself.
-        if (filesWritten <= 0) {
+        val filesWritten = writeRootfsArchiveVerified(rootfs, tmp, onProgress)
+        if (filesWritten == -1) return CreateBackupOutcome.FAILED_VERIFY
+        if (filesWritten == 0) {
             tmp.delete()
             onProgress("\u2717 Backup failed: no files were written. The existing backup was NOT touched.")
             return CreateBackupOutcome.REFUSED_EMPTY
-        }
-        val verify = ContainerSafety.verifyBackupArchive(tmp)
-        if (!verify.ok) {
-            tmp.delete()
-            val msg = "Backup NOT saved: the written archive failed verification (${verify.verdict}). The existing backup was NOT touched."
-            onProgress("\u2717 $msg")
-            com.codespace.ide.diagnostics.AppOutputLog.log("[BACKUP-DIAG] $msg", "terminal")
-            return CreateBackupOutcome.FAILED_VERIFY
         }
         val target = backupFile()
         val prev = File(backupDir(), "$BACKUP_FILE.prev")
@@ -385,6 +358,145 @@ object BackupManager {
         onProgress("\u2713 Backup complete: $filesWritten files, ${target.length() / (1024 * 1024)} MB \u2192 ${target.path} (previous kept as ${prev.name})")
         NotificationStore.add("Backup complete", "$filesWritten files saved to ${target.name}", NotificationStore.Type.BACKUP)
         return CreateBackupOutcome.SAVED
+    }
+
+    /**
+     * Advisor 4a (2026-10-15): the SHARED write+verify pipeline — the E17 writer
+     * fix applies to EVERY archive this app writes (walkTopDown hazard) and the
+     * D rule applies to every file it saves (verify before it exists). Returns
+     * the files written, 0 = nothing written, -1 = verification failed (the
+     * caller's tmp file is already deleted in that case).
+     */
+    private fun writeRootfsArchiveVerified(
+        rootfs: File,
+        tmp: File,
+        onProgress: (String) -> Unit,
+    ): Int {
+        var filesWritten = 0
+        GzipCompressorOutputStream(tmp.outputStream()).use { gz ->
+            TarArchiveOutputStream(gz).use { tar ->
+                tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
+                tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_STAR)
+                // E17 writer fix (2026-10-11): shares the EXACT writer with the JVM
+                // suite (BackupTar.writeRootfs). walkTopDown follows directory
+                // symlinks (bin duplicates on restore), and its onEnter hook DROPS
+                // the symlinked directories entirely — how a new backup could
+                // silently lose bin/lib/sbin/lib64. BackupTar's recursive visit
+                // emits every symlink and never descends through one.
+                filesWritten = BackupTar.writeRootfs(rootfs, tar, GUEST_SECRET_PATHS) { msg ->
+                    onProgress(msg)
+                }
+            }
+        }
+        // D (2026-10-11): a backup file is NEVER saved unverified.
+        if (filesWritten <= 0) return 0
+        val verify = ContainerSafety.verifyBackupArchive(tmp)
+        if (!verify.ok) {
+            tmp.delete()
+            val msg = "Backup NOT saved: the written archive failed verification (${verify.verdict}). The existing backup was NOT touched."
+            onProgress("\u2717 $msg")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[BACKUP-DIAG] $msg", "terminal")
+            return -1
+        }
+        return filesWritten
+    }
+
+    /** Advisor 4a (2026-10-15): result of the timestamped pre-restore backup. */
+    enum class TimestampedOutcome {
+        SAVED,
+        REFUSED_DAMAGED,
+        REFUSED_EMPTY,
+        FAILED_VERIFY,
+        FAILED_MOVE,
+        REFUSED_NO_FREE_NAME,
+    }
+
+    data class TimestampedBackupResult(val outcome: TimestampedOutcome, val file: File?)
+
+    /**
+     * Pure, testable: the NEXT free timestamped backup file for a given instant —
+     * format container-backup-YYYYMMDD-HHMM.tar.gz, then " (n)" variants while
+     * the name is taken on disk OR equal (canonically) to a protected file
+     * (neverOverwrite — e.g. the default backup, its .prev, and a picked source
+     * that lives in the same directory). Never returns a name that overwrites
+     * anything.
+     */
+    internal fun nextTimestampedBackupFile(dir: File, stampMs: Long, neverOverwrite: List<File> = emptyList()): File {
+        val fmt = java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US)
+        val base = "container-backup-" + fmt.format(java.util.Date(stampMs))
+        val protectedPaths = neverOverwrite.mapNotNull { runCatching { it.canonicalPath }.getOrNull() }.toMutableSet()
+        fun taken(f: File): Boolean =
+            f.exists() || runCatching { f.canonicalPath }.getOrDefault(f.path) in protectedPaths
+        var candidate = File(dir, "$base.tar.gz")
+        var n = 1
+        while (taken(candidate)) {
+            candidate = File(dir, "$base ($n).tar.gz")
+            n++
+            if (n > 100) throw IllegalStateException("could not find a free timestamped backup name in " + dir.path)
+        }
+        return candidate
+    }
+
+    /**
+     * Advisor 4a (2026-10-15): "Back up current first" in the restore-over-healthy
+     * flow — a TIMESTAMPED safety copy of the CURRENT container, taken right
+     * before it is replaced. It NEVER touches container-backup.tar.gz or its
+     * .prev (own name, no rotation of the default), and NEVER writes to any
+     * file in neverOverwrite (the restore source itself included — even when
+     * the owner picked the default backup or a timestamped file from this
+     * directory). Same health and empty-container gates as createBackup; the
+     * archive is verified before it exists (the D rule).
+     */
+    fun createTimestampedBackup(
+        context: Context,
+        onProgress: (String) -> Unit,
+        neverOverwrite: List<File> = emptyList(),
+    ): TimestampedBackupResult {
+        val rootfs = ProotInstaller.rootfsDir(context)
+        if (!rootfs.exists()) {
+            onProgress("Nothing to back up — Ubuntu isn't installed yet.")
+            return TimestampedBackupResult(TimestampedOutcome.REFUSED_EMPTY, null)
+        }
+        val health = ContainerSafety.healthOf(rootfs)
+        if (!health.ok) {
+            val msg = "Refusing to back up: the container is damaged (missing ${health.missingCritical.joinToString(", ")})."
+            onProgress("\u2717 $msg")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[BACKUP-DIAG] timestamped backup refused: damaged container", "terminal")
+            return TimestampedBackupResult(TimestampedOutcome.REFUSED_DAMAGED, null)
+        }
+        backupDir().mkdirs()
+        val target = try {
+            nextTimestampedBackupFile(backupDir(), System.currentTimeMillis(), neverOverwrite)
+        } catch (e: IllegalStateException) {
+            return TimestampedBackupResult(TimestampedOutcome.REFUSED_NO_FREE_NAME, null)
+        }
+        val tmp = File(backupDir(), "${target.name}.tmp")
+        ContainerSafety.deleteTreeSafe(tmp)
+        val filesWritten = writeRootfsArchiveVerified(rootfs, tmp, onProgress)
+        if (filesWritten == -1) return TimestampedBackupResult(TimestampedOutcome.FAILED_VERIFY, null)
+        if (filesWritten == 0) {
+            tmp.delete()
+            onProgress("\u2717 Backup failed: no files were written.")
+            return TimestampedBackupResult(TimestampedOutcome.REFUSED_EMPTY, null)
+        }
+        if (!tmp.renameTo(target)) {
+            tmp.delete()
+            onProgress("\u2717 Backup NOT saved: the new archive could not be moved into place. Nothing was overwritten.")
+            return TimestampedBackupResult(TimestampedOutcome.FAILED_MOVE, null)
+        }
+        onProgress("\u2713 Safety backup complete: $filesWritten files, ${target.length() / (1024 * 1024)} MB \u2192 ${target.name} (the restore source and your stored backups were NOT touched)")
+        com.codespace.ide.diagnostics.AppOutputLog.log("[BACKUP-DIAG] timestamped pre-restore backup saved: ${target.name}", "terminal")
+        return TimestampedBackupResult(TimestampedOutcome.SAVED, target)
+    }
+
+    /** Advisor 4d (2026-10-15): every timestamped safety backup on disk, newest
+     *  last (name sorts by stamp). Pure listing — no deletion (retention is a
+     *  separate, approved-policy change). */
+    fun timestampedBackups(): List<File> {
+        val dir = backupDir()
+        val names = dir.listFiles()?.map { it.name } ?: return emptyList()
+        val rx = Regex("^container-backup-\\d{8}-\\d{4}( \\(\\d+\\))?\\.tar\\.gz$")
+        return names.filter { rx.matches(it) }.sorted().map { File(dir, it) }
     }
 
     /**

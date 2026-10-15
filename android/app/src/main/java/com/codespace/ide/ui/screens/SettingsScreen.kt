@@ -69,6 +69,7 @@ import com.codespace.ide.data.SessionStateStore
 import com.codespace.ide.chat.ChatProvider
 import com.codespace.ide.chat.ChatProviderRegistry
 import com.codespace.ide.terminal.BackupManager
+import com.codespace.ide.terminal.TerminalService
 import com.codespace.ide.terminal.BackupTar
 import com.codespace.ide.terminal.ProotInstaller
 import kotlinx.coroutines.Job
@@ -482,6 +483,17 @@ fun SettingsScreen(
             // connection — he gets a Continue/Cancel warning BEFORE anything is read.
             var showCloudWarn by remember { mutableStateOf(false) }
             var cloudWarnUri by remember { mutableStateOf<android.net.Uri?>(null) }
+            // Advisor 4 (2026-10-15, approved): restore-over-healthy — a picked-file
+            // restore over a WORKING container asks to back the current one up
+            // first (timestamped file) and refuses while shells run.
+            var showRestoreOverHealthy by remember { mutableStateOf(false) }
+            var rohShells by remember { mutableStateOf(0) }
+            var pickedName by remember { mutableStateOf("picked file") }
+            var pickedBytes by remember { mutableStateOf(-1L) }
+            // Advisor 4d: after a restore-over-healthy with "Back up current first",
+            // the pre-restore container stays available as Restore previous container.
+            var preRestoreBackup by remember { mutableStateOf<File?>(null) }
+            var showPreRestoreConfirm by remember { mutableStateOf(false) }
             // The device's OWN storage/Downloads/Media providers read locally —
             // everything else (Drive, Dropbox, OneDrive...) streams over the
             // network and gets the warning dialog first.
@@ -524,6 +536,8 @@ fun SettingsScreen(
                             try {
                                 val nm = BackupManager.queryPickedName(context, uri) ?: "picked file"
                                 val bytes = BackupManager.queryPickedSize(context, uri)
+                                pickedName = nm
+                                pickedBytes = bytes
                                 val lines = ArrayList<String>()
                                 lines.add("=== Check picked backup: $nm ===")
                                 lines.add("  Size: ${if (bytes >= 0) "$bytes bytes (${bytes / (1024 * 1024)} MB)" else "not reported"}")
@@ -551,6 +565,52 @@ fun SettingsScreen(
                         }
                         backupRunning = false
                         showPickedRestoreConfirm = true
+                    }
+                }
+            }
+            // Advisor 4 (2026-10-15): the ONE picked-file restore runner — used by the
+            // direct path (no healthy container) and both restore-over-healthy
+            // choices. backUpFirst: create a TIMESTAMPED safety copy of the
+            // current container right before it is replaced (advisor 4a: never
+            // touches container-backup.tar.gz, its .prev, or the restore source).
+            val runPickedRestore: (Boolean) -> Unit = { backUpFirst: Boolean ->
+                run {
+                    val uri = pickedUri
+                    if (uri != null) {
+                        backupRunning = true
+                        scope.launch {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                var safeFile: File? = null
+                                if (backUpFirst) {
+                                    val safe = BackupManager.createTimestampedBackup(
+                                        context,
+                                        { msg -> backupStatus = msg },
+                                        neverOverwrite = listOf(BackupManager.backupFile(), BackupManager.previousBackupFile()),
+                                    )
+                                    if (safe.outcome == BackupManager.TimestampedOutcome.SAVED && safe.file != null) {
+                                        safeFile = safe.file
+                                    } else {
+                                        pickedUri = null
+                                        backupStatus = "Pre-restore backup did not complete — the restore was NOT started. Your container and backups were NOT touched."
+                                        backupRunning = false
+                                        return@withContext
+                                    }
+                                }
+                                pickedUri = null
+                                val rres = BackupManager.restoreBackup(context, { msg -> backupStatus = msg }, sourceUri = uri, explicit = true)
+                                preRestoreBackup = if (rres.ok) safeFile else null
+                                if (!rres.ok) {
+                                    backupStatus = "Picked-file restore failed: " + rres.message.take(200)
+                                } else {
+                                    backupStatus = if (safeFile != null)
+                                        "Restore complete. The pre-restore container is kept as " + safeFile.name + " (Restore previous container below)."
+                                    else
+                                        "Restore complete."
+                                }
+                            }
+                            backupInfo = BackupManager.backupInfo()
+                            backupRunning = false
+                        }
                     }
                 }
             }
@@ -650,6 +710,75 @@ fun SettingsScreen(
                         onClick = { showPrevRestoreConfirm = true },
                     ) { Text("Restore previous backup") }
                 }
+            }
+            // Advisor 4d (2026-10-15): the pre-restore container stays available.
+            val preRestoreFile = preRestoreBackup
+            if (preRestoreFile != null && preRestoreFile.exists()) {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    OutlinedButton(
+                        enabled = !backupRunning,
+                        onClick = {
+                            rohShells = TerminalService.liveSessionCount()
+                            showPreRestoreConfirm = true
+                        },
+                    ) { Text("Restore previous container") }
+                    Text(
+                        "\u2014 " + preRestoreFile.name + ", " +
+                            (preRestoreFile.length() / (1024 * 1024)) + " MB",
+                        modifier = Modifier.padding(start = 10.dp, top = 14.dp),
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            if (showRestoreOverHealthy) {
+                RestoreOverHealthyDialog(
+                    shellsRunning = rohShells,
+                    pickedDesc = if (pickedBytes >= 0) pickedName + " (" + (pickedBytes / (1024 * 1024)) + " MB)" else pickedName,
+                    currentBackupInfo = backupInfo,
+                    onShellsClosed = {
+                        val closed = TerminalService.finishAllLiveSessions()
+                        com.codespace.ide.diagnostics.AppOutputLog.log(
+                            "[RESTORE] closed $closed terminal session(s) for a restore-over-healthy", "backup",
+                        )
+                        rohShells = 0
+                    },
+                    onBackUpFirst = { showRestoreOverHealthy = false; runPickedRestore(true) },
+                    onRestoreWithoutBackup = { showRestoreOverHealthy = false; runPickedRestore(false) },
+                    onDismiss = { showRestoreOverHealthy = false; pickedUri = null },
+                )
+            }
+            if (showPreRestoreConfirm) {
+                PreRestoreConfirmDialog(
+                    shellsRunning = rohShells,
+                    desc = (if (preRestoreFile != null) preRestoreFile.name + " (" + ((preRestoreFile.length()) / (1024 * 1024)) + " MB)" else "the pre-restore container"),
+                    onShellsClosed = {
+                        val closed = TerminalService.finishAllLiveSessions()
+                        com.codespace.ide.diagnostics.AppOutputLog.log(
+                            "[RESTORE] closed $closed terminal session(s) for a previous-container restore", "backup",
+                        )
+                        rohShells = 0
+                    },
+                    onRestore = {
+                        showPreRestoreConfirm = false
+                        val f = preRestoreBackup
+                        if (f != null && f.exists()) {
+                            backupRunning = true
+                            scope.launch {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    val rres = BackupManager.restoreBackup(context, { msg -> backupStatus = msg }, sourceFile = f, explicit = true)
+                                    if (!rres.ok) {
+                                        backupStatus = "Previous-container restore failed: " + rres.message.take(200)
+                                    } else {
+                                        backupStatus = "Previous container restored from " + f.name + "."
+                                    }
+                                }
+                                backupInfo = BackupManager.backupInfo()
+                                backupRunning = false
+                            }
+                        }
+                    },
+                    onDismiss = { showPreRestoreConfirm = false },
+                )
             }
             // ADVISOR 2026-10-13 (item 4c): READ-ONLY check — reads the archive and
             // prints top-level entries, symlinks, counts and what the gate would
@@ -802,18 +931,16 @@ fun SettingsScreen(
                     confirmButton = {
                         TextButton(onClick = {
                             showPickedRestoreConfirm = false
-                            val uri = pickedUri
-                            pickedUri = null
-                            if (uri != null) {
-                                backupRunning = true
-                                scope.launch {
-                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                        val rres = BackupManager.restoreBackup(context, { msg -> backupStatus = msg }, sourceUri = uri, explicit = true)
-                                        if (!rres.ok) backupStatus = "Picked-file restore failed: " + rres.message.take(200)
-                                    }
-                                    backupInfo = BackupManager.backupInfo()
-                                    backupRunning = false
-                                }
+                            // Advisor 4 (2026-10-15): a restore over a WORKING container
+                            // goes through the restore-over-healthy gate (back up
+                            // current first, refuse while shells run) instead of
+                            // replacing it silently. pickedUri stays — the gate owns it.
+                            val healthy = runCatching { ProotInstaller.rootfsHealthy(context) }.getOrDefault(false)
+                            if (healthy) {
+                                rohShells = TerminalService.liveSessionCount()
+                                showRestoreOverHealthy = true
+                            } else {
+                                runPickedRestore(false)
                             }
                         }) { Text("Restore it") }
                     },
@@ -1326,6 +1453,111 @@ private fun DeletedProjectsSection(context: android.content.Context) {
  * (JVM 64KB bytecode limit — no inline additions to the big SettingsScreen body).
  */
 @Composable
+/**
+ * Advisor 4c (2026-10-15, approved): the restore-over-healthy gate, extracted
+ * (64KB rule). While shells run it refuses and offers to close them; the main
+ * content names BOTH backups (the picked file with size, the current saved
+ * backup with size and date) and what exactly will be lost.
+ */
+@androidx.compose.runtime.Composable
+private fun RestoreOverHealthyDialog(
+    shellsRunning: Int,
+    pickedDesc: String,
+    currentBackupInfo: String?,
+    onShellsClosed: () -> Unit,
+    onBackUpFirst: () -> Unit,
+    onRestoreWithoutBackup: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                if (shellsRunning > 0) "Ubuntu terminals are running"
+                else "Restore over your working Ubuntu?"
+            )
+        },
+        text = {
+            if (shellsRunning > 0) {
+                Text(
+                    "$shellsRunning Ubuntu terminal session(s) are running — a restore replaces the container they depend on, so they must be closed first. Closing them here is safe for your files: projects live outside the container.",
+                )
+            } else {
+                Text(
+                    "Backup to restore: $pickedDesc.\n\n" +
+                        "Current container's saved backup: " + (currentBackupInfo ?: "none yet") + " (not touched).\n\n" +
+                        "Everything changed inside Ubuntu since that backup will be lost: installed tools and packages, files under /root, terminal history. Your project files on shared storage are not touched.",
+                )
+            }
+        },
+        confirmButton = {
+            if (shellsRunning > 0) {
+                TextButton(onClick = onShellsClosed) { Text("Close them and continue") }
+            } else {
+                TextButton(onClick = onBackUpFirst) { Text("Back up current first") }
+            }
+        },
+        dismissButton = {
+            if (shellsRunning > 0) {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            } else {
+                androidx.compose.foundation.layout.Row {
+                    TextButton(onClick = onRestoreWithoutBackup) { Text("Restore without backing up") }
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                }
+            }
+        },
+    )
+}
+
+/**
+ * Advisor 4d (2026-10-15): confirm for "Restore previous container" — the
+ * pre-restore safety copy taken by the back-up-first choice. Same shells gate.
+ */
+@androidx.compose.runtime.Composable
+private fun PreRestoreConfirmDialog(
+    shellsRunning: Int,
+    desc: String,
+    onShellsClosed: () -> Unit,
+    onRestore: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                if (shellsRunning > 0) "Ubuntu terminals are running"
+                else "Restore the previous container?"
+            )
+        },
+        text = {
+            if (shellsRunning > 0) {
+                Text(
+                    "$shellsRunning Ubuntu terminal session(s) are running — close them first (safe here: projects live outside the container).",
+                )
+            } else {
+                Text(
+                    "Restores $desc — the container as it was right before the last restore. Everything changed inside Ubuntu since then will be lost. Your project files on shared storage are not touched.",
+                )
+            }
+        },
+        confirmButton = {
+            if (shellsRunning > 0) {
+                TextButton(onClick = onShellsClosed) { Text("Close them and continue") }
+            } else {
+                TextButton(onClick = onRestore) { Text("Restore it") }
+            }
+        },
+        dismissButton = {
+            if (shellsRunning > 0) {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
 private fun ContainerBackupPromptBanner(onBackupNow: () -> Unit, onDismiss: () -> Unit) {
     Surface(
         tonalElevation = 2.dp,
