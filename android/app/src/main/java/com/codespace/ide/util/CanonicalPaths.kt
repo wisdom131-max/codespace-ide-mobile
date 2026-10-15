@@ -25,8 +25,16 @@ import java.util.concurrent.ConcurrentHashMap
 object CanonicalPaths {
 
     /** Canonicalize with absolute-path fallback (ProotInstaller.kt:107 form). */
+    // Advisor follow-up (2026-10-15, CI hygiene): a NON-EXISTENT path keeps its
+    // literal normalized form instead of being absolutized against the JVM's
+    // current directory — canonicalPath prefixes CWD, which made the documented
+    // boundary-suffix identity ("x/y/z.txt" matches "z.txt") depend on WHERE
+    // the process runs (broke the suite in CI, passed on-device only because
+    // the app's CWD is "/"). Existing files still resolve symlinks.
     fun canonical(file: File): String =
-        try { file.canonicalPath } catch (_: Exception) { file.absolutePath }
+        try {
+            if (file.exists()) file.canonicalPath else file.toPath().normalize().toString()
+        } catch (_: Exception) { file.absolutePath }
 
     /**
      * TRUE containment: child is root itself, or inside root behind a

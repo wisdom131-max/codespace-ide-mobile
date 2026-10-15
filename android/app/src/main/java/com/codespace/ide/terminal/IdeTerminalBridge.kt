@@ -180,7 +180,10 @@ object IdeTerminalBridge {
         val spanRegex = Regex("""(?:[\w.\-/\\]+| (?=[\w.\-/\\]))+:\d+(?::\d+)?""")
         for (m in spanRegex.findAll(rowText)) {
             if (!m.range.contains(tapOffset)) continue
-            val token = m.value.trimEnd(':', ',', ';')
+            // Advisor follow-up (2026-10-15, CI hygiene): the span regex may
+            // START on the space before a filler word ("... at My File.kt:42"),
+            // which put a leading space INTO the token and broke resolution.
+            val token = m.value.trimEnd(':', ',', ';').trim()
             // Same gate as the legacy path: plain words are not file links.
             if (!token.contains('/') && !token.contains('.')) continue
             return token

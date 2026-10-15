@@ -20,6 +20,16 @@ android {
     namespace = "com.codespace.ide"
     compileSdk = 34
 
+    // Advisor follow-up (2026-10-15, CI hygiene): the FULL unit-test task now
+    // executes every suite. Pure-JVM suites whose production classes call
+    // android.util.Log need default-value stubs (a stubbed Log call throws
+    // "not mocked" otherwise), and org.json (JSONObject/JSONArray) needs a REAL
+    // JVM implementation on the test classpath — the Android framework stub
+    // throws. Both only affect the test environment; nothing ships.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     defaultConfig {
         applicationId = "com.codespace.ide"
         minSdk = 26
@@ -241,6 +251,9 @@ dependencies {
 
     // Tests
     testImplementation("junit:junit:4.13.2")
+    // Real org.json for JVM unit tests (SessionStateStoreTest legacy-blob reader,
+    // DAPClientTest DAP-message codec) — the Android stub throws.
+    testImplementation("org.json:json:20240303")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")

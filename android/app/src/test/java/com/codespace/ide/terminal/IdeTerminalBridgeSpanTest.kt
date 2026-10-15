@@ -77,10 +77,16 @@ class IdeTerminalBridgeSpanTest {
             tok("  at My Project/Main.kt:42 in foo", "My"))
     }
 
+    // Advisor follow-up (2026-10-15, CI hygiene): this expectation was BORN WRONG
+    // (compile-only suite, never executed). The drop is leading SPACE-chunks only
+    // (compiler prefixes "at ", "in "); a '/'-SEGMENT drop is intentionally NOT a
+    // candidate: the resolver's boundary-suffix identity already covers the
+    // relative-vs-absolute dialect, and dropping "Project/" from
+    // "Project/Main.kt:42" could open a DIFFERENT Main.kt elsewhere in the tree.
     @Test fun linkCandidates_progressiveLeadingChunkDrop() {
         assertEquals(
             listOf("at My Project/Main.kt:42", "My Project/Main.kt:42",
-                   "Project/Main.kt:42", "Main.kt:42"),
+                   "Project/Main.kt:42"),
             IdeTerminalBridge.linkCandidates("at My Project/Main.kt:42"))
     }
 

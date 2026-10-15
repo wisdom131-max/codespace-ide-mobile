@@ -12,18 +12,25 @@ import org.junit.Test
  */
 class StatusStripLabelTest {
 
+    // Advisor follow-up (2026-10-15, CI hygiene): both assertions below were
+    // born wrong and never executed (compile-only suites before 685eb0b) —
+    // statusStripLabel ALWAYS returns "provider · model", and long model ids
+    // ARE middle-shortened by the maxModelChars=26 default.
+
     @Test
     fun `short model ids pass through unchanged`() {
         assertEquals("OpenAI · gpt-4o-mini", ChatModelSelection.statusStripLabel("OpenAI", "gpt-4o-mini"))
-        assertEquals("Custom · Qwen/Qwen3-32B".substringAfter("Custom · "),
-            ChatModelSelection.statusStripLabel("Custom", "Qwen/Qwen3-32B").let { it })
+        assertEquals("Custom · Qwen/Qwen3-32B", ChatModelSelection.statusStripLabel("Custom", "Qwen/Qwen3-32B"))
     }
 
     @Test
     fun `provider appears once — no section prefix`() {
         // The exact legacy case: endpoint label "Custom", model "Qwen/Qwen2.5-..."
+        // -> "Custom · <shortened model>", the provider exactly ONCE (the old bug
+        // printed the section-formatted registry displayName: "Custom · Custom · …").
         val label = ChatModelSelection.statusStripLabel("Custom", "Qwen/Qwen2.5-Coder-32B-Instruct")
-        assertEquals("Custom · Qwen/Qwen2.5-Coder-32B-Instruct", label)
+        assertEquals("Custom · " + ChatModelSelection.shortenMiddle("Qwen/Qwen2.5-Coder-32B-Instruct", 26), label)
+        assertEquals(1, label.split("Custom").size - 1)
     }
 
     @Test
