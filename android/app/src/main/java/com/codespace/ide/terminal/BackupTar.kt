@@ -120,7 +120,7 @@ object BackupTar {
      * Pass A: scan the archive for names, types, the symlink map and totals.
      * Reads the whole stream (data skipped); the caller reopens for pass B.
      */
-    fun scan(archiveFile: File): ScanResult = GzipOpen.open(archiveFile).use { scanStream(it) }
+    fun scan(archiveFile: File): ScanResult = archiveFile.inputStream().use { scanStream(it) }
 
     /** Bug 4 (owner round 2026-10-14): scan a stream straight from a SAF picker — no 200+ MB cache copy. */
     fun scanStream(input: java.io.InputStream): ScanResult {
@@ -173,7 +173,7 @@ object BackupTar {
     )
 
     fun inspect(archiveFile: File): InspectReport =
-        GzipOpen.open(archiveFile).use { inspectStream(it, archiveFile.length(), archiveFile.lastModified()) }
+        archiveFile.inputStream().use { inspectStream(it, archiveFile.length(), archiveFile.lastModified()) }
 
     /** Bug 4 (owner round 2026-10-14): Check backup works on a PICKED stream (Settings > Container Backup).
      *  A stream has no size/mtime of its own — callers that KNOW them pass them in
@@ -234,7 +234,7 @@ object BackupTar {
      * through the scan-pass symlink map instead.
      */
     fun extract(archiveFile: File, dest: File, scan: ScanResult, onProgress: (String) -> Unit): ExtractResult =
-        GzipOpen.open(archiveFile).use { extractStream(it, dest, scan, onProgress) }
+        archiveFile.inputStream().use { extractStream(it, dest, scan, onProgress) }
 
     /** Bug 4 (owner round 2026-10-14): extract from a stream — restore reads the picked file directly. */
     fun extractStream(input: java.io.InputStream, dest: File, scan: ScanResult, onProgress: (String) -> Unit): ExtractResult {
