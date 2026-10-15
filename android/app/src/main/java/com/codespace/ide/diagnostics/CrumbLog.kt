@@ -198,17 +198,16 @@ object CrumbLog {
         ApplicationExitInfo.REASON_CRASH -> "CRASH"
         ApplicationExitInfo.REASON_USER_REQUESTED -> "USER_REQUESTED (swipe-away or Force stop)"
         ApplicationExitInfo.REASON_USER_STOPPED -> "USER_STOPPED"
-        ApplicationExitInfo.REASON_PERMISSIONS_CHANGE -> "PERMISSIONS_CHANGE"
-        else -> "OTHER(" + reason + ")"
+        else -> "OTHER(" + reason + ")"  // package-update(7), permissions-change(12): not in this compileSdk
     }
 
     private fun agoText(ts: Long): String {
         val mins = (System.currentTimeMillis() - ts) / 60000
         return when {
             mins < 1 -> "just now"
-            mins < 60 -> mins + " min ago"
-            mins < 60 * 24 -> (mins / 60) + " h ago"
-            else -> (mins / (60 * 24)) + " d ago"
+            mins < 60 -> "$mins min ago"
+            mins < 60 * 24 -> (mins / 60).toString() + " h ago"
+            else -> (mins / (60 * 24)).toString() + " d ago"
         }
     }
 }
