@@ -1452,7 +1452,6 @@ private fun DeletedProjectsSection(context: android.content.Context) {
  * RG05 (2026-09-26): the container-backup prompt banner. Extracted to its own composable
  * (JVM 64KB bytecode limit — no inline additions to the big SettingsScreen body).
  */
-@Composable
 /**
  * Advisor 4c (2026-10-15, approved): the restore-over-healthy gate, extracted
  * (64KB rule). While shells run it refuses and offers to close them; the main
@@ -1558,6 +1557,7 @@ private fun PreRestoreConfirmDialog(
     )
 }
 
+@Composable
 private fun ContainerBackupPromptBanner(onBackupNow: () -> Unit, onDismiss: () -> Unit) {
     Surface(
         tonalElevation = 2.dp,
