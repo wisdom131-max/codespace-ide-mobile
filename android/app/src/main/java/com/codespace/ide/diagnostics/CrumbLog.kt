@@ -2,6 +2,7 @@ package com.codespace.ide.diagnostics
 
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
+import com.codespace.ide.data.NotificationStore
 import android.content.Context
 import android.os.Build
 import java.io.File
@@ -123,12 +124,13 @@ object CrumbLog {
                 }
                 val info = exits[0]
                 val reason = reasonName(info.reason)
+                // NOTE: ApplicationExitInfo.getSubReason()/getTotalPss() are not
+                // exposed by this compileSdk (CI-proven, aa74ef2 red) — reason,
+                // status, importance and description carry the verdict.
                 val line = "previous exit " + agoText(info.timestamp) +
                     ": reason=" + reason +
-                    " subReason=" + info.subReason +
                     " status=" + info.status +
                     " importance=" + info.importance +
-                    " pssAtExit=" + (info.totalPss / 1024) + "MB" +
                     (info.description?.let { " desc=\"" + it.take(120) + "\"" } ?: "")
                 crumb("exit-info", line)
                 AppOutputLog.log("[CRUMB] " + line, "terminal")
@@ -142,8 +144,7 @@ object CrumbLog {
                     )
                     AppOutputLog.log(
                         "[CRUMB] Android closed the app for LOW MEMORY " + ago +
-                            " (recorded PSS at exit: " + (info.totalPss / 1024) + " MB). " +
-                            "Last breadcrumb before that exit: " + lastCrumbLine(),
+                            ". Last breadcrumb before that exit: " + lastCrumbLine(),
                         "terminal",
                     )
                 } else if (info.reason == ApplicationExitInfo.REASON_ANR) {
@@ -197,7 +198,6 @@ object CrumbLog {
         ApplicationExitInfo.REASON_CRASH -> "CRASH"
         ApplicationExitInfo.REASON_USER_REQUESTED -> "USER_REQUESTED (swipe-away or Force stop)"
         ApplicationExitInfo.REASON_USER_STOPPED -> "USER_STOPPED"
-        ApplicationExitInfo.REASON_PACKAGE_UPDATE -> "PACKAGE_UPDATE"
         ApplicationExitInfo.REASON_PERMISSIONS_CHANGE -> "PERMISSIONS_CHANGE"
         else -> "OTHER(" + reason + ")"
     }
