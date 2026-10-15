@@ -74,6 +74,8 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         updateSystemUIForOrientation(resources.configuration.orientation)
 
+        // Advisor 1a (2026-10-15): cold-vs-resume breadcrumb.
+        com.codespace.ide.diagnostics.CrumbLog.logActivityCreate(savedInstanceState != null)
         // P7-3 Safe mode: record this launch attempt. If the app has crashed
         // 3+ times in a row (each launch ended within 60s), isSafeMode() returns true.
         WorkspaceManager.recordLaunch(this)

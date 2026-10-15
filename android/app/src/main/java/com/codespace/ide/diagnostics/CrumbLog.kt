@@ -115,7 +115,16 @@ object CrumbLog {
      */
     fun logStartup(context: Context) {
         init(context)
-        crumb("start", "process start, pid=" + android.os.Process.myPid() + " " + memorySnapshot(context))
+        // Advisor 1a: cold vs resume. A process start is BY DEFINITION a cold
+        // start; the interesting fact is whether the PREVIOUS process died
+        // moments before (pid differs, its last crumb is seconds old).
+        val prevStart = lastStartPidAndAge()
+        crumb(
+            "start",
+            "process start (COLD), pid=" + android.os.Process.myPid() +
+                (prevStart?.let { " — previous process pid=" + it.first + " last alive " + it.second + "s ago" } ?: " — no previous process recorded") +
+                " " + memorySnapshot(context),
+        )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 val am = context.getSystemService(ActivityManager::class.java) ?: return
@@ -129,7 +138,12 @@ object CrumbLog {
                 // NOTE: ApplicationExitInfo.getSubReason()/getTotalPss() are not
                 // exposed by this compileSdk (CI-proven, aa74ef2 red) — reason,
                 // status, importance and description carry the verdict.
+                val abnormal = info.reason == ApplicationExitInfo.REASON_CRASH ||
+                    info.reason == ApplicationExitInfo.REASON_SIGNALED ||
+                    info.reason == ApplicationExitInfo.REASON_LOW_MEMORY ||
+                    info.reason == ApplicationExitInfo.REASON_ANR
                 val line = "previous exit " + agoText(info.timestamp) +
+                    (if (abnormal) " [ABNORMAL]" else "") +
                     ": reason=" + reason +
                     " status=" + info.status +
                     " importance=" + info.importance +
@@ -163,6 +177,45 @@ object CrumbLog {
         } else {
             crumb("exit-info", "ApplicationExitInfo needs Android 11+ — device is API " + Build.VERSION.SDK_INT)
         }
+    }
+
+    /** Advisor 1a: the previous [start] crumb's pid and how long ago the previous
+     *  process was last heard from (age of the last crumb in either log file). */
+    internal fun lastStartPidAndAge(): Pair<Int, Long>? {
+        return try {
+            val d = dir ?: return null
+            val f = File(d, FILE_NAME)
+            val old = File(d, FILE_NAME + OLD_SUFFIX)
+            val lines = (if (f.exists()) f.readLines() else emptyList()) +
+                (if (old.exists()) old.readLines() else emptyList())
+            val startLine = lines.lastOrNull { it.contains("[start] process start") } ?: return null
+            val pid = startLine.substringAfter("pid=").substringBefore(' ').toIntOrNull() ?: return null
+            val lastTs = lines.lastOrNull()?.let { parseCrumbTime(it) } ?: return null
+            Pair(pid, (System.currentTimeMillis() - lastTs) / 1000)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun parseCrumbTime(line: String): Long? {
+        return try {
+            // Lines start "MM-dd HH:mm:ss.SSS" — add the current year so the
+            // SimpleDateFormat parses; year rollover within the log window is
+            // irrelevant (the log holds minutes, not months).
+            SimpleDateFormat("yyyy MM-dd HH:mm:ss.SSS", Locale.US).let { fmt ->
+                val year = SimpleDateFormat("yyyy", Locale.US).format(Date())
+                fmt.parse(year + " " + line.substring(0, 18))?.time
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /** Advisor 1a: activity lifecycle — a cold create vs a restore into a live or
+     *  recreated process (restored=true = savedInstanceState present: config change
+     *  or process-death restore; a plain resume never calls onCreate at all). */
+    fun logActivityCreate(restored: Boolean) {
+        crumb("activity", "activity onCreate, restored=" + restored + ", pid=" + android.os.Process.myPid())
     }
 
     /** The last line before a death is the boundary of the death. */
