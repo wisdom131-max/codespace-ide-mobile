@@ -486,14 +486,34 @@ fun SettingsScreen(
             // everything else (Drive, Dropbox, OneDrive...) streams over the
             // network and gets the warning dialog first.
             val isLocalProvider: (android.net.Uri) -> Boolean = { uri ->
-                val a = uri.authority ?: ""
-                a == "com.android.externalstorage.documents" ||
-                    a == "com.android.providers.downloads.documents" ||
-                    a == "media" ||
-                    a == "com.android.providers.media.module"
+                // Advisor follow-up (2026-10-15, cloud detection): file:// Uris and
+                // ANY Android FRAMEWORK provider (com.android.*) read locally — the
+                // device's own storage, Downloads and Media providers, which is what
+                // Google Files and most system pickers hand over. A vendor file
+                // manager (e.g. Transsion's on the owner's TECNO) may use its own
+                // authority: unknown authorities get the warning (Continue exists),
+                // and the authority is LOGGED below so the device round tells us the
+                // exact string to whitelist.
+                uri.scheme == "file" || run {
+                    val a = uri.authority ?: ""
+                    a == "com.android.externalstorage.documents" ||
+                        a == "com.android.providers.downloads.documents" ||
+                        a == "media" ||
+                        a == "com.android.providers.media.module" ||
+                        a.startsWith("com.android.")
+                }
             }
             val runPickedCheck: (android.net.Uri) -> Unit = { uri: android.net.Uri ->
                 run {
+                    // Advisor follow-up (2026-10-15): always log WHO provided the
+                    // picked file — the owner's TECNO Files app authority is unknown
+                    // until a device round reports this line.
+                    val pickedAuthority = runCatching { uri.authority ?: "(no authority)" }.getOrDefault("(unreadable)")
+                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                        "[CHECK-BACKUP] Picked from provider: $pickedAuthority — " +
+                            if (isLocalProvider(uri)) "LOCAL (device storage, no data charge)" else "NON-LOCAL (cloud/network, confirmed with Continue)",
+                        "backup",
+                    )
                     pickedUri = uri
                     backupRunning = true
                     scope.launch {

@@ -81,13 +81,17 @@ jobs:
           echo "QUESTING_ROOTFS=$HOME/questing-rootfs/ubuntu-questing-aarch64" >> "$GITHUB_ENV"
 
       - name: JVM unit tests (D15 shell-integration + MK model-catalog suites)
-        # D15-a: runs the pure-Kotlin OSC 633 parser matrix host-side. MK phase B
-        # (2026-10-07): adds the ModelCatalog merge/dedupe + refresh-semantics suite.
-        # Scoped via --tests so only these suites execute, but note Gradle compiles
-        # the WHOLE unit-test source set — a broken legacy test source fails here,
-        # which is exactly what we want to surface.
+        # Advisor follow-up (2026-10-15, CI hygiene): the --tests filter used to
+        # execute only a few suites while the rest merely COMPILED — a green badge
+        # proved nothing about their assertions. Now the FULL unit-test task runs
+        # every suite, and the verification step below fails the build if any
+        # required suite did not execute (missing or zero tests).
         working-directory: android
-        run: ./gradlew testProdDebugUnitTest --tests "com.codespace.ide.terminal.shellintegration.*" --tests "com.codespace.ide.chat.ModelCatalogTest" --tests "com.codespace.ide.terminal.BackupTarTest" --tests "com.codespace.ide.terminal.ContainerSafetyTest" --tests "com.codespace.ide.terminal.RealAssetBackupTest" --tests "com.codespace.ide.terminal.TabInstallDecisionTest" --tests "com.codespace.ide.terminal.InstallChoiceMachineTest" --stacktrace
+        run: ./gradlew testProdDebugUnitTest --stacktrace
+
+      - name: Verify every suite executed (per-suite counts; missing/zero = FAIL)
+        working-directory: android
+        run: python3 ci-test-report.py
 
       - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v4

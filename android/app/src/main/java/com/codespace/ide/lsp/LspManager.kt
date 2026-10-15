@@ -1455,8 +1455,13 @@ object LspManager {
         // carried forward from an older build), we repair the marker silently rather than
         // blocking LSP entirely — the rootfs itself is functional.
         if (!ProotInstaller.isInstalled(context)) {
-            val bashExists = java.io.File(ProotInstaller.rootfsDir(context), "usr/bin/bash").exists()
-            if (bashExists) {
+            // Advisor follow-up (2026-10-15, marker semantics): this self-heal must
+            // use THE SAME adoption bar as the pane (rootfsHealthy = healthOf.ok:
+            // bash AND env) — bash-only would stamp a marker onto a DAMAGED leftover
+            // (the 14:15 crash shape) and isInstalled() would then treat it as a
+            // healthy installed container forever.
+            val rootfsHealthy = runCatching { ProotInstaller.rootfsHealthy(context) }.getOrDefault(false)
+            if (rootfsHealthy) {
                 // Rootfs is functional but marker is missing/stale — repair it
                 val versionFile = java.io.File(context.filesDir, ".ubuntu_version")
                 try {
@@ -1465,6 +1470,8 @@ object LspManager {
                 } catch (e: Exception) {
                     AppOutputLog.log("[LSP] WARNING: Could not write .ubuntu_version marker: ${e.message}", "lsp")
                 }
+            } else {
+                AppOutputLog.log("[LSP] Rootfs FAILED the bash+env health gate (absent or damaged) — NOT adopted; the auto-install path below will replace it.", "lsp")
             }
             // P40-AUTO-INSTALL: The rootfs is genuinely missing. Previously this returned
             // false and told the user to "open Terminal tab first" — a manual step nobody
