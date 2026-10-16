@@ -68,13 +68,49 @@ object CrumbLog {
         }
     }
 
+    /**
+     * Advisor Part 4 (2026-10-16): a breadcrumb that is FLUSHED TO DISK (fsync)
+     * before returning — the last line in the file marks exactly where the
+     * process died, even if the kill lands mid-tap. Used at every staged
+     * boundary of the Link tap mode flow.
+     */
+    fun crumbSync(tag: String, message: String) {
+        try {
+            val d = dir ?: return
+            writeCrumbed(d, tag, message, sync = true)
+        } catch (_: Throwable) {
+            // A diagnostics log must never crash the app it diagnoses.
+        }
+    }
+
+    /** The LAST [n] breadcrumb lines (the death trail), newest last. */
+    fun crumbTail(n: Int = 8): List<String> {
+        val d = dir ?: return emptyList()
+        return crumbTailFrom(File(d, FILE_NAME), n)
+    }
+
+    /** Pure, unit-tested: the tail of a breadcrumb file. */
+    internal fun crumbTailFrom(f: File, n: Int): List<String> {
+        return try {
+            if (!f.exists()) return emptyList()
+            f.readLines().takeLast(n)
+        } catch (_: Throwable) { emptyList() }
+    }
+
     /** Pure, unit-tested: the capped, redacted write into a given directory. */
-    internal fun writeCrumbed(dir: File, tag: String, message: String, maxBytes: Int = MAX_BYTES, keepOldBytes: Int = KEEP_OLD_BYTES) {
+    internal fun writeCrumbed(dir: File, tag: String, message: String, maxBytes: Int = MAX_BYTES, keepOldBytes: Int = KEEP_OLD_BYTES, sync: Boolean = false) {
         dir.mkdirs()
         val f = File(dir, FILE_NAME)
         val line = timeFmt.format(Date()) + " [" + tag + "] " + redact(message) + "\n"
         synchronized(CrumbLog::class.java) {
-            f.appendText(line)
+            if (sync) {
+                java.io.FileOutputStream(f, true).use { fos ->
+                    fos.write(line.toByteArray())
+                    fos.fd.sync()
+                }
+            } else {
+                f.appendText(line)
+            }
             val len = f.length()
             if (len > maxBytes) {
                 val old = File(dir, FILE_NAME + OLD_SUFFIX)
@@ -98,6 +134,27 @@ object CrumbLog {
                 // truncates in place instead of growing unbounded.
                 f.writeText(line)
             }
+        }
+    }
+
+    /**
+     * Advisor Part 4 mapping — the exit reason in plain words the owner can act on.
+     * REASON_SIGNALED status 31 = SIGSYS = a BLOCKED SYSCALL (the kernel family
+     * this device has already killed the app with during proot work).
+     */
+    internal fun plainExitWords(reason: Int, status: Int): String {
+        return when (reason) {
+            ApplicationExitInfo.REASON_SIGNALED ->
+                if (status == 31) "killed by signal 31 (SIGSYS — a blocked syscall)"
+                else "killed by signal " + status
+            ApplicationExitInfo.REASON_ANR -> "the app stopped responding (ANR)"
+            ApplicationExitInfo.REASON_LOW_MEMORY -> "the system killed the app to free memory (LOW MEMORY)"
+            ApplicationExitInfo.REASON_CRASH -> "a crash in the app's Java code"
+            ApplicationExitInfo.REASON_CRASH_NATIVE -> "a native crash inside the app's own code"
+            ApplicationExitInfo.REASON_EXIT_SELF -> "the app closed itself"
+            ApplicationExitInfo.REASON_USER_REQUESTED -> "you closed the app"
+            ApplicationExitInfo.REASON_USER_STOPPED -> "you stopped the app"
+            else -> "another system reason (code " + reason + ")"
         }
     }
 
@@ -128,28 +185,35 @@ object CrumbLog {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 val am = context.getSystemService(ActivityManager::class.java) ?: return
-                val exits = am.getHistoricalProcessExitReasons(context.packageName, 0, 3)
+                val exits = am.getHistoricalProcessExitReasons(context.packageName, 0, 8)
                 if (exits.isNullOrEmpty()) {
                     crumb("exit-info", "no previous exit recorded (fresh install or system limit)")
                     return
                 }
-                val info = exits[0]
-                val reason = reasonName(info.reason)
+                // Advisor Part 4 (2026-10-16): the LAST 5 exit records, not only the
+                // latest — a recurring kill pattern is visible only across records.
                 // NOTE: ApplicationExitInfo.getSubReason()/getTotalPss() are not
                 // exposed by this compileSdk (CI-proven, aa74ef2 red) — reason,
                 // status, importance and description carry the verdict.
-                val abnormal = info.reason == ApplicationExitInfo.REASON_CRASH ||
-                    info.reason == ApplicationExitInfo.REASON_SIGNALED ||
-                    info.reason == ApplicationExitInfo.REASON_LOW_MEMORY ||
-                    info.reason == ApplicationExitInfo.REASON_ANR
-                val line = "previous exit " + agoText(info.timestamp) +
-                    (if (abnormal) " [ABNORMAL]" else "") +
-                    ": reason=" + reason +
-                    " status=" + info.status +
-                    " importance=" + info.importance +
-                    (info.description?.let { " desc=\"" + it.take(120) + "\"" } ?: "")
-                crumb("exit-info", line)
-                AppOutputLog.log("[CRUMB] " + line, "terminal")
+                val recent = exits.take(5)
+                recent.forEachIndexed { i, info ->
+                    val abnormal = info.reason == ApplicationExitInfo.REASON_CRASH ||
+                        info.reason == ApplicationExitInfo.REASON_SIGNALED ||
+                        info.reason == ApplicationExitInfo.REASON_LOW_MEMORY ||
+                        info.reason == ApplicationExitInfo.REASON_ANR
+                    val line = "exit " + (recent.size - i) + "/" + recent.size + " " + agoText(info.timestamp) +
+                        (if (abnormal) " [ABNORMAL]" else "") +
+                        ": " + plainExitWords(info.reason, info.status) +
+                        " (status=" + info.status + ", importance=" + info.importance + ")" +
+                        (info.description?.let { " desc=\"" + it.take(120) + "\"" } ?: "")
+                    crumb("exit-info", line)
+                    AppOutputLog.log("[CRUMB] " + line, "terminal")
+                }
+                // The breadcrumb tail — the death trail from the previous process —
+                // visible in Output without any file pull.
+                AppOutputLog.log("[CRUMB] breadcrumb tail: " + crumbTail(8).joinToString(" | "), "terminal")
+                val info = exits[0]
+                val reason = reasonName(info.reason)
                 if (info.reason == ApplicationExitInfo.REASON_LOW_MEMORY) {
                     val ago = agoText(info.timestamp)
                     NotificationStore.add(

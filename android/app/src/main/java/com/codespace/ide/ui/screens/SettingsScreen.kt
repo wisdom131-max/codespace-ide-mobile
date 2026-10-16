@@ -662,6 +662,46 @@ fun SettingsScreen(
                 )
             }
 
+            // ── Advisor Part 4 (2026-10-16): staged Link tap mode (diagnostics) ──
+            var linkTapMode by remember { mutableStateOf(com.codespace.ide.terminal.LinkTapModeStore.current(context)) }
+            var showLinkTapModeDialog by remember { mutableStateOf(false) }
+            ListItem(
+                headlineContent = { Text("Link tap mode (terminal diagnostics)") },
+                supportingContent = {
+                    Text(
+                        com.codespace.ide.terminal.LinkTapModeStore.label(linkTapMode) +
+                            ". Stages are logged to the crumb file line by line — if a tap ever closes the app, the last line shows the step it died on.",
+                    )
+                },
+                trailingContent = {
+                    TextButton(onClick = { showLinkTapModeDialog = true }) { Text("Change") }
+                },
+            )
+            if (showLinkTapModeDialog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showLinkTapModeDialog = false },
+                    title = { Text("Link tap mode") },
+                    text = {
+                        androidx.compose.foundation.layout.Column {
+                            com.codespace.ide.terminal.LinkTapModeStore.Mode.values().forEach { m ->
+                                TextButton(onClick = {
+                                    linkTapMode = m
+                                    com.codespace.ide.terminal.LinkTapModeStore.set(context, m)
+                                    showLinkTapModeDialog = false
+                                }) {
+                                    Text(
+                                        (if (m == linkTapMode) "✓ " else "   ") + com.codespace.ide.terminal.LinkTapModeStore.label(m),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showLinkTapModeDialog = false }) { Text("Close") }
+                    },
+                )
+            }
             ListItem(
                 headlineContent = { Text("Ubuntu container (Node, ffmpeg, projects, etc.)") },
                 supportingContent = {

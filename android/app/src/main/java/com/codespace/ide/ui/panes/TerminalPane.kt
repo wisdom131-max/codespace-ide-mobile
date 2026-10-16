@@ -367,15 +367,27 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                     // "src/Main.kt:42: unresolved reference" as PLAIN TEXT (not OSC-wrapped).
                     // Same tap position, same extracted word: try to resolve it as a
                     // project file path (absolute host / proot-guest / session-cwd-relative).
-                    if (onFileLinkTap != null) {
-                        // Advisor A.2 (2026-10-15): breadcrumb BEFORE the risky
-                        // action — the last line before a death is its boundary.
-                        com.codespace.ide.diagnostics.CrumbLog.crumb(
-                            "tap", "link text='" + (spanToken ?: word).take(80) + "' span=" + (spanToken != null) +
-                                " " + com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(v.context),
-                        )
+                    // ── Advisor Part 4 (2026-10-16): the staged Link tap mode ──────────
+                    // Every stage boundary writes an fsynced breadcrumb: the LAST
+                    // line in the crumb log shows exactly where a death happened.
+                    // OFF / LOG_TOKEN / RESOLVE / FULL — set in Settings.
+                    val tapMode = com.codespace.ide.terminal.LinkTapModeStore.current(v.context)
+                    com.codespace.ide.diagnostics.CrumbLog.crumbSync(
+                        "tap", "stage 1 done: extracted '" + (spanToken ?: word).take(80) + "' span=" + (spanToken != null) +
+                            " (mode=" + tapMode + ") " + com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(v.context),
+                    )
+                    if (tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.OFF) {
+                        com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "mode OFF — file-link tap ignored")
+                    } else if (onFileLinkTap != null) {
                         val linkToken = (spanToken ?: word).trim()
-                        if (com.codespace.ide.terminal.IdeTerminalBridge.isResolvableToken(linkToken)) {
+                        // LOG_TOKEN: extract candidates and LOG them — NO file access.
+                        if (tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.LOG_TOKEN) {
+                            val cands = com.codespace.ide.terminal.IdeTerminalBridge.linkCandidates(linkToken.trim().trimEnd(':', ',', ';'))
+                            com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 2 done (LOG_TOKEN, no file access): candidates=" + cands.joinToString(" | ").take(200))
+                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                "[TAP] (Log token mode) candidates: " + cands.joinToString(" | "), "terminal",
+                            )
+                        } else if (com.codespace.ide.terminal.IdeTerminalBridge.isResolvableToken(linkToken)) {
                             // Advisor Part 3 (2026-10-16): resolve + exists + canonical
                             // work runs OFF the main thread with a 3s limit (hardening;
                             // NOT a claimed cause — the mode switch discriminates). The
@@ -383,15 +395,23 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                             // blocks the UI thread on FUSE/proc I/O.
                             val scope = resolveScope
                             if (scope != null) {
-                                com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "resolve dispatched async '" + linkToken.take(80) + "'")
+                                com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 3 start: resolve dispatched async '" + linkToken.take(80) + "'")
                                 scope.launch {
                                     val r = com.codespace.ide.terminal.IdeTerminalBridge
                                         .resolveTappedFileLinkAsync(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke())
-                                    if (r.file != null) {
-                                        com.codespace.ide.diagnostics.CrumbLog.crumb(
-                                            "tap", "resolved -> open " + r.file.absolutePath + ":" + r.line,
-                                        )
+                                    com.codespace.ide.diagnostics.CrumbLog.crumbSync(
+                                        "tap", "stage 3 done: " +
+                                            (if (r.file != null) "RESOLVED " + r.file.absolutePath + ":" + r.line
+                                             else if (r.timedOut) "TIMED OUT"
+                                             else "not found"),
+                                    )
+                                    if (r.file != null && tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.RESOLVE) {
+                                        // RESOLVE mode: show the result, do NOT open.
+                                        v.mTermSession?.write("\r\n[Link] Resolved (Resolve mode, not opened): " + r.file.absolutePath + ":" + r.line + "\r\n")
+                                    } else if (r.file != null) {
+                                        com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 4 start: open " + r.file.absolutePath + ":" + r.line)
                                         onFileLinkTap?.invoke(r.file.absolutePath, r.line)
+                                        com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 4 done: open handed to editor")
                                     } else if (r.timedOut) {
                                         com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "resolve TIMED OUT '" + linkToken.take(80) + "'")
                                         v.mTermSession?.write("\r\n[Link] Lookup timed out: " + linkToken + " (storage busy)\r\n")
