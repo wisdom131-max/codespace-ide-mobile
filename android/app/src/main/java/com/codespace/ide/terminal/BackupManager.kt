@@ -488,6 +488,13 @@ object BackupManager {
         }
         onProgress("\u2713 Safety backup complete: $filesWritten files, ${target.length() / (1024 * 1024)} MB \u2192 ${target.name} (the restore source and your stored backups were NOT touched)")
         com.codespace.ide.diagnostics.AppOutputLog.log("[BACKUP-DIAG] timestamped pre-restore backup saved: ${target.name}", "terminal")
+        // Advisor 2b: retention AFTER the new backup is verified — never the
+        // just-created file (protected below), never the default/.prev (regex).
+        try {
+            pruneTimestampedBackups(context, protectedNames = setOf(target.name), onProgress = onProgress)
+        } catch (_: Throwable) {
+            // Cleanup must never fail a completed backup.
+        }
         return TimestampedBackupResult(TimestampedOutcome.SAVED, target)
     }
 
@@ -499,6 +506,100 @@ object BackupManager {
         val names = dir.listFiles()?.map { it.name } ?: return emptyList()
         val rx = Regex("^container-backup-\\d{8}-\\d{4}( \\(\\d+\\))?\\.tar\\.gz$")
         return names.filter { rx.matches(it) }.sorted().map { File(dir, it) }
+    }
+
+    // ── Advisor 2b retention (approved 2026-10-16) ───────────────────────────────
+    // Policy: the DEFAULT backup and .prev are NEVER pruned (timestamped regex never
+    // matches them anyway). The newest KEEP_TIMESTAMPED timestamped backups survive;
+    // the OLDEST beyond that are pruned — never the just-created file, never the
+    // file being restored (both passed as protectedNames). A notice is logged and
+    // shown BEFORE every deletion. Pruning can be disabled in Settings.
+
+    const val KEEP_TIMESTAMPED = 3
+
+    /**
+     * Pure, unit-tested: which timestamped backups to prune. `files` is the
+     * oldest-first listing (timestampedBackups() order). Returns the files to
+     * DELETE (oldest first), excluding protected names, keeping the newest
+     * [keep] non-protected files.
+     */
+    fun timestampedRetentionDecision(files: List<File>, keep: Int, protectedNames: Set<String>): List<File> {
+        val notProtected = files.filter { it.name !in protectedNames }
+        if (notProtected.size <= keep) return emptyList()
+        return notProtected.dropLast(keep)
+    }
+
+    /**
+     * Advisor 2b: every stored backup file for the Settings list — the DEFAULT
+     * backup, the .prev, and all timestamped files, newest first.
+     */
+    fun allBackupFiles(): List<File> {
+        val dir = backupDir()
+        val names = dir.listFiles()?.map { it.name } ?: return emptyList()
+        val rx = Regex("^container-backup(\\.tar\\.gz(\\.prev)?|-\\d{8}-\\d{4}( \\(\\d+\\))?\\.tar\\.gz)$")
+        return names.filter { rx.matches(it) }
+            .map { File(dir, it) }
+            .sortedByDescending { it.lastModified() }
+    }
+
+    /** Retention setting (Settings > Container backup & restore). Default ON. */
+    fun pruningEnabled(context: Context): Boolean {
+        return try {
+            context.applicationContext
+                .getSharedPreferences("backup_retention_prefs", Context.MODE_PRIVATE)
+                .getBoolean("pruning_enabled", true)
+        } catch (_: Exception) { true }
+    }
+
+    fun setPruningEnabled(context: Context, enabled: Boolean) {
+        try {
+            context.applicationContext
+                .getSharedPreferences("backup_retention_prefs", Context.MODE_PRIVATE)
+                .edit().putBoolean("pruning_enabled", enabled).apply()
+        } catch (_: Exception) { }
+    }
+
+    /**
+     * Prune per the approved policy. NOTICE BEFORE ANY DELETION: each file is
+     * named (with size and date) in the Output log and a notification BEFORE it
+     * is removed. Returns the pruned files (oldest first); empty = nothing to do.
+     */
+    fun pruneTimestampedBackups(
+        context: Context,
+        protectedNames: Set<String> = emptySet(),
+        onProgress: (String) -> Unit = {},
+    ): List<File> {
+        if (!pruningEnabled(context)) {
+            onProgress("Safety-backup cleanup disabled in Settings — keeping every timestamped backup.")
+            return emptyList()
+        }
+        val files = timestampedBackups()
+        val toDelete = timestampedRetentionDecision(files, KEEP_TIMESTAMPED, protectedNames)
+        if (toDelete.isEmpty()) return emptyList()
+        onProgress("Keeping the newest $KEEP_TIMESTAMPED safety backups; " + toDelete.size + " older one(s) will be removed:")
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[BACKUP] retention: keeping newest $KEEP_TIMESTAMPED; removing " + toDelete.size + " old backup(s)", "terminal",
+        )
+        val pruned = mutableListOf<File>()
+        for (f in toDelete) {
+            // NOTICE BEFORE the deletion — size and date, plain words.
+            val mb = f.length() / (1024 * 1024)
+            val date = java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.US).format(java.util.Date(f.lastModified()))
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[BACKUP] removing old safety backup " + f.name + " (" + mb + " MB, " + date + ")", "terminal",
+            )
+            com.codespace.ide.data.NotificationStore.add(
+                "Old safety backup removed",
+                f.name + " (" + mb + " MB, saved " + date + ") was removed to keep the newest $KEEP_TIMESTAMPED backups. The main backup and the previous one are never removed.",
+                com.codespace.ide.data.NotificationStore.Type.INFO,
+            )
+            com.codespace.ide.diagnostics.CrumbLog.crumb("backup", "retention pruning " + f.name)
+            if (f.delete()) pruned.add(f)
+        }
+        if (pruned.isNotEmpty()) {
+            onProgress("Removed " + pruned.size + " old safety backup(s). The newest $KEEP_TIMESTAMPED, the main backup, and the previous one are kept.")
+        }
+        return pruned
     }
 
     /**

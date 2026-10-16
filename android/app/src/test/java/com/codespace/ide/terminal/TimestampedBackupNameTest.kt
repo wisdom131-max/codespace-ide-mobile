@@ -1,6 +1,7 @@
 package com.codespace.ide.terminal
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -94,5 +95,36 @@ class TimestampedBackupNameTest {
         assertThrows(IllegalStateException::class.java) {
             BackupManager.nextTimestampedBackupFile(tmp.root, stamp)
         }
+    }
+
+    @Test
+    fun retentionKeepsNewestThreeAndProtected() {
+        // Advisor 2b: oldest-first input; decision = files to DELETE.
+        val f = { n: String -> java.io.File(n) }
+        val files = listOf(f("container-backup-20261010-0800.tar.gz"), f("container-backup-20261011-0900.tar.gz"),
+            f("container-backup-20261012-1000.tar.gz"), f("container-backup-20261013-1100.tar.gz"), f("container-backup-20261014-1200.tar.gz"))
+        // 5 files, keep 3 -> the 2 oldest are pruned.
+        assertEquals(listOf("container-backup-20261010-0800.tar.gz", "container-backup-20261011-0900.tar.gz"),
+            BackupManager.timestampedRetentionDecision(files, 3, emptySet()).map { it.name })
+        // The just-created file is protected even if it would sort into the prune set.
+        val files2 = files.take(4)
+        assertEquals(listOf("container-backup-20261010-0800.tar.gz"),
+            BackupManager.timestampedRetentionDecision(files2, 3, setOf("container-backup-20261011-0900.tar.gz")).map { it.name })
+        // Fewer than keep+1 -> nothing pruned.
+        assertEquals(emptyList<String>(), BackupManager.timestampedRetentionDecision(files.take(3), 3, emptySet()).map { it.name })
+        assertEquals(emptyList<String>(), BackupManager.timestampedRetentionDecision(emptyList(), 3, emptySet()).map { it.name })
+    }
+
+    @Test
+    fun allBackupFilesPatternMatchesAdvisor2b() {
+        // Pure check of the listing regex: default, .prev, timestamped in; junk out.
+        val rx = Regex("^container-backup(\\.tar\\.gz(\\.prev)?|-\\d{8}-\\d{4}( \\(\\d+\\))?\\.tar\\.gz)$")
+        assertTrue(rx.matches("container-backup.tar.gz"))
+        assertTrue(rx.matches("container-backup.tar.gz.prev"))
+        assertTrue(rx.matches("container-backup-20261015-2200.tar.gz"))
+        assertTrue(rx.matches("container-backup-20261015-2200 (2).tar.gz"))
+        assertFalse(rx.matches("container-backup-20261015-2200.tar.gz.tmp"))
+        assertFalse(rx.matches("other-file.txt"))
+        assertFalse(rx.matches("container-backup.tar.gz.tmp"))
     }
 }

@@ -751,6 +751,48 @@ fun SettingsScreen(
                     ) { Text("Restore previous backup") }
                 }
             }
+            // ── Advisor 2b retention (approved 2026-10-16) ──────────────────────
+            var pruningEnabled by remember { mutableStateOf(BackupManager.pruningEnabled(context)) }
+            ListItem(
+                headlineContent = { Text("Keep old safety backups") },
+                supportingContent = {
+                    Text(
+                        if (!pruningEnabled)
+                            "ON (keep all): every safety backup is kept until you remove it — watch free space."
+                        else
+                            "OFF: only the newest 3 safety backups are kept; older ones are removed with a notice first. The main backup and the previous one are never removed."
+                    )
+                },
+                trailingContent = {
+                    androidx.compose.material3.Switch(
+                        checked = !pruningEnabled,
+                        onCheckedChange = { keepAll ->
+                            pruningEnabled = !keepAll
+                            BackupManager.setPruningEnabled(context, !keepAll)
+                        },
+                    )
+                },
+            )
+            // Advisor 2b condition: the backup list shows SIZES and DATES.
+            val backupListItems = remember(backupInfo, backupRunning) {
+                BackupManager.allBackupFiles().map { f ->
+                    val mb = f.length() / (1024 * 1024)
+                    val date = java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.US).format(java.util.Date(f.lastModified()))
+                    f to (mb.toString() + " MB · " + date)
+                }
+            }
+            if (backupListItems.isNotEmpty()) {
+                ListItem(
+                    headlineContent = { Text("Stored backups (" + backupListItems.size + ")") },
+                    supportingContent = {
+                        androidx.compose.foundation.layout.Column {
+                            backupListItems.forEach { (f, info) ->
+                                Text(f.name + " — " + info, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    },
+                )
+            }
             // Advisor 4d (2026-10-15): the pre-restore container stays available.
             val preRestoreFile = preRestoreBackup
             if (preRestoreFile != null && preRestoreFile.exists()) {
