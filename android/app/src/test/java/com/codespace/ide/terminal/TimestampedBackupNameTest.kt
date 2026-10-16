@@ -111,8 +111,9 @@ class TimestampedBackupNameTest {
         // hardest: it survives even though it is the oldest.
         assertEquals(listOf("container-backup-20261011-0900.tar.gz"),
             BackupManager.timestampedRetentionDecision(files, 3, setOf("container-backup-20261010-0800.tar.gz")).map { it.name })
-        // The just-created (newest) file protected: the 2nd-oldest unprotected is pruned instead.
-        assertEquals(listOf("container-backup-20261010-0800.tar.gz", "container-backup-20261011-0900.tar.gz"),
+        // The just-created (newest) file protected: 4 unprotected remain, keep 3
+        // -> only the SINGLE oldest is pruned (total kept = 4: protected + newest 3).
+        assertEquals(listOf("container-backup-20261010-0800.tar.gz"),
             BackupManager.timestampedRetentionDecision(files, 3, setOf("container-backup-20261014-1200.tar.gz")).map { it.name })
         // Fewer unprotected than keep -> nothing pruned (never over-deletes).
         val files2 = files.take(4)
