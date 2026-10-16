@@ -105,6 +105,23 @@ class FileLinkReproTest {
     }
 
     @Test
+    fun tokenCapsPart3() {
+        // Advisor Part 3: only tokens worth a disk probe proceed; length is capped
+        // (VS Code maxLinkLength parity) before ANY file access.
+        assertTrue(IdeTerminalBridge.isResolvableToken("spantest.txt:1"))
+        assertTrue(IdeTerminalBridge.isResolvableToken("src/Main.kt:42"))
+        assertFalse(IdeTerminalBridge.isResolvableToken("hello"))          // no path hint
+        assertFalse(IdeTerminalBridge.isResolvableToken(""))               // empty
+        assertFalse(IdeTerminalBridge.isResolvableToken("   "))            // blank
+        val long = "a/".repeat(300)                                        // 600 chars
+        assertFalse(IdeTerminalBridge.isResolvableToken(long))
+        val atCap = "x".repeat(509) + ".kt"                               // exactly 512
+        assertTrue(IdeTerminalBridge.isResolvableToken(atCap))
+        // The unscoped entry refuses oversized tokens outright.
+        assertEquals(null, IdeTerminalBridge.resolveTappedFileLinkUnscoped(null, null, long, null))
+    }
+
+    @Test
     fun cwdResolutionWithSpacesWorks() {
         // The owner's cwd shape: "/sdcard/My codespace app 3" — host equivalent
         // built with spaces in the name. File(cwd, rel) handles spaces natively.

@@ -191,6 +191,46 @@ object IdeTerminalBridge {
         return null
     }
 
+    /**
+     * Advisor Part 3 (2026-10-16): the tap path's resolve + exists work runs OFF
+     * the main thread with a hard time limit. Hardening only — NOT a claimed root
+     * cause (a blocked check gives an ANR dialog, not a silent close; the Link
+     * tap mode setting is the discriminator). Result is posted back by the caller's
+     * main-thread scope. Never throws.
+     */
+    data class TappedLinkResult(val file: File?, val line: Int, val timedOut: Boolean)
+
+    suspend fun resolveTappedFileLinkAsync(
+        context: Context,
+        session: com.termux.terminal.TerminalSession?,
+        token: String,
+        projectId: String? = null,
+        lockedRoot: String? = null,
+    ): TappedLinkResult {
+        return try {
+            val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
+                    resolveTappedFileLink(context, session, token, projectId, lockedRoot)
+                }
+            }
+            if (r != null) TappedLinkResult(r.first, r.second, false)
+            else TappedLinkResult(null, -1, true)
+        } catch (_: Throwable) {
+            TappedLinkResult(null, -1, true)
+        }
+    }
+
+    /** Advisor Part 3 caps (VS Code parity: maxLinkLength 500 / MaxResolvedLinkLength 1024). */
+    const val MAX_TOKEN_LENGTH = 512
+    const val MAX_ROOTS_TO_PROBE = 5
+    const val RESOLVE_TIMEOUT_MS = 3_000L
+
+    /** Pure, unit-tested: is this token even worth probing the disk for? */
+    fun isResolvableToken(token: String): Boolean {
+        val t = token.trim()
+        return t.isNotEmpty() && t.length <= MAX_TOKEN_LENGTH && (t.contains('/') || t.contains('.'))
+    }
+
     fun resolveTappedFileLink(
         context: Context,
         session: com.termux.terminal.TerminalSession?,
@@ -218,7 +258,8 @@ object IdeTerminalBridge {
         token: String,
         projectId: String? = null,
     ): Pair<File, Int>? {
-        if (token.isBlank()) return null
+        // Advisor Part 3 cap: an absurdly long "token" is not probed at all.
+        if (token.isBlank() || token.length > MAX_TOKEN_LENGTH) return null
         // A5-SPAN: a span token may carry leading filler words ("at My Project/x.kt:42",
         // "cd My Project/x.kt:42") that the whole-line match cannot exclude. Try the
         // token as extracted FIRST, then progressively drop leading chunks. No-space
@@ -309,8 +350,10 @@ object IdeTerminalBridge {
             val roots = try {
                 com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(appCtx, projectId)
             } catch (_: Exception) { emptyList() }
-            AppOutputLog.log("[TAP] workspace-root fallback: " + roots.size + " root(s) for project " + projectId, CHANNEL)
-            for (root in roots) {
+            // Advisor Part 3 cap (VS Code MaxResolvedLinksInLine parity): bound the probes.
+            val capped = roots.take(MAX_ROOTS_TO_PROBE)
+            AppOutputLog.log("[TAP] workspace-root fallback: " + capped.size + "/" + roots.size + " root(s) for project " + projectId, CHANNEL)
+            for (root in capped) {
                 File(root, pathPart).takeIf { it.exists() }?.let {
                     AppOutputLog.log("[TAP] resolved via workspace root " + root + ": " + it.absolutePath, CHANNEL)
                     return Pair(it, lineNum - 1)

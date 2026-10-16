@@ -375,7 +375,34 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                                 " " + com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(v.context),
                         )
                         val linkToken = (spanToken ?: word).trim()
-                        if (linkToken.isNotEmpty() && (linkToken.contains('/') || linkToken.contains('.'))) {
+                        if (com.codespace.ide.terminal.IdeTerminalBridge.isResolvableToken(linkToken)) {
+                            // Advisor Part 3 (2026-10-16): resolve + exists + canonical
+                            // work runs OFF the main thread with a 3s limit (hardening;
+                            // NOT a claimed cause — the mode switch discriminates). The
+                            // result posts back on this main-thread scope; the tap never
+                            // blocks the UI thread on FUSE/proc I/O.
+                            val scope = resolveScope
+                            if (scope != null) {
+                                com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "resolve dispatched async '" + linkToken.take(80) + "'")
+                                scope.launch {
+                                    val r = com.codespace.ide.terminal.IdeTerminalBridge
+                                        .resolveTappedFileLinkAsync(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke())
+                                    if (r.file != null) {
+                                        com.codespace.ide.diagnostics.CrumbLog.crumb(
+                                            "tap", "resolved -> open " + r.file.absolutePath + ":" + r.line,
+                                        )
+                                        onFileLinkTap?.invoke(r.file.absolutePath, r.line)
+                                    } else if (r.timedOut) {
+                                        com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "resolve TIMED OUT '" + linkToken.take(80) + "'")
+                                        v.mTermSession?.write("\r\n[Link] Lookup timed out: " + linkToken + " (storage busy)\r\n")
+                                    } else {
+                                        com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "unresolved: no branch matched '" + linkToken.take(80) + "'")
+                                        v.mTermSession?.write("\r\n[Link] File not found: " + linkToken.trim().trimEnd(':', ',', ';') + "\r\n")
+                                    }
+                                }
+                                return
+                            }
+                            // Fallback (no scope wired — split panel edge): the old sync path.
                             val resolved = com.codespace.ide.terminal.IdeTerminalBridge
                                 .resolveTappedFileLink(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke())
                             if (resolved != null) {
@@ -428,6 +455,9 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     // LOCKED-ROOT (2026-09-12): provider for the tap resolver's locked-root guard -
     // returns the ACTIVE terminal tab's lockedRootPath at tap time (null = unlocked).
     var lockedRootProvider: (() -> String?)? = null
+    // Advisor Part 3 (2026-10-16): the pane's main-thread scope — when present, the
+    // file-link resolve runs on Dispatchers.IO with a time limit and posts back here.
+    var resolveScope: kotlinx.coroutines.CoroutineScope? = null
     var onNewTab:      (() -> Unit)? = null
     var onCloseTab:    (() -> Unit)? = null
     var onPrevTab:     (() -> Unit)? = null
@@ -2917,6 +2947,8 @@ internal fun TerminalPane(
                             viewClient.currentTextSize = terminalFontSize
                             // A3: project context for tap-to-open resolution
                             viewClient.projectId = projectId
+                            // Advisor Part 3: async tap resolve posts back on the pane scope
+                            viewClient.resolveScope = scope
                             // LOCKED-ROOT (2026-09-12): tap resolver reads the ACTIVE tab's lock
                             viewClient.lockedRootProvider = { tabs.firstOrNull { it.id == activeId }?.lockedRootPath }
                             // Propagate pinch-zoom font changes back to Compose state + SharedPrefs
@@ -2990,6 +3022,7 @@ internal fun TerminalPane(
                             if (viewClient2 != null) {
                                 viewClient2.onNewTab      = { addTab() }
                                 viewClient2.onFileLinkTap = { p, l -> onOpenFileAtLine?.invoke(p, l) }
+                                viewClient2.resolveScope = scope
                                 viewClient2.onCloseTab    = { closeTab(active.id) }
                                 viewClient2.onPrevTab     = { val i = tabs.indexOfFirst { it.id == activeId }; if (i > 0) activeId = tabs[i-1].id else if (tabs.isNotEmpty()) activeId = tabs.last().id }
                                 viewClient2.onNextTab     = { val i = tabs.indexOfFirst { it.id == activeId }; activeId = if (i < tabs.size-1) tabs[i+1].id else tabs.first().id }
