@@ -164,6 +164,8 @@ fun EditorPane(
     fontSize: Int = 13,
     onCursorChange: ((Int, Int) -> Unit)? = null,
     wordWrap: Boolean = false,
+    /** BATCH4-P1c: Command Palette chord (Ctrl+Shift+P) — threaded from the shell. */
+    onOpenCommandPalette: (() -> Unit)? = null,
     showInlayHints: Boolean = true,  // P2-11
     toggles: EditorFeatureToggles = EditorFeatureToggles(),
     externalJump: com.codespace.ide.editor.PendingEditorJump? = null,
@@ -2515,6 +2517,8 @@ fun EditorPane(
                         onInsertHandler = onInsertRequest,
                         modifier = Modifier.fillMaxSize(),
                         wordWrap = wordWrap,
+                        // BATCH4-P1c: Ctrl+Shift+P chord — same shell palette the menu opens.
+                        onOpenCommandPalette = onOpenCommandPalette,
                         // PAD-1/2: view id for per-view scroll lock AND state
                         // memory — must be activeId (the VIEW: path for primary,
                         // split id for splits), NOT active.id (always the tab path).

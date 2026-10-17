@@ -693,6 +693,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     onSourceAction: ((kind: String) -> Unit)? = null,
     /** BATCH4-P1b: Format Document chord (Ctrl+Shift+I) — EditorPane's runFormatDocument, the SAME function the toolbar button calls. */
     onFormatDocument: (() -> Unit)? = null,
+    /** BATCH4-P1c: Command Palette chord (Ctrl+Shift+P) — opens the shell palette, same state the menu writes. */
+    onOpenCommandPalette: (() -> Unit)? = null,
     onLspDeclaration: ((Int, Int) -> Boolean)? = null,  // TEST-11-FIX: same fix for declaration
     /** Keyboard toolbar insert handler — registers a function that inserts text at cursor position.
      *  Called once during composition. The registered function handles:
@@ -2165,6 +2167,30 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 runOrganizeImports()
                 return true
             }
+            // BATCH4-P1c — view wave. Word wrap uses the FeatureToggleStore call the
+            // EditorStripQuickActions button makes (same store, same function);
+            // zoom calls the SAME onFontSizeChange param the pinch and the strip +/-
+            // buttons use (same 8..32 clamp range); reset returns to the shell default (13).
+            EditorAction.TOGGLE_WORD_WRAP -> {
+                FeatureToggleStore.set("word_wrap", !wordWrap)
+                return true
+            }
+            EditorAction.ZOOM_IN -> {
+                onFontSizeChange?.invoke((fontSize + 1).coerceAtMost(32))
+                return true
+            }
+            EditorAction.ZOOM_OUT -> {
+                onFontSizeChange?.invoke((fontSize - 1).coerceAtLeast(8))
+                return true
+            }
+            EditorAction.ZOOM_RESET -> {
+                onFontSizeChange?.invoke(13)
+                return true
+            }
+            EditorAction.COMMAND_PALETTE -> {
+                onOpenCommandPalette?.invoke()
+                return true
+            }
             else -> return false
         }
     }
@@ -3246,6 +3272,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     EditorAction.FORMAT -> { handleRegistryChord(kbAction); true }
                                     EditorAction.QUICK_FIX -> { handleRegistryChord(kbAction); true }
                                     EditorAction.ORGANIZE_IMPORTS -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.TOGGLE_WORD_WRAP -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.ZOOM_IN -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.ZOOM_OUT -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.ZOOM_RESET -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.COMMAND_PALETTE -> { handleRegistryChord(kbAction); true }
                                     else -> false
                                 }
                             } else if (event.type == KeyEventType.KeyDown &&

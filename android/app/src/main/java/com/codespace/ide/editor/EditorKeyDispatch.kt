@@ -45,6 +45,12 @@ object EditorKeyDispatch {
         EditorAction.FORMAT,
         EditorAction.QUICK_FIX,
         EditorAction.ORGANIZE_IMPORTS,
+        // P1c — view wave (Alt+Z, Ctrl+=, Ctrl+-, Ctrl+0, Ctrl+Shift+P)
+        EditorAction.TOGGLE_WORD_WRAP,
+        EditorAction.ZOOM_IN,
+        EditorAction.ZOOM_OUT,
+        EditorAction.ZOOM_RESET,
+        EditorAction.COMMAND_PALETTE,
         //   QUICK_FIX nuance: the chord opens the lightbulb actions menu when
         //   actions exist for the cursor line; with no actions it is a quiet no-op
         //   (the lightbulb UI shows nothing to open — same as no bulb visible).
@@ -69,11 +75,6 @@ object EditorKeyDispatch {
         put(EditorAction.INDENT, "handled by the built-in Tab path before the registry")
         put(EditorAction.UNINDENT, "handled by the built-in Shift+Tab path before the registry")
         // Rest of the P1 waves — this batch, next commits.
-        put(EditorAction.TOGGLE_WORD_WRAP, "wired in the P1c view wave (this batch)")
-        put(EditorAction.ZOOM_IN, "wired in the P1c view wave (this batch)")
-        put(EditorAction.ZOOM_OUT, "wired in the P1c view wave (this batch)")
-        put(EditorAction.ZOOM_RESET, "wired in the P1c view wave (this batch)")
-        put(EditorAction.COMMAND_PALETTE, "wired in the P1c view wave (this batch)")
         put(EditorAction.CLOSE_TAB, "wired in the P1d tab wave (this batch)")
         put(EditorAction.NEXT_TAB, "wired in the P1d tab wave (this batch)")
         put(EditorAction.PREV_TAB, "wired in the P1d tab wave (this batch)")
