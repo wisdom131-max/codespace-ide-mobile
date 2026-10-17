@@ -1620,25 +1620,63 @@ fun ProjectShellScreen(
                                 // (EditorPane sends per-file didClose via the shared close
                                 // path first), then notify servers AFTER didClose.
                                 onWorkspaceRootRemoved = { rootPath ->
-                                    // B4 FIX (2026-09-06): this branch is now reliable — editorTabs is a
-                                    // LIVE mirror of EditorPane's authoritative tab list (onTabsChanged reactive
-                                    // sync), so "empty" really means no tabs under the removed root. The stale-list
-                                    // case (internal opens via go-to-def/peek never reached this list) previously
-                                    // took the notify-immediately branch and left the root's tabs open.
-                                    val prefix = rootPath.trimEnd('/')
-                                    val affected = editorTabs.filter { it == prefix || it.startsWith(prefix + "/") }
-                                    if (affected.isEmpty()) {
-                                        // No open tabs under the removed root — nothing to
-                                        // didClose, notify servers immediately.
-                                        LspManager.notifyWorkspaceFoldersChanged(
-                                            context,
-                                            removedHostRoots = listOf(rootPath),
-                                        )
-                                    } else {
-                                        pendingRemovedRoot = rootPath
-                                        closeRootRequest = rootPath
+                                    // BATCH5-P2 (advisor-approved 2026-10-17): the RAW
+                                    // startsWith match silently missed any path-form
+                                    // divergence (/sdcard alias, relative tab path,
+                                    // trailing slash) and left tabs open behind a
+                                    // success toast (device FAIL check 13, run 39022633744).
+                                    // Now the shared PURE PathUnder decision handles
+                                    // alias + relative resolution (NO suffix fallback —
+                                    // it can match another root and close the wrong tab),
+                                    // and tabs also under a REMAINING root stay open.
+                                    val remainingRoots = com.codespace.ide.util.WorkspaceRootsStore
+                                        .observeRoots(context, projectId)
+                                        .filter { it != rootPath }
+                                    val decision = com.codespace.ide.util.PathUnder.decideRemoveRoot(
+                                        editorTabs.toList(), rootPath, remainingRoots, projectPathUrl)
+                                    when {
+                                        decision.toCloseTabs.isNotEmpty() -> {
+                                            pendingRemovedRoot = rootPath
+                                            closeRootRequest = rootPath
+                                            showNotification("Workspace root removed: " + rootPath.substringAfterLast('/'), "success")
+                                        }
+                                        decision.matchedTabs.isNotEmpty() -> {
+                                            // Every matched tab also belongs to a remaining
+                                            // root — keep them open, notify servers now.
+                                            LspManager.notifyWorkspaceFoldersChanged(
+                                                context,
+                                                removedHostRoots = listOf(rootPath),
+                                            )
+                                            showNotification(
+                                                "Root removed; kept " + decision.matchedTabs.size +
+                                                " tab(s) shared with remaining workspace roots", "success")
+                                        }
+                                        decision.unmatchedTabsExist -> {
+                                            // Tabs are open but NONE matched the removed root's
+                                            // path form — honest report, never plain success.
+                                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                                "[MULTI-ROOT] remove-root: " + editorTabs.size +
+                                                " open tab(s), none matched root=" + rootPath +
+                                                " tabs=" + editorTabs.take(5).joinToString(","), "lsp")
+                                            LspManager.notifyWorkspaceFoldersChanged(
+                                                context,
+                                                removedHostRoots = listOf(rootPath),
+                                            )
+                                            showNotification(
+                                                "Root removed, but " + editorTabs.size +
+                                                " open tab(s) did not match its path form — tabs left open; see Output log",
+                                                "warning")
+                                        }
+                                        else -> {
+                                            // No open tabs under the removed root — nothing to
+                                            // didClose, notify servers immediately.
+                                            LspManager.notifyWorkspaceFoldersChanged(
+                                                context,
+                                                removedHostRoots = listOf(rootPath),
+                                            )
+                                            showNotification("Workspace root removed: " + rootPath.substringAfterLast('/'), "success")
+                                        }
                                     }
-                                    showNotification("Workspace root removed: ${rootPath.substringAfterLast('/')}", "success")
                                 },
                                 openTabs = editorTabs.toList(),
                                 activeFilePath = activeEditorTab,

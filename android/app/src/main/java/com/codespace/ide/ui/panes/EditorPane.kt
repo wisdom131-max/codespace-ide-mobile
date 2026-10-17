@@ -602,12 +602,21 @@ fun EditorPane(
     LaunchedEffect(closeRootRequest) {
         val root = closeRootRequest
         if (root != null) {
-            val prefix = root.trimEnd('/')
-            val toClose = tabs.toList().filter { tab ->
-                tab.path == prefix || tab.path.startsWith(prefix + "/")
-            }
+            // BATCH5-P2: shared PURE PathUnder decision (advisor-approved):
+            // alias (/sdcard <-> /storage/emulated/0) + relative-tab resolution
+            // against the project root, NO suffix fallback; a tab that is also
+            // under a REMAINING root is NOT closed. Same function as Gate 1 so
+            // the two gates can never disagree.
+            val gateProjectRoot = if (!projectId.isNullOrBlank())
+                com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) else null
+            val gateRemainingRoots = if (!projectId.isNullOrBlank())
+                com.codespace.ide.util.WorkspaceRootsStore.observeRoots(context, projectId)
+                    .filter { it != root } else emptyList()
+            val decision = com.codespace.ide.util.PathUnder.decideRemoveRoot(
+                tabs.map { it.path }, root, gateRemainingRoots, gateProjectRoot)
+            val toClose = tabs.toList().filter { tab -> tab.path in decision.toCloseTabs }
             if (toClose.isNotEmpty()) {
-                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] MULTI-ROOT: closing " + toClose.size + " tab(s) under removed root " + root + " (shared close path, didClose first)", "lsp")
+                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] MULTI-ROOT: closing " + toClose.size + " tab(s) under removed root " + root + " (shared close path, didClose first; " + decision.matchedTabs.size + " matched, " + (decision.matchedTabs.size - decision.toCloseTabs.size) + " kept under remaining roots)", "lsp")
             }
             // TB03 (P1): this close previously relied on the FALSE comment claim that
             // every keystroke persists (G01 proved writes can fail silently). Policy for
