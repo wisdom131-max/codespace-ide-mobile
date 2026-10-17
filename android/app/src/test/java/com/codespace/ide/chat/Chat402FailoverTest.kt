@@ -69,8 +69,8 @@ class Chat402FailoverTest {
         assertEquals(2, calls) // one pass through BOTH keys, then the verdict
         assertEquals("no switch notice when there is no next key", 0, notices.size)
         assertEquals(402, he!!.statusCode)
-        assertTrue("verdict keeps the out-of-credits message", he.message.contains("OUT OF CREDITS"))
-        assertTrue("verdict says no other working key", he.message.contains("no other working key"))
+        assertTrue("verdict keeps the out-of-credits message", he!!.message!!.contains("OUT OF CREDITS"))
+        assertTrue("verdict says no other working key", he!!.message!!.contains("no other working key"))
         cleanup()
     }
 
