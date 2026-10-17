@@ -188,7 +188,8 @@ fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                 }
                 fun goPrev() {
                     if (matches.isNotEmpty()) {
-                        val newIndex = (matchIndex - 1 + matches.size) % matches.size
+                        // BATCH4-P1a: shared with the FIND_PREVIOUS chord — same function.
+                        val newIndex = EditorKeyDispatch.stepMatchIndex(matches.size, matchIndex, -1)
                         onMatchIndexChange(newIndex)
                         val range = matches[newIndex]
                         onSelectRange(range.first, range.last + 1)
@@ -196,7 +197,8 @@ fun androidx.compose.foundation.layout.BoxScope.FindReplaceBar(
                 }
                 fun goNext() {
                     if (matches.isNotEmpty()) {
-                        val newIndex = (matchIndex + 1) % matches.size
+                        // BATCH4-P1a: shared with the FIND_NEXT chord — same function.
+                        val newIndex = EditorKeyDispatch.stepMatchIndex(matches.size, matchIndex, +1)
                         onMatchIndexChange(newIndex)
                         val range = matches[newIndex]
                         onSelectRange(range.first, range.last + 1)

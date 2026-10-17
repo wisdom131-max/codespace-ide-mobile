@@ -2072,6 +2072,75 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         val stickyPadPx = with(scrollDensity) { (fontSize * EditorMetrics.STICKY_LINE_HEIGHT_MULTIPLIER).sp.toPx() }
         val stickyPadDp = with(scrollDensity) { (fontSize * EditorMetrics.STICKY_LINE_HEIGHT_MULTIPLIER).sp.toDp() }
 
+    // BATCH4-P1a: shared chord+menu handlers. The F12/F2 chords call the
+    // SAME function the floating-menu items call (no separate code path);
+    // declared ABOVE every call site incl. the key handler below
+    // (declaration-order rule: only state declared above is captured).
+    fun runGoToDefinition() {
+        val word = currentWord(value.text, value.selection.start) ?: return
+        var lspDefSucceeded = false
+        if (onLspDefinition != null) {
+            val cPos = positionMapper.offsetToPosition(value.selection.start)
+            lspDefSucceeded = onLspDefinition!!.invoke(cPos.line, cPos.column)
+        }
+        if (!lspDefSucceeded) {
+            val lines = value.text.split("\n")
+            val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
+            val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
+            gotoResults = lines.mapIndexedNotNull { idx, ln ->
+                if (declPat.containsMatchIn(ln)) DefResult(idx, ln.trim()) else null
+            }
+            crossFileResults = if (projectRoot != null) {
+                FileIndexer.search(word).filter { it.kind in listOf("class", "function", "interface", "enum", "object") }.take(10)
+                    .map { CrossFileDefResult(it.name, it.kind, it.filePath, it.line, it.fileName) }
+            } else null
+        }
+    }
+    fun runRenameSymbol() {
+        val word = currentWord(value.text, value.selection.start) ?: return
+        if (onLspPrepareRename != null) {
+            val cPos = positionMapper.offsetToPosition(value.selection.start)
+            val renameInfo = try { onLspPrepareRename.invoke(cPos.line, cPos.column) } catch (_: Exception) { null }
+            renameDialogWord = word
+            renameNewName = renameInfo?.optString("placeholder", "") ?: word
+            renameUsedLsp = true
+        } else {
+            renameDialogWord = word
+            renameNewName = word
+            renameUsedLsp = false
+        }
+    }
+    // BATCH4-P1a: the P1a chord cases (ctrl branch AND the new plain-key
+    // branch) both route through THIS one handler — one code path.
+    fun handleP1aChord(action: EditorAction?): Boolean {
+        when (action) {
+            EditorAction.FIND_NEXT -> {
+                if (matches.isEmpty()) onFindReplaceOpen() else {
+                    matchIndex = com.codespace.ide.editor.EditorKeyDispatch.stepMatchIndex(matches.size, matchIndex, +1)
+                    programmaticCursorMove(matches[matchIndex].first, "select_range")
+                }
+                return true
+            }
+            EditorAction.FIND_PREVIOUS -> {
+                if (matches.isEmpty()) onFindReplaceOpen() else {
+                    matchIndex = com.codespace.ide.editor.EditorKeyDispatch.stepMatchIndex(matches.size, matchIndex, -1)
+                    programmaticCursorMove(matches[matchIndex].first, "select_range")
+                }
+                return true
+            }
+            EditorAction.GO_TO_DEFINITION -> {
+                runGoToDefinition()
+                return true
+            }
+            EditorAction.RENAME -> {
+                runRenameSymbol()
+                return true
+            }
+            else -> return false
+        }
+    }
+    // (BATCH4-P1a funs live above the field so the modifier chain stays a pure expression)
+
     Box(modifier = modifier.fillMaxSize()) {
 
         // P15-C: Sticky scroll header — shows current scope line pinned at top
@@ -3139,6 +3208,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         onSave?.invoke()
                                         true
                                     }
+                                    // BATCH4-P1a: rebound-ctrl variants of the P1a actions route
+                                    // through the SAME shared handler (registry-respecting).
+                                    EditorAction.FIND_NEXT -> { handleP1aChord(kbAction); true }
+                                    EditorAction.FIND_PREVIOUS -> { handleP1aChord(kbAction); true }
+                                    EditorAction.GO_TO_DEFINITION -> { handleP1aChord(kbAction); true }
+                                    EditorAction.RENAME -> { handleP1aChord(kbAction); true }
                                     else -> false
                                 }
                             } else if (event.type == KeyEventType.KeyDown &&
@@ -3188,6 +3263,22 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     else -> false
                                 }
 
+                            } else if (event.type == KeyEventType.KeyDown &&
+                                       !event.nativeKeyEvent.isCtrlPressed &&
+                                       !event.nativeKeyEvent.isMetaPressed &&
+                                       !event.nativeKeyEvent.isAltPressed) {
+                                // BATCH4-P1a: plain (no-modifier) registry chords — the F-row
+                                // defaults (F3/Shift+F3/F12/F2) and any user-rebound no-modifier
+                                // chord. Unbound keys return false and flow to the text field,
+                                // so typing is never swallowed; only handleP1aChord-handled
+                                // actions are consumed here.
+                                val plainAction = KeyBindingRegistry.match(
+                                    event.key,
+                                    ctrl = false,
+                                    shift = event.nativeKeyEvent.isShiftPressed,
+                                    alt = false
+                                )
+                                handleP1aChord(plainAction)
                             } else {
                                 false // let BasicTextField handle normally
                             }
@@ -3948,30 +4039,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
-                                    // BUG-4 FIX: Try LSP definition first (real semantic navigation),
-                                    // fall back to regex pattern matching only if LSP fails/unavailable.
-                                    // TEST-11-FIX: Pass current cursor position from selection, not stale lspCursorLine/Col
-                                    var lspDefSucceeded = false
-                                    if (onLspDefinition != null) {
-                                        val cOff = value.selection.start
-                                        val cPos = positionMapper.offsetToPosition(cOff)
-                                        val cLine = cPos.line
-                                        val cCol = cPos.column
-                                        lspDefSucceeded = onLspDefinition!!.invoke(cLine, cCol)
-                                    }
-                                    if (!lspDefSucceeded) {
-                                    val lines = value.text.split("\n")
-                                    val kw = "(?:fun|class|object|interface|val|var|const val|def|function|const|let|type|struct|enum|trait|impl)"
-                                    val declPat = Regex(kw + "\\s+" + Regex.escape(word) + "\\b")
-                                    val found = lines.mapIndexedNotNull { idx, ln ->
-                                        if (declPat.containsMatchIn(ln)) DefResult(idx, ln.trim()) else null
-                                    }
-                                    gotoResults = found
-                                    crossFileResults = if (projectRoot != null) {
-                                        FileIndexer.search(word).filter { it.kind in listOf("class", "function", "interface", "enum", "object") }.take(10)
-                                            .map { CrossFileDefResult(it.name, it.kind, it.filePath, it.line, it.fileName) }
-                                    } else null
-                                    } // end if (!lspDefSucceeded)
+                                    // BATCH4-P1a: shared with the F12 chord — same function, no separate code path.
+                                    runGoToDefinition()
                                     showLspMenu = false
                                 }
                             )
@@ -4102,21 +4171,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
-                                    if (onLspPrepareRename != null) {
-                                        val pos = value.selection.start
-                                        val cPos = positionMapper.offsetToPosition(pos)
-                                        val cLine = cPos.line
-                                        val cCol = cPos.column
-                                        val renameInfo = try { onLspPrepareRename.invoke(cLine, cCol) } catch (_: Exception) { null }
-                                        val placeholder = renameInfo?.optString("placeholder", "") ?: word
-                                        renameDialogWord = word
-                                        renameNewName = placeholder
-                                        renameUsedLsp = true
-                                    } else {
-                                        renameDialogWord = word
-                                        renameNewName = word
-                                        renameUsedLsp = false
-                                    }
+                                    // BATCH4-P1a: shared with the F2 chord — same function, no separate code path.
+                                    runRenameSymbol()
                                     showLspMenu = false
                                 }
                             )
