@@ -285,3 +285,7 @@ Unproven until the device round: every guarantee HiOS chooses to break
   restore UI complexity (P2) — the most error-prone phase, kept out of P1 so
   the core ships independently; (5) battery cost is real — charging-only by
   default is the guardrail.
+
+## 13. Open questions (advisor sitting 2026-10-17)
+
+- **Validate debugger dependencies after restore (OPEN, no code).** Advisor ruling 2026-10-17: NO backup code change now; the jdap snapshot-refresh trigger is NOT added; reopen only if a debugger fails the owner's offline debug check (JS / Python / Java with WiFi off, riding the run-3221 sitting). Facts the design must account for: after a restore, the rootfs returns as of backup time; /opt assets (js-debug, jdap) are re-applied from lsp-opt.tar.gz post-restore when the snapshot includes them, and all adapters self-heal at the next explicit debug launch; debugpy and pytest (pip, rootfs site-packages) are the ONLY network-dependent items after restore - they are not covered by lsp-opt and self-heal over the network. Open question for the auto-backup design: should an auto-backup run (or the restore flow) validate debugger dependencies and surface a plain-words notice when one needs re-provisioning, instead of leaving the failure to surface at the first debug tap?
