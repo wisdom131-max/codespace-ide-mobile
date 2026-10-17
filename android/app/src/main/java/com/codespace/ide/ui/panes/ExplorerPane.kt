@@ -402,6 +402,28 @@ fun ExplorerSidePanel(
     LaunchedEffect(externalRefreshTrigger) {
         if (externalRefreshTrigger > 0) refresh++
     }
+    // FSW-1(a) (BATCH4-P2): mtime-fingerprint rescan — the GUARANTEED baseline
+    // the owner approved in principle (no FileObserver, no warm path; S1-c stays
+    // parked). The terminal-driven path (externalRefreshTrigger above) only
+    // covers changes the app itself made; files changed by OTHER apps (file
+    // managers, adb, downloads) had no path into the tree. ONE off-main-thread
+    // scan per Explorer re-entry (this pane is disposed while the sidebar shows
+    // another panel, so this effect fires on every re-entry) and one per
+    // app-resume, capped and deadline-bound; a changed fingerprint bumps the
+    // same refresh counter the manual refresh button uses.
+    LaunchedEffect(workspacePath) {
+        scheduleFswRescan(workspacePath, expanded.keys.filter { expanded[it] == true }.toSet()) { refresh++ }
+    }
+    val fswLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(fswLifecycleOwner) {
+        val fswObserver = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                scheduleFswRescan(workspacePath, expanded.keys.filter { expanded[it] == true }.toSet()) { refresh++ }
+            }
+        }
+        fswLifecycleOwner.lifecycle.addObserver(fswObserver)
+        onDispose { fswLifecycleOwner.lifecycle.removeObserver(fswObserver) }
+    }
     // Test 78 fix: When a file tab is closed, reveal the file in the workspace tree
     // by expanding all ancestor directories and scrolling to it. This ensures the
     // file is findable in the Explorer after its tab is removed from OPEN EDITORS.
@@ -4180,3 +4202,36 @@ private fun findTrashProjectDir(contextFile: java.io.File?): java.io.File? {
     return null
 }
 
+/**
+ * FSW-1(a) (BATCH4-P2): schedules ONE off-main-thread fingerprint scan for the
+ * visible tree. Rate-limited per workspace root (an in-flight scan blocks a
+ * second, so a re-entry racing an app-resume cannot double-scan); the previous
+ * fingerprint lives in the process-level cache, so changes made while this
+ * pane was CLOSED are still detected on re-entry.
+ */
+private fun scheduleFswRescan(
+    workspacePath: String?,
+    expandedDirs: Set<String>,
+    onTreeChanged: () -> Unit,
+) {
+    val rootPath = workspacePath ?: return
+    if (!com.codespace.ide.util.ExplorerFingerprintCache.beginScan(rootPath)) return
+    // A single shared IO scope for all rescans — never tied to a composition
+    // (a pane disposed mid-scan must not cancel the cache update), one shared
+    // SupervisorJob instead of a leaked scope per scan.
+    FSW_SCAN_SCOPE.launch {
+        try {
+            val scan = com.codespace.ide.util.ExplorerFingerprint.scanVisibleTree(java.io.File(rootPath), expandedDirs)
+            val changed = com.codespace.ide.util.ExplorerFingerprintCache.finishScan(rootPath, scan.value)
+            if (changed) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onTreeChanged() }
+            }
+        } catch (_: Exception) {
+            com.codespace.ide.util.ExplorerFingerprintCache.abandonScan(rootPath)
+        }
+    }
+}
+
+/** FSW-1(a): shared scope for the off-main-tree fingerprint scans. */
+private val FSW_SCAN_SCOPE =
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
