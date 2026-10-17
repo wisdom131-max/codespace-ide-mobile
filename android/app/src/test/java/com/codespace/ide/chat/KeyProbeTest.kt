@@ -1,5 +1,6 @@
 package com.codespace.ide.chat
 
+import com.codespace.ide.chat.KeyProbe.HttpGetOutcome
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
