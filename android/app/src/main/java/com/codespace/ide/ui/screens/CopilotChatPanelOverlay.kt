@@ -1702,31 +1702,10 @@ internal fun CopilotChatPanelInline(
                 // rate-limit / quota errors also surface in the notification bell,
                 // not just the red error bubble.
                 val he = e as? com.codespace.ide.chat.ChatHttpException
-                // CREDIT-CLARITY (V0-f-c round 2, 2026-10-07): 402 is OUT OF CREDITS
-                // (account-level, provider billing), NOT a rate limit — it previously
-                // shared the 429 notification copy, which said "rate limit / quota",
-                // a wording that pointed the owner at the wrong knob. Own title+body.
-                if (he != null && he.statusCode == 402) {
-                    com.codespace.ide.data.NotificationStore.add(
-                        title = "AI provider out of credits",
-                        body = "This provider rejected the request: the account behind this key has no credits left (monthly limit reached or billing issue). The request was not processed. Top up with the provider, or switch key / model / provider in Settings.",
-                        severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
-                        source = com.codespace.ide.data.NotificationStore.Source.AI,
-                        deduplicationKey = "ai-quota-402",
-                    )
-                } else if (he != null && he.statusCode == 429) {
-                    com.codespace.ide.data.NotificationStore.add(
-                        title = "AI rate limit reached",
-                        body = if (he.retryAfterMs != null) {
-                            "The provider is rate-limiting this key. Retry in " + (he.retryAfterMs!! / 1000) + "s, switch model, or add another key in Settings."
-                        } else {
-                            "Provider quota reached. Switch model or add another key in Settings."
-                        },
-                        severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
-                        source = com.codespace.ide.data.NotificationStore.Source.AI,
-                        deduplicationKey = "ai-quota-429",
-                    )
-                }
+                // P2 (BATCH3): bell wording per HTTP class — extracted (64KB rule) and
+                // extended beyond 402/429 to 401/403, 404 and 5xx so EVERY AI failure
+                // class says what it means in plain words. 402/429 copy unchanged.
+                if (he != null) addAiErrorNotification(he)
                 com.codespace.ide.diagnostics.AppOutputLog.log(
                     "[chat] send FAILED — " + (e.message ?: e.javaClass.simpleName), "chat")
                 // G-C C-2 (2026-10-08, advisor conditions 2a): error bubbles carry
@@ -2772,3 +2751,52 @@ internal fun CopilotChatPanelInline(
     }
 }
 
+/**
+ * P2 (BATCH3): notification-bell wording for AI HTTP failures, per class.
+ * Extracted from the send catch (64KB rule). 402/429 bodies byte-identical
+ * to the pre-P2 inline versions; 401/403, 404 and 5xx are new coverage.
+ * Never includes key values — only status class and plain guidance.
+ */
+private fun addAiErrorNotification(he: com.codespace.ide.chat.ChatHttpException) {
+    when (he.statusCode) {
+        402 -> com.codespace.ide.data.NotificationStore.add(
+            title = "AI provider out of credits",
+            body = "This provider rejected the request: the account behind this key has no credits left (monthly limit reached or billing issue). The request was not processed. Top up with the provider, or switch key / model / provider in Settings.",
+            severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
+            source = com.codespace.ide.data.NotificationStore.Source.AI,
+            deduplicationKey = "ai-quota-402",
+        )
+        429 -> com.codespace.ide.data.NotificationStore.add(
+            title = "AI rate limit reached",
+            body = if (he.retryAfterMs != null) {
+                "The provider is rate-limiting this key. Retry in " + (he.retryAfterMs / 1000) + "s, switch model, or add another key in Settings."
+            } else {
+                "Provider quota reached. Switch model or add another key in Settings."
+            },
+            severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
+            source = com.codespace.ide.data.NotificationStore.Source.AI,
+            deduplicationKey = "ai-quota-429",
+        )
+        401, 403 -> com.codespace.ide.data.NotificationStore.add(
+            title = "AI key rejected",
+            body = "The provider rejected this API key (status " + he.statusCode + ") — the key is missing, wrong, or expired. Check or replace it in Settings \u2192 AI Providers.",
+            severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
+            source = com.codespace.ide.data.NotificationStore.Source.AI,
+            deduplicationKey = "ai-auth-" + he.statusCode,
+        )
+        404 -> com.codespace.ide.data.NotificationStore.add(
+            title = "AI model or endpoint not found",
+            body = "The provider returned not-found (404) — usually a wrong model ID or endpoint URL. Check the model pick in the chat, or the endpoint URL in Settings \u2192 AI Providers.",
+            severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
+            source = com.codespace.ide.data.NotificationStore.Source.AI,
+            deduplicationKey = "ai-notfound-404",
+        )
+        in 500..599 -> com.codespace.ide.data.NotificationStore.add(
+            title = "AI provider server error",
+            body = "The provider's server failed (status " + he.statusCode + ") — the request was not processed. Nothing is wrong with your key or the app; retry shortly or switch provider.",
+            severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
+            source = com.codespace.ide.data.NotificationStore.Source.AI,
+            deduplicationKey = "ai-server-" + he.statusCode,
+        )
+    }
+}

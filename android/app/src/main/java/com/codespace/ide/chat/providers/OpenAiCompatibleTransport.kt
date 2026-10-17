@@ -249,19 +249,65 @@ internal object OpenAiCompatibleTransport {
      */
     internal fun classifyHttpError(resp: okhttp3.Response, prefix: String): com.codespace.ide.chat.ChatHttpException {
         val parts = transportErrorParts(prefix, resp)
-        if (resp.code == 401 || resp.code == 403) {
-            val server = try { resp.header("Server") ?: "" } catch (_: Exception) { "" }
-            val body = parts.second
-            val cfHeaders = server.contains("cloudflare", true)
-            val cfBody = body.contains("cloudflare", true) || body.contains("cf-ray", true) ||
-                body.contains("Attention Required", true) || body.contains("Just a moment", true)
+        val server = try { resp.header("Server") ?: "" } catch (_: Exception) { "" }
+        return classifyHttpErrorCore(resp.code, parts.first, parts.second, server, retryAfterMs(resp))
+    }
+
+    /**
+     * P2 (BATCH3): pure classification core — same verdicts as the wrapper but
+     * constructible in JVM tests without an okhttp Response. Cloudflare and 402
+     * branches are BYTE-IDENTICAL to their pre-P2 behavior; 401/403 (vendor),
+     * 404, 429 and 5xx gain a plain-words verdict line so the bubble tells the
+     * owner WHAT CLASS of failure it is before the vendor detail.
+     */
+    internal fun classifyHttpErrorCore(
+        code: Int,
+        vendorMessage: String,
+        rawBody: String,
+        serverHeader: String,
+        retryAfterMs: Long?,
+    ): com.codespace.ide.chat.ChatHttpException {
+        if (code == 401 || code == 403) {
+            val cfHeaders = serverHeader.contains("cloudflare", true)
+            val cfBody = rawBody.contains("cloudflare", true) || rawBody.contains("cf-ray", true) ||
+                rawBody.contains("Attention Required", true) || rawBody.contains("Just a moment", true)
             if (cfHeaders && cfBody) {
                 return com.codespace.ide.chat.ChatHttpException(
-                    resp.code,
-                    "Firewall block (" + resp.code + "): the endpoint's web protection (Cloudflare) rejected this app's connection BEFORE your API key was checked. Your key may be fine. Try a different endpoint URL, or enter model IDs manually in Settings.",
-                    retryAfterMs(resp), true,
+                    code,
+                    "Firewall block (" + code + "): the endpoint's web protection (Cloudflare) rejected this app's connection BEFORE your API key was checked. Your key may be fine. Try a different endpoint URL, or enter model IDs manually in Settings.",
+                    retryAfterMs, true,
                 )
             }
+            return com.codespace.ide.chat.ChatHttpException(
+                code,
+                "This request failed: the provider REJECTED this API key (" + code + ") \u2014 the key is missing, wrong, or expired. Check or replace it in Settings \u2192 AI Providers." + verdictDetail(vendorMessage),
+                retryAfterMs,
+            )
+        }
+        if (code == 404) {
+            return com.codespace.ide.chat.ChatHttpException(
+                code,
+                "This request failed: the endpoint or MODEL was NOT FOUND (404). Check the model ID and the endpoint URL in Settings \u2192 AI Providers \u2014 a wrong model name gives exactly this." + verdictDetail(vendorMessage),
+                retryAfterMs,
+            )
+        }
+        if (code == 429) {
+            val waitLine = if (retryAfterMs != null)
+                "Retry in " + (retryAfterMs / 1000) + "s, or add another key in Settings."
+            else
+                "Wait a moment and try again, or add another key in Settings \u2192 AI Providers."
+            return com.codespace.ide.chat.ChatHttpException(
+                code,
+                "This request failed: the provider is RATE-LIMITING this key (429). " + waitLine + verdictDetail(vendorMessage),
+                retryAfterMs,
+            )
+        }
+        if (code in 500..599) {
+            return com.codespace.ide.chat.ChatHttpException(
+                code,
+                "This request failed: the provider's SERVER errored (" + code + ") \u2014 the request was not processed. Nothing is wrong with your key or the app; retry shortly or switch provider." + verdictDetail(vendorMessage),
+                retryAfterMs,
+            )
         }
         // CREDIT-CLARITY (V0-f-c round 2, 2026-10-07): HTTP 402 Payment Required is
         // the vendor saying the ACCOUNT BEHIND THIS KEY IS OUT OF CREDIT (monthly
@@ -271,8 +317,8 @@ internal object OpenAiCompatibleTransport {
         // to root-cause it from the log. Lead with a plain-language verdict so the
         // user knows immediately: nothing is wrong with the app, the key, or the
         // model — the provider account needs a top-up or the user must switch.
-        if (resp.code == 402) {
-            val vendorDetail = parts.first
+        if (code == 402) {
+            val vendorDetail = vendorMessage
             val withDetail = if (vendorDetail.isNotBlank()) "\n(" + vendorDetail + ")" else ""
             // Advisor item 3 (2026-10-10): the owner hit 402s with several NEW
             // keys — because provider credits belong to the ACCOUNT, not the key.
@@ -280,14 +326,18 @@ internal object OpenAiCompatibleTransport {
             // identity ("Sent via: <label>") is added by the panel's G-C C-2
             // prefix (label + sanitized URL), which this message rides under.
             return com.codespace.ide.chat.ChatHttpException(
-                resp.code,
+                code,
                 "This request failed: the provider account for this key is OUT OF CREDITS (monthly limit reached or billing issue). " +
                     "The request was not processed. Credits belong to the provider ACCOUNT, not the key \u2014 creating a new key on the same account will not help; top up that account or switch to a different provider." + withDetail,
-                retryAfterMs(resp),
+                retryAfterMs,
             )
         }
-        return com.codespace.ide.chat.ChatHttpException(resp.code, parts.first, retryAfterMs(resp))
+        return com.codespace.ide.chat.ChatHttpException(code, vendorMessage, retryAfterMs)
     }
+
+    /** P2 (BATCH3): vendor detail suffix shared by every verdict line (402's exact format). */
+    internal fun verdictDetail(vendorMessage: String): String =
+        if (vendorMessage.isNotBlank()) "\n(" + vendorMessage + ")" else ""
 
     /** Clean vendor error + raw body behind a RAW_RESPONSE block (ChatErrorBubble expands it). */
     internal fun transportError(prefix: String, resp: okhttp3.Response): String {
