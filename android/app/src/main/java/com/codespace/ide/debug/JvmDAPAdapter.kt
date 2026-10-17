@@ -650,6 +650,8 @@ class JvmDAPAdapter : DebugAdapter {
             rt.threadId = body.optInt("threadId", 1)
             val reason = body.optString("reason", "breakpoint")
             Log.d(TAG, "DAP stopped: reason=$reason threadId=${rt.threadId}")
+            // BATCH5-P3: LOGGING ONLY — [JDAP-DIAG] hop 1 of 5 (stopped).
+            AppOutputLog.log("[JDAP-DIAG] stopped: reason=" + reason + " threadId=" + rt.threadId, "debug")
             onOutput("[jdap] Paused: $reason\n")
             Thread {
                 val frames = fetchStackFrames(client, rt.threadId, rt)
@@ -657,6 +659,8 @@ class JvmDAPAdapter : DebugAdapter {
                     rt.currentFrameId = frames.first().frameId
                     fetchVariables(client, rt.currentFrameId)
                 } else emptyList()
+                // BATCH5-P3: LOGGING ONLY — paused delivery hop.
+                AppOutputLog.log("[JDAP-DIAG] paused delivered: frames=" + frames.size + " vars=" + vars.size, "debug")
                 onPaused(frames, vars)
             }.also { it.isDaemon = true }.start()
         }
@@ -730,8 +734,15 @@ class JvmDAPAdapter : DebugAdapter {
             put("frameId", if (frameId > 0) frameId else rt.currentFrameId)
             put("context", "repl")
         }
-        val resp = rt.client.request("evaluate", args, timeoutSeconds = 10) ?: return null
-        return if (resp.has("result") && !resp.isNull("result")) resp.getString("result") else null
+        val resp = rt.client.request("evaluate", args, timeoutSeconds = 10)
+        // BATCH5-P3: LOGGING ONLY — [JDAP-DIAG] hop 5 of 5 (evaluate).
+        if (resp == null) {
+            AppOutputLog.log("[JDAP-DIAG] evaluate: NO RESPONSE (timeout/null) expr=" + expression.take(40), "debug")
+            return null
+        }
+        val evResult = if (resp.has("result") && !resp.isNull("result")) resp.getString("result") else null
+        AppOutputLog.log("[JDAP-DIAG] evaluate: expr=" + expression.take(40) + " -> " + (evResult?.take(60) ?: "null"), "debug")
+        return evResult
     }
 
     // ── Threads / paging / variables ─────────────────────────────────────────
@@ -771,8 +782,17 @@ class JvmDAPAdapter : DebugAdapter {
         val dapClient = runtime(session.id)?.client ?: return emptyList()
         val varResp = dapClient.request("variables",
             JSONObject().put("variablesReference", variablesReference).put("count", 100),
-            timeoutSeconds = 5) ?: return emptyList()
-        val vars = varResp.optJSONArray("variables") ?: return emptyList()
+            timeoutSeconds = 5)
+        // BATCH5-P3: LOGGING ONLY — variables hop for the inspector expand path.
+        if (varResp == null) {
+            AppOutputLog.log("[JDAP-DIAG] variables(expand): NO RESPONSE (timeout/null) ref=" + variablesReference, "debug")
+            return emptyList()
+        }
+        val vars = varResp.optJSONArray("variables")
+        if (vars == null) {
+            AppOutputLog.log("[JDAP-DIAG] variables(expand): response arrived WITHOUT a variables array ref=" + variablesReference, "debug")
+            return emptyList()
+        }
         val result = mutableListOf<DebugVariable>()
         for (j in 0 until vars.length()) {
             val v = vars.getJSONObject(j)
@@ -795,14 +815,26 @@ class JvmDAPAdapter : DebugAdapter {
 
     private fun fetchStackFrames(client: DAPClient, threadId: Int, rt: SessionRuntime): List<DebugStackFrame> {
         val args = JSONObject().put("threadId", threadId).put("startFrame", 0).put("levels", 20)
-        val resp = client.request("stackTrace", args, timeoutSeconds = 5) ?: return emptyList()
-        val framesArr = resp.optJSONArray("stackFrames") ?: return emptyList()
+        val resp = client.request("stackTrace", args, timeoutSeconds = 5)
+        // BATCH5-P3: LOGGING ONLY — [JDAP-DIAG] hop 2 of 5 (stackTrace).
+        if (resp == null) {
+            AppOutputLog.log("[JDAP-DIAG] stackTrace: NO RESPONSE (timeout/null) threadId=" + threadId, "debug")
+            return emptyList()
+        }
+        val framesArr = resp.optJSONArray("stackFrames")
+        if (framesArr == null) {
+            AppOutputLog.log("[JDAP-DIAG] stackTrace: response arrived WITHOUT a stackFrames array", "debug")
+            return emptyList()
+        }
         rt.lastTotalFrames = resp.optInt("totalFrames", framesArr.length())
         rt.framesLoaded = framesArr.length()
         val result = mutableListOf<DebugStackFrame>()
         for (i in 0 until framesArr.length()) {
             result += parseFrame(framesArr.optJSONObject(i) ?: JSONObject(), i)
         }
+        val first = result.firstOrNull()
+        AppOutputLog.log("[JDAP-DIAG] stackTrace: " + result.size + " frame(s), totalFrames=" + rt.lastTotalFrames +
+            ", first=" + (first?.let { it.file + ":" + (it.line + 1) + " " + it.function } ?: "none"), "debug")
         return result
     }
 
@@ -821,8 +853,22 @@ class JvmDAPAdapter : DebugAdapter {
 
     private fun fetchVariables(client: DAPClient, frameId: Int): List<DebugVariable> {
         val scopesResp = client.request("scopes", JSONObject().put("frameId", frameId), timeoutSeconds = 5)
-            ?: return emptyList()
-        val scopesArr = scopesResp.optJSONArray("scopes") ?: return emptyList()
+        // BATCH5-P3: LOGGING ONLY — [JDAP-DIAG] hop 3 of 5 (scopes).
+        if (scopesResp == null) {
+            AppOutputLog.log("[JDAP-DIAG] scopes: NO RESPONSE (timeout/null) frameId=" + frameId, "debug")
+            return emptyList()
+        }
+        val scopesArr = scopesResp.optJSONArray("scopes")
+        if (scopesArr == null) {
+            AppOutputLog.log("[JDAP-DIAG] scopes: response arrived WITHOUT a scopes array frameId=" + frameId, "debug")
+            return emptyList()
+        }
+        val scopeSummary = (0 until scopesArr.length()).joinToString(",") { i ->
+            val sc = scopesArr.optJSONObject(i) ?: JSONObject()
+            sc.optString("name", "?") + "#" + sc.optInt("variablesReference", 0) +
+                (if (sc.optBoolean("expensive", false)) "(expensive)" else "")
+        }
+        AppOutputLog.log("[JDAP-DIAG] scopes: " + scopesArr.length() + " scope(s) frameId=" + frameId + ": " + scopeSummary, "debug")
         val result = mutableListOf<DebugVariable>()
         for (i in 0 until minOf(scopesArr.length(), 3)) {
             val scope = scopesArr.getJSONObject(i)
@@ -832,8 +878,18 @@ class JvmDAPAdapter : DebugAdapter {
             if (scope.optBoolean("expensive", false)) continue
             val varResp = client.request("variables",
                 JSONObject().put("variablesReference", ref).put("count", 100),
-                timeoutSeconds = 5) ?: continue
-            val vars = varResp.optJSONArray("variables") ?: continue
+                timeoutSeconds = 5)
+            // BATCH5-P3: LOGGING ONLY — [JDAP-DIAG] hop 4 of 5 (variables).
+            if (varResp == null) {
+                AppOutputLog.log("[JDAP-DIAG] variables: NO RESPONSE (timeout/null) scope=" + scopeName, "debug")
+                continue
+            }
+            val vars = varResp.optJSONArray("variables")
+            if (vars == null) {
+                AppOutputLog.log("[JDAP-DIAG] variables: response arrived WITHOUT a variables array scope=" + scopeName, "debug")
+                continue
+            }
+            AppOutputLog.log("[JDAP-DIAG] variables: " + vars.length() + " var(s) scope=" + scopeName, "debug")
             for (j in 0 until vars.length()) {
                 val v = vars.getJSONObject(j)
                 val varRef = v.optInt("variablesReference", 0)
