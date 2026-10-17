@@ -184,7 +184,17 @@ object LspManager {
         val checkCommand: String,
         val installCommand: String,
         val installTimeout: Long = 120,
+        // BATCH6-P3 (advisor D): manifest-based self-heal (rootfs-relative dir to
+        // snapshot + compare) and an HONEST install label (the old "1-2 minutes"
+        // line covered a 300s chain that took much longer on mobile data).
+        val manifestDir: String? = null,
+        val installLabel: String? = null,
     )
+
+    /** BATCH6-P3 (advisor D1): installs are killed after this many seconds of
+     * total output silence (stalled download/apt), while the hard cap stays
+     * at the per-config installTimeout. */
+    const val INSTALL_INACTIVITY_SECONDS = 120L
 
 
     // TS7 fallback: vtsls — LSP wrapper around the VSCode TypeScript extension.
@@ -423,20 +433,48 @@ object LspManager {
             // check passed forever and jdtls failed on every launch. Full 1.9.0 ships
             // ~40 plugin jars; >=5 means the extraction is real.
             "command -v java >/dev/null 2>&1 && test -f /opt/jdtls/bin/jdtls && [ \"$(ls /opt/jdtls/plugins/*.jar 2>/dev/null | wc -l)\" -ge 5 ] && echo found",
-            "dpkg --configure -a 2>/dev/null; apt-get update -qq; apt-get install -y --no-install-recommends default-jre-headless curl unzip; " +
-                "mkdir -p /opt/jdtls && " +
-                // SELF-HEAL (2026-10-03, owner-approved): two genuine sources + retry/resume.
-                // Primary: download.eclipse.org direct, hardened with --retry/-C - so a
-                // flaky mobile connection resumes instead of restarting. Secondary:
-                // eclipse.org download.php?r=1 (302 to a random mirror — verified live:
-                // HTTP 302 -> download.eclipse.org). A half-extracted /opt/jdtls is
-                // wiped first so tar never merges over a partial tree.
-                "rm -rf /opt/jdtls && mkdir -p /opt/jdtls && " +
-                "( curl -fsSL --retry 3 -C - https://download.eclipse.org/jdtls/milestones/1.9.0/jdt-language-server-1.9.0-202203031534.tar.gz -o /tmp/jdtls.tgz || " +
-                "curl -fsSL --retry 3 'https://www.eclipse.org/downloads/download.php?file=/jdtls/milestones/1.9.0/jdt-language-server-1.9.0-202203031534.tar.gz&r=1' -o /tmp/jdtls.tgz ) && " +
-                "tar -xzf /tmp/jdtls.tgz -C /opt/jdtls && rm -f /tmp/jdtls.tgz && " +
+            // BATCH6-P3 (advisor D, owner evidence 2026-10-17): the OLD one-clock
+            // 300s chain (apt 77s + a silent download to the limit; a retry then
+            // RESUMED a partial from a DIFFERENT mirror -> "tar: corrupted data /
+            // short read"; rm -rf /opt/jdtls ran BEFORE success, so a failed retry
+            // could delete a working install) is replaced by the advisor's design:
+            //  stage 1 apt (Acquire::Retries, dpkg --configure -a first)
+            //  stage 2 download: SAME-mirror resume only (cross-mirror -C - was the
+            //           corruption source), --speed-limit kills a stalled transfer,
+            //           bounded wait-for-network loop says "waiting for network"
+            //  stage 3 integrity: tar -tzf BEFORE any extraction; corrupt partials
+            //           are quarantined to /opt/quarantine, never silently reused
+            //  stage 4 atomic: extract to /opt/jdtls.new, verify structure, and a
+            //           failure NEVER touches /opt/jdtls
+            //  stage 5 swap: rename-only (mv old->.old, new->live, then cleanup)
+            "dpkg --configure -a 2>/dev/null; echo [install] stage 1/5: apt JRE+curl; " +
+                "apt-get -o Acquire::Retries=3 update -qq; " +
+                "apt-get -o Acquire::Retries=3 install -y --no-install-recommends default-jre-headless curl unzip || " +
+                "apt-get -o Acquire::Retries=3 install -y --no-install-recommends default-jre-headless curl unzip; " +
+                "wait_net() { n=0; until curl -s --connect-timeout 5 -o /dev/null https://download.eclipse.org 2>/dev/null; do n=\$((n+1)); [ \$n -ge 120 ] && return 1; [ \$((n % 6)) -eq 0 ] && echo [install] waiting for network; sleep 5; done; }; " +
+                "echo [install] stage 2/5: download (same-mirror resume); wait_net || exit 1; " +
+                "D=/tmp/jdtls.download.tgz; Q=/opt/quarantine; mkdir -p \$Q; " +
+                "URL=https://download.eclipse.org/jdtls/milestones/1.9.0/jdt-language-server-1.9.0-202203031534.tar.gz; " +
+                "ok=0; for t in 1 2 3 4 5; do curl -fSL --retry 3 --retry-all-errors -C - --connect-timeout 10 --speed-limit 1024 --speed-time 30 \$URL -o \$D && { ok=1; break; }; " +
+                "echo [install] download attempt \$t failed - quarantining partial and waiting for network; " +
+                "[ -f \$D ] && mv \$D \$Q/jdtls-partial-\$(date +%s).tgz 2>/dev/null; wait_net || true; done; " +
+                "[ \$ok -eq 1 ] && [ -f \$D ] || { echo jdtls-download-failed; exit 1; }; " +
+                "echo [install] stage 3/5: integrity tar -tzf; ls -la \$D; " +
+                "tar -tzf \$D >/dev/null 2>&1 || { echo [install] download corrupted - quarantined; mv \$D \$Q/jdtls-corrupt-\$(date +%s).tgz 2>/dev/null; echo jdtls-corrupted; exit 1; }; " +
+                "echo [install] stage 4/5: atomic extract + structure verify; " +
+                "rm -rf /opt/jdtls.new; mkdir -p /opt/jdtls.new; " +
+                "tar -xzf \$D -C /opt/jdtls.new || { echo jdtls-extract-failed; exit 1; }; " +
+                "test -f /opt/jdtls.new/bin/jdtls && [ \"\$(ls /opt/jdtls.new/plugins/*.jar 2>/dev/null | wc -l)\" -ge 5 ] || " +
+                "{ echo [install] structure check failed - existing install kept; rm -rf /opt/jdtls.new; echo jdtls-structure-failed; exit 1; }; " +
+                "echo [install] stage 5/5: atomic swap; " +
+                "rm -rf /opt/jdtls.old; [ -d /opt/jdtls ] && mv /opt/jdtls /opt/jdtls.old; " +
+                "mv /opt/jdtls.new /opt/jdtls; rm -rf /opt/jdtls.old; rm -f \$D; " +
                 "chmod +x /opt/jdtls/bin/jdtls && echo jdtls-installed",
-            300,
+            // BATCH6-P3: 1800s hard cap + a 120s inactivity watchdog (set at the
+            // execOnce call site) replace the one 300s clock over everything.
+            1800,
+            manifestDir = "opt/jdtls",
+            installLabel = "can take 5-15 minutes on a slow connection; progress lines below",
         ),
         // ── C / C++ ────────────────────────────────────────────────────────
         // clangd is in the Ubuntu apt repos — simple install, great LSP.
@@ -1045,6 +1083,21 @@ object LspManager {
         // went on to spawn a DIFFERENT one (vtsls) that was never installed, causing
         // "exec: vtsls: not found".
         if (resolvedConfig != null) {
+            // BATCH6-P3 (advisor D5): the CHEAP manifest gate runs BEFORE the
+            // structural probe — a corrupted install (size drift, missing files)
+            // is caught host-side without spawning proot, and repairs are capped
+            // at 3/day with backoff (REPAIR_CAPPED falls through to the probe).
+            val manifestDir = resolvedConfig.manifestDir
+            if (manifestDir != null) {
+                when (VerifiedInstall.gate(context, language.name, manifestDir)) {
+                    VerifiedInstall.Gate.PASS -> {
+                        AppOutputLog.log("[LSP] ${language.displayName} manifest gate PASS (tree matches snapshot) — installed", "lsp")
+                        return true
+                    }
+                    VerifiedInstall.Gate.MISMATCH -> return false // repair path: installServer
+                    else -> { /* NOT_TRACKED / REPAIR_CAPPED: structural probe decides */ }
+                }
+            }
             AppOutputLog.log("[LSP] Checking if ${language.displayName} server installed: ${resolvedConfig.checkCommand}", "lsp")
             val output = ProotInstaller.execOnce(context, resolvedConfig.checkCommand, timeoutSeconds = 20)
             val lastLine = output.trimEnd().lines().lastOrNull().orEmpty().trim()
@@ -1071,6 +1124,14 @@ object LspManager {
         if ((language == Language.TYPESCRIPT || language == Language.JAVASCRIPT) &&
             ProjectSettingsStore.typescriptVersion.value == TypeScriptVersion.TS7) {
             config = ts7NativeConfig
+        }
+        val manifestDir2 = config.manifestDir
+        if (manifestDir2 != null) {
+            when (VerifiedInstall.gate(context, language.name, manifestDir2)) {
+                VerifiedInstall.Gate.PASS -> return true
+                VerifiedInstall.Gate.MISMATCH -> return false
+                else -> { /* NOT_TRACKED / REPAIR_CAPPED: structural probe decides */ }
+            }
         }
         AppOutputLog.log("[LSP] Checking if ${language.displayName} server installed: ${config.checkCommand}", "lsp")
         // FIX: increased timeout from 10→20s — proot bash login can take >10s on cold start.
@@ -1136,12 +1197,15 @@ object LspManager {
         }
         AppOutputLog.log("[LSP] ${language.displayName} install check FAILED (binary missing or runtime files broken) — running install/repair", "lsp")
         Log.d(TAG, "Installing LSP server for ${language.displayName}...")
-        AppOutputLog.log("[LSP] Installing ${language.displayName} server (timeout: ${config.installTimeout}s) — this may take 1-2 minutes…", "lsp")
+        // BATCH6-P3 (advisor D1+D7): honest label — the hard cap AND the inactivity
+        // budget are stated, and per-config installLabel replaces the fixed
+        // "1-2 minutes" that was false for the 300s-and-beyond chains.
+        AppOutputLog.log("[LSP] Installing ${language.displayName} server (hard cap ${config.installTimeout}s, killed if silent for ${INSTALL_INACTIVITY_SECONDS}s) — " + (config.installLabel ?: "this may take 1-2 minutes…"), "lsp")
         // P-NOTIFY: Verbose download notification — show detailed progress in output log if enabled
         if (ProjectSettingsStore.verboseDownloadNotify.value) {
             AppOutputLog.log("[LSP] [Verbose] Install command: ${config.installCommand.take(300)}", "lsp")
         }
-        val installOutput = ProotInstaller.execOnce(context, config.installCommand, timeoutSeconds = config.installTimeout, logToOutput = true)
+        val installOutput = ProotInstaller.execOnce(context, config.installCommand, timeoutSeconds = config.installTimeout, logToOutput = true, inactivityTimeoutSeconds = INSTALL_INACTIVITY_SECONDS)
         AppOutputLog.log("[LSP] Install output for ${language.displayName}: ${installOutput.take(200).trim()}", "lsp")
         // XG07 (2026-09-27): language-server installs are no longer invisible to the
         // Extensions/PackageManager tab — every install (or failed install) lands in
@@ -1153,6 +1217,13 @@ object LspManager {
             if (!installVerified) installOutput.lineSequence().map { it.trim() }
                 .firstOrNull { it.isNotBlank() }?.take(120) else null,
         )
+        // BATCH6-P3 (advisor D5): snapshot the VERIFIED tree — every file path +
+        // size under the config's manifestDir. The startup health check then
+        // compares against this (cheap, host-side) instead of file presence alone.
+        val manifestDir = config.manifestDir
+        if (installVerified && manifestDir != null) {
+            VerifiedInstall.writeManifest(context, language.name, manifestDir)
+        }
         if (installVerified) {
             // Owner finding (B) (2026-10-01): downloaded LSP server files live guest-side
             // under /opt and were lost on full uninstall when the container restore failed

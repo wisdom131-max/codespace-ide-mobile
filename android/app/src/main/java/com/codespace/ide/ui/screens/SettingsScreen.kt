@@ -726,6 +726,29 @@ fun SettingsScreen(
                     },
                 )
             }
+            // BATCH6-P3 (advisor D5): manual repair — the auto-heal is capped at
+            // 3/day, so a corrupted install whose budget is spent still has an
+            // owner-initiated path (this clears the budget and re-runs the
+            // staged, verified install; progress lands in Output).
+            ListItem(
+                headlineContent = { Text("Repair language-server install (jdtls)") },
+                supportingContent = {
+                    Text(
+                        "Re-downloads and verifies the Java language server: integrity-checked, " +
+                            "atomic swap, working install kept on failure. Can take 5-15 minutes on a " +
+                            "slow connection — progress lines appear in Output.",
+                    )
+                },
+                trailingContent = {
+                    TextButton(onClick = {
+                        com.codespace.ide.lsp.VerifiedInstall.allowManualRepair(context, com.codespace.ide.domain.Language.JAVA.name)
+                        android.widget.Toast.makeText(context, "Repair started — see Output", android.widget.Toast.LENGTH_LONG).show()
+                        Thread {
+                            com.codespace.ide.lsp.LspManager.installServer(context, com.codespace.ide.domain.Language.JAVA)
+                        }.apply { isDaemon = true; name = "ManualJdtlsRepair"; start() }
+                    }) { Text("Repair") }
+                },
+            )
             ListItem(
                 headlineContent = { Text("Ubuntu container (Node, ffmpeg, projects, etc.)") },
                 supportingContent = {

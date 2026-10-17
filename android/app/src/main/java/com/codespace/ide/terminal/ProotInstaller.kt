@@ -1875,6 +1875,11 @@ exit 0
         onLine: ((String) -> Unit)? = null,
         onProcess: ((Process) -> Unit)? = null,
         rootfsOverride: File? = null,
+        // BATCH6-P3 (advisor D1): inactivity watchdog — kill the process when it
+        // produced NO output for this many seconds (a stalled download/apt on
+        // flaky mobile data), instead of letting it run silently to the hard cap.
+        // null (default) = OFF: every existing caller keeps the exact behavior.
+        inactivityTimeoutSeconds: Long? = null,
     ): ProotResult {
         val (proot, baseArgs, envVars) = launchArgs(context, rootfsOverride = rootfsOverride)
         // Drop fd/1 and fd/2 binds (same fix as the interactive terminal):
@@ -1907,6 +1912,13 @@ exit 0
             val process = pb.start()
             onProcess?.invoke(process)
 
+            // BATCH6-P3: inactivity bookkeeping — every output line refreshes the
+            // clock; a monitor thread kills the process when it goes silent past
+            // the caller's inactivity budget.
+            val lastOutputAtMs = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
+            val inactivityKilled = java.util.concurrent.atomic.AtomicBoolean(false)
+            val inactSec = inactivityTimeoutSeconds
+
             // ── Concurrent stdout drain (CRITICAL — fixes pipe-buffer deadlock) ──────
             // waitFor() before draining deadlocks once the child exceeds the OS pipe
             // buffer (~64 KB): child blocks on write, we block on waitFor. Drain on a
@@ -1916,6 +1928,7 @@ exit 0
             val readerThread = Thread {
                 try {
                     process.inputStream.bufferedReader().forEachLine { line ->
+                        lastOutputAtMs.set(System.currentTimeMillis())
                         if (outputLines.size < maxLines) outputLines.add(line) else truncated = true
                         // Live stream to typed callers (BuildRunner's output panel).
                         onLine?.invoke(line)
@@ -1927,10 +1940,30 @@ exit 0
             }
             readerThread.isDaemon = true
             readerThread.start()
+            val monitorThread = if (inactSec != null) Thread {
+                while (process.isAlive) {
+                    try {
+                        Thread.sleep(500)
+                    } catch (_: InterruptedException) {
+                        return@Thread
+                    }
+                    if (System.currentTimeMillis() - lastOutputAtMs.get() > inactSec * 1000L) {
+                        inactivityKilled.set(true)
+                        process.destroyForcibly()
+                        return@Thread
+                    }
+                }
+            } else null
+            monitorThread?.apply { isDaemon = true; start() }
 
             val finished = process.waitFor(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
             readerThread.join(2000)  // let reader flush last lines (max 2s)
-            if (!finished) {
+            monitorThread?.join(1000)
+            if (!finished || inactivityKilled.get()) {
+                if (inactivityKilled.get()) {
+                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                        "[" + logTag + "] process killed: no output for " + inactSec + "s — " + command.take(120), logTag)
+                }
                 process.destroyForcibly()
                 return ProotResult(stdout = "", exitCode = null, timedOut = true,
                     truncated = truncated, launchError = null)
@@ -1950,9 +1983,9 @@ exit 0
      * contract for the ~44 call sites that still expect a String.
      * Delegates to [execTyped].
      */
-    fun execOnce(context: Context, command: String, workdir: String? = null, timeoutSeconds: Long = 60, logToOutput: Boolean = false): String {
+    fun execOnce(context: Context, command: String, workdir: String? = null, timeoutSeconds: Long = 60, logToOutput: Boolean = false, inactivityTimeoutSeconds: Long? = null): String {
         val r = execTyped(context, command, workdir, timeoutSeconds, logToOutput,
-            maxLines = 2000, logTag = "lsp-install")
+            maxLines = 2000, logTag = "lsp-install", inactivityTimeoutSeconds = inactivityTimeoutSeconds)
         return when {
             r.launchError != null -> "Error running command in Ubuntu rootfs: ${r.launchError}"
             r.timedOut -> "Timed out after ${timeoutSeconds}s running: $command"
