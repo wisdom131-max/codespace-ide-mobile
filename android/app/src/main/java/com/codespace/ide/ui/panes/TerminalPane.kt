@@ -372,10 +372,24 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                     // line in the crumb log shows exactly where a death happened.
                     // OFF / LOG_TOKEN / RESOLVE / FULL — set in Settings.
                     val tapMode = com.codespace.ide.terminal.LinkTapModeStore.current(v.context)
+                    // BATCH6-P1 (advisor B3): log the MAPPING facts, not just the verdict —
+                    // row/column as computed, the tapped row's text, the scroll topRow and
+                    // the font size. An empty token now shows on-device whether the
+                    // coordinate mapping or the parsing produced it.
+                    val rowText = try {
+                        emulator.screen?.getSelectedText(0, colRow[1], emulator.mColumns, colRow[1], true, true)?.take(120) ?: ""
+                    } catch (_: Exception) { "" }
                     com.codespace.ide.diagnostics.CrumbLog.crumbSync(
                         "tap", "stage 1 done: extracted '" + (spanToken ?: word).take(80) + "' span=" + (spanToken != null) +
                             " (mode=" + tapMode + ") " + com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(v.context),
                     )
+                    if (tapMode != com.codespace.ide.terminal.LinkTapModeStore.Mode.OFF) {
+                        val mapLine = "[TAP] map: row=" + colRow[1] + " col=" + colRow[0] +
+                            " topRow=" + v.topRow + " font=" + currentTextSize +
+                            " rowText=\"" + rowText.replace('\n', ' ') + "\" token=\"" + (spanToken ?: word).take(80) + "\""
+                        com.codespace.ide.diagnostics.AppOutputLog.log(mapLine, "terminal")
+                        com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", mapLine.take(320))
+                    }
                     if (tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.OFF) {
                         com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "mode OFF — file-link tap ignored")
                     } else if (onFileLinkTap != null) {
@@ -449,9 +463,14 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                 )
             }
         }
+        // BATCH6-P1 (advisor B4): stage entry for the DEFAULT tap path too — if the
+        // freeze lives in requestFocus/showSoftInput (a binder call into a stalled
+        // IME process), the last fsynced crumb names it exactly.
+        com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "default tap path: requestFocus+showSoftInput start")
         v.requestFocus()
         val imm = v.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         imm.showSoftInput(v, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "default tap path: done")
     }
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
     // TYPE_NULL is the correct input type (Termux default).

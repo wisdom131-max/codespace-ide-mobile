@@ -234,6 +234,38 @@ object CrumbLog {
                             "). The persistent log (crumb-log) shows what it was doing.",
                         NotificationStore.Type.INFO,
                     )
+                    // BATCH6-P1 (advisor B1): the OS may still hold the ANR trace of
+                    // the previous process — recover the MAIN thread stack and pin it
+                    // in the Output ([EXIT]) so the freeze is attributed, not guessed.
+                    try {
+                        val traceText = info.traceInputStream?.use { stream ->
+                            stream.bufferedReader(Charsets.UTF_8).useLines { seq ->
+                                val sb = StringBuilder()
+                                var lines = 0
+                                for (line in seq) {
+                                    if (lines >= 400) break
+                                    sb.append(line).append('\n')
+                                    lines++
+                                }
+                                sb.toString()
+                            }
+                        }
+                        if (!traceText.isNullOrBlank()) {
+                            val mainSection = traceText.lineSequence()
+                                .dropWhile { !it.trim().startsWith("\"main\"") && !it.contains("\"main\" prio") }
+                                .take(40)
+                                .toList()
+                            val section = if (mainSection.isNotEmpty()) mainSection
+                                else traceText.lineSequence().take(40).toList()
+                            AppOutputLog.log("[EXIT] ANR trace of the previous exit (" + agoText(info.timestamp) + ") — main thread stack:", "terminal")
+                            section.forEach { AppOutputLog.log("[EXIT]   " + it, "terminal") }
+                            crumb("exit-info", "ANR trace recovered: " + section.take(8).joinToString(" | ").take(400))
+                        } else {
+                            crumb("exit-info", "ANR trace not held by the OS (already reclaimed)")
+                        }
+                    } catch (t: Throwable) {
+                        crumb("exit-info", "ANR trace read failed: " + (t.message ?: t.javaClass.simpleName))
+                    }
                 }
             } catch (e: Throwable) {
                 crumb("exit-info", "ApplicationExitInfo read failed: " + (e.message ?: e.javaClass.simpleName))

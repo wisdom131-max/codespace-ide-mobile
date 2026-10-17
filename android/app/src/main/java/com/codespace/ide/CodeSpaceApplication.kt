@@ -42,6 +42,10 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         // it reads the previous process exit (ApplicationExitInfo) and pins it on
         // disk before anything else can fail.
         com.codespace.ide.diagnostics.CrumbLog.logStartup(this)
+        // BATCH6-P1 (advisor B2): main-thread watchdog — a frozen main thread is
+        // sampled every second and pinned to the crumb log with fsync, so the
+        // NEXT start shows exactly where it was stuck (the owner's tap ANR).
+        com.codespace.ide.diagnostics.MainThreadWatchdog.start()
         // RG05/RG06 (2026-09-26): auto prefs-backup + fresh-install restore must run
         // BEFORE any store init — the first load of each prefs/JSON store then sees the
         // restored state (restores through the prefs API; never overwrites a surviving
