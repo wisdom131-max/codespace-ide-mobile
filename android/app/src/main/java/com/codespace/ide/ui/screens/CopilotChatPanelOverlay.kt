@@ -127,6 +127,9 @@ private sealed interface ChatStreamEvent {
     data class IterationStart(val index: Int) : ChatStreamEvent
     data class Delta(val text: String) : ChatStreamEvent
     data class ToolDone(val tool: String, val status: String) : ChatStreamEvent
+    // P4 (BATCH3): surfaced when the opt-in 402 failover moves to another key
+    // ("Switched to key N of M — previous key's account is out of credits (402)").
+    data class KeySwitch(val line: String) : ChatStreamEvent
 }
 
 private const val PREFS_CHAT = "copilot_chat"
@@ -1019,7 +1022,11 @@ private suspend fun chat(
             com.codespace.ide.chat.ChatKeyFailover.execute(
                 providerPrefix, tokenStore,
                 hasStarted = { streamedAnything },
-                onInfo = { line -> com.codespace.ide.diagnostics.AppOutputLog.log(line, "chat") },
+                onInfo = { line ->
+                    com.codespace.ide.diagnostics.AppOutputLog.log(line, "chat")
+                    // P4 (BATCH3): key-switch notices are VISIBLE in the chat, not only the log.
+                    if (line.startsWith("Switched to key ")) onStreamEvent?.invoke(ChatStreamEvent.KeySwitch(line))
+                },
             ) { key ->
                 val req = ChatRequest(
                     apiModel, systemPrompt, convMsgs, key,
@@ -1676,6 +1683,8 @@ internal fun CopilotChatPanelInline(
                         is ChatStreamEvent.IterationStart -> liveStreamText = "[Unverified model output. Text is not proof of execution.]\n\n"
                         is ChatStreamEvent.Delta -> liveStreamText += ev.text
                         is ChatStreamEvent.ToolDone -> { liveStreamText += "\n" + ev.tool + ": " + ev.status; toolsUsed.add(ev.tool + " (" + ev.status + ")") }
+                        // P4 (BATCH3): "Switched to key N" persists as its own chip line in the transcript.
+                        is ChatStreamEvent.KeySwitch -> messages.add(ChatMsg("tool", ev.line))
                     }
                 }
                 val reply = chat(effModel, messages.toList(), mode, activeCustomModeId, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)

@@ -53,8 +53,23 @@ object ChatKeyFailover {
                 "All configured keys for this provider were rejected (401/403) recently. Check or replace them in Settings \\u2192 AI Providers.",
             )
         }
+        return executeWithCandidates(candidates, hasStarted, onInfo, block)
+    }
+
+    /**
+     * P4 (BATCH3): candidate-scoped engine core, JVM-testable without
+     * SecureTokenStore/Context. Same verdicts as execute(); the only new
+     * behavior is the OPT-IN 402 pass-through (see Chat402FailoverSetting).
+     */
+    internal suspend fun <T> executeWithCandidates(
+        candidates: List<Pair<String, String>>,
+        hasStarted: (() -> Boolean)? = null,
+        onInfo: ((String) -> Unit)? = null,
+        block: suspend (apiKey: String) -> T,
+    ): T {
         var lastError: ChatHttpException? = null
-        for ((suffix, key) in candidates) {
+        for ((ci, candidate) in candidates.withIndex()) {
+            val (suffix, key) = candidate
             val label = ChatKeyPool.label(suffix).ifEmpty { suffix }
             var rateLimitAttempt = 0
             while (true) {
@@ -88,6 +103,20 @@ object ChatKeyFailover {
                             continue
                         }
                         onInfo?.invoke("[KEY-FAILOVER] '" + label + "' still rate-limited after retries \\u2014 moving to the next key")
+                        lastError = he
+                        break
+                    }
+                    // P4 (BATCH3): OPT-IN 402 failover. Out-of-credits is an
+                    // ACCOUNT state — switching only helps when the pool holds
+                    // keys from DIFFERENT accounts (the Settings text says so).
+                    // ONE pass, no same-key retries, no loops: a 402 never
+                    // clears by retrying the same key. When it moves on, the
+                    // chat shows "Switched to key N". Never logs key values.
+                    if (he.statusCode == 402 && Chat402FailoverSetting.isEnabled()) {
+                        if (ci + 1 < candidates.size) {
+                            onInfo?.invoke("Switched to key " + (ci + 2) + " of " + candidates.size +
+                                " \\u2014 previous key's account is out of credits (402)")
+                        }
                         lastError = he
                         break
                     }

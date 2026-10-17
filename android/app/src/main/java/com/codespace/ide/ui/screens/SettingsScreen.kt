@@ -391,6 +391,30 @@ fun SettingsScreen(
                     )
                 },
             )
+            // P4 (BATCH3): OPT-IN 402 key failover — OFF by default. Credits are
+            // per ACCOUNT (e.g. Hugging Face monthly credits), so switching keys
+            // only helps when the pool holds keys from DIFFERENT accounts; the
+            // toggle says that so nobody expects a same-account second key to work.
+            // One pass through the pool, no loops; never shows key values.
+            var failover402Enabled by remember { mutableStateOf(com.codespace.ide.chat.Chat402FailoverSetting.isEnabled()) }
+            ListItem(
+                headlineContent = { Text("Switch to next key on 402 (out of credits)") },
+                supportingContent = {
+                    Text(
+                        if (failover402Enabled) "On \u2014 when a provider answers 'out of credits' (402), the next key in the pool is tried once, and the chat shows 'Switched to key N'. Credits are per ACCOUNT, so this only helps with keys from different accounts."
+                        else "Off \u2014 a 402 (provider account out of credits) stops the request as-is. Turn on to try the next key once; only helps with keys from different accounts."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = failover402Enabled,
+                        onCheckedChange = { checked ->
+                            failover402Enabled = checked
+                            com.codespace.ide.chat.Chat402FailoverSetting.setEnabled(context, checked)
+                        },
+                    )
+                },
+            )
             HorizontalDivider()
 
             // ── Accounts ────────────────────────────────────────────────────
