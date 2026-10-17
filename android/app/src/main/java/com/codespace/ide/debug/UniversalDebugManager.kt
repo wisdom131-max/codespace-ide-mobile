@@ -436,7 +436,16 @@ object UniversalDebugManager {
     fun logDebugConsole(line: String) {
         if (line.isNotBlank()) notifyOutput(line)
     }
-    private fun notifyPaused(stack: List<DebugStackFrame>, vars: List<DebugVariable>) = pausedListeners.forEach { it(stack, vars) }
+    private fun notifyPaused(stack: List<DebugStackFrame>, vars: List<DebugVariable>) {
+        // BATCH6-P2 (advisor C, READ hop): owner evidence says vars DID arrive at the
+        // adapter (paused delivered: frames=1 vars=3) but the panel showed nothing.
+        // This line pins the DELIVERY side: how many listeners (band + variables
+        // panel + stack section) actually received the event.
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[VARS-DIAG] UDM notifyPaused: listeners=" + pausedListeners.size +
+                " frames=" + stack.size + " vars=" + vars.size, "debug")
+        pausedListeners.forEach { it(stack, vars) }
+    }
 
     init {
         // P26-2d/P26-3a: Register DAP adapters (tried before legacy providers)

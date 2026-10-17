@@ -194,8 +194,11 @@ fun VariableInspectorPanel(
             } else {
                 // P26-1: Multi-listener — no callback conflict with RunDebugPanel
                 var pausedVars by remember { mutableStateOf<List<com.codespace.ide.debug.DebugVariable>>(emptyList()) }
-                val varsListener: (List<com.codespace.ide.debug.DebugStackFrame>, List<com.codespace.ide.debug.DebugVariable>) -> Unit = { _, vars ->
+                val varsListener: (List<com.codespace.ide.debug.DebugStackFrame>, List<com.codespace.ide.debug.DebugVariable>) -> Unit = { stack, vars ->
                     pausedVars = vars
+                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                        "[VARS-DIAG] paused event reached the panel: frames=" + stack.size +
+                            " vars=" + vars.size, "debug")
                     // P26-1c/DG10: live watch refresh goes through the shared
                     // UDM store so the Explorer watch list stays in sync too.
                     if (watchExprs.isNotEmpty()) {
@@ -204,6 +207,15 @@ fun VariableInspectorPanel(
                     }
                 }
                 LaunchedEffect(Unit) {
+                    // BATCH6-P2 (advisor C, READ hop): SUSPECT — this panel sees ONLY
+                    // paused events that arrive AFTER it is composed. If the pause
+                    // happened while the Variables tab was closed, pausedVars starts
+                    // empty and stays "Running..." until the NEXT pause. These two
+                    // lines make the sequence provable on device.
+                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                        "[VARS-DIAG] locals panel composed: sees only paused events from NOW on " +
+                            "(session=" + (com.codespace.ide.debug.UniversalDebugManager.getActiveSession()?.id ?: "none") + ")",
+                        "debug")
                     com.codespace.ide.debug.UniversalDebugManager.addOnPausedListener(varsListener)
                 }
                 DisposableEffect(Unit) {
