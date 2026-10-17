@@ -311,6 +311,46 @@ fun EditorPane(
     var conflictHunks by remember { mutableStateOf<List<ConflictHunk>?>(null) }
     // P22-E: Format Document
     var formatting by remember { mutableStateOf(false) }
+    // BATCH4-P1b: Format Document — ONE function shared by the toolbar button
+    // AND the Ctrl+Shift+I chord (CodeEditor's onFormatDocument param calls it):
+    // same function, no separate code path. Body is the button's verbatim logic.
+    fun runFormatDocument() {
+        val activeTab = resolveActiveTab(activeId, tabs)
+        if (activeTab != null && !formatting) {
+            formatting = true
+            kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
+                val result = DocumentFormatter.format(context, activeTab.path, activeTab.language)
+                if (result.success && result.formattedContent != null) {
+                    val idx2 = tabs.indexOfFirst { it.id == activeTab.id }
+                    if (idx2 >= 0) {
+                        if (activeTab.path.startsWith("/") && writeTabToDisk(activeTab.path, result.formattedContent)) {
+                            // G09 (P4b): typed write — verified persistence, buffer matches disk.
+                            tabs[idx2] = activeTab.copy(content = result.formattedContent, isDirty = false)
+                            FileCache.invalidate(activeTab.path)
+                            if (activeTab.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= activeTab.path
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                NotificationStore.add("Formatted", "Formatted & saved ✓ (${activeTab.language.displayName} formatter)", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
+                            }
+                        } else {
+                            // G09: write FAILED — keep the formatted buffer dirty and say so honestly.
+                            tabs[idx2] = activeTab.copy(content = result.formattedContent, isDirty = true)
+                            if (activeTab.path !in diskWriteFailedPaths.value) diskWriteFailedPaths.value += activeTab.path
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                NotificationStore.add("Format saved?", "Formatted but the DISK WRITE FAILED for ${activeTab.name} — changes kept in editor (dirty)", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.NORMAL)
+                            }
+                        }
+                    }
+                } else {
+                    // P37-TEST4-FIX: surface the failure/no-op reason instead of silently doing nothing
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        NotificationStore.add("Format result", "Format: ${result.message}", NotificationStore.Severity.WARNING, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.NORMAL)
+                    }
+                    AppOutputLog.log("[Format] regex-button result: ${result.message}", "format")
+                }
+                formatting = false
+            }
+        }
+    }
     // Phase R: Format Selection trigger
     var formatSelectionTrigger by remember { mutableStateOf(0) }
     // G10 (P4b): internal companion to formatOnSaveTrigger. When format-on-save is
@@ -1404,44 +1444,8 @@ fun EditorPane(
                 }
                 // P22-E: Format Document button (built-in regex formatter)
                 IconButton(
-                    onClick = {
-                        val activeTab = resolveActiveTab(activeId, tabs)
-                        if (activeTab != null && !formatting) {
-                            formatting = true
-                            kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
-                                val result = DocumentFormatter.format(context, activeTab.path, activeTab.language)
-                                if (result.success && result.formattedContent != null) {
-                                    val idx2 = tabs.indexOfFirst { it.id == activeTab.id }
-                                    if (idx2 >= 0) {
-                                        if (activeTab.path.startsWith("/") && writeTabToDisk(activeTab.path, result.formattedContent)) {
-                                            // G09 (P4b): typed write — verified persistence, buffer matches disk.
-                                            tabs[idx2] = activeTab.copy(content = result.formattedContent, isDirty = false)
-                                            FileCache.invalidate(activeTab.path)
-                                            if (activeTab.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= activeTab.path
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                NotificationStore.add("Formatted", "Formatted & saved ✓ (${activeTab.language.displayName} formatter)", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
-                                            }
-                                        } else {
-                                            // G09: write FAILED — keep the formatted buffer dirty and say so honestly;
-                                            // the old code announced "Formatted ✓" with a swallowed write failure.
-                                            tabs[idx2] = activeTab.copy(content = result.formattedContent, isDirty = true)
-                                            if (activeTab.path !in diskWriteFailedPaths.value) diskWriteFailedPaths.value += activeTab.path
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                NotificationStore.add("Format saved?", "Formatted but the DISK WRITE FAILED for ${activeTab.name} — changes kept in editor (dirty)", NotificationStore.Severity.ERROR, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.NORMAL)
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    // P37-TEST4-FIX: surface the failure/no-op reason instead of silently doing nothing
-                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                        NotificationStore.add("Format result", "Format: ${result.message}", NotificationStore.Severity.WARNING, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.NORMAL)
-                                    }
-                                    AppOutputLog.log("[Format] regex-button result: ${result.message}", "format")
-                                }
-                                formatting = false
-                            }
-                        }
-                    },
+                    // BATCH4-P1b: shared with the Ctrl+Shift+I chord — same function.
+                    onClick = { runFormatDocument() },
                     modifier = Modifier.size(35.dp)
                 ) {
                     Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
@@ -3038,6 +3042,8 @@ fun EditorPane(
                             }
                         } else null,
                         // P41-I: Source Actions — Organize Imports, Remove Unused, Fix All
+                        // BATCH4-P1b: the Ctrl+Shift+I chord calls the SAME runFormatDocument as the button.
+                        onFormatDocument = { runFormatDocument() },
                         onSourceAction = if (LspManager.isServerRunning(active.language)) {
                             { kind ->
                                 val uri = LspManager.fileUriFromHostPath(context, active.path)

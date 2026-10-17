@@ -41,6 +41,13 @@ object EditorKeyDispatch {
         EditorAction.FIND_PREVIOUS,
         EditorAction.GO_TO_DEFINITION,
         EditorAction.RENAME,
+        // P1b — edit wave (Ctrl+Shift+I, Ctrl+., user-bound organize)
+        EditorAction.FORMAT,
+        EditorAction.QUICK_FIX,
+        EditorAction.ORGANIZE_IMPORTS,
+        //   QUICK_FIX nuance: the chord opens the lightbulb actions menu when
+        //   actions exist for the cursor line; with no actions it is a quiet no-op
+        //   (the lightbulb UI shows nothing to open — same as no bulb visible).
     )
 
     /**
@@ -62,9 +69,6 @@ object EditorKeyDispatch {
         put(EditorAction.INDENT, "handled by the built-in Tab path before the registry")
         put(EditorAction.UNINDENT, "handled by the built-in Shift+Tab path before the registry")
         // Rest of the P1 waves — this batch, next commits.
-        put(EditorAction.FORMAT, "wired in the P1b edit wave (this batch)")
-        put(EditorAction.QUICK_FIX, "wired in the P1b edit wave (this batch)")
-        put(EditorAction.ORGANIZE_IMPORTS, "wired in the P1b edit wave (this batch)")
         put(EditorAction.TOGGLE_WORD_WRAP, "wired in the P1c view wave (this batch)")
         put(EditorAction.ZOOM_IN, "wired in the P1c view wave (this batch)")
         put(EditorAction.ZOOM_OUT, "wired in the P1c view wave (this batch)")

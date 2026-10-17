@@ -691,6 +691,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     /** P41-O5: LSP Go to Declaration — semantic navigation to declaration (e.g. header file) */
     /** P41-I: Source Actions — Organize Imports, Remove Unused, Fix All. Called with the CodeActionKind string. */
     onSourceAction: ((kind: String) -> Unit)? = null,
+    /** BATCH4-P1b: Format Document chord (Ctrl+Shift+I) — EditorPane's runFormatDocument, the SAME function the toolbar button calls. */
+    onFormatDocument: (() -> Unit)? = null,
     onLspDeclaration: ((Int, Int) -> Boolean)? = null,  // TEST-11-FIX: same fix for declaration
     /** Keyboard toolbar insert handler — registers a function that inserts text at cursor position.
      *  Called once during composition. The registered function handles:
@@ -2110,9 +2112,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             renameUsedLsp = false
         }
     }
-    // BATCH4-P1a: the P1a chord cases (ctrl branch AND the new plain-key
+    // BATCH4-P1b: Organize Imports — extracted VERBATIM from the floating-menu
+    // item; the menu item AND the ORGANIZE_IMPORTS chord both call THIS function.
+    fun runOrganizeImports() {
+        if (onSourceAction != null && com.codespace.ide.lsp.LspManager.isServerRunning(language)) {
+            onSourceAction!!.invoke("source.organizeImports")
+        } else {
+            val result = com.codespace.ide.editor.BuiltinSourceActions.organizeImports(value.text, language)
+            if (result != null) {
+                programmaticTextChange(result, value.selection, "organize_imports")
+            }
+        }
+    }
+    // BATCH4-P1a/P1b: the registry chord cases (ctrl branch AND the plain-key
     // branch) both route through THIS one handler — one code path.
-    fun handleP1aChord(action: EditorAction?): Boolean {
+    fun handleRegistryChord(action: EditorAction?): Boolean {
         when (action) {
             EditorAction.FIND_NEXT -> {
                 if (matches.isEmpty()) onFindReplaceOpen() else {
@@ -2134,6 +2148,21 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             }
             EditorAction.RENAME -> {
                 runRenameSymbol()
+                return true
+            }
+            // BATCH4-P1b — edit wave: FORMAT (Ctrl+Shift+I), QUICK_FIX (Ctrl+.),
+            // ORGANIZE_IMPORTS (user-bound; no default chord).
+            EditorAction.FORMAT -> {
+                onFormatDocument?.invoke()
+                return true
+            }
+            EditorAction.QUICK_FIX -> {
+                // Same trigger path the lightbulb uses: open the actions menu.
+                if (lightbulbActions.isNotEmpty()) showLightbulbMenu = true
+                return true
+            }
+            EditorAction.ORGANIZE_IMPORTS -> {
+                runOrganizeImports()
                 return true
             }
             else -> return false
@@ -3210,10 +3239,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                     // BATCH4-P1a: rebound-ctrl variants of the P1a actions route
                                     // through the SAME shared handler (registry-respecting).
-                                    EditorAction.FIND_NEXT -> { handleP1aChord(kbAction); true }
-                                    EditorAction.FIND_PREVIOUS -> { handleP1aChord(kbAction); true }
-                                    EditorAction.GO_TO_DEFINITION -> { handleP1aChord(kbAction); true }
-                                    EditorAction.RENAME -> { handleP1aChord(kbAction); true }
+                                    EditorAction.FIND_NEXT -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.FIND_PREVIOUS -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.GO_TO_DEFINITION -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.RENAME -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.FORMAT -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.QUICK_FIX -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.ORGANIZE_IMPORTS -> { handleRegistryChord(kbAction); true }
                                     else -> false
                                 }
                             } else if (event.type == KeyEventType.KeyDown &&
@@ -3270,7 +3302,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 // BATCH4-P1a: plain (no-modifier) registry chords — the F-row
                                 // defaults (F3/Shift+F3/F12/F2) and any user-rebound no-modifier
                                 // chord. Unbound keys return false and flow to the text field,
-                                // so typing is never swallowed; only handleP1aChord-handled
+                                // so typing is never swallowed; only handleRegistryChord-handled
                                 // actions are consumed here.
                                 val plainAction = KeyBindingRegistry.match(
                                     event.key,
@@ -3278,7 +3310,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     shift = event.nativeKeyEvent.isShiftPressed,
                                     alt = false
                                 )
-                                handleP1aChord(plainAction)
+                                handleRegistryChord(plainAction)
                             } else {
                                 false // let BasicTextField handle normally
                             }
@@ -4496,15 +4528,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             }
                             },
                             onClick = {
-                                // P41-U: Try LSP first, fall back to built-in
-                                if (onSourceAction != null && com.codespace.ide.lsp.LspManager.isServerRunning(language)) {
-                                    onSourceAction!!.invoke("source.organizeImports")
-                                } else {
-                                    val result = com.codespace.ide.editor.BuiltinSourceActions.organizeImports(value.text, language)
-                                    if (result != null) {
-                                        programmaticTextChange(result, value.selection, "organize_imports")
-                                    }
-                                }
+                                // BATCH4-P1b: shared with the ORGANIZE_IMPORTS chord — same function.
+                                runOrganizeImports()
                                 showLspMenu = false
                             }
                             )
