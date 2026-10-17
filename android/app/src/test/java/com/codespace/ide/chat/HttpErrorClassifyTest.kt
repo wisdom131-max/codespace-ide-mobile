@@ -94,7 +94,7 @@ class HttpErrorClassifyTest {
     fun http429SaysRateLimitedAndCarriesRetryAfterMs() {
         val he = core(429, retry = 25_000L)
         assertEquals(429, he.statusCode)
-        assertEquals(Long.valueOf(25_000L), he.retryAfterMs)
+        assertTrue("retryAfterMs propagated from the header", he.retryAfterMs == 25_000L)
         assertTrue(he.message!!.contains("RATE-LIMITING this key (429)"))
         assertTrue("retry wait is named in plain words", he.message!!.contains("Retry in 25s"))
     }
