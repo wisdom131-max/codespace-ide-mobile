@@ -6,27 +6,32 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * Advisor item 4 (2026-10-10, "Hugging Face key check"): an in-app "Test this
- * key" action for custom endpoints. The owner created several NEW keys and still
- * got 402s — because HF credits belong to the ACCOUNT, not the key. This probe
- * makes that visible IN the app, next to each key slot:
+ * BATCH5-P1 (advisor-approved 2026-10-17): "key accepted" only when an
+ * AUTHENTICATED call proves the key. Root cause of the false positive: the
+ * probe's ONLY call was GET <baseUrl>/models, and the HF router serves that
+ * list PUBLICLY — a garbage key got HTTP 200 + ~80 models, the UI said "key
+ * accepted", and the real chat call then failed with 401. The fix:
  *
- *  - a MINIMAL request (GET <baseUrl>/models — the lightest standard probe) with
- *    THAT slot's key, so the owner tests the exact key, not the active one;
- *  - the HTTP status code + the vendor's own message (redacted through the same
- *    C12 attachment-tier patterns before display);
- *  - for huggingface hosts (huggingface.co / hf.co), the ACCOUNT NAME via HF's
- *    whoami-v2 — the single fact that explains "new key, same 402": same account.
+ *  - HF hosts (huggingface.co / hf.co): whoami-v2 is the proof. 200+name ->
+ *    KEY ACCEPTED (account name shown, HF only). 401/403 -> KEY REJECTED.
+ *    Other whoami failures -> KEY NOT VERIFIED (honest fallback).
+ *  - Non-HF custom endpoints: an ANONYMOUS control call to the same
+ *    /models URL (no Authorization header). If the control gets 401/403 the
+ *    endpoint enforces auth, so the keyed 200 DID prove the key ->
+ *    KEY ACCEPTED. If the control also succeeds, the model list is public
+ *    -> "endpoint reachable — KEY NOT VERIFIED". Anything else -> the
+ *    conservative NOT VERIFIED wording.
+ *  - Keyed 401/403 -> KEY REJECTED (shared classify verdict for detail).
  *
- * SECURITY: the key is used ONLY as a request header here. It is never stored
- * outside SecureTokenStore, never logged, and never appears in [Result] — the
- * result carries only the status, the redacted vendor message, and the account
- * name. whoami-v2 returns no secrets.
+ * The three verdicts are visibly distinct: "KEY ACCEPTED", "KEY REJECTED",
+ * "KEY NOT VERIFIED". SECURITY: the key value is used ONLY as a request
+ * header, never logged, never in [Result]; the account name is returned only
+ * for HF-family hosts; output goes through AttachmentSecrets redaction.
  */
 object KeyProbe {
 
     data class Result(
-        /** HTTP status of the probe request; null when the host was unreachable. */
+        /** HTTP status of the keyed probe request; null when the host was unreachable. */
         val httpStatus: Int?,
         /** Redacted, display-ready verdict line. */
         val message: String,
@@ -34,7 +39,55 @@ object KeyProbe {
         val accountName: String?,
     )
 
+    /**
+     * Test seam: one GET per call. [verdict] carries the SHARED
+     * classifyHttpError message for non-2xx responses in the real transport
+     * (so classification logic is not duplicated here); tests supply their
+     * own. [body] is read only where a name must be parsed (HF whoami).
+     */
+    internal data class HttpGetOutcome(
+        /** null = transport exception / unreachable. */
+        val code: Int?,
+        val body: String? = null,
+        /** Non-2xx classified verdict from the real transport; null on 2xx. */
+        val verdict: String? = null,
+    ) {
+        val ok: Boolean get() = code != null && code in 200..299
+    }
+
+    internal fun interface HttpGet {
+        /** bearer == null means an ANONYMOUS call (no Authorization header). */
+        suspend fun get(url: String, bearer: String?): HttpGetOutcome
+    }
+
     private val http = OkHttpClient()
+
+    /** The real transport: OkHttp GET; classification via the shared classifier. */
+    internal val realHttpGet: HttpGet = HttpGet { url, bearer ->
+        withContext(Dispatchers.IO) {
+            try {
+                val builder = Request.Builder().url(url).get()
+                if (bearer != null) builder.header("Authorization", "Bearer $bearer")
+                http.newCall(builder.build()).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        HttpGetOutcome(resp.code)
+                    } else {
+                        // Single request: classifyHttpError reads the error body
+                        // through the transport's own redaction, once.
+                        val verdict = try {
+                            com.codespace.ide.chat.providers.OpenAiCompatibleTransport
+                                .classifyHttpError(resp, "Key test failed").message
+                        } catch (_: Exception) {
+                            "Key test failed (HTTP " + resp.code + ")"
+                        }
+                        HttpGetOutcome(resp.code, verdict = verdict)
+                    }
+                }
+            } catch (_: Exception) {
+                HttpGetOutcome(null)
+            }
+        }
+    }
 
     fun isHuggingFaceHost(baseUrl: String): Boolean {
         // String check — no URL-parse API risk; endpoint URLs are user-entered
@@ -43,48 +96,68 @@ object KeyProbe {
         return u.contains("huggingface.co") || u.contains("hf.co")
     }
 
-    suspend fun probe(baseUrl: String, apiKey: String): Result = withContext(Dispatchers.IO) {
-        val url = baseUrl.trim().trimEnd('/') + "/models"
-        val req = try {
-            Request.Builder().url(url).header("Authorization", "Bearer $apiKey").get().build()
-        } catch (_: Exception) {
+    /**
+     * Proves (or fails to prove) the key. [httpGet] is the test seam; production
+     * callers use the default real transport.
+     */
+    suspend fun probe(baseUrl: String, apiKey: String, httpGet: HttpGet = realHttpGet): Result = withContext(Dispatchers.IO) {
+        val base = baseUrl.trim().trimEnd('/')
+        if (base.isEmpty() || !(base.startsWith("http://") || base.startsWith("https://"))) {
             return@withContext Result(null, "invalid endpoint URL", null)
         }
-        try {
-            http.newCall(req).execute().use { resp ->
-                val code = resp.code
-                val verdict = if (resp.isSuccessful) {
-                    "HTTP $code — key accepted, endpoint reachable"
-                } else {
-                    try {
-                        val he = com.codespace.ide.chat.providers.OpenAiCompatibleTransport
-                            .classifyHttpError(resp, "Key test failed")
-                        "HTTP $code — " + he.message
-                    } catch (_: Exception) {
-                        "HTTP $code"
-                    }
-                }
-                val account = if (isHuggingFaceHost(baseUrl)) whoami(apiKey) else null
-                val redacted = AttachmentSecrets.redact(verdict, AttachmentSecrets.TIER_ATTACHMENT).first
-                Result(code, redacted, account)
-            }
-        } catch (e: Exception) {
-            Result(null, "unreachable — " + (e.message ?: e.javaClass.simpleName), null)
+        val modelsUrl = base + "/models"
+        val keyed = httpGet.get(modelsUrl, apiKey)
+        if (keyed.code == null) {
+            return@withContext Result(null, "unreachable — no response from " + base, null)
         }
-    }
-
-    /** HF account name via whoami-v2; null on any failure (never a hard error). */
-    private suspend fun whoami(apiKey: String): String? = withContext(Dispatchers.IO) {
-        try {
-            val req = Request.Builder()
-                .url("https://huggingface.co/api/whoami-v2")
-                .header("Authorization", "Bearer $apiKey")
-                .get().build()
-            http.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@withContext null
-                val name = org.json.JSONObject(resp.body?.string() ?: "").optString("name")
-                name.ifBlank { null }
+        if (!keyed.ok) {
+            val rejected = keyed.code == 401 || keyed.code == 403
+            val verdict = if (rejected) {
+                "KEY REJECTED — " + (keyed.verdict ?: "HTTP " + keyed.code)
+            } else {
+                keyed.verdict ?: ("key test failed (HTTP " + keyed.code + ")")
             }
-        } catch (_: Exception) { null }
+            val redacted = AttachmentSecrets.redact(verdict, AttachmentSecrets.TIER_ATTACHMENT).first
+            return@withContext Result(keyed.code, redacted, null)
+        }
+        // Keyed call succeeded — but a public model list proves nothing.
+        if (isHuggingFaceHost(baseUrl)) {
+            val who = httpGet.get("https://huggingface.co/api/whoami-v2", apiKey)
+            val outcome = when {
+                who.ok -> {
+                    val name = who.body?.let { b ->
+                        try { org.json.JSONObject(b).optString("name") } catch (_: Exception) { "" }
+                    } ?: ""
+                    val redacted = AttachmentSecrets.redact(
+                        "KEY ACCEPTED — HF account confirmed", AttachmentSecrets.TIER_ATTACHMENT).first
+                    Result(keyed.code, redacted, name.ifBlank { null })
+                }
+                who.code == 401 || who.code == 403 -> Result(
+                    keyed.code,
+                    AttachmentSecrets.redact(
+                        "KEY REJECTED — HF whoami returned " + who.code,
+                        AttachmentSecrets.TIER_ATTACHMENT).first,
+                    null)
+                else -> Result(
+                    keyed.code,
+                    AttachmentSecrets.redact(
+                        "endpoint reachable — KEY NOT VERIFIED (whoami returned " + who.code + ")",
+                        AttachmentSecrets.TIER_ATTACHMENT).first,
+                    null)
+            }
+            return@withContext outcome
+        }
+        // Non-HF: anonymous control call to the SAME URL.
+        val anon = httpGet.get(modelsUrl, null)
+        val verdict = when {
+            anon.code == 401 || anon.code == 403 ->
+                "KEY ACCEPTED — endpoint requires auth and the key passed"
+            anon.ok ->
+                "endpoint reachable — KEY NOT VERIFIED (model list is public)"
+            else ->
+                "endpoint reachable — KEY NOT VERIFIED (control call returned " + anon.code + ")"
+        }
+        val redacted = AttachmentSecrets.redact(verdict, AttachmentSecrets.TIER_ATTACHMENT).first
+        Result(keyed.code, redacted, null)
     }
 }
