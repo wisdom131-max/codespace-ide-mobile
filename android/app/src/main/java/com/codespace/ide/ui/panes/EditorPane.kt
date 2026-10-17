@@ -353,6 +353,16 @@ fun EditorPane(
             }
         }
     }
+    // BATCH4-P1d: tab chords. CLOSE_TAB routes through the SAME EditorPaneTabRequests
+    // close-request channel the shell uses (unsaved-changes guard included — no
+    // separate close path); NEXT/PREV_TAB set activeId exactly like the tab click.
+    var chordCloseRequest by remember { mutableStateOf<String?>(null) }
+    fun cycleTab(delta: Int) {
+        if (tabs.isEmpty()) return
+        val cur = tabs.indexOfFirst { it.id == activeId }
+        val next = ((cur + delta) % tabs.size + tabs.size) % tabs.size
+        activeId = tabs[next].id
+    }
     // Phase R: Format Selection trigger
     var formatSelectionTrigger by remember { mutableStateOf(0) }
     // G10 (P4b): internal companion to formatOnSaveTrigger. When format-on-save is
@@ -841,8 +851,12 @@ fun EditorPane(
     EditorPaneTabRequests(
         renameFileRequest = renameFileRequest,
         onRenameFileHandled = onRenameFileHandled,
-        closeTabRequest = closeTabRequest,
-        onCloseTabHandled = onCloseTabHandled,
+        // BATCH4-P1d: shell requests first; the chord's request rides the SAME channel.
+        closeTabRequest = closeTabRequest ?: chordCloseRequest,
+        onCloseTabHandled = {
+            onCloseTabHandled?.invoke()
+            chordCloseRequest = null
+        },
         tabs = tabs,
         activeIdState = activeIdState,
         lspOpenedFiles = lspOpenedFiles,
@@ -2519,6 +2533,9 @@ fun EditorPane(
                         wordWrap = wordWrap,
                         // BATCH4-P1c: Ctrl+Shift+P chord — same shell palette the menu opens.
                         onOpenCommandPalette = onOpenCommandPalette,
+                        // BATCH4-P1d: Ctrl+W / Ctrl+Tab / Ctrl+Shift+Tab chords.
+                        onCloseActiveTab = { active?.let { chordCloseRequest = it.path } },
+                        onCycleTab = { delta -> cycleTab(delta) },
                         // PAD-1/2: view id for per-view scroll lock AND state
                         // memory — must be activeId (the VIEW: path for primary,
                         // split id for splits), NOT active.id (always the tab path).

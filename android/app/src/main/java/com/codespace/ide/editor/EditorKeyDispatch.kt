@@ -51,6 +51,10 @@ object EditorKeyDispatch {
         EditorAction.ZOOM_OUT,
         EditorAction.ZOOM_RESET,
         EditorAction.COMMAND_PALETTE,
+        // P1d — tab wave (Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab)
+        EditorAction.CLOSE_TAB,
+        EditorAction.NEXT_TAB,
+        EditorAction.PREV_TAB,
         //   QUICK_FIX nuance: the chord opens the lightbulb actions menu when
         //   actions exist for the cursor line; with no actions it is a quiet no-op
         //   (the lightbulb UI shows nothing to open — same as no bulb visible).
@@ -75,9 +79,6 @@ object EditorKeyDispatch {
         put(EditorAction.INDENT, "handled by the built-in Tab path before the registry")
         put(EditorAction.UNINDENT, "handled by the built-in Shift+Tab path before the registry")
         // Rest of the P1 waves — this batch, next commits.
-        put(EditorAction.CLOSE_TAB, "wired in the P1d tab wave (this batch)")
-        put(EditorAction.NEXT_TAB, "wired in the P1d tab wave (this batch)")
-        put(EditorAction.PREV_TAB, "wired in the P1d tab wave (this batch)")
         // Honest residue — feature exists but chord wiring not in this batch.
         put(EditorAction.REPLACE, "the Find bar opens with FIND (chord-wired); a dedicated Replace chord is a future wave")
         put(EditorAction.SHOW_HOVER, "hover exists via long-press; chord wiring was not in the owner's P1 list")

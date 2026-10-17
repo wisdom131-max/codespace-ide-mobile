@@ -695,6 +695,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     onFormatDocument: (() -> Unit)? = null,
     /** BATCH4-P1c: Command Palette chord (Ctrl+Shift+P) — opens the shell palette, same state the menu writes. */
     onOpenCommandPalette: (() -> Unit)? = null,
+    /** BATCH4-P1d: Close-Tab chord (Ctrl+W) — EditorPane routes it through the same close-request channel as the shell. */
+    onCloseActiveTab: (() -> Unit)? = null,
+    /** BATCH4-P1d: Next/Prev-Tab chords (Ctrl+Tab / Ctrl+Shift+Tab) — EditorPane's cycleTab, same activeId write as the tab click. */
+    onCycleTab: ((Int) -> Unit)? = null,
     onLspDeclaration: ((Int, Int) -> Boolean)? = null,  // TEST-11-FIX: same fix for declaration
     /** Keyboard toolbar insert handler — registers a function that inserts text at cursor position.
      *  Called once during composition. The registered function handles:
@@ -2191,6 +2195,19 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 onOpenCommandPalette?.invoke()
                 return true
             }
+            // BATCH4-P1d — tab wave (Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab).
+            EditorAction.CLOSE_TAB -> {
+                onCloseActiveTab?.invoke()
+                return true
+            }
+            EditorAction.NEXT_TAB -> {
+                onCycleTab?.invoke(+1)
+                return true
+            }
+            EditorAction.PREV_TAB -> {
+                onCycleTab?.invoke(-1)
+                return true
+            }
             else -> return false
         }
     }
@@ -3277,6 +3294,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     EditorAction.ZOOM_OUT -> { handleRegistryChord(kbAction); true }
                                     EditorAction.ZOOM_RESET -> { handleRegistryChord(kbAction); true }
                                     EditorAction.COMMAND_PALETTE -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.CLOSE_TAB -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.NEXT_TAB -> { handleRegistryChord(kbAction); true }
+                                    EditorAction.PREV_TAB -> { handleRegistryChord(kbAction); true }
                                     else -> false
                                 }
                             } else if (event.type == KeyEventType.KeyDown &&
