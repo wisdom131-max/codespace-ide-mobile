@@ -45,7 +45,7 @@ object KeyProbe {
      * (so classification logic is not duplicated here); tests supply their
      * own. [body] is read only where a name must be parsed (HF whoami).
      */
-    internal data class HttpGetOutcome(
+    data class HttpGetOutcome(
         /** null = transport exception / unreachable. */
         val code: Int?,
         val body: String? = null,
@@ -55,7 +55,7 @@ object KeyProbe {
         val ok: Boolean get() = code != null && code in 200..299
     }
 
-    internal fun interface HttpGet {
+    fun interface HttpGet {
         /** bearer == null means an ANONYMOUS call (no Authorization header). */
         suspend fun get(url: String, bearer: String?): HttpGetOutcome
     }
