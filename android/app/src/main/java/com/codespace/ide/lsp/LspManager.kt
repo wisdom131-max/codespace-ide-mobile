@@ -168,6 +168,12 @@ data class RestartBackoff(
  * vscode-html-language-server, vscode-css-language-server, etc.
  */
 object LspManager {
+    // P1 (BATCH3, logging only): first-publish observability — ONE log line per
+    // URI the first time a server publishes diagnostics for it (including EMPTY
+    // publishes, the lint-less-pylsp signature). Bounded: cleared at cap so a
+    // long session cannot grow it without limit.
+    private val loggedFirstPublish = java.util.Collections.synchronizedSet(HashSet<String>())
+    private const val MAX_FIRST_PUBLISH_URIS = 512
 
     private const val TAG = "LspManager"
 
@@ -1045,6 +1051,15 @@ object LspManager {
             val installed = lastLine == "OK" || lastLine == "found" ||
                 (lastLine.startsWith("/") && !lastLine.contains("not found") && !lastLine.contains("no "))
             AppOutputLog.log("[LSP] Install check result for ${language.displayName}: $installed (lastLine='$lastLine')", "lsp")
+            // P1 (BATCH3, logging only): decode the probe verdict in plain words —
+            // a lint-less pylsp starts fine but publishes EMPTY diagnostics forever.
+            if (language == Language.PYTHON) {
+                AppOutputLog.log(
+                    "[PYLSP-DIAG] probe verdict for Python: " +
+                        (if (installed) "pylsp binary AND lint plugins (pyflakes/pycodestyle) present — diagnostics SHOULD publish"
+                         else "pylsp binary or lint plugins MISSING — a lint-less pylsp starts fine but publishes EMPTY diagnostics (no squiggles); the install self-heal repairs this at next server install"),
+                    "lsp")
+            }
             return installed
         }
         var config = configs[language] ?: return false
@@ -1078,6 +1093,14 @@ object LspManager {
             (lastLine.startsWith("/") && !lastLine.contains("not found") && !lastLine.contains("no "))
         Log.d(TAG, "isServerInstalled(${language.displayName}): lastLine='$lastLine' installed=$installed (raw: ${output.take(80)})")
         AppOutputLog.log("[LSP] Install check result for ${language.displayName}: $installed (lastLine='$lastLine')", "lsp")
+        // P1 (BATCH3, logging only): same plain-words decode as the resolvedConfig branch.
+        if (language == Language.PYTHON) {
+            AppOutputLog.log(
+                "[PYLSP-DIAG] probe verdict for Python: " +
+                    (if (installed) "pylsp binary AND lint plugins (pyflakes/pycodestyle) present — diagnostics SHOULD publish"
+                     else "pylsp binary or lint plugins MISSING — a lint-less pylsp starts fine but publishes EMPTY diagnostics (no squiggles); the install self-heal repairs this at next server install"),
+                "lsp")
+        }
         return installed
     }
 
@@ -1696,6 +1719,17 @@ object LspManager {
         client.onNotification("textDocument/publishDiagnostics") { params ->
             val uri = params.optString("uri", "")
             val diags = params.optJSONArray("diagnostics") ?: JSONArray()
+            // P1 (BATCH3, logging only): the FIRST publish per URI gets one line —
+            // raw=0 forever is the lint-less-pylsp signature; raw>0-but-no-squiggle
+            // points at the URI-mapping side instead. Bounded set, see declaration.
+            if (loggedFirstPublish.size >= MAX_FIRST_PUBLISH_URIS) loggedFirstPublish.clear()
+            if (loggedFirstPublish.add(uri)) {
+                AppOutputLog.log(
+                    "[LSP-DIAG-FIRST] " + language.displayName + ": first publish for " + uri +
+                        " raw=" + diags.length() +
+                        (if (diags.length() == 0) " — EMPTY (lint-less server signature if it stays 0)" else ""),
+                    "lsp")
+            }
             server.diagnostics[uri] = diags
             // SQUIGGLE-FIX (2026-09-10): invoke the handler via LspDiagnosticsHandler —
             // setDiagnosticsHandler() stores handlers THERE, not in a local map. The old
