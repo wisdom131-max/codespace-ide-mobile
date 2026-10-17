@@ -74,13 +74,21 @@ class IdeTerminalBridgeShapeTest {
         assertEquals("scripts/run:12", tok("scripts/run:12", "scripts"))
     }
 
-    @Test fun longWrappedLine_pathAtEnd_charOffset() {
-        // Three screen rows joined into one wrapped line; the path lives in the
-        // last row. With a CORRECT char offset the span matcher finds it.
+    @Test fun longWrappedLine_proseThenPath_wholeLineSpanToken() {
+        // RED FIX (CI 39066058431): the span regex (a space followed by a path
+        // char is PART of the span) swallows the entire prose phrase — every
+        // space in "first line of ... mentions " is followed by a letter, so
+        // the match starts at the first character and ends at ":12". The token
+        // is the WHOLE phrase; resolution's progressive leading-chunk drop
+        // (linkCandidates) trims it down to src/Main.java:12 (A5-SPAN design).
+        // This is the same family as pathWithSpaces_includesLeadingCommandWord.
         val row = "first line of the wrapped output text that continues on to " +
             "the second row and then finally mentions " +
             "src/Main.java:12: unresolved reference"
-        assertEquals("src/Main.java:12", tok(row, "src/Main"))
+        assertEquals(
+            "first line of the wrapped output text that continues on to " +
+                "the second row and then finally mentions src/Main.java:12",
+            tok(row, "src/Main"))
     }
 
     @Test fun coloredGrep_rawEscapeCharsDoNotBreakThePathSegment() {
@@ -99,10 +107,14 @@ class IdeTerminalBridgeShapeTest {
         assertNull(tok("at pkg.Main.main(Main.java:9)", "pkg"))
     }
 
-    @Test fun pythonTraceback_tapLineWord_isNull() {
-        // Tapping "line" or the number outside the gcc-match range: the legacy
-        // word is "line"/"3" — no '/' and no '.', so the tap is a silent no-op.
-        assertNull(tok("File \"/x/y.py\", line 3", "line"))
+    @Test fun pythonTraceback_generousHitbox_wholeGccMatch() {
+        // RED FIX (CI 39066058431): the gccRegex File +"([^"]+)", *line +(\d+)
+        // matches the WHOLE 'File "..." , line N' phrase, and the tap offset
+        // only needs to be INSIDE that range — so tapping the words "line" or
+        // the number ALSO returns the path. A generous hitbox, not a bug.
+        assertEquals("/x/y.py:3", tok("File \"/x/y.py\", line 3", "line"))
+        // Tapping OUTSIDE the gcc match (the word File) hits no span: null.
+        assertNull(tok("File \"/x/y.py\", line 3", "File"))
     }
 
     @Test fun bareNameNoExtension_nullAndSilentlyUnresolvable() {

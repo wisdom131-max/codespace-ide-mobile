@@ -61,7 +61,10 @@ class VerifiedInstallTest {
 
     @Test fun repairCap_threePerDay() {
         val now = 500L * VerifiedInstall.ATTEMPT_WINDOW_MS
-        val fresh = (1..2).map { now - it * 60_000L } // two attempts minutes ago
+        // RED FIX (CI 39066058431): attempt #3 must also clear the 30-minute
+        // backoff after attempt #2 (repairAllowed checks BOTH the cap and the
+        // elapsed time) — the original expectation ignored the backoff rule.
+        val fresh = listOf(now - 40L * 60_000L, now - 35L * 60_000L)
         assertTrue(VerifiedInstall.repairAllowed(fresh, now))
         val capped = fresh + (now - 30_000L)          // three today
         assertFalse(VerifiedInstall.repairAllowed(capped, now))
