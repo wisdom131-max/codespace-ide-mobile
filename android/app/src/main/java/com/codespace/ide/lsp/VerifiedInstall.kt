@@ -73,11 +73,16 @@ object VerifiedInstall {
 
     fun walk(root: File): List<FileMeta> {
         val out = mutableListOf<FileMeta>()
-        fun rec(f: File, rel: String) {
-            if (f.isDirectory) {
-                f.listFiles()?.sortedBy { it.name }?.forEach { rec(it, rel + it.name + "/") }
-            } else if (f.isFile) {
-                out.add(FileMeta(rel + f.name, f.length()))
+        // BATCH6-P3 RED FIX (CI run 39066058431, walk_realTempTree FAILED): the first
+        // version appended the child name into rel for EVERY child — files got their
+        // name twice ("bin/jdtls/jdtls"). The dir's own rel is built when it is
+        // ENTERED; a file's rel is exactly its parent's.
+        fun rec(f: File, rel: String) { // rel: f's dir path with trailing slash
+            val children = f.listFiles()?.sortedBy { it.name } ?: return
+            for (child in children) {
+                val childRel = rel + child.name
+                if (child.isDirectory) rec(child, childRel + "/")
+                else if (child.isFile) out.add(FileMeta(childRel, child.length()))
             }
         }
         rec(root, "")
