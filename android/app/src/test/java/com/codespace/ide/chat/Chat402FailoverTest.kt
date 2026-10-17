@@ -67,7 +67,11 @@ class Chat402FailoverTest {
             }
         }
         assertEquals(2, calls) // one pass through BOTH keys, then the verdict
-        assertEquals("no switch notice when there is no next key", 0, notices.size)
+        // The key1->key2 switch DOES notify (a next key exists); only the FINAL
+        // 402 (no next key) emits nothing. Proven by the JVM repro of run 3220.
+        assertEquals("one notice: the key1->key2 switch; none for the final 402", 1, notices.size)
+        assertTrue("notice names the key1->key2 switch", notices[0].contains("Switched to key 2 of 2"))
+        assertTrue("no phantom 'Switched to key 3' notice", notices.none { it.contains("key 3") })
         assertEquals(402, he!!.statusCode)
         assertTrue("verdict keeps the out-of-credits message", he!!.message!!.contains("OUT OF CREDITS"))
         assertTrue("verdict says no other working key", he!!.message!!.contains("no other working key"))

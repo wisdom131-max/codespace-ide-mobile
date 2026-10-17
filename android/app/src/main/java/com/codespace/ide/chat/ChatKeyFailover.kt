@@ -115,7 +115,7 @@ object ChatKeyFailover {
                     if (he.statusCode == 402 && Chat402FailoverSetting.isEnabled()) {
                         if (ci + 1 < candidates.size) {
                             onInfo?.invoke("Switched to key " + (ci + 2) + " of " + candidates.size +
-                                " \\u2014 previous key's account is out of credits (402)")
+                                " \u2014 previous key's account is out of credits (402)")
                         }
                         lastError = he
                         break
