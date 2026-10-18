@@ -112,9 +112,12 @@ class IdeTerminalBridgeShapeTest {
         // matches the WHOLE 'File "..." , line N' phrase, and the tap offset
         // only needs to be INSIDE that range — so tapping the words "line" or
         // the number ALSO returns the path. A generous hitbox, not a bug.
-        assertEquals("/x/y.py:3", tok("File \"/x/y.py\", line 3", "line"))
-        // Tapping OUTSIDE the gcc match (the word File) hits no span: null.
-        assertNull(tok("File \"/x/y.py\", line 3", "File"))
+        // RED FIX (CI run 39066678307): the word "File" is the FIRST char of the
+        // gcc match, so tapping it is INSIDE the hitbox too. A genuinely OUTSIDE
+        // tap needs text before the phrase: "error:" is not part of any match.
+        val row = "error: File \"/x/y.py\", line 3"
+        assertEquals("/x/y.py:3", tok(row, "line"))
+        assertNull(tok(row, "error"))
     }
 
     @Test fun bareNameNoExtension_nullAndSilentlyUnresolvable() {
