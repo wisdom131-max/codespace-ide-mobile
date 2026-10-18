@@ -196,11 +196,13 @@ object IdeTerminalBridge {
         token: String,
         projectId: String? = null,
         lockedRoot: String? = null,
+        /** BATCH10-P0: DIAG-only tap-run id for [TAPDIAG] correlation (no behavior change). */
+        diagId: Int? = null,
     ): TappedLinkResult {
         return try {
             val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
-                    resolveTappedFileLink(context, session, token, projectId, lockedRoot)
+                    resolveTappedFileLink(context, session, token, projectId, lockedRoot, diagId)
                 }
             }
             if (r != null) TappedLinkResult(r.first, r.second, false)
@@ -227,8 +229,9 @@ object IdeTerminalBridge {
         token: String,
         projectId: String? = null,
         lockedRoot: String? = null,
+        diagId: Int? = null,
     ): Pair<File, Int>? {
-        val resolved = resolveTappedFileLinkUnscoped(context, session, token, projectId)
+        val resolved = resolveTappedFileLinkUnscoped(context, session, token, projectId, diagId)
         if (resolved == null) return null
         if (lockedRoot != null) {
             val lockCanonical = try { File(lockedRoot).canonicalPath } catch (_: Exception) { File(lockedRoot).absolutePath }
@@ -247,6 +250,7 @@ object IdeTerminalBridge {
         session: com.termux.terminal.TerminalSession?,
         token: String,
         projectId: String? = null,
+        diagId: Int? = null,
     ): Pair<File, Int>? {
         // Advisor Part 3 cap: an absurdly long "token" is not probed at all.
         if (token.isBlank() || token.length > MAX_TOKEN_LENGTH) return null
@@ -255,7 +259,7 @@ object IdeTerminalBridge {
         // token as extracted FIRST, then progressively drop leading chunks. No-space
         // tokens produce a single candidate = exactly the old behavior.
         for (candidate in linkCandidates(token.trim().trimEnd(':', ',', ';'))) {
-            val r = resolveSingleToken(context, session, candidate, projectId)
+            val r = resolveSingleToken(context, session, candidate, projectId, diagId)
             if (r != null) return r
         }
         return null
@@ -303,9 +307,31 @@ object IdeTerminalBridge {
         session: com.termux.terminal.TerminalSession?,
         token: String,
         projectId: String?,
+        diagId: Int? = null,
     ): Pair<File, Int>? {
         val (pathPart, lineNum) = parseFileLinkToken(token)
         val appCtx = context.applicationContext
+        // BATCH10-P0 (advisor Bug 2): DIAG-ONLY — the IO-side facts of the run:
+        // the /proc-read session cwd (the value branch 3 actually uses, read on
+        // this IO thread, never main) correlated with the main-thread [TAPDIAG] id.
+        if (diagId != null) {
+            val procCwd = try { session?.cwd } catch (_: Exception) { null }
+            // Roots count + loaded state (advisor Bug 2 fact) — probed ON THIS IO
+            // thread, never main (File.exists on FUSE can stall; standing rule).
+            val diagRoots = try {
+                if (projectId == null) emptyList()
+                else com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(appCtx, projectId)
+            } catch (_: Exception) { emptyList() }
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[TAPDIAG] id=" + diagId + " resolve-enter" +
+                    " candidate='" + token.take(60) + "'" +
+                    " sessionCwdProc='" + procCwd + "'" +
+                    " roots=" + (if (projectId == null) "none(projectId=null)" else diagRoots.size.toString()) +
+                    " rootsList='" + diagRoots.joinToString("|").take(120) + "'" +
+                    " pid=" + (try { session?.pid ?: -1 } catch (_: Exception) { -1 }),
+                CHANNEL,
+            )
+        }
         // TAP-DIAG: every step logs to the Output tab (terminal channel) so the next
         // on-device test pinpoints exactly WHERE resolution fails instead of failing
         // silently. token=what was extracted from the tap, pathPart/lineNum=what each

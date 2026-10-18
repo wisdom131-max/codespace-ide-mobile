@@ -405,6 +405,30 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                         "tap", "stage 1 done: extracted '" + (spanToken ?: word).take(80) + "' span=" + (spanToken != null) +
                             " (mode=" + tapMode + ") " + com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(v.context),
                     )
+                    // BATCH10-P0 (advisor Bug 2): DIAG-ONLY, NO BEHAVIOR CHANGE. One
+                    // structured line per handler RUN (not per tap — two lines per
+                    // physical tap are EXPECTED and are the point). Facts requested:
+                    // mode + source, cwd + source (633 here; /proc value logs IO-side),
+                    // roots count + loaded state, session id, unique run id. Everything
+                    // here is a prefs or in-memory read — no new file/proc I/O on main.
+                    val tapDiagId = tapDiagCounter.incrementAndGet()
+                    val diagState = try {
+                        com.codespace.ide.terminal.shellintegration.ShellIntegrationState.forSession(v.mTermSession)
+                    } catch (_: Exception) { null }
+                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                        "[TAPDIAG] id=" + tapDiagId +
+                            " mode=" + tapMode + " source=link_tap_prefs" +
+                            " span=" + (spanToken != null) +
+                            " token='" + (spanToken ?: word).take(60) + "'" +
+                            " projectId='" + projectId + "'" +
+                            " roots=io-side(deferred)" +
+                            " cwd633='" + (diagState?.currentCwd ?: "null") + "'" +
+                            " sessionPid=" + (try { v.mTermSession?.pid ?: -1 } catch (_: Exception) { -3 }) +
+                            " sessionHash=" + (try { System.identityHashCode(v.mTermSession) } catch (_: Exception) { -4 }) +
+                            " lockedRoot='" + (try { lockedRootProvider?.invoke() } catch (_: Exception) { "<err>" }) + "'" +
+                            " resolveScope=" + (resolveScope != null),
+                        "terminal",
+                    )
                     if (tapMode != com.codespace.ide.terminal.LinkTapModeStore.Mode.OFF) {
                         val mapLine = "[TAP] map: row=" + colRow[1] + " col=" + colRow[0] +
                             " topRow=" + v.topRow + " font=" + currentTextSize +
@@ -435,7 +459,7 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                                 com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 3 start: resolve dispatched async '" + linkToken.take(80) + "'")
                                 scope.launch {
                                     val r = com.codespace.ide.terminal.IdeTerminalBridge
-                                        .resolveTappedFileLinkAsync(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke())
+                                        .resolveTappedFileLinkAsync(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke(), tapDiagId)
                                     com.codespace.ide.diagnostics.CrumbLog.crumbSync(
                                         "tap", "stage 3 done: " +
                                             (if (r.file != null) "RESOLVED " + r.file.absolutePath + ":" + r.line
@@ -531,6 +555,13 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     // Advisor Part 3 (2026-10-16): the pane's main-thread scope — when present, the
     // file-link resolve runs on Dispatchers.IO with a time limit and posts back here.
     var resolveScope: kotlinx.coroutines.CoroutineScope? = null
+    // BATCH10-P0 (advisor Bug 2, 2026-10-18): DIAG-only unique tap-run id. Android's
+    // GestureDetector fires onSingleTapUp AND onSingleTapConfirmed for ONE physical
+    // tap (see GestureAndScaleRecognizer: BOTH route to mListener.onSingleTapUp), so
+    // the handler runs TWICE per tap — every [TAPDIAG] pair with the same second and
+    // DIFFERENT ids is one physical tap, making duplicates visible in the logs.
+    private val tapDiagCounter = java.util.concurrent.atomic.AtomicInteger(0)
+
     var onNewTab:      (() -> Unit)? = null
     var onCloseTab:    (() -> Unit)? = null
     var onPrevTab:     (() -> Unit)? = null
