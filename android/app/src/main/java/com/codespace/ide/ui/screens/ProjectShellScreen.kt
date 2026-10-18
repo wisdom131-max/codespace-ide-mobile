@@ -5,6 +5,7 @@ import android.os.VibrationEffect
 import android.media.AudioManager
 import android.media.ToneGenerator
 import com.codespace.ide.ui.panels.ToolchainPanel
+import com.codespace.ide.ui.NotificationFeedback
 import com.codespace.ide.ui.WorkspaceShapes
 import com.codespace.ide.data.NotificationStore
 import com.codespace.ide.ui.screens.NotificationDrawerOverlay
