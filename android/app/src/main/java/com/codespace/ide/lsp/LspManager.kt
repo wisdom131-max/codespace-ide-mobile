@@ -1011,7 +1011,7 @@ object LspManager {
                         setServerState(lang, LspState.IDLE_CLOSE, "idle ${idleTimeoutSeconds / 1000}s")
                         lifecycleLog("IDLE_CLOSE lang=${lang.displayName} gen=${server.generation} — idle ${idleTimeoutSeconds / 1000}s")
             notifyLspEvent(lang, "idle_close", NotificationStore.Severity.INFO, "Server idle for ${idleTimeoutSeconds / 1000}s — shutting down to save memory.")
-                        stopServer(lang)
+                        stopServerAsync(lang, "idle")
                         lastActivity.remove(lang)
                     }
                 }
@@ -1467,17 +1467,78 @@ object LspManager {
         Thread(r, "LSP-Restart")
     }
 
+    // BATCH9-P1a (advisor ruling 2026-10-18): the lifecycle executor — ONE owner
+    // thread for every start/stop/restart command. A generation counter alone
+    // cannot prevent overlapping instances; commands must QUEUE. All lifecycle
+    // state changes happen inside tasks on this thread (and under lifecycleLock).
+    private val lifecycleExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "LSP-Lifecycle")
+    }
+    @Volatile private var lifecycleThread: Thread? = null
+
+    // P1a: stop-request coordination with in-flight DEDUPE — see LspLifecycle.kt.
+    // requestStop returns IMMEDIATELY on ANY caller thread (MAIN included); the
+    // stop chain itself runs on the lifecycle executor.
+    private val stopCoordinator = StopCoordinator(lifecycleExecutor)
+
+    init {
+        // capture the executor's thread for reentrancy checks (a task that calls
+        // back into a blocking wrapper on its own thread would self-deadlock)
+        lifecycleExecutor.execute { lifecycleThread = Thread.currentThread() }
+    }
+
     fun startServer(context: Context, language: Language, workspacePath: String, projectId: String? = null): Boolean {
         // Advisor A.2 (2026-10-15): LSP start spawns node/JVM servers — the biggest
         // memory spike the app can cause. Breadcrumb it before it happens.
         com.codespace.ide.diagnostics.CrumbLog.crumb(
             "lsp", "startServer " + language.displayName + " " + com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(context),
         )
-        return startServerInner(context, language, workspacePath, projectId)
+        // BATCH9-P1a: starts QUEUE on the single-thread lifecycle executor, exactly
+        // like stops. The caller blocks on the result exactly as before (callers are
+        // already on Dispatchers.IO in NonCancellable context) — but no OTHER command
+        // can interleave with the spawn. If we are already ON the executor thread
+        // (internal re-entry), run inline to avoid a self-deadlock.
+        if (isOnLifecycleThread()) return startServerSerialized(context, language, workspacePath, projectId)
+        val future = java.util.concurrent.CompletableFuture<Boolean>()
+        lifecycleExecutor.execute {
+            try {
+                future.complete(startServerSerialized(context, language, workspacePath, projectId))
+            } catch (t: Throwable) {
+                future.completeExceptionally(t)
+            }
+        }
+        return try {
+            future.get()
+        } catch (e: java.util.concurrent.ExecutionException) {
+            throw (e.cause ?: e)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        } catch (_: Exception) {
+            false
+        }
     }
 
-    private fun startServerInner(context: Context, language: Language, workspacePath: String, projectId: String? = null): Boolean =
-        synchronized(lifecycleLock) { startServerLocked(context, language, workspacePath, projectId) }
+    private fun isOnLifecycleThread(): Boolean = Thread.currentThread() === lifecycleThread
+
+    /**
+     * BATCH9-P1a: the serialized start. Runs ONLY on the lifecycle executor thread
+     * (or inline when already on it), under the lifecycle lock.
+     *
+     * PROJECT SWITCH — stop-before-start with generation safety: if this start is for
+     * a DIFFERENT project than the last one, every server of the old project is
+     * stopped FIRST (synchronously, serialized — no overlap possible). The stale
+     * async results of that teardown cannot affect the new project's servers: the
+     * start that follows runs on the same thread, after the stops.
+     */
+    private fun startServerSerialized(context: Context, language: Language, workspacePath: String, projectId: String?): Boolean =
+        synchronized(lifecycleLock) {
+            if (projectId != null && lastProjectId != null && projectId != lastProjectId) {
+                AppOutputLog.log("[LSP] PROJECT_SWITCH: stopping old-project servers before starting for '$projectId'", "lsp")
+                servers.keys.toList().forEach { stopServerLocked(it, "PROJECT_SWITCH") }
+            }
+            startServerLocked(context, language, workspacePath, projectId)
+        }
 
     private fun startServerLocked(context: Context, language: Language, workspacePath: String, projectId: String?): Boolean {
         lastProjectId = projectId
@@ -1547,7 +1608,7 @@ object LspManager {
                 }
             }
             AppOutputLog.log("[LSP] ${language.displayName} server found but dead (isAlive=${existing.process.isAlive}) — restarting", "lsp")
-            stopServer(language)
+            stopServerLocked(language, "replace-dead-instance")
         }
 
         // Phase V-A: Transition to STARTING
@@ -2010,7 +2071,7 @@ object LspManager {
         if (response == null) {
             Log.e(TAG, "startServer: LSP initialize TIMED OUT for ${language.displayName}")
             AppOutputLog.log("[LSP] ERROR: initialize failed for ${language.displayName} — server process alive=${process.isAlive}. Check [LSP][rpc] messages above for cause (TIMEOUT vs CONNECTION ERROR).", "lsp")
-            stopServer(language)
+            stopServerLocked(language, "initialize-failed")
             return false
         }
         Log.d(TAG, "startServer: initialize response for ${language.displayName}: ${response.toString().take(200)}")
@@ -2558,9 +2619,60 @@ object LspManager {
 
     // LS09: stopServer shares the lifecycle lock — teardown can no longer interleave
     // with a concurrent startServer's spawn/register section.
-    fun stopServer(language: Language): Unit = synchronized(lifecycleLock) { stopServerLocked(language) }
+    //
+    // BATCH9-P1a: ALL app-code callers use the ASYNC path now (stopServerAsync /
+    // stopAllAsync) — a stop NEVER blocks the caller thread, MAIN included. The
+    // blocking wrappers below remain for compatibility/tests and block the CALLING
+    // thread until the queued chain runs; app code must not call them on MAIN.
+    fun stopServer(language: Language): Unit = stopServerAsync(language, "stopServer-sync").get()
 
-    private fun stopServerLocked(language: Language) {
+    /**
+     * P1a: the async stop — the ONE API every caller uses. Returns immediately;
+     * the stop chain (shutdown -> exit -> destroy -> destroyForcibly) runs on the
+     * lifecycle executor, serialized with starts and other stops.
+     *
+     * IN-FLIGHT DEDUPE: a second request for the same language while a stop is
+     * queued or running returns the SAME future (StopCoordinator).
+     *
+     * STALE-REQUEST DISCARD: the request captures the registered server INSTANCE.
+     * If the registered server was REPLACED between request and run (crash +
+     * auto-restart, or another project's start), the stop is discarded — killing
+     * the replacement would tear down a server this request never knew about.
+     */
+    fun stopServerAsync(language: Language, reason: String = "manual"): java.util.concurrent.CompletableFuture<Unit> {
+        val captured = servers[language]
+        return stopCoordinator.requestStop(language.name) {
+            val current = servers[language]
+            if (!LspStateMachine.shouldExecuteStop(currentServerIsCapturedInstance = current === captured, stopAll = false)) {
+                lifecycleLog("STOP_DISCARDED lang=" + language.displayName + " reason=" + reason + " — registered server was replaced while the request was queued (captured gen=" + (captured?.generation ?: 0) + " current gen=" + (current?.generation ?: 0) + ")")
+                return@requestStop
+            }
+            val capturedGen = captured?.generation ?: 0
+            synchronized(lifecycleLock) { stopServerLocked(language, reason) }
+            if (!LspStateMachine.shouldMarkStopped(capturedGen, generationCounters[language] ?: capturedGen)) {
+                lifecycleLog("STOP_STATE_DISCARDED lang=" + language.displayName + " — a newer generation started while the stop ran; not clobbering its state")
+            }
+        }
+    }
+
+    /**
+     * P1a: async stop-everything (master toggle off, teardown). Unlike the
+     * per-language stop there is NO stale-instance discard — the intent is
+     * "stop whatever is running". Serialized on the lifecycle executor.
+     */
+    fun stopAllAsync(reason: String = "stopAll"): java.util.concurrent.CompletableFuture<Unit> {
+        val keys = servers.keys.toList()
+        if (keys.isEmpty()) return java.util.concurrent.CompletableFuture.completedFuture(Unit)
+        val futures = keys.map { stopServerAsync(it, reason) }
+        val combined = java.util.concurrent.CompletableFuture<Unit>()
+        java.util.concurrent.CompletableFuture.allOf(*futures.toTypedArray())
+            .whenComplete { _, _ -> combined.complete(Unit) }
+        return combined
+    }
+
+    fun stopAll(): Unit = stopAllAsync("stopAll").get()
+
+    private fun stopServerLocked(language: Language, reason: String = "manual") {
         val server = servers.remove(language) ?: return
         // Phase V-A: Transition to STOPPING
         setServerState(language, LspState.STOPPING)
@@ -2590,14 +2702,18 @@ object LspManager {
         server.client.stop()
         // Phase V-B: Stop the process exit monitor
         processMonitors.remove(language)?.let { it.interrupt() }
-        lifecycleLog("SHUTDOWN lang=${language.displayName} gen=${server.generation} — complete")
+        lifecycleLog("SHUTDOWN lang=${language.displayName} gen=${server.generation} reason=$reason — complete")
         setServerState(language, LspState.STOPPED)
         Log.d(TAG, "LSP server stopped for ${language.displayName}")
         AppOutputLog.log("[LSP] Server stopped for ${language.displayName}", "lsp")
     }
 
-    fun stopAll() {
-        servers.keys.toList().forEach { stopServer(it) }
+    // BATCH9-P1a: the original stopAll body survives as the SERIALIZED teardown used
+    // by callers that must ALSO take down the ctags secondary server and the
+    // monitor executors (app teardown). The async stopAllAsync covers per-language
+    // primaries; this full teardown remains for explicit teardown callers.
+    fun teardownAllLocked(reason: String = "stopAll") {
+        servers.keys.toList().forEach { stopServerLocked(it, reason) }
         // P50-3: Also stop ctags-lsp secondary server
         ctagsServer?.let { server ->
             try {
@@ -2635,6 +2751,26 @@ object LspManager {
     ): Boolean {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
+        // BATCH9-P1a: HOISTED OPEN-DOC REGISTRY. server.trackedDocuments is the
+        // manager-side set of documents the SERVER has actually received — the pane's
+        // lspOpenedFiles map is a per-pane mirror only. A re-fired Effect-A after a
+        // pane switch (fresh pane, empty mirror) can no longer send a DUPLICATE
+        // didOpen for a document this server already holds (VS Code _syncedDocuments
+        // pattern). Content drift while the pane was away is synced via didChange —
+        // never a second didOpen, which is protocol-illegal for an open document.
+        val tracked = server.trackedDocuments[uri]
+        when (val decision = didOpenDecision(tracked?.version, tracked?.content, text, nextDocumentVersion(uri))) {
+            is DidOpenAction.SendDidOpen -> { /* fall through to the send below */ }
+            is DidOpenAction.DedupeNoop -> {
+                AppOutputLog.log("[LSP] didOpen DEDUPE — server already holds $uri (v${tracked?.version}), no duplicate send", "lsp")
+                touchActivity(language)
+                return true
+            }
+            is DidOpenAction.DedupeSyncViaDidChange -> {
+                AppOutputLog.log("[LSP] didOpen DEDUPE with drift — syncing $uri via didChange (v${tracked?.version} -> v${decision.version}) instead of a duplicate didOpen", "lsp")
+                return didChange(language, uri, text, decision.version)
+            }
+        }
         val params = LspDocumentSync.buildDidOpenParams(uri, languageId, text, version)
         val sendOutcome = server.client.notifyOutcome("textDocument/didOpen", params)
         if (!sendOutcome) {

@@ -744,6 +744,21 @@ fun SettingsScreen(
                         com.codespace.ide.lsp.VerifiedInstall.allowManualRepair(context, com.codespace.ide.domain.Language.JAVA.name)
                         android.widget.Toast.makeText(context, "Repair started — see Output", android.widget.Toast.LENGTH_LONG).show()
                         Thread {
+                            // BATCH9-P1a: the repair STOPS THE RUNNING JAVA SERVER FIRST
+                            // (advisor P1a: jdtls repair stops the live server before the
+                            // /opt swap). A synchronous stop would block this daemon thread
+                            // for the whole 5s shutdown chain, so the repair thread AWAITS
+                            // the async stop with a bounded 45s cap and reports honestly if
+                            // the stop did not finish (install may then swap under a live
+                            // server — visible in Output, not silent).
+                            try {
+                                com.codespace.ide.lsp.LspManager.stopServerAsync(
+                                    com.codespace.ide.domain.Language.JAVA, "jdtls-repair",
+                                ).get(45, java.util.concurrent.TimeUnit.SECONDS)
+                                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] Repair: Java server stopped — swapping the jdtls install", "lsp")
+                            } catch (_: Exception) {
+                                com.codespace.ide.diagnostics.AppOutputLog.log("[LSP] Repair: Java server stop timed out — proceeding; the install may swap under a live server", "lsp")
+                            }
                             com.codespace.ide.lsp.LspManager.installServer(context, com.codespace.ide.domain.Language.JAVA)
                         }.apply { isDaemon = true; name = "ManualJdtlsRepair"; start() }
                     }) { Text("Repair") }

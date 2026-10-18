@@ -470,15 +470,19 @@ fun EditorPane(
     // LS03 (P4b): per-language on-demand restart throttle (epoch ms of last attempt).
     val lspRestartLastAttempt = remember { java.util.concurrent.ConcurrentHashMap<com.codespace.ide.domain.Language, Long>() }
 
-    // P24-2: LSP server teardown — stop all servers when EditorPane leaves composition
-    DisposableEffect(Unit) {
-        onDispose {
-            // stopAll sends LSP shutdown + exit to every running server, killing their processes.
-            // No need to individually didClose each file — shutdown covers it.
-            try { LspManager.stopAll() } catch (_: Exception) {}
-            lspOpenedFiles.clear()
-        }
-    }
+    // BATCH9-P1a (advisor ruling 2026-10-18, owner watchdog evidence): the pane-
+    // switch teardown hook is DELETED. Root cause of the multi-minute freezes:
+    // every EditorPane dispose (a PANE SWITCH — not an app exit) ran
+    // LspManager.stopAll() ON THE MAIN THREAD: JsonRpcClient.request("shutdown")
+    // blocks on CompletableFuture.get (up to 5s per server) and Process.waitFor
+    // adds more — the owner's watchdog caught 77.6s, 45.2s and 146.0s stalls, and
+    // every return trip re-started jdtls (8-30s init + full RAM). No editor in the
+    // surveyed sample (VS Code, Zed, IntelliJ LSP4IJ, Neovim, eglot, Helix) stops
+    // servers on a view switch. Servers are owned by LspManager, project-scoped;
+    // they now stop ONLY on: master toggle off, diagnosticsSource/TS-version change
+    // (restart), project switch (stop-before-start), repair, the background idle
+    // policy (P1b), or app process death. Pane leaves of composition only stop
+    // MIRROR state (lspOpenedFiles), never the servers.
 
     // Phase V-D / FIX-A / FIX-C / LS11 (P4b): the 2s GEN-WATCH + POLL-CLEANUP loop is
     // DELETED — it ran forever in EVERY editor instance (multiplying per split view)
@@ -1707,7 +1711,7 @@ fun EditorPane(
             val pyLang = com.codespace.ide.domain.Language.PYTHON
             if (LspManager.isServerRunning(pyLang)) {
                 AppOutputLog.log("[LSP] diagnosticsSource changed — restarting Python server with the new source", "lsp")
-                LspManager.stopServer(pyLang)
+                LspManager.stopServerAsync(pyLang, "diagnosticsSource-change")
                 if (projectRootPath != null) {
                     withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
                         LspManager.startServer(context, pyLang, projectRootPath, projectId)
@@ -1724,7 +1728,7 @@ fun EditorPane(
             for (lang in listOf(com.codespace.ide.domain.Language.TYPESCRIPT, com.codespace.ide.domain.Language.JAVASCRIPT)) {
                 if (!LspManager.isServerRunning(lang)) continue
                 AppOutputLog.log("[LSP] typescriptVersion changed — restarting ${lang.displayName} server with the new version", "lsp")
-                LspManager.stopServer(lang)
+                LspManager.stopServerAsync(lang, "typescriptVersion-change")
                 if (projectRootPath != null) {
                     withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
                         LspManager.startServer(context, lang, projectRootPath, projectId)

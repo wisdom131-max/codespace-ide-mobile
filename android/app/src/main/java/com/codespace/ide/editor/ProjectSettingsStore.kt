@@ -280,8 +280,12 @@ object ProjectSettingsStore {
         prefs.edit().putBoolean("lsp_enabled", value).apply()
         syncToJson("lsp_enabled", value)
         if (!value) {
-            // TEST-70-FIX: Stop all running LSP servers immediately when toggle is turned off
-            com.codespace.ide.lsp.LspManager.stopAll()
+            // TEST-70-FIX: Stop all running LSP servers when the toggle is turned off.
+            // BATCH9-P1a: the stop is now ASYNC — this setter runs on the MAIN thread
+            // (a Compose toggle handler) and the old synchronous stopAll blocked it on
+            // shutdown request + Process.waitFor per server. stopAllAsync returns
+            // immediately; the stop chains run on the lifecycle executor.
+            com.codespace.ide.lsp.LspManager.stopAllAsync("lsp-disabled")
         }
         // When re-enabled, EditorPane's LaunchedEffect watches lspEnabled and restarts servers
     }

@@ -2,10 +2,6 @@ package com.codespace.ide.ui.panes
 
 import android.content.Context
 import androidx.compose.runtime.MutableState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import com.codespace.ide.domain.EditorTab
@@ -67,15 +63,12 @@ internal fun closeEditorTabInternal(
     if (activeId.value == tab.id || activeId.value == splitIdForClosed) {
         activeId.value = tabs.getOrNull(idx - 1)?.id ?: tabs.firstOrNull()?.id
     }
-    // P24-2: Stop server if no more files open for this language (30s grace)
-    val remainingForLang = tabs.count { it.language == closedLang }
-    if (remainingForLang == 0 && LspManager.isServerRunning(closedLang)) {
-        GlobalScope.launch(Dispatchers.IO) {
-            delay(30_000) // 30s idle grace period
-            val stillZero = tabs.count { it.language == closedLang } == 0
-            if (stillZero) {
-                try { LspManager.stopServer(closedLang) } catch (_: Exception) {}
-            }
-        }
-    }
+    // BATCH9-P1a (advisor addition 5, ruling 2026-10-18): CLOSING A DOCUMENT NEVER
+    // STOPS ITS SERVER. The old P24-2 last-tab-close path stopped the language's
+    // server 30s after the final tab of that language closed — a foreground
+    // in-session stop that contradicts the approved lifetime policy (servers stay
+    // alive while the app is open; only the BACKGROUND idle policy of P1b, an
+    // explicit user action, a project switch, or process death stops them). Left
+    // running: didClose-before-removal ordering, lspOpenedFiles cleanup, the
+    // split-view cascade and activeId fixup above — all unchanged.
 }
