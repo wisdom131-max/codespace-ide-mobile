@@ -47,7 +47,7 @@ object SettingsSchema {
         SettingDef("mcp_indicator_enabled", Category.ZEN_MODE, SettingType.Bool(true), "MCP Indicator", "Show MCP status dot in status bar"),
         SettingDef("format_on_save", Category.FORMATTING, SettingType.Bool(true), "Format on Save", "Format before saving"),
         SettingDef("lsp_enabled", Category.LSP, SettingType.Bool(true), "LSP Enabled", "Master switch for all LSP servers"),
-        SettingDef("lsp_idle_timeout_seconds", Category.LSP, SettingType.Long(300L), "LSP Idle Timeout", "Idle auto-close timeout in seconds"),
+        SettingDef("lsp_background_idle_minutes", Category.LSP, SettingType.Long(30L), "LSP Background Idle Stop", "Stop servers after N minutes in background (0 = Never)"),
         SettingDef("smart_completion_enabled", Category.LSP, SettingType.Bool(true), "Smart Completion", "LSP completions with fallback"),
         SettingDef("custom_cursor_overlay", Category.CURSOR, SettingType.Bool(false), "Custom Cursor Overlay", "Draggable tap-to-type cursor"),
         SettingDef("cursor_mode", Category.CURSOR, SettingType.Enum("IN_APP", listOf("IN_APP", "SYSTEM")), "Cursor Mode", "In-app vs system cursor"),

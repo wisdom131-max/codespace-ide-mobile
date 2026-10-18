@@ -33,6 +33,15 @@ class JsonRpcClient(private val process: Process) {
     // (e.g. cancelling a completion accidentally cancelling a hover with a higher ID).
     private val pendingRequestsByMethod = ConcurrentHashMap<String, MutableMap<Long, CompletableFuture<Any?>>>()
 
+    // BATCH9-P1b: is a request in flight (both maps consulted)? Feeds the
+    // background-idle policy — a server with an unanswered request is POSTPONED,
+    // never killed (advisor addition 4).
+    fun hasPendingRequests(): Boolean {
+        if (pendingRequests.isNotEmpty()) return true
+        for (m in pendingRequestsByMethod.values) if (m.isNotEmpty()) return true
+        return false
+    }
+
     /**
      * PHASE-B/B1: hot, stale-discarded, read-only per-position queries. A NEW request
      * for one of these methods auto-cancels the still-in-flight previous one. Mutations

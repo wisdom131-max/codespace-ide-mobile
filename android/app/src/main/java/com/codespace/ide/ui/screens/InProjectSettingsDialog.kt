@@ -994,11 +994,14 @@ private fun TypeScriptVersionRow(accent: Color, textPri: Color, textSec: Color, 
  */
 @Composable
 fun LspIdleTimeoutRow(accent: Color, textPri: Color, textSec: Color, divider: Color) {
-    val options = listOf(30L to "30s", 60L to "1m", 300L to "5m", 600L to "10m", 1800L to "30m", 0L to "Never")
-    val current = ProjectSettingsStore.lspIdleTimeoutSeconds.value
-    val currentLabel = options.firstOrNull { it.first == current }?.second ?: "10s"
+    // BATCH9-P1b: the row now drives the BACKGROUND idle policy — servers stay
+    // alive unconditionally while the app is foreground; the clock counts only
+    // background time. Never / 10 / 30 (default) / 60 minutes.
+    val options = listOf(0L to "Never", 10L to "10m", 30L to "30m", 60L to "1h")
+    val current = ProjectSettingsStore.lspBackgroundIdleMinutes.value
+    val currentLabel = options.firstOrNull { it.first == current }?.second ?: "30m"
     var expanded by remember { mutableStateOf(false) }
-    
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1006,8 +1009,8 @@ fun LspIdleTimeoutRow(accent: Color, textPri: Color, textSec: Color, divider: Co
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("LSP Idle Auto-Close", color = textPri, fontSize = 14.sp)
-            Text("Close idle servers after $currentLabel", color = textSec, fontSize = 12.sp)
+            Text("LSP Background Idle Stop", color = textPri, fontSize = 14.sp)
+            Text("Stop background servers after $currentLabel", color = textSec, fontSize = 12.sp)
         }
         Box {
             Text(currentLabel, color = accent, fontSize = 14.sp, modifier = Modifier.clickable { expanded = true })
@@ -1016,7 +1019,7 @@ fun LspIdleTimeoutRow(accent: Color, textPri: Color, textSec: Color, divider: Co
                     DropdownMenuItem(
                         text = { Text(label) },
                         onClick = {
-                            ProjectSettingsStore.setLspIdleTimeoutSeconds(value)
+                            ProjectSettingsStore.setLspBackgroundIdleMinutes(value)
                             expanded = false
                         }
                     )

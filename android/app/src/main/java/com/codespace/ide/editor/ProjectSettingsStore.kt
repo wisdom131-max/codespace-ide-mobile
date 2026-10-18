@@ -95,10 +95,11 @@ object ProjectSettingsStore {
     /** Master switch for all LSP servers. When disabled, only fallback completions are used. */
     val lspEnabled: MutableState<Boolean> = mutableStateOf(true)
 
-    // ── LSP Idle Auto-Close Timeout (Phase V-I) ───────────────────────────
-    /** LSP server idle auto-close timeout in seconds. 0 = Never auto-close.
-     *  Options: 30, 60, 300, 600, 1800, 0 (Never). Default: 10 (backward compat). */
-    val lspIdleTimeoutSeconds: MutableState<Long> = mutableStateOf(300L)
+    // ── LSP Background Idle Stop (BATCH9-P1b) ───────────────────────────
+    /** Stop LSP servers after N minutes in the BACKGROUND. 0 = Never.
+     *  Options: 0 (Never), 10, 30, 60. Default: 30. While the app is FOREGROUND
+     *  servers stay alive unconditionally (owner ruling 2026-10-18). */
+    val lspBackgroundIdleMinutes: MutableState<Long> = mutableStateOf(30L)
 
     // ── Smart Completion Toggle ─────────────────────────────────────────
     /** When enabled, LSP completions take priority. If LSP doesn't respond within 5s,
@@ -209,7 +210,12 @@ object ProjectSettingsStore {
         mcpIndicatorEnabled.value = prefs.getBoolean("mcp_indicator_enabled", true)
         formatOnSaveEnabled.value = prefs.getBoolean("format_on_save", true)
         lspEnabled.value = prefs.getBoolean("lsp_enabled", true)
-        lspIdleTimeoutSeconds.value = prefs.getLong("lsp_idle_timeout_seconds", 300L)
+        // BATCH9-P1b: the old FOREGROUND idle key (lsp_idle_timeout_seconds) is
+        // intentionally NOT migrated — it measured a different quantity (idle
+        // seconds in foreground) and its old default (300s) would keep stopping
+        // foreground servers; the new background clock starts at its own default.
+        lspBackgroundIdleMinutes.value = prefs.getLong("lsp_background_idle_minutes", 30L)
+        com.codespace.ide.lsp.LspManager.setBackgroundIdleMinutes(lspBackgroundIdleMinutes.value)
         smartCompletionEnabled.value = prefs.getBoolean("smart_completion_enabled", true)
         customCursorOverlayEnabled.value = prefs.getBoolean("custom_cursor_overlay", false)
         cursorMode.value = try {
@@ -289,12 +295,12 @@ object ProjectSettingsStore {
         }
         // When re-enabled, EditorPane's LaunchedEffect watches lspEnabled and restarts servers
     }
-    fun setLspIdleTimeoutSeconds(value: Long) {
-        lspIdleTimeoutSeconds.value = value
-        prefs.edit().putLong("lsp_idle_timeout_seconds", value).apply()
-        syncToJson("lsp_idle_timeout_seconds", value)
-        // Phase V-I: Propagate to LspManager immediately
-        com.codespace.ide.lsp.LspManager.setIdleTimeout(value)
+    fun setLspBackgroundIdleMinutes(value: Long) {
+        lspBackgroundIdleMinutes.value = value
+        prefs.edit().putLong("lsp_background_idle_minutes", value).apply()
+        syncToJson("lsp_background_idle_minutes", value)
+        // BATCH9-P1b: propagate to LspManager immediately
+        com.codespace.ide.lsp.LspManager.setBackgroundIdleMinutes(value)
     }
     fun setSmartCompletionEnabled(value: Boolean) {
         smartCompletionEnabled.value = value

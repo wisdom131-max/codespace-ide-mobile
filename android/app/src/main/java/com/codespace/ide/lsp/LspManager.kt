@@ -763,7 +763,6 @@ object LspManager {
     // Auto-close: track last activity per server, shut down after 10s idle
     private val lastActivity = ConcurrentHashMap<Language, AtomicLong>()
     private val autoCloseExecutor = Executors.newSingleThreadScheduledExecutor()
-    @Volatile var autoCloseEnabled = true
     private var autoCloseScheduled = false
 
     // Phase V-A: Server state per language — authoritative lifecycle
@@ -802,8 +801,10 @@ object LspManager {
     private var memoryMonitorExecutor = Executors.newSingleThreadScheduledExecutor()
     private var memoryMonitorScheduled = false
 
-    // Phase V-I: Configurable idle timeout (seconds). 0 = never auto-close.
-    @Volatile var idleTimeoutSeconds: Long = 300_000L // default 300s (5 min)
+    // BATCH9-P1b: BACKGROUND idle timeout in MINUTES. 0 = Never. Options
+    // Never/10/30/60, default 30 (advisor + owner ruling). Replaces the old
+    // foreground idleTimeoutSeconds.
+    @Volatile var backgroundIdleMinutes: Long = 30L
 
     // Phase V-G: Health check executor
     private var healthCheckExecutor = Executors.newSingleThreadScheduledExecutor()
@@ -924,6 +925,10 @@ object LspManager {
         // Phase V-D: Tracked open documents for workspace recovery
         val trackedDocuments = ConcurrentHashMap<String, TrackedDocument>()
 
+        // BATCH9-P1b: ACTIVE $/progress tokens (begin..end) on this server — an
+        // indexing server in the background is POSTPONED by the idle policy, never killed.
+        val activeProgressTokens: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
         // MULTI-ROOT (Part B): root URIs this server instance already knows about
         // (sent at initialize or via later didChangeWorkspaceFolders "added" events).
         // Used to dedup — never send an "added" notification for a root the server
@@ -992,32 +997,69 @@ object LspManager {
     }
 
     /**
-     * Start the idle auto-close checker (called once on first server start).
-     * Phase V-I: Uses configurable idleTimeoutSeconds instead of hardcoded 10s.
+     * Start the BACKGROUND idle checker (called once on first server start).
+     * BATCH9-P1b: alive while foreground; stops servers after N background minutes.
      */
     private fun ensureAutoCloseStarted() {
         if (autoCloseScheduled) return
         autoCloseScheduled = true
+        // BATCH9-P1b: the old FOREGROUND idle close (5-min default, last-activity
+        // based) contradicted the owner ruling "alive while the app is open" and is
+        // REPLACED by the background-based policy. Alive unconditionally while
+        // foreground; the clock counts BACKGROUND time only. onTrimMemory is NOT a
+        // trigger: on Android 14 (API 34) the framework no longer delivers the
+        // memory-pressure levels to apps (deprecated API 34/35) — see the BATCH9
+        // research note; the app-went-to-background signal (AppForeground) is the
+        // only clock source.
         autoCloseExecutor.scheduleAtFixedRate({
-            if (!autoCloseEnabled) return@scheduleAtFixedRate
-            // Phase V-I: 0 means never auto-close
-            if (idleTimeoutSeconds == 0L) return@scheduleAtFixedRate
+            // foreground: cancel the clock AND every pending postponement/eligibility
+            if (AppForeground.resumed) {
+                if (backgroundSinceMs != 0L) {
+                    backgroundSinceMs = 0L
+                    idleEligibleSinceMs.clear()
+                }
+                return@scheduleAtFixedRate
+            }
+            if (backgroundSinceMs == 0L) backgroundSinceMs = System.currentTimeMillis()
             val now = System.currentTimeMillis()
-            lastActivity.entries.forEach { (lang, ts) ->
-                if (now - ts.get() > idleTimeoutSeconds) {
-                    val server = servers[lang]
-                    if (server != null && server.process.isAlive) {
-                        // Phase V-I: Idle close is NOT a crash — no restart, no backoff
-                        setServerState(lang, LspState.IDLE_CLOSE, "idle ${idleTimeoutSeconds / 1000}s")
-                        lifecycleLog("IDLE_CLOSE lang=${lang.displayName} gen=${server.generation} — idle ${idleTimeoutSeconds / 1000}s")
-            notifyLspEvent(lang, "idle_close", NotificationStore.Severity.INFO, "Server idle for ${idleTimeoutSeconds / 1000}s — shutting down to save memory.")
-                        stopServerAsync(lang, "idle")
-                        lastActivity.remove(lang)
+            servers.entries.toList().forEach { (lang, server) ->
+                if (!server.process.isAlive) return@forEach
+                val eligibleSince = idleEligibleSinceMs.getOrPut(lang) { java.util.concurrent.atomic.AtomicLong(now) }
+                val decision = BackgroundIdlePolicy.decide(
+                    minutes = backgroundIdleMinutes,
+                    backgroundSinceMs = backgroundSinceMs,
+                    nowMs = now,
+                    eligibleSinceMs = eligibleSince.get(),
+                    requestInFlight = server.client.hasPendingRequests(),
+                    progressActive = server.activeProgressTokens.isNotEmpty(),
+                    debugSessionActive = com.codespace.ide.debug.UniversalDebugManager.activeSessionId != null,
+                )
+                when (decision) {
+                    is IdleStopDecision.NotEligible -> {
+                        // background timeout not elapsed yet — the eligibility stamp
+                        // (getOrPut above) must NOT start ticking before eligibility
+                        idleEligibleSinceMs.remove(lang)
+                    }
+                    is IdleStopDecision.Postpone -> {
+                        lifecycleLog("IDLE_POSTPONE lang=" + lang.displayName + " — " + decision.exception + " (postponed " + ((now - eligibleSince.get()) / 1000) + "s, cap " + (BackgroundIdlePolicy.POSTPONE_HARD_CAP_MS / 1000) + "s)")
+                        eligibleSince.compareAndSet(0L, now)
+                    }
+                    is IdleStopDecision.Stop -> {
+                        // idle stop is NOT a crash — no restart, no backoff
+                        setServerState(lang, LspState.IDLE_CLOSE, decision.reason)
+                        lifecycleLog("IDLE_STOP lang=" + lang.displayName + " gen=" + server.generation + " reason=" + decision.reason)
+                        notifyLspEvent(lang, "idle_stop", NotificationStore.Severity.INFO, "Server stopped — app was in the background (" + (if (decision.reason == "idle-postpone-cap") "postponement cap reached" else backgroundIdleMinutes.toString() + " min") + ").")
+                        stopServerAsync(lang, decision.reason)
+                        idleEligibleSinceMs.remove(lang)
                     }
                 }
             }
-        }, 1, 1, TimeUnit.SECONDS)
+        }, 15, 30, TimeUnit.SECONDS)
     }
+
+    /** P1b: background clock + per-language eligibility stamps. */
+    @Volatile private var backgroundSinceMs: Long = 0L
+    private val idleEligibleSinceMs = java.util.concurrent.ConcurrentHashMap<Language, java.util.concurrent.atomic.AtomicLong>()
 
     /**
      * Check if the LSP server has completed the initialize handshake.
@@ -1937,9 +1979,15 @@ object LspManager {
             val message = value.optString("message", "")
             val pct = if (value.has("percentage")) " ${value.optInt("percentage")}%" else ""
             when (kind) {
-                "begin" -> AppOutputLog.log("[LSP][${language.displayName}][progress] BEGIN ${value.optString("title", "")}$pct ${message}", "lsp")
+                "begin" -> {
+                    if (token.isNotEmpty()) server.activeProgressTokens.add(token)
+                    AppOutputLog.log("[LSP][${language.displayName}][progress] BEGIN ${value.optString("title", "")}$pct ${message}", "lsp")
+                }
                 "report" -> AppOutputLog.log("[LSP][${language.displayName}][progress] ${token.take(12)}$pct ${message}", "lsp")
-                "end" -> AppOutputLog.log("[LSP][${language.displayName}][progress] END ${message}", "lsp")
+                "end" -> {
+                    if (token.isNotEmpty()) server.activeProgressTokens.remove(token)
+                    AppOutputLog.log("[LSP][${language.displayName}][progress] END ${message}", "lsp")
+                }
             }
         }
 
@@ -2607,15 +2655,12 @@ object LspManager {
      * Set the idle timeout for LSP servers.
      * @param seconds 0 = never auto-close, otherwise auto-close after N seconds idle
      */
-    fun setIdleTimeout(seconds: Long) {
-        idleTimeoutSeconds = if (seconds > 0) seconds * 1000 else 0L
-        lifecycleLog("IDLE_TIMEOUT set to " + if (seconds == 0L) "Never" else "${seconds}s")
+    fun setBackgroundIdleMinutes(minutes: Long) {
+        backgroundIdleMinutes = minutes
+        lifecycleLog("BACKGROUND_IDLE set to " + if (minutes <= 0L) "Never" else minutes.toString() + " min")
     }
 
-    /**
-     * Get the effective idle timeout in milliseconds.
-     */
-    fun getIdleTimeoutMs(): Long = idleTimeoutSeconds
+    fun getBackgroundIdleMinutes(): Long = backgroundIdleMinutes
 
     // LS09: stopServer shares the lifecycle lock — teardown can no longer interleave
     // with a concurrent startServer's spawn/register section.

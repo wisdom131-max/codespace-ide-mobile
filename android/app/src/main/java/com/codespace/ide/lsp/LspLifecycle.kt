@@ -224,3 +224,67 @@ fun didOpenDecision(
         maxOf(nextVersionCounter, trackedVersion + 1),
     )
 }
+
+/**
+ * BATCH9-P1b (advisor ruling 2026-10-18): the BACKGROUND idle policy, extracted
+ * pure so it is JVM-pinned. Owner ruling: servers stay alive UNCONDITIONALLY while
+ * the app is FOREGROUND; the idle clock counts only BACKGROUND time.
+ *
+ * Exceptions (advisor addition 4 — a server with work in flight is postponed, not
+ * killed): request in flight, active $/progress token (indexing), active debug
+ * session. Postponement is BOUNDED: the hard cap guarantees a backgrounded server
+ * cannot live forever behind a stuck exception signal.
+ */
+sealed class IdleStopDecision {
+    /** Foreground, or the background-idle setting is Never, or the timeout has not elapsed. */
+    object NotEligible : IdleStopDecision()
+
+    /** Stop now. Reason: normal background idle, or the postpone hard cap tripped. */
+    data class Stop(val reason: String) : IdleStopDecision()
+
+    /** Eligible but work is in flight — check again next tick. */
+    data class Postpone(val exception: String) : IdleStopDecision()
+}
+
+object BackgroundIdlePolicy {
+
+    /** Addition 4: maximum TOTAL postponement once a server became eligible. */
+    const val POSTPONE_HARD_CAP_MS: Long = 15L * 60_000L
+
+    const val MS_PER_MINUTE: Long = 60_000L
+
+    /**
+     * @param minutes setting in minutes; 0 = Never
+     * @param backgroundSinceMs 0 while foreground (the clock is cleared on return)
+     * @param eligibleSinceMs timestamp of the FIRST tick the server became eligible
+     */
+    fun decide(
+        minutes: Long,
+        backgroundSinceMs: Long,
+        nowMs: Long,
+        eligibleSinceMs: Long,
+        requestInFlight: Boolean,
+        progressActive: Boolean,
+        debugSessionActive: Boolean,
+    ): IdleStopDecision {
+        // foreground — alive unconditionally
+        if (backgroundSinceMs == 0L) return IdleStopDecision.NotEligible
+        // Never
+        if (minutes <= 0L) return IdleStopDecision.NotEligible
+        // the background timeout has not elapsed yet
+        if (nowMs - backgroundSinceMs < minutes * MS_PER_MINUTE) return IdleStopDecision.NotEligible
+
+        val exception = when {
+            requestInFlight -> "request in flight"
+            progressActive -> "progress active (indexing)"
+            debugSessionActive -> "debug session active"
+            else -> null
+        }
+        if (exception == null) return IdleStopDecision.Stop("idle-background")
+        // postponement is bounded — the hard cap cannot be outlived
+        if (eligibleSinceMs > 0L && nowMs - eligibleSinceMs >= POSTPONE_HARD_CAP_MS) {
+            return IdleStopDecision.Stop("idle-postpone-cap")
+        }
+        return IdleStopDecision.Postpone(exception)
+    }
+}
