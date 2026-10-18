@@ -1055,7 +1055,7 @@ object LspManager {
         // only clock source.
         autoCloseExecutor.scheduleAtFixedRate({
             // foreground: cancel the clock AND every pending postponement/eligibility
-            if (AppForeground.resumed) {
+            if (com.codespace.ide.AppForeground.resumed) {
                 if (backgroundSinceMs != 0L) {
                     backgroundSinceMs = 0L
                     idleEligibleSinceMs.clear()
