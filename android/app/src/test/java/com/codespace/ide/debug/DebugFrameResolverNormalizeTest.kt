@@ -26,6 +26,9 @@ class DebugFrameResolverNormalizeTest {
         val proj = File(root, "proj")
         assert(proj.mkdirs())
         File(proj, "src").apply { mkdirs() }
+        // RED FIX (CI 39102945989): the relative-path test asserts on src/Main.java,
+        // but the fixture never created it — resolveFrameFile correctly returned null.
+        File(proj, "src/Main.java").apply { writeText("class InSrc {}\n") }
         File(proj, "Main.py").apply { writeText("x = 1\n") }
         File(proj, "DebugJava.java").apply { writeText("class X {}\n") }
         File(proj, "Main.java").apply { writeText("class Main {}\n") }

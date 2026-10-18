@@ -77,9 +77,11 @@ class TerminalTapMapTest {
         assertEquals(0, TerminalTapMap.cellOffsetToCharOffset(decomp, 0))
         // Tap cell 1 ('s') -> char 2 (past the mark's extra java char).
         assertEquals(2, TerminalTapMap.cellOffsetToCharOffset(decomp, 1))
-        // Tap cells 10 and 11 (':' and '2') -> chars 10 and 11.
-        assertEquals(10, TerminalTapMap.cellOffsetToCharOffset(decomp, 10))
-        assertEquals(11, TerminalTapMap.cellOffsetToCharOffset(decomp, 11))
+        // Tap cells 9 and 10 (':' and '2') -> chars 10 and 11; the row has only
+        // 11 cells (0..10) — RED FIX (CI 39102945989): the draft asserted a
+        // nonexistent cell 11 and mislabeled cell 10 as ':'.
+        assertEquals(10, TerminalTapMap.cellOffsetToCharOffset(decomp, 9))
+        assertEquals(11, TerminalTapMap.cellOffsetToCharOffset(decomp, 10))
     }
 
     @Test fun tab_treatedAsOneCell_neverCorrupts() {
