@@ -819,7 +819,11 @@ object LspManager {
     // BATCH9-P1b: BACKGROUND idle timeout in MINUTES. 0 = Never. Options
     // Never/10/30/60, default 30 (advisor + owner ruling). Replaces the old
     // foreground idleTimeoutSeconds.
-    @Volatile var backgroundIdleMinutes: Long = 30L
+    // BATCH9-P1c CI red fix (run 39154816751): a public var generates JVM
+    // get/setBackgroundIdleMinutes that CLASH with the explicit fun pair below
+    // (public API for ProjectSettingsStore). Private backing field now; the funs
+    // are the only public accessors.
+    @Volatile private var backgroundIdleMinutes: Long = 30L
 
     // Phase V-G: Health check executor
     private var healthCheckExecutor = Executors.newSingleThreadScheduledExecutor()
