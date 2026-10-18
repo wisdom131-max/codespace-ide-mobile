@@ -994,21 +994,15 @@ fun ProjectShellScreen(
             severity = severity,
             source = NotificationStore.Source.SYSTEM,
         )
-        // Haptic + audio feedback: vibrate always, pop sound only when not DND
+        // BATCH7-P2 (advisor 2, 2026-10-18, device-evidence STALL 22289ms x2): the old
+        // code created a ToneGenerator on the MAIN thread, played it, and release()d
+        // it per notification — ToneGenerator.release is a NATIVE call that blocked
+        // main for 22s+ (watchdog 12:12:23 + 12:13:27, both reached from an Explorer
+        // file-open tap). ALL audio + haptic work now goes through NotificationFeedback:
+        // one shared instance created lazily and played on a background thread, never
+        // created/played/released on main, all errors swallowed, tones rate-limited.
         val dnd = NotificationStore.settings.doNotDisturb
-        try {
-            val vibrator = context.getSystemService(VibratorManager::class.java)?.defaultVibrator
-            if (dnd) {
-                // DND: vibrate only (short pulse, no sound)
-                vibrator?.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                // Normal: vibrate + pop sound
-                vibrator?.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
-                val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
-                toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
-                toneGen.release()
-            }
-        } catch (e: Exception) { /* ignore haptic/audio failures */ }
+        NotificationFeedback.playFeedback(context, silent = dnd)
     }
 
     // ── File picker launcher (Open File from hamburger menu) ──
