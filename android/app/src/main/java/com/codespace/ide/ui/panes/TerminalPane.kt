@@ -339,6 +339,21 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
             try {
                 val colRow = v.getColumnAndRow(e, true)
                 if (colRow != null && colRow.size >= 2) {
+                    // BATCH7-P1 (advisor 1e, 2026-10-18): OFF MODE FIRST. The old code ran
+                    // stage 1 (getWordAtLocation + wrapped-line reconstruction + span
+                    // extraction + the URL regex) BEFORE the mode check, so "Off" was
+                    // never a true control — a freeze in Off mode did NOT clear the link
+                    // path (RETRACTED claim). Off now returns BEFORE any extraction: no
+                    // word, no span, no URL regex, no wrapped-line read. The only work
+                    // is the coordinate mapping and one fsynced crumb.
+                    val tapModeEarly = com.codespace.ide.terminal.LinkTapModeStore.current(v.context)
+                    if (tapModeEarly == com.codespace.ide.terminal.LinkTapModeStore.Mode.OFF) {
+                        com.codespace.ide.diagnostics.CrumbLog.crumbSync(
+                            "tap", "mode OFF — tap ignored BEFORE any extraction (no word/span/URL work) " +
+                                com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(v.context),
+                        )
+                        return
+                    }
                     val word = emulator.screen?.getWordAtLocation(colRow[0], colRow[1]) ?: ""
                     // A5-SPAN (2026-09-21): getWordAtLocation splits at whitespace, so a
                     // path with spaces ("My Project/src/Main.kt:42") was cut at the space and
@@ -350,13 +365,18 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                             com.codespace.ide.terminal.IdeTerminalBridge.extractFileLinkToken(wl.text, wl.offset)
                         }
                     } catch (_: Exception) { null }
-                    // Full Termux URL regex — supports http/https/ftp/git/ssh/file/sftp/etc
-                    val urlRegex = Regex(
-                        """((?:dav|dict|dns|file|finger|ftp(?:s?)|git|gemini|gopher|http(?:s?)|imap(?:s?)|irc(?:[6s]?)|ip[fn]s|ldap(?:s?)|pop3(?:s?)|redis(?:s?)|rsync|rtsp(?:[su]?)|sftp|smb(?:s?)|smtp(?:s?)|svn(?:(?:\+ssh)?)|tcp|telnet|tftp|udp|vnc|ws(?:s?))://)""" +
-                        """((?:\S+(?::\S*)?@)?(?:(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|(?:(?:[a-z¡-￿0-9]-*)*[a-z¡-￿0-9]+)(?:(?:\.(?:[a-z¡-￿0-9]-*)*[a-z¡-￿0-9]+)*(?:\.(?:[a-z¡-￿0-9]-*){1,}[a-z¡-￿0-9]{1,}))?|/(?:(?:[a-z¡-￿0-9]-*)*[a-z¡-￿0-9]+))(?::\d{1,5})?(?:/[a-zA-Z0-9:@%\-._~!${'$'}&()*+,;=?/]*)?(?:#[a-zA-Z0-9:@%\-._~!${'$'}&()*+,;=?/]*)?)""",
-                        setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
-                    )
-                    val urlMatch = urlRegex.find(word)
+                    // Full Termux URL regex — supports http/https/ftp/git/ssh/file/sftp/etc.
+                    // BATCH7-P1: compiled ONCE (top-level TAP_URL_REGEX), and the match
+                    // runs under the extraction deadline safety net — a very long word
+                    // (a whole minified line is ONE word) can never hang the tap.
+                    val urlMatch = try {
+                        TAP_URL_REGEX.find(
+                            com.codespace.ide.terminal.TerminalLinkExtractor.DeadlineCharSequence(
+                                word,
+                                System.nanoTime() + com.codespace.ide.terminal.TerminalLinkExtractor.EXTRACTION_DEADLINE_MS * 1_000_000,
+                            )
+                        )
+                    } catch (_: Throwable) { null }
                     if (urlMatch != null) {
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
                             Uri.parse(urlMatch.value)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -390,9 +410,10 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                         com.codespace.ide.diagnostics.AppOutputLog.log(mapLine, "terminal")
                         com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", mapLine.take(320))
                     }
-                    if (tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.OFF) {
-                        com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "mode OFF — file-link tap ignored")
-                    } else if (onFileLinkTap != null) {
+                    // BATCH7-P1: OFF returns at the TOP of this handler (before any
+                    // extraction) — it can no longer reach this point, so the old
+                    // OFF branch is removed. tapMode here is LOG_TOKEN / RESOLVE / FULL.
+                    if (onFileLinkTap != null) {
                         val linkToken = (spanToken ?: word).trim()
                         // LOG_TOKEN: extract candidates and LOG them — NO file access.
                         if (tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.LOG_TOKEN) {
@@ -3282,3 +3303,12 @@ internal fun TerminalPasteAiChip(onAskAi: ((String) -> Unit)?) {
         ) { Text("\u2715", color = Color(0xFF888888), fontSize = 12.sp) }
     }
 }
+
+
+// BATCH7-P1 (advisor 1c): the tap-path URL pattern, hoisted OUT of the per-tap
+// handler — the old code compiled this on EVERY tap on the main thread.
+private val TAP_URL_REGEX: Regex = Regex(
+    """((?:dav|dict|dns|file|finger|ftp(?:s?)|git|gemini|gopher|http(?:s?)|imap(?:s?)|irc(?:[6s]?)|ip[fn]s|ldap(?:s?)|pop3(?:s?)|redis(?:s?)|rsync|rtsp(?:[su]?)|sftp|smb(?:s?)|smtp(?:s?)|svn(?:(?:\+ssh)?)|tcp|telnet|tftp|udp|vnc|ws(?:s?))://)""" +
+    """((?:\S+(?::\S*)?@)?(?:(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|(?:(?:[\p{L}0-9]-*)*[\p{L}0-9]+)(?:(?:\.(?:[\p{L}0-9]-*)*[\p{L}0-9]+)*(?:\.(?:[\p{L}0-9]-*){1,}[\p{L}0-9]{1,}))?|/(?:(?:[\p{L}0-9]-*)*[\p{L}0-9]+))(?::\d{1,5})?(?:/[a-zA-Z0-9:@%\-._~!${'$'}&()*+,;=?/]*)?(?:#[a-zA-Z0-9:@%\-._~!${'$'}&()*+,;=?/]*)?)""",
+    setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
+)

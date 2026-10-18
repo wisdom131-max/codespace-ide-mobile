@@ -171,24 +171,14 @@ object IdeTerminalBridge {
      * (caller falls back to the legacy word).
      */
     fun extractFileLinkToken(rowText: String, tapOffset: Int): String? {
-        if (tapOffset < 0 || tapOffset >= rowText.length) return null
-        val gccRegex = Regex("""File +"([^"]+)", *line +(\d+)""")
-        for (m in gccRegex.findAll(rowText)) {
-            if (!m.range.contains(tapOffset)) continue
-            return m.groupValues[1] + ":" + m.groupValues[2]
-        }
-        val spanRegex = Regex("""(?:[\w.\-/\\]+| (?=[\w.\-/\\]))+:\d+(?::\d+)?""")
-        for (m in spanRegex.findAll(rowText)) {
-            if (!m.range.contains(tapOffset)) continue
-            // Advisor follow-up (2026-10-15, CI hygiene): the span regex may
-            // START on the space before a filler word ("... at My File.kt:42"),
-            // which put a leading space INTO the token and broke resolution.
-            val token = m.value.trimEnd(':', ',', ';').trim()
-            // Same gate as the legacy path: plain words are not file links.
-            if (!token.contains('/') && !token.contains('.')) continue
-            return token
-        }
-        return null
+        // BATCH7-P1 (advisor 1c, 2026-10-18, device-evidence): the span pattern here
+        // was a nested repetition running over WHOLE wrapped lines on the MAIN thread —
+        // the owner's logs show four ANRs in three minutes with main inside
+        // Matcher.find -> ICU MatchChunkAt. The extraction now delegates to
+        // TerminalLinkExtractor: bounded window around the tap, linear one-pass
+        // scanner (no nested repetition, no backtracking), deadline-guarded regex
+        // safety net. Same token shapes and gates as before (unit-tested parity).
+        return TerminalLinkExtractor.extractFileLinkToken(rowText, tapOffset)
     }
 
     /**
