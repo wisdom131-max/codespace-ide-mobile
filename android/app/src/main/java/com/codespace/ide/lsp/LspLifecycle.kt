@@ -288,3 +288,56 @@ object BackgroundIdlePolicy {
         return IdleStopDecision.Postpone(exception)
     }
 }
+
+/**
+ * BATCH9-P1c (advisor ruling + external review, 2026-10-18): the repeated-crash
+ * circuit breaker — a ROLLING window, not a consecutive counter. VS Code parity:
+ * the existing RestartBackoff counted CONSECUTIVE restarts, which resets on any
+ * one healthy moment; a server that crashes every 40s forever never trips it (each
+ * restart "succeeds" briefly). The advisor cap: max 4 auto-restart attempts inside
+ * a rolling 3-minute window; the 5th attempt inside the window trips the breaker
+ * and the server enters FAILED_DISABLED until a MANUAL retry.
+ *
+ * Thread-safety: every method is @Synchronized — handleAutoRestart (restart
+ * executor), the process monitor (its own thread) and manualRetry (app threads)
+ * all touch the same window.
+ */
+class CrashRestartPolicy(
+    private val windowMs: Long = 3L * 60_000L,
+    private val maxAutoRestarts: Int = 4,
+) {
+    private val attemptTimestamps = ArrayDeque<Long>()
+
+    /** Record one auto-restart attempt. Old entries outside the window are trimmed. */
+    @Synchronized
+    fun recordAttempt(nowMs: Long) {
+        attemptTimestamps.addLast(nowMs)
+        trim(nowMs)
+    }
+
+    /** True while fewer than [maxAutoRestarts] attempts landed inside the window. */
+    @Synchronized
+    fun canAutoRestart(nowMs: Long): Boolean {
+        trim(nowMs)
+        return attemptTimestamps.size < maxAutoRestarts
+    }
+
+    /** Attempts currently inside the rolling window (for the give-up log line). */
+    @Synchronized
+    fun attemptsInWindow(nowMs: Long): Int {
+        trim(nowMs)
+        return attemptTimestamps.size
+    }
+
+    /** MANUAL retry only — clears the window so the user's restart always runs. */
+    @Synchronized
+    fun clear() {
+        attemptTimestamps.clear()
+    }
+
+    private fun trim(nowMs: Long) {
+        while (attemptTimestamps.isNotEmpty() && nowMs - attemptTimestamps.first() > windowMs) {
+            attemptTimestamps.removeFirst()
+        }
+    }
+}

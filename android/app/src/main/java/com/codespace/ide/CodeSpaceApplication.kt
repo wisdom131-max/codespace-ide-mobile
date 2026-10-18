@@ -82,9 +82,23 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             // Opens the LSP output log — handled by ProjectShellScreen via activeOutputTarget
             AppOutputLog.log("[Notification] View Logs action triggered", "system")
         }
-        NotificationStore.registerActionHandler("restart") { _, _ ->
-            // LSP restart is handled via LspManager — this logs the action
-            AppOutputLog.log("[Notification] Restart action triggered", "system")
+        NotificationStore.registerActionHandler("restart") { item, _ ->
+            // BATCH9-P1c: REAL manual retry — was a log-only stub. The LSP
+            // notification's dedup key is lsp:<LANGUAGE_NAME>:<event>; the language
+            // is parsed from it and LspManager.manualRetry clears the rolling
+            // crash window (FAILED_DISABLED only exits through this path) and
+            // restarts from the last known workspace. Non-LSP keys keep the old
+            // log-only behavior.
+            val key = item.deduplicationKey
+            val lang = key?.split(":")?.getOrNull(1)?.let { name ->
+                runCatching { com.codespace.ide.domain.Language.valueOf(name) }.getOrNull()
+            }
+            if (key != null && key.startsWith("lsp:") && lang != null) {
+                val accepted = com.codespace.ide.lsp.LspManager.manualRetry(lang, this)
+                AppOutputLog.log("[Notification] Restart action: manual retry for ${lang.displayName} accepted=$accepted", "system")
+            } else {
+                AppOutputLog.log("[Notification] Restart action triggered (no LSP language in dedup key: $key)", "system")
+            }
         }
         SettingsUsageTracker.init(this) // P-SETTINGS-RESTRUCTURE: track setting usage for "Commonly Used" ranking
         KeyBindingRegistry.init(this) // Load persisted keybinding overrides

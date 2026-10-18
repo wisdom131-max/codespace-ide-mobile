@@ -56,6 +56,9 @@ enum class LspState {
     RESTARTING,
     STOPPING,
     IDLE_CLOSE,
+    // BATCH9-P1c: the crash cap tripped — auto-start is BLOCKED until the user
+    // taps Retry (manual retry clears the window and re-enables).
+    FAILED_DISABLED,
 }
 
 /**
@@ -791,6 +794,18 @@ object LspManager {
     // Phase V-C: Restart backoff per language
     private val restartBackoffs = ConcurrentHashMap<Language, RestartBackoff>()
 
+    // BATCH9-P1c: the ROLLING crash window (3 min / 4 attempts) per language —
+    // replaces the consecutive-restart breaker that a crash-every-40s loop never
+    // tripped. manualRetry() is the only thing that clears it.
+    private val crashPolicies = ConcurrentHashMap<Language, CrashRestartPolicy>()
+
+    // P1c: manual retry needs the workspace the server last ran with — recorded
+    // on every start so the Retry button can restart without an editor open.
+    private val lastWorkspacePath = ConcurrentHashMap<Language, String>()
+
+    // P1c: mirror of CrashRestartPolicy's default cap for log lines (informational only)
+    private val CrashRestartPolicy_MAX_SHORT = 4
+
     // Phase V-B: Process exit monitor threads
     private val processMonitors = ConcurrentHashMap<Language, Thread>()
 
@@ -855,6 +870,33 @@ object LspManager {
         val msg = "$LSP_LOG_TAG $event"
         Log.d(TAG, msg)
         AppOutputLog.log(msg, "lsp")
+    }
+
+    /**
+     * BATCH9-P1c: STRUCTURED lifecycle line — greppable by BOTH the device
+     * round sheet AND future automation: [LSP-LIFECYCLE] server=X [project=Y]
+     * event=EV [reason=R] [gen=N] [duration_ms=D] [evidence=E].
+     * Evidence values: CONFIRMED (waited on the process exit / saw the exit code),
+     * CONFIRMED_KILL (destroyForcibly then waitFor returned), UNKNOWN (teardown
+     * raced or the wait was skipped). Every lifecycle hop emits exactly one line.
+     */
+    private fun lifecycleEvent(
+        server: String,
+        event: String,
+        project: String? = lastProjectId,
+        reason: String? = null,
+        generation: Int? = null,
+        durationMs: Long? = null,
+        evidence: String? = null,
+    ) {
+        val sb = StringBuilder("[LSP-LIFECYCLE] server=").append(server)
+        if (project != null) sb.append(" project=").append(project)
+        sb.append(" event=").append(event)
+        if (reason != null) sb.append(" reason=").append(reason)
+        if (generation != null) sb.append(" gen=").append(generation)
+        if (durationMs != null) sb.append(" duration_ms=").append(durationMs)
+        if (evidence != null) sb.append(" evidence=").append(evidence)
+        AppOutputLog.log(sb.toString(), "lsp")
     }
 
     // Phase N: LSP lifecycle notifications — push meaningful events to NotificationStore
@@ -1573,17 +1615,39 @@ object LspManager {
      * async results of that teardown cannot affect the new project's servers: the
      * start that follows runs on the same thread, after the stops.
      */
-    private fun startServerSerialized(context: Context, language: Language, workspacePath: String, projectId: String?): Boolean =
-        synchronized(lifecycleLock) {
+    private fun startServerSerialized(context: Context, language: Language, workspacePath: String, projectId: String?): Boolean {
+        val t0 = System.currentTimeMillis()
+        val ok = synchronized(lifecycleLock) {
             if (projectId != null && lastProjectId != null && projectId != lastProjectId) {
                 AppOutputLog.log("[LSP] PROJECT_SWITCH: stopping old-project servers before starting for '$projectId'", "lsp")
+                lifecycleEvent(server = "*", event = "PROJECT_SWITCH", reason = "from $lastProjectId to $projectId")
                 servers.keys.toList().forEach { stopServerLocked(it, "PROJECT_SWITCH") }
             }
             startServerLocked(context, language, workspacePath, projectId)
         }
+        // BATCH9-P1c: exactly one structured line per start hop (advisor logging spec)
+        lifecycleEvent(
+            server = language.displayName,
+            event = if (ok) "START" else "START_FAILED",
+            project = projectId,
+            generation = generationCounters[language],
+            durationMs = System.currentTimeMillis() - t0,
+        )
+        return ok
+    }
 
     private fun startServerLocked(context: Context, language: Language, workspacePath: String, projectId: String?): Boolean {
         lastProjectId = projectId
+        // P1c: remember the workspace this language last ran with — the manual
+        // Retry action restarts from here even with no editor open.
+        lastWorkspacePath[language] = workspacePath
+        // BATCH9-P1c: the crash cap tripped — auto-start is BLOCKED. Only a manual
+        // Retry (manualRetry) clears the window and re-enables. VS Code parity: a
+        // crash-looping server must not be resurrected into the same loop forever.
+        if (getServerState(language) == LspState.FAILED_DISABLED) {
+            AppOutputLog.log("[LSP] ${language.displayName} server is FAILED_DISABLED (crash cap) — auto-start blocked. Tap Retry in the notification, or re-enable from Settings.", "lsp")
+            return false
+        }
         // Master LSP toggle — when disabled, skip all LSP servers, use fallback completions only
         if (!ProjectSettingsStore.lspEnabled.value) {
             AppOutputLog.log("[LSP] LSP servers disabled in In-Project Settings — skipping startServer for ${language.displayName}", "lsp")
@@ -2430,6 +2494,7 @@ object LspManager {
                         }
                     } else ""
                     lifecycleLog("CRASH lang=${language.displayName} gen=$gen exit=$exitCode$oomIndicator")
+                    lifecycleEvent(server = language.displayName, event = "CRASH", reason = "exit=$exitCode$oomIndicator", generation = gen, evidence = "CONFIRMED")
                     if (oomIndicator.contains("OOM")) {
                         notifyLspEvent(language, "oom", NotificationStore.Severity.WARNING, "Server may have been killed by OOM (exit code $exitCode). High memory usage detected.")
                     } else {
@@ -2459,20 +2524,30 @@ object LspManager {
      */
     private fun handleAutoRestart(context: Context, language: Language, workspacePath: String) {
         val backoff = restartBackoffs.getOrPut(language) { RestartBackoff(language) }
-
-        if (!backoff.canRestart()) {
-            lifecycleLog("RESTART lang=${language.displayName} — CIRCUIT BREAKER (max ${RestartBackoff.MAX_RESTARTS} restarts exceeded)")
-            setServerState(language, LspState.STOPPED, "circuit breaker")
-            notifyLspEvent(language, "circuit_breaker", NotificationStore.Severity.ERROR, "Server repeatedly failed to start (${RestartBackoff.MAX_RESTARTS} attempts). Auto-restart disabled.", listOf(
+        // BATCH9-P1c: the ROLLING crash window (3 min / max 4 auto-restarts) is the
+        // breaker now. The old consecutive counter reset on any momentary success —
+        // a server crashing every 40s resurrected forever; the rolling window trips
+        // on the 5th attempt inside 3 minutes regardless of momentary health.
+        val policy = crashPolicies.getOrPut(language) { CrashRestartPolicy() }
+        val now = System.currentTimeMillis()
+        if (!policy.canAutoRestart(now)) {
+            val attempts = policy.attemptsInWindow(now)
+            setServerState(language, LspState.FAILED_DISABLED, "crash cap")
+            lifecycleLog("GIVE_UP lang=${language.displayName} — CRASH CAP: ${attempts} auto-restarts inside the rolling 3-min window; auto-restart DISABLED until manual Retry")
+            lifecycleEvent(server = language.displayName, event = "GIVE_UP", reason = "$attempts auto-restart attempts inside the rolling 3-min window")
+            // VS Code parity: auto-restart stops; the user is told clearly and one
+            // tap re-enables. This is the ONLY path into FAILED_DISABLED.
+            notifyLspEvent(language, "crash_cap", NotificationStore.Severity.ERROR, "Server kept crashing ($attempts restarts within 3 minutes). Auto-restart is disabled — tap Restart Manually to try again.", listOf(
                 NotificationStore.NotificationAction("restart", "Restart Manually"),
+                NotificationStore.NotificationAction("view_logs", "View Logs"),
             ))
+            AppOutputLog.log("[LSP] ${language.displayName} server: repeated crashes exceeded the limit. Auto-restart disabled — tap Restart Manually on the notification to retry.", "lsp")
             return
         }
 
         val delayMs = backoff.nextDelayMs()
-        val nextRestartCount = backoff.consecutiveRestarts + 1
-        lifecycleLog("RESTART lang=${language.displayName} attempt=$nextRestartCount/${RestartBackoff.MAX_RESTARTS} delay=${delayMs}ms")
-
+        val nextRestartCount = policy.attemptsInWindow(System.currentTimeMillis()) + 1
+        lifecycleLog("RESTART lang=${language.displayName} attempt=$nextRestartCount/${CrashRestartPolicy_MAX_SHORT} delay=${delayMs}ms (rolling 3-min window)")
         setServerState(language, LspState.RESTARTING, "attempt $nextRestartCount")
 
         // LS09: restarts run on the serialized restartExecutor (one thread for ALL
@@ -2486,8 +2561,12 @@ object LspManager {
                     lifecycleLog("RESTART lang=${language.displayName} — cancelled during backoff (server stopped)")
                     return@execute
                 }
-                // Phase V-C: Update backoff before restart attempt
+                // BATCH9-P1c: the attempt counts INTO THE ROLLING WINDOW the moment
+                // it actually begins (after the backoff sleep, past the cancel check)
+                val policy = crashPolicies[language] ?: CrashRestartPolicy()
+                policy.recordAttempt(System.currentTimeMillis())
                 restartBackoffs[language] = backoff.increment()
+                lifecycleEvent(server = language.displayName, event = "RESTART_ATTEMPT", reason = "window attempt ${policy.attemptsInWindow(System.currentTimeMillis())}", generation = generationCounters[language])
                 // Phase V-D: Save tracked documents before restart (under lock)
                 val savedDocs = synchronized(lifecycleLock) {
                     val docs: HashMap<String, TrackedDocument> =
@@ -2503,7 +2582,12 @@ object LspManager {
                 // Restart the server
                 val restarted = startServer(context, language, workspacePath, lastProjectId)
                 if (restarted) {
-                    // Phase V-D: Restore workspace — re-open all tracked documents
+                    // Phase V-D: Restore workspace — re-open all tracked documents.
+                    // BATCH9-P1c restart recovery (VS Code parity): re-send didOpen
+                    // with the LAST SAVED buffer content (trackedDocuments is kept
+                    // current by didChange), version stays monotonic (fresh process,
+                    // per-process counter) — the server comes back with full document
+                    // state, no duplicate didOpen can reach it (registry dedupe).
                     if (savedDocs.isNotEmpty()) {
                         lifecycleLog("RESTORE_DOCUMENT lang=${language.displayName} — re-opening ${savedDocs.size} document(s)")
                         for ((_, doc) in savedDocs) {
@@ -2511,13 +2595,53 @@ object LspManager {
                         }
                     }
                 } else {
-                    lifecycleLog("RESTART lang=${language.displayName} — FAILED")
+                    // BATCH9-P1c: a FAILED spawn re-enters the loop (VS Code keeps
+                    // retrying with backoff); the rolling window bounds it — the 5th
+                    // failed attempt inside 3 minutes trips GIVE_UP/FAILED_DISABLED.
+                    lifecycleEvent(server = language.displayName, event = "RESTART_FAILED", reason = "spawn failed; re-entering backoff loop")
                     setServerState(language, LspState.UNHEALTHY, "restart failed")
+                    handleAutoRestart(context, language, workspacePath)
                 }
             } catch (_: InterruptedException) {
                 lifecycleLog("RESTART lang=${language.displayName} — interrupted during backoff")
             }
         }
+    }
+
+    /**
+     * BATCH9-P1c: MANUAL retry — the only exit from FAILED_DISABLED and the only
+     * thing that clears the rolling crash window. VS Code parity: auto-restart
+     * stops at the cap; the user's explicit Restart always gets a fresh chance.
+     * Never blocks the caller (runs on the restart executor). Returns true when
+     * the retry was ACCEPTED (window cleared, restart scheduled) — NOT a promise
+     * the server came up; the structured START/START_FAILED line reports that.
+     */
+    fun manualRetry(language: Language, context: Context): Boolean {
+        val ws = lastWorkspacePath[language]
+        if (ws == null) {
+            lifecycleEvent(server = language.displayName, event = "RETRY", reason = "rejected: no known workspace for this language")
+            AppOutputLog.log("[LSP] Cannot retry ${language.displayName} — no last workspace recorded.", "lsp")
+            return false
+        }
+        lifecycleLog("RETRY lang=${language.displayName} — manual retry: clearing crash window + backoff, restarting")
+        lifecycleEvent(server = language.displayName, event = "RETRY", reason = "manual: crash window cleared")
+        crashPolicies[language]?.clear()
+        restartBackoffs.remove(language)
+        // FAILED_DISABLED blocks startServerLocked — flip to STOPPED so the retry start runs
+        setServerState(language, LspState.STOPPED, "manual retry")
+        restartExecutor.execute {
+            try {
+                val ok = startServer(context, language, ws, lastProjectId)
+                if (ok) {
+                    // Restore documents if the retry caller is an editor it will re-emit
+                    // didOpen; nothing else needed here. Backoff starts clean.
+                    restartBackoffs.remove(language)
+                }
+            } catch (e: Exception) {
+                lifecycleLog("RETRY lang=${language.displayName} — exception: ${e.message}")
+            }
+        }
+        return true
     }
 
     // ── Phase V-D: Workspace / Document Recovery ───────────────────────────
@@ -2730,6 +2854,9 @@ object LspManager {
                 server.client.notify("exit")
             }
         } catch (_: Exception) {}
+        // BATCH9-P1c: teardown evidence — did the process exit get CONFIRMED?
+        val t0 = System.currentTimeMillis()
+        var evidence = "UNKNOWN"
         // Phase V-J: Give the server a brief grace period to exit cleanly
         try {
             if (!server.process.waitFor(2, TimeUnit.SECONDS)) {
@@ -2738,8 +2865,12 @@ object LspManager {
                     // Last resort: SIGKILL
                     lifecycleLog("FORCE_KILL lang=${language.displayName} gen=${server.generation} — graceful shutdown exceeded 5s")
                     server.process.destroyForcibly()
-                    server.process.waitFor(1, TimeUnit.SECONDS)
+                    evidence = if (server.process.waitFor(1, TimeUnit.SECONDS)) "CONFIRMED_KILL" else "UNKNOWN"
+                } else {
+                    evidence = "CONFIRMED_KILL"
                 }
+            } else {
+                evidence = "CONFIRMED"
             }
         } catch (_: Exception) {
             server.process.destroyForcibly()
@@ -2748,6 +2879,15 @@ object LspManager {
         // Phase V-B: Stop the process exit monitor
         processMonitors.remove(language)?.let { it.interrupt() }
         lifecycleLog("SHUTDOWN lang=${language.displayName} gen=${server.generation} reason=$reason — complete")
+        // BATCH9-P1c: exactly one structured STOP line per stop, with duration and evidence
+        lifecycleEvent(
+            server = language.displayName,
+            event = "STOP",
+            reason = reason,
+            generation = server.generation,
+            durationMs = System.currentTimeMillis() - t0,
+            evidence = evidence,
+        )
         setServerState(language, LspState.STOPPED)
         Log.d(TAG, "LSP server stopped for ${language.displayName}")
         AppOutputLog.log("[LSP] Server stopped for ${language.displayName}", "lsp")
