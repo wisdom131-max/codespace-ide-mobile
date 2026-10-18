@@ -338,22 +338,24 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
         if (emulator != null && e != null) {
             try {
                 val colRow = v.getColumnAndRow(e, true)
-                if (colRow != null && colRow.size >= 2) {
-                    // BATCH7-P1 (advisor 1e, 2026-10-18): OFF MODE FIRST. The old code ran
-                    // stage 1 (getWordAtLocation + wrapped-line reconstruction + span
-                    // extraction + the URL regex) BEFORE the mode check, so "Off" was
-                    // never a true control — a freeze in Off mode did NOT clear the link
-                    // path (RETRACTED claim). Off now returns BEFORE any extraction: no
-                    // word, no span, no URL regex, no wrapped-line read. The only work
-                    // is the coordinate mapping and one fsynced crumb.
-                    val tapModeEarly = com.codespace.ide.terminal.LinkTapModeStore.current(v.context)
-                    if (tapModeEarly == com.codespace.ide.terminal.LinkTapModeStore.Mode.OFF) {
-                        com.codespace.ide.diagnostics.CrumbLog.crumbSync(
-                            "tap", "mode OFF — tap ignored BEFORE any extraction (no word/span/URL work) " +
-                                com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(v.context),
-                        )
-                        return
-                    }
+                // BATCH8-P2 (advisor, owner device evidence 2026-10-18): OFF mode's soft
+                // keyboard never opened — even without a tab switch. ROOT CAUSE (READ,
+                // mine): BATCH7-P1's OFF gate did a bare `return` here, which swallowed the
+                // DEFAULT tap path (requestFocus + showSoftInput) at the bottom of this
+                // handler; before BATCH7, Off fell through to it. Correct semantics per
+                // the advisor ruling: OFF skips LINK handling ONLY — no extraction, no
+                // resolve, no probe — and ALWAYS continues to the default tap, so the
+                // keyboard behaves identically in all four modes.
+                val tapModeEarly = com.codespace.ide.terminal.LinkTapModeStore.current(v.context)
+                val offMode = com.codespace.ide.terminal.LinkTapPolicy.skipsLinkHandling(tapModeEarly)
+                if (offMode) {
+                    com.codespace.ide.diagnostics.CrumbLog.crumbSync(
+                        "tap", "mode OFF — link handling SKIPPED (no word/span/URL work); " +
+                            "default tap path (focus + soft keyboard) continues " +
+                            com.codespace.ide.diagnostics.CrumbLog.memorySnapshot(v.context),
+                    )
+                }
+                if (colRow != null && colRow.size >= 2 && !offMode) {
                     val word = emulator.screen?.getWordAtLocation(colRow[0], colRow[1]) ?: ""
                     // A5-SPAN (2026-09-21): getWordAtLocation splits at whitespace, so a
                     // path with spaces ("My Project/src/Main.kt:42") was cut at the space and
@@ -410,9 +412,9 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                         com.codespace.ide.diagnostics.AppOutputLog.log(mapLine, "terminal")
                         com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", mapLine.take(320))
                     }
-                    // BATCH7-P1: OFF returns at the TOP of this handler (before any
-                    // extraction) — it can no longer reach this point, so the old
-                    // OFF branch is removed. tapMode here is LOG_TOKEN / RESOLVE / FULL.
+                    // BATCH8-P2: OFF is excluded by the !offMode guard above — tapMode
+                    // here is LOG_TOKEN / RESOLVE / FULL. (BATCH7's early `return` is gone:
+                    // it swallowed the default tap path and killed the keyboard in Off.)
                     if (onFileLinkTap != null) {
                         val linkToken = (spanToken ?: word).trim()
                         // LOG_TOKEN: extract candidates and LOG them — NO file access.
@@ -455,17 +457,28 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                                         v.mTermSession?.write("\r\n[Link] File not found: " + linkToken.trim().trimEnd(':', ',', ';') + "\r\n")
                                     }
                                 }
-                                return
+                                // BATCH8-P2: FULL returns — a resolved file is about to open
+                                // and take focus. RESOLVE does NOT: it shows the result without
+                                // opening, so the terminal keeps the keyboard (owner sheet:
+                                // the keyboard must open in every mode on a plain-text tap).
+                                if (com.codespace.ide.terminal.LinkTapPolicy.returnsEarlyAfterDispatch(tapMode)) return
                             }
                             // Fallback (no scope wired — split panel edge): the old sync path.
                             val resolved = com.codespace.ide.terminal.IdeTerminalBridge
                                 .resolveTappedFileLink(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke())
                             if (resolved != null) {
-                                com.codespace.ide.diagnostics.CrumbLog.crumb(
-                                    "tap", "resolved -> open " + resolved.first.absolutePath + ":" + resolved.second,
-                                )
-                                onFileLinkTap?.invoke(resolved.first.absolutePath, resolved.second)
-                                return
+                                if (tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.RESOLVE) {
+                                    // BATCH8-P2: the sync fallback OPENED files in Resolve mode —
+                                    // breaking the mode's show-without-open contract on the
+                                    // scope-null edge. Parity with the async path now.
+                                    v.mTermSession?.write("\r\n[Link] Resolved (Resolve mode, not opened): " + resolved.first.absolutePath + ":" + resolved.second + "\r\n")
+                                } else {
+                                    com.codespace.ide.diagnostics.CrumbLog.crumb(
+                                        "tap", "resolved -> open " + resolved.first.absolutePath + ":" + resolved.second,
+                                    )
+                                    onFileLinkTap?.invoke(resolved.first.absolutePath, resolved.second)
+                                    return
+                                }
                             }
                             // Advisor 1e (2026-10-15): a missing file must be VISIBLE,
                             // not silent — the owner tapped a link and got nothing.
