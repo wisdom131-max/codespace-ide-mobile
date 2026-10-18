@@ -52,9 +52,10 @@ android {
         // change needed); local builds print "local" + the wall clock so the stamp
         // is never absent.
         val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER") ?: "local"
+        // NOTE: java.time is NOT importable in this Kotlin-DSL script context
+        // (CI red 39168284365: "Unresolved reference: time") — java.util always is.
         val buildTime = try {
-            java.time.LocalDateTime.now()
-                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date())
         } catch (_: Exception) { "unknown" }
         buildConfigField("String", "CI_RUN_NUMBER", "\"$ciRunNumber\"")
         buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
