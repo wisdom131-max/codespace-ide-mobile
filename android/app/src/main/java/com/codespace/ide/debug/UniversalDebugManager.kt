@@ -1077,6 +1077,41 @@ object UniversalDebugManager {
 
     fun getActiveSession(): DebugSession? = sessions.values.firstOrNull { it.state == DebugState.RUNNING || it.state == DebugState.PAUSED }
 
+    /**
+     * BATCH6-P2c (advisor 2c): ONE shared frame-file normalizer at the
+     * DAP-to-UI boundary. Every language adapter's paused frames pass through
+     * here (editor band, stack panel, variables panel) — the rules live in ONE
+     * place, not per-adapter:
+     *  - ABSOLUTE source.path -> returned as-is (host translation via
+     *    canonicalHostKey is the caller's job);
+     *  - RELATIVE or BARE name -> resolved against the debuggee's OWN context
+     *    (launched file's dir + bounded ancestors + the session's workdir as a
+     *    source root);
+     *  - ambiguous, unresolvable, or no active session -> null = NO band.
+     *    NEVER a global basename match (LS06/DG11).
+     * exists() is injected so the pure core is JVM-testable; on-device it is
+     * File.exists() and runs on the adapter's paused-delivery thread (off main).
+     */
+    fun normalizeFrameFile(
+        frameFile: String,
+        exists: (String) -> Boolean = { java.io.File(it).exists() },
+    ): String? {
+        val f = frameFile.trim()
+        if (f.isEmpty()) return null
+        if (f.startsWith("/")) return f
+        val session = getActiveSession() ?: return null
+        // BATCH6-P2c: the session's HOST project root (V0-gate field) is the
+        // source root for relative/bare frame names — host terms, host-side exists().
+        val roots = listOfNotNull(session.projectRoot)
+        val resolved = com.codespace.ide.debug.DebugFrameResolver
+            .resolveFrameFile(f, session.filePath, roots, exists)
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[BAND-DIAG] normalize: in=" + f.takeLast(60) +
+                " launched=" + session.filePath.takeLast(60) +
+                " -> " + (resolved ?: "null (no unique match — no band)"), "debug")
+        return resolved
+    }
+
     // ── Breakpoint management ──────────────────────────────────────────
 
     fun addBreakpoint(filePath: String, line: Int, condition: String? = null, logMessage: String? = null) {

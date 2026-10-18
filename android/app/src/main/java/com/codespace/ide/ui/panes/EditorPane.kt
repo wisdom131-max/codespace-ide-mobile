@@ -671,29 +671,15 @@ fun EditorPane(
             // on a same-named file in a DIFFERENT folder. Frames arrive in guest
             // dialect (e.g. /root/...) — canonicalize via canonicalHostKey (host
             // file wins, else guest->host translation) and compare identity.
-            val directKey = if (frameFile.isNotEmpty())
-                com.codespace.ide.util.CanonicalPaths.canonicalHostKey(context, frameFile) else null
-            // BATCH6-P2 (advisor C, owner evidence: [BAND-DIAG] frameFile="DebugJava.java"
-            // -> frameKey=null -> match=false on every pause, while vars DID arrive):
-            // the JVM debugger reports BARE source names. Resolve against the
-            // DEBUGGEE'S OWN context — the launched file's folder + ancestors —
-            // never a global basename match (DG11/LS06). Ambiguity = NO band.
-            val frameKey = directKey ?: if (frameFile.isNotEmpty() && !frameFile.contains('/')) {
-                val launchedPath = com.codespace.ide.debug.UniversalDebugManager.getActiveSession()?.filePath
-                if (launchedPath != null) {
-                    val bare = com.codespace.ide.debug.DebugFrameResolver
-                        .resolveBareFrameFile(frameFile, launchedPath) { path -> java.io.File(path).exists() }
-                    com.codespace.ide.diagnostics.AppOutputLog.log(
-                        "[BAND-DIAG] bare-name resolve: frameFile=" + frameFile +
-                            " launched=" + launchedPath.takeLast(60) +
-                            " -> " + (bare ?: "null (no unique match — no band)"), "lsp")
-                    bare
-                } else {
-                    com.codespace.ide.diagnostics.AppOutputLog.log(
-                        "[BAND-DIAG] bare-name resolve: no active session — cannot resolve '" + frameFile + "'", "lsp")
-                    null
-                }
-            } else null
+            // BATCH6-P2c (advisor 2c): the normalize rules now live in ONE shared
+            // place at the DAP-to-UI boundary — UniversalDebugManager.normalizeFrameFile —
+            // used by every language adapter's frames (absolute passthrough; bare/relative
+            // resolved against the debuggee's own context; ambiguity = NO band). The band
+            // here only translates the result to a HOST key and decides the match.
+            val normalized = com.codespace.ide.debug.UniversalDebugManager
+                .normalizeFrameFile(frameFile) { path -> java.io.File(path).exists() }
+            val frameKey = if (normalized != null)
+                com.codespace.ide.util.CanonicalPaths.canonicalHostKey(context, normalized) else null
             val matches = frameKey != null && activeTab != null &&
                 com.codespace.ide.util.CanonicalPaths.sameFileIdentity(frameKey, activeTab.path)
             debugCurrentLine = if (matches) frameLine + 1 else 0
