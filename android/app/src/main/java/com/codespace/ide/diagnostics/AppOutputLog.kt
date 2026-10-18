@@ -30,6 +30,22 @@ object AppOutputLog {
     private const val TAG = "AppOutputLog"
     private const val MAX_LINES = 500
 
+    /** BATCH10-P00: protected build/lifecycle history cap (never cleared by Clear). */
+    private const val MAX_PROTECTED_LINES = 200
+    val protectedLines = mutableStateListOf<String>()
+
+    private fun addProtected(entry: String) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            if (protectedLines.size >= MAX_PROTECTED_LINES) protectedLines.removeAt(0)
+            protectedLines.add(entry)
+        } else {
+            mainHandler.post {
+                if (protectedLines.size >= MAX_PROTECTED_LINES) protectedLines.removeAt(0)
+                protectedLines.add(entry)
+            }
+        }
+    }
+
     // LOG-POST-CAP (2026-09-11): every log() call ends in a main-thread mutation (direct
     // or Handler.post). A background flood (LSP stderr, build tools, proot noise) turned
     // into a post storm that janked the UI even with zero editor tabs open. Cap total
@@ -69,8 +85,30 @@ object AppOutputLog {
     fun log(message: String, channel: String = "info") {
         if (!admit()) return
         val ts = timeFmt.format(Date())
+        // BATCH10-P00: PROTECTED build/lifecycle history — the startup build stamp
+        // and every [LSP-LIFECYCLE] line are ALSO kept here, and clear() NEVER
+        // touches this buffer. Answer to the advisor question: YES, Output "Clear"
+        // erased these before (they lived only in the shared 500-line list); the
+        // owner's later saved logs lost the build identity and the lifecycle
+        // history. The protected buffer keeps the last 200 of them, and clear()
+        // re-prints the build stamp so every saved log still names its build.
+        if (isProtectedMessage(message)) {
+            addProtected("[$ts] [$channel]  $message")
+        }
         addEntry("[$ts] [$channel]  $message")
     }
+
+    /** BATCH10-P00: messages that survive Output "Clear" (kept in [protectedLines]). */
+    internal fun isProtectedMessage(message: String): Boolean {
+        val m = message.trim()
+        return m.startsWith("[start]") || m.contains("[LSP-LIFECYCLE]")
+    }
+
+    /** BATCH10-P00: the startup stamp line — "[start] build <hash> run <n> <time>". */
+    fun buildStampLine(): String =
+        "[start] build " + com.codespace.ide.BuildConfig.GIT_HASH +
+            " run " + com.codespace.ide.BuildConfig.CI_RUN_NUMBER +
+            " " + com.codespace.ide.BuildConfig.BUILD_TIME
 
     /** Shared mutation path: direct on main thread, Handler.post from background. */
     private fun addEntry(entry: String) {
@@ -87,15 +125,19 @@ object AppOutputLog {
     }
 
     fun clear() {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
+        val doClear = {
             lines.clear()
-            lines.add("[info]  Output cleared")
-        } else {
-            mainHandler.post {
-                lines.clear()
-                lines.add("[info]  Output cleared")
-            }
+            // BATCH10-P00: re-print the build stamp after a clear — the owner clears
+            // the Output mid-session, and every SAVED log after that point must
+            // still identify which APK produced it. The protected buffer holds the
+            // full startup + [LSP-LIFECYCLE] history Clear erased from the panel.
+            val ts = timeFmt.format(Date())
+            addEntry("[$ts] [info]  Output cleared — build stamp re-printed below; " +
+                protectedLines.size + " protected build/lifecycle lines kept (Settings → About)")
+            addEntry("[$ts] [info]  " + buildStampLine())
         }
+        if (Looper.myLooper() == Looper.getMainLooper()) doClear()
+        else mainHandler.post { doClear() }
     }
 
     /**

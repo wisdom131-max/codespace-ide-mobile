@@ -1396,11 +1396,36 @@ fun SettingsScreen(
                 modifier = Modifier.padding(start = 16.dp, top = 16.dp),
             )
             Text(
-                "Build ${BuildConfig.VERSION_CODE} (${BuildConfig.GIT_HASH}) — v${BuildConfig.VERSION_NAME}",
+                "Build ${BuildConfig.VERSION_CODE} (${BuildConfig.GIT_HASH}) — v${BuildConfig.VERSION_NAME}" +
+                    " — CI run ${BuildConfig.CI_RUN_NUMBER} @ ${BuildConfig.BUILD_TIME}",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF717171),
-                modifier = Modifier.padding(start = 16.dp, bottom = 16.dp),
+                modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
             )
+            // BATCH10-P00: the PROTECTED build/lifecycle history — the last lines
+            // Output "Clear" can never erase (startup stamp + [LSP-LIFECYCLE]).
+            // Shows the tail so a saved screenshot of Settings answers "which
+            // build, what lifecycle hops happened" even after a Clear.
+            val protectedTail = com.codespace.ide.diagnostics.AppOutputLog.protectedLines
+                .toList().takeLast(10)
+            if (protectedTail.isNotEmpty()) {
+                Text(
+                    "Protected build/lifecycle log (last ${protectedTail.size} of " +
+                        "${com.codespace.ide.diagnostics.AppOutputLog.protectedLines.size} — survives Clear):",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF717171),
+                    modifier = Modifier.padding(start = 16.dp, top = 4.dp),
+                )
+                protectedTail.forEach { line ->
+                    Text(
+                        line,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF717171),
+                        modifier = Modifier.padding(start = 16.dp, top = 2.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             }
             // SK10: search results branch — every surface indexed in one list.
             else {

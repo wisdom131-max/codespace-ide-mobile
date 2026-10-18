@@ -45,6 +45,19 @@ android {
             commandLine("git", "rev-parse", "--short", "HEAD")
         }.standardOutput.asText.get().trim()
         buildConfigField("String", "GIT_HASH", "\"$gitHash\"")
+        // BATCH10-P00 (advisor addendum 2026-10-18): BUILD STAMP — the app prints
+        // commit + CI run + build time at startup and in Settings/About, so the
+        // owner's saved Output logs always identify WHICH APK produced them.
+        // GITHUB_RUN_NUMBER is a default env var in every Actions step (no workflow
+        // change needed); local builds print "local" + the wall clock so the stamp
+        // is never absent.
+        val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER") ?: "local"
+        val buildTime = try {
+            java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+        } catch (_: Exception) { "unknown" }
+        buildConfigField("String", "CI_RUN_NUMBER", "\"$ciRunNumber\"")
+        buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
         // abiFilters removed — splits abi block controls which ABIs are built

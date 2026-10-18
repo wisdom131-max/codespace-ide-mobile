@@ -38,6 +38,13 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             .build()
 
     override fun onCreate() {
+        // BATCH10-P00 (advisor addendum 2026-10-18): BUILD STAMP is the FIRST Output
+        // line — "[start] build <hash> run <n> <time>". The owner's saved logs then
+        // always identify WHICH APK produced them (we were guessing before). The
+        // line is also kept in AppOutputLog's protected buffer (survives Clear) and
+        // shown in Settings → About.
+        try { com.codespace.ide.diagnostics.AppOutputLog.log(com.codespace.ide.diagnostics.AppOutputLog.buildStampLine(), "info") }
+        catch (_: Throwable) { /* never let a stamp failure block startup */ }
         // Advisor A.2 (2026-10-15, approved): persistent breadcrumb log init FIRST —
         // it reads the previous process exit (ApplicationExitInfo) and pins it on
         // disk before anything else can fail.
