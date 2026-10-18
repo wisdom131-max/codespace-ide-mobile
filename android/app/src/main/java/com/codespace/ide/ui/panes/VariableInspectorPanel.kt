@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -151,10 +152,19 @@ fun VariableInspectorPanel(
         expandedSections = if (expanding) expandedSections + key else expandedSections - key
     }
 
+    // BATCH8-P3 (advisor, owner device evidence 2026-10-18): the VARIABLES panel
+    // did not scroll — the root Column had NO scroll modifier (rememberScrollState
+    // was imported but never used), so a long watch/locals/stack list simply ran
+    // off-screen and was unreachable (owner could not see all variables at a
+    // breakpoint). Fix: the WHOLE panel scrolls within its bottom-slot bounds.
+    // Modifier order matters (F4 pitfall family): fillMaxSize bounds the height
+    // FIRST, then verticalScroll handles overflow — never heightIn AFTER scroll.
+    val panelScroll = rememberScrollState()
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF1E1E1E)),
+            .background(Color(0xFF1E1E1E))
+            .verticalScroll(panelScroll),
     ) {
         // Watch expressions section
         SectionHeader(
