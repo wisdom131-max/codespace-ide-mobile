@@ -253,6 +253,7 @@ class PythonDAPAdapter : DebugAdapter {
             rt.threadId = body.optInt("threadId", 1)
             val reason = body.optString("reason", "breakpoint")
             Log.d(TAG, "DAP stopped: reason=$reason threadId=${rt.threadId}")
+            AppOutputLog.log("[PDAP-DIAG] stopped: reason=" + reason + " threadId=" + rt.threadId, "debug")
             onOutput("[debugpy] Paused: $reason\n")
 
             // Fetch stack frames + variables on IO thread
@@ -262,6 +263,7 @@ class PythonDAPAdapter : DebugAdapter {
                     rt.currentFrameId = frames.first().frameId
                     fetchVariables(dapClient, rt.currentFrameId)
                 } else emptyList()
+                AppOutputLog.log("[PDAP-DIAG] paused delivered: frames=" + frames.size + " vars=" + vars.size, "debug")
                 onPaused(frames, vars)
             }.also { it.isDaemon = true }.start()
         }
@@ -475,12 +477,24 @@ class PythonDAPAdapter : DebugAdapter {
         val dapClient = rt.client
         if (rt.lastTotalFrames in 0..rt.framesLoaded) return Pair(emptyList(), rt.lastTotalFrames)
         val args = JSONObject().put("threadId", rt.threadId).put("startFrame", rt.framesLoaded).put("levels", 20)
-        val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5) ?: return Pair(emptyList(), rt.lastTotalFrames)
-        val framesArr = resp.optJSONArray("stackFrames") ?: return Pair(emptyList(), rt.lastTotalFrames)
-        if (framesArr.length() == 0) return Pair(emptyList(), rt.lastTotalFrames)
+        val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5)
+        if (resp == null) {
+            AppOutputLog.log("[PDAP-DIAG] stackTrace: NO RESPONSE (timeout/null) threadId=" + rt.threadId, "debug")
+            return Pair(emptyList(), rt.lastTotalFrames)
+        }
+        val framesArr = resp.optJSONArray("stackFrames")
+        if (framesArr == null) {
+            AppOutputLog.log("[PDAP-DIAG] stackTrace: response arrived WITHOUT a stackFrames array", "debug")
+            return Pair(emptyList(), rt.lastTotalFrames)
+        }
+        if (framesArr.length() == 0) {
+            AppOutputLog.log("[PDAP-DIAG] stackTrace: 0 frame(s), totalFrames=" + resp.optInt("totalFrames", 0), "debug")
+            return Pair(emptyList(), rt.lastTotalFrames)
+        }
         rt.lastTotalFrames = resp.optInt("totalFrames", rt.framesLoaded + framesArr.length())
         val parsed = (0 until framesArr.length()).map { i -> parseFrame(framesArr.optJSONObject(i) ?: JSONObject(), rt.framesLoaded + i) }
         rt.framesLoaded += framesArr.length()
+        AppOutputLog.log("[PDAP-DIAG] stackTrace: " + parsed.size + " frame(s), totalFrames=" + rt.lastTotalFrames, "debug")
         return Pair(parsed, rt.lastTotalFrames)
     }
 
@@ -560,8 +574,14 @@ class PythonDAPAdapter : DebugAdapter {
             put("frameId", if (frameId > 0) frameId else rt.currentFrameId)
             put("context", "repl")
         }
-        val resp = c.request("evaluate", args, timeoutSeconds = 5) ?: return null
-        return if (resp.has("result") && !resp.isNull("result")) resp.getString("result") else null
+        val resp = c.request("evaluate", args, timeoutSeconds = 5)
+        if (resp == null) {
+            AppOutputLog.log("[PDAP-DIAG] evaluate: NO RESPONSE (timeout/null) expr=" + expression.take(40), "debug")
+            return null
+        }
+        val evResult = if (resp.has("result") && !resp.isNull("result")) resp.getString("result") else null
+        AppOutputLog.log("[PDAP-DIAG] evaluate: expr=" + expression.take(40) + " -> " + (evResult?.take(60) ?: "null"), "debug")
+        return evResult
     }
 
     // ── Stack frame / variable helpers ─────────────────────────────────────
@@ -589,7 +609,8 @@ class PythonDAPAdapter : DebugAdapter {
         // to pinpoint any remaining off-by-one in the band render chain.
         com.codespace.ide.diagnostics.AppOutputLog.log(
             "[BAND-DIAG] dapFrame raw: name=" + f.optString("name", "") + " rawLine1=" + f.optInt("line", 0) +
-            " file=" + path.takeLast(50), "debug")
+            " file=" + path.takeLast(50) +
+            " srcName=" + (src?.optString("name", "") ?: "") + " srcRef=" + (src?.optInt("sourceReference", 0) ?: 0), "debug")
         return DebugStackFrame(
             function = f.optString("name", "<unknown>"),
             file     = path,
@@ -602,8 +623,21 @@ class PythonDAPAdapter : DebugAdapter {
     private fun fetchVariables(client: DAPClient, frameId: Int): List<DebugVariable> {
         // Get scopes for this frame
         val scopesResp = client.request("scopes", JSONObject().put("frameId", frameId), timeoutSeconds = 5)
-            ?: return emptyList()
-        val scopesArr = scopesResp.optJSONArray("scopes") ?: return emptyList()
+        if (scopesResp == null) {
+            AppOutputLog.log("[PDAP-DIAG] scopes: NO RESPONSE (timeout/null) frameId=" + frameId, "debug")
+            return emptyList()
+        }
+        val scopesArr = scopesResp.optJSONArray("scopes")
+        if (scopesArr == null) {
+            AppOutputLog.log("[PDAP-DIAG] scopes: response arrived WITHOUT a scopes array frameId=" + frameId, "debug")
+            return emptyList()
+        }
+        AppOutputLog.log("[PDAP-DIAG] scopes: " + scopesArr.length() + " scope(s) frameId=" + frameId + ": " +
+            (0 until scopesArr.length()).joinToString(",") { i ->
+                val sc = scopesArr.optJSONObject(i) ?: JSONObject()
+                sc.optString("name", "?") + "#" + sc.optInt("variablesReference", 0) +
+                    (if (sc.optBoolean("expensive", false)) "(expensive)" else "")
+            }, "debug")
         val result = mutableListOf<DebugVariable>()
         for (i in 0 until minOf(scopesArr.length(), 3)) {
             val scope = scopesArr.getJSONObject(i)
@@ -614,8 +648,17 @@ class PythonDAPAdapter : DebugAdapter {
             if (scope.optBoolean("expensive", false)) continue
             val varResp = client.request("variables",
                 JSONObject().put("variablesReference", ref).put("count", 100),
-                timeoutSeconds = 5) ?: continue
-            val vars = varResp.optJSONArray("variables") ?: continue
+                timeoutSeconds = 5)
+            if (varResp == null) {
+                AppOutputLog.log("[PDAP-DIAG] variables: NO RESPONSE scope=" + scopeName, "debug")
+                continue
+            }
+            val vars = varResp.optJSONArray("variables")
+            if (vars == null) {
+                AppOutputLog.log("[PDAP-DIAG] variables: response arrived WITHOUT a variables array scope=" + scopeName, "debug")
+                continue
+            }
+            AppOutputLog.log("[PDAP-DIAG] variables: " + vars.length() + " var(s) scope=" + scopeName, "debug")
             for (j in 0 until vars.length()) {
                 val v = vars.getJSONObject(j)
                 val varRef = v.optInt("variablesReference", 0)

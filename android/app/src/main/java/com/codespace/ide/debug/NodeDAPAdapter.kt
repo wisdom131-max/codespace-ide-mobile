@@ -603,6 +603,7 @@ class NodeDAPAdapter : DebugAdapter {
             rt.threadId = body.optInt("threadId", 1)
             val reason = body.optString("reason", "breakpoint")
             Log.d(TAG, "DAP stopped: reason=$reason threadId=${rt.threadId}")
+            AppOutputLog.log("[NDAP-DIAG] stopped: reason=" + reason + " threadId=" + rt.threadId, "debug")
             onOutput("[js-debug] Paused: $reason\n")
 
             Thread {
@@ -610,6 +611,7 @@ class NodeDAPAdapter : DebugAdapter {
                 val frameId = if (frames.isNotEmpty()) frames.first().frameId else 0
                 rt.currentFrameId = frameId
                 val vars = fetchVariables(dapClient, frameId)
+                AppOutputLog.log("[NDAP-DIAG] paused delivered: frames=" + frames.size + " vars=" + vars.size, "debug")
                 onPaused(frames, vars)
             }.also { it.isDaemon = true }.start()
         }
@@ -943,26 +945,46 @@ class NodeDAPAdapter : DebugAdapter {
             put("context", "repl")
             put("frameId", if (frameId > 0) frameId else rt.currentFrameId)
         }
-        val resp = rt.client.request("evaluate", evalArgs, timeoutSeconds = 5) ?: return null
-        return if (resp.has("result") && !resp.isNull("result")) resp.getString("result") else null
+        val resp = rt.client.request("evaluate", evalArgs, timeoutSeconds = 5)
+        if (resp == null) {
+            AppOutputLog.log("[NDAP-DIAG] evaluate: NO RESPONSE (timeout/null) expr=" + expression.take(40), "debug")
+            return null
+        }
+        val evResult = if (resp.has("result") && !resp.isNull("result")) resp.getString("result") else null
+        AppOutputLog.log("[NDAP-DIAG] evaluate: expr=" + expression.take(40) + " -> " + (evResult?.take(60) ?: "null"), "debug")
+        return evResult
     }
 
     // ── Stack / Variables ─────────────────────────────────────────────
 
     private fun fetchStackFrames(dapClient: DAPClient, threadId: Int, rt: SessionRuntime): List<DebugStackFrame> {
         val args = JSONObject().put("threadId", threadId).put("startFrame", 0).put("levels", 20)
-        val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5) ?: return emptyList()
-        val frames = resp.optJSONArray("stackFrames") ?: return emptyList()
+        val resp = dapClient.request("stackTrace", args, timeoutSeconds = 5)
+        if (resp == null) {
+            AppOutputLog.log("[NDAP-DIAG] stackTrace: NO RESPONSE (timeout/null) threadId=" + threadId, "debug")
+            return emptyList()
+        }
+        val frames = resp.optJSONArray("stackFrames")
+        if (frames == null) {
+            AppOutputLog.log("[NDAP-DIAG] stackTrace: response arrived WITHOUT a stackFrames array", "debug")
+            return emptyList()
+        }
         // P2-PAGING: record total frame count so the UI can offer "load more"
         rt.lastTotalFrames = resp.optInt("totalFrames", frames.length())
         rt.framesLoaded = frames.length()
-        return (0 until frames.length()).map { i -> parseFrame(frames.optJSONObject(i) ?: JSONObject(), i) }
+        val parsedFrames = (0 until frames.length()).map { i -> parseFrame(frames.optJSONObject(i) ?: JSONObject(), i) }
+        AppOutputLog.log("[NDAP-DIAG] stackTrace: " + parsedFrames.size + " frame(s), totalFrames=" + rt.lastTotalFrames, "debug")
+        return parsedFrames
     }
 
     private fun parseFrame(f: JSONObject, index: Int): DebugStackFrame {
         val rawId = f.optInt("id", 0)
         val src = f.optJSONObject("source")
         val srcPath = src?.optString("path", "") ?: src?.optString("name", "") ?: ""
+        AppOutputLog.log(
+            "[BAND-DIAG] dapFrame raw: name=" + f.optString("name", "") + " rawLine1=" + f.optInt("line", 0) +
+            " file=" + srcPath.takeLast(50) +
+            " srcName=" + (src?.optString("name", "") ?: "") + " srcRef=" + (src?.optInt("sourceReference", 0) ?: 0), "debug")
         return DebugStackFrame(
             function = f.optString("name", "<anonymous>"),
             file = srcPath,  // P27-2: clean path, frameId stored separately
@@ -976,8 +998,22 @@ class NodeDAPAdapter : DebugAdapter {
         // P1-D5: fetch ALL scopes (not just the first), tag each variable with its scope name.
         // Expensive scopes are skipped at pause-time (VS Code lazy-loads them too).
         val scopeArgs = JSONObject().put("frameId", frameId)
-        val scopeResp = dapClient.request("scopes", scopeArgs, timeoutSeconds = 5) ?: return emptyList()
-        val scopes = scopeResp.optJSONArray("scopes") ?: return emptyList()
+        val scopeResp = dapClient.request("scopes", scopeArgs, timeoutSeconds = 5)
+        if (scopeResp == null) {
+            AppOutputLog.log("[NDAP-DIAG] scopes: NO RESPONSE (timeout/null) frameId=" + frameId, "debug")
+            return emptyList()
+        }
+        val scopes = scopeResp.optJSONArray("scopes")
+        if (scopes == null) {
+            AppOutputLog.log("[NDAP-DIAG] scopes: response arrived WITHOUT a scopes array frameId=" + frameId, "debug")
+            return emptyList()
+        }
+        AppOutputLog.log("[NDAP-DIAG] scopes: " + scopes.length() + " scope(s) frameId=" + frameId + ": " +
+            (0 until scopes.length()).joinToString(",") { i ->
+                val sc = scopes.optJSONObject(i) ?: JSONObject()
+                sc.optString("name", "?") + "#" + sc.optInt("variablesReference", 0) +
+                    (if (sc.optBoolean("expensive", false)) "(expensive)" else "")
+            }, "debug")
         val result = mutableListOf<DebugVariable>()
         for (i in 0 until scopes.length()) {
             val scope = scopes.optJSONObject(i) ?: continue
@@ -985,8 +1021,17 @@ class NodeDAPAdapter : DebugAdapter {
             val scopeName = scope.optString("name", "Variables")
             val scopeRef = scope.optInt("variablesReference", 0)
             if (scopeRef == 0) continue
-            val varResp = dapClient.request("variables", JSONObject().put("variablesReference", scopeRef), timeoutSeconds = 5) ?: continue
-            val variables = varResp.optJSONArray("variables") ?: continue
+            val varResp = dapClient.request("variables", JSONObject().put("variablesReference", scopeRef), timeoutSeconds = 5)
+            if (varResp == null) {
+                AppOutputLog.log("[NDAP-DIAG] variables: NO RESPONSE scope=" + scopeName, "debug")
+                continue
+            }
+            val variables = varResp.optJSONArray("variables")
+            if (variables == null) {
+                AppOutputLog.log("[NDAP-DIAG] variables: response arrived WITHOUT a variables array scope=" + scopeName, "debug")
+                continue
+            }
+            AppOutputLog.log("[NDAP-DIAG] variables: " + variables.length() + " var(s) scope=" + scopeName, "debug")
             for (j in 0 until minOf(variables.length(), 100)) {
                 val v = variables.optJSONObject(j) ?: continue
                 val ref = v.optInt("variablesReference", 0)

@@ -842,6 +842,10 @@ class JvmDAPAdapter : DebugAdapter {
         val frameId = f.optInt("id", 0)
         val src = f.optJSONObject("source")
         val path = src?.optString("path", "") ?: ""
+        AppOutputLog.log(
+            "[BAND-DIAG] dapFrame raw: name=" + f.optString("name", "") + " rawLine1=" + f.optInt("line", 0) +
+            " file=" + path.takeLast(50) +
+            " srcName=" + (src?.optString("name", "") ?: "") + " srcRef=" + (src?.optInt("sourceReference", 0) ?: 0), "debug")
         return DebugStackFrame(
             function = f.optString("name", "<unknown>"),
             file = path,
