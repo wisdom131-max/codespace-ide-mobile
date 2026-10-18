@@ -200,19 +200,36 @@ class TerminalLinkExtractorBoundedTest {
         assertNull(TerminalLinkExtractor.extractFileLinkToken(input, 8))
     }
 
-    // ── Deadline safety net: an artificial pattern blowup aborts at the cap ──
+    // ── Deadline safety net ─────────────────────────────────────────────────────
+    // CI lesson (run 39125449524, one red): a LIVE budget cannot be proven by
+    // wall-clock on the JVM — JDK's engine completes the 20-word input in ~2ms
+    // (1295 charAt calls; the study/prefilter kills the blowup there), so the
+    // deadline never fires. The pathological RUNTIME blowup is the ANDROID ICU
+    // engine's behavior (device evidence: 4 ANRs, main in Matcher.find ->
+    // ICU MatchChunkAt); on the JVM the same pattern family dies by
+    // StackOverflowError instead (see the OLD pairs above). The MECHANISM is
+    // therefore proven deterministically: a deadline already in the past aborts
+    // matching on the FIRST character access — engine-independent.
 
-    @Test fun deadlineCharSequence_abortsRunawayMatching() {
-        // Sized deliberately: 20 words = 40 outer iterations (shallow — the greedy
-        // pass cannot stack-overflow, which on CI PREEMPTED the deadline check at
-        // 3000 words, run 39124431659) but 2^62 partition paths (the 20ms deadline
-        // fires long before completion on ANY machine).
-        val big = "word ".repeat(20) + "end"
-        val guarded = TerminalLinkExtractor.DeadlineCharSequence(big, System.nanoTime() + 20_000_000) // 20ms.
+    @Test fun deadlineCharSequence_pastBudget_abortsOnFirstAccess() {
+        val input = "word ".repeat(20) + "end"
+        val guarded = TerminalLinkExtractor.DeadlineCharSequence(input, System.nanoTime() - 1)
         var threw = false
         try {
             oldSpanRegex.findAll(guarded).any()
         } catch (_: TerminalLinkExtractor.ExtractionDeadlineExceeded) { threw = true }
-        assertTrue("the deadline CharSequence must abort runaway matching", threw)
+        assertTrue("a past deadline must abort matching immediately", threw)
+    }
+
+    @Test fun deadlineCharSequence_generousBudget_doesNotFalseAbort() {
+        // The wrapper must be TRANSPARENT when the budget is generous — no false
+        // aborts on inputs the engine matches quickly.
+        val input = "word ".repeat(20) + "end"
+        val guarded = TerminalLinkExtractor.DeadlineCharSequence(input, System.nanoTime() + 1_000_000_000L)
+        var threw = false
+        try {
+            oldSpanRegex.findAll(guarded).any()
+        } catch (_: TerminalLinkExtractor.ExtractionDeadlineExceeded) { threw = true }
+        assertTrue("a generous budget must not abort", !threw)
     }
 }

@@ -39,6 +39,17 @@ object TerminalLinkExtractor {
      * CharSequence wrapper that aborts regex matching at a deadline. Java's Matcher
      * reads input through charAt(), so the check rides every character access; the
      * matcher cannot loop past the deadline.
+     *
+     * HONEST SCOPE (2026-10-18, local-JDK + CI evidence): the pathological RUNTIME
+     * blowup is the ANDROID ICU engine's behavior (device: 4 ANRs, main in
+     * Matcher.find -> ICU MatchChunkAt). On the JVM the JDK engine finishes small
+     * inputs in ~2ms (study/prefilter) and dies by StackOverflowError on huge ones —
+     * a live wall-clock deadline never fires there, and an engine that snapshots
+     * its CharSequence via toString() before matching would bypass the wrapper
+     * entirely. This deadline is therefore the BELT-AND-BRACES layer: the primary
+     * guarantees are the bounded window (SPAN_WINDOW) and the linear, non-nested
+     * patterns; the wrapper exists so that a future pattern edit on a
+     * charAt-reading engine cannot hang the tap.
      */
     class DeadlineCharSequence(
         private val cs: CharSequence,
