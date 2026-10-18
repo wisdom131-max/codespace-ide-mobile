@@ -1,4 +1,6 @@
 import java.util.Properties
+import java.util.Date
+import java.text.SimpleDateFormat
 import java.io.FileInputStream
 
 plugins {
@@ -52,10 +54,12 @@ android {
         // change needed); local builds print "local" + the wall clock so the stamp
         // is never absent.
         val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER") ?: "local"
-        // NOTE: java.time is NOT importable in this Kotlin-DSL script context
-        // (CI red 39168284365: "Unresolved reference: time") — java.util always is.
+        // NOTE (CI red 39168284365 + 39170020459): QUALIFIED java.* references do NOT
+        // resolve inside the defaultConfig receiver ("Unresolved reference: time/util" —
+        // `java` is shadowed there). Top-level import + simple name works (the file's
+        // own Properties idiom).
         val buildTime = try {
-            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date())
+            SimpleDateFormat("yyyy-MM-dd HH:mm").format(Date())
         } catch (_: Exception) { "unknown" }
         buildConfigField("String", "CI_RUN_NUMBER", "\"$ciRunNumber\"")
         buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
