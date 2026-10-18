@@ -213,7 +213,23 @@ object CrumbLog {
                 // visible in Output without any file pull.
                 AppOutputLog.log("[CRUMB] breadcrumb tail: " + crumbTail(8).joinToString(" | "), "terminal")
                 val info = exits[0]
-                val reason = reasonName(info.reason)
+                // BATCH7-P0 (advisor 1a, 2026-10-18): the owner's logs hold FOUR ANRs in
+                // three minutes ("Input dispatching timed out") and the BATCH6 trace
+                // block was capped at 41 lines — the top of the stack was native regex
+                // frames, so the six nested APP frames that NAMED the caller were cut
+                // off. Now EVERY ANR record among the recent 5 gets its main-thread
+                // JAVA frames ("at ..." lines), native lines skipped, up to 60 frames.
+                if (info.reason == ApplicationExitInfo.REASON_ANR) {
+                    NotificationStore.add(
+                        "The app stopped responding",
+                        "Android closed the previous session because the interface froze (" + agoText(info.timestamp) +
+                            "). The persistent log (crumb-log) shows what it was doing.",
+                        NotificationStore.Type.INFO,
+                    )
+                }
+                recent.forEachIndexed { i, rec ->
+                    if (rec.reason == ApplicationExitInfo.REASON_ANR) logAnrJavaFrames(rec, recent.size, i)
+                }
                 if (info.reason == ApplicationExitInfo.REASON_LOW_MEMORY) {
                     val ago = agoText(info.timestamp)
                     NotificationStore.add(
@@ -227,45 +243,6 @@ object CrumbLog {
                             ". Last breadcrumb before that exit: " + lastCrumbLine(),
                         "terminal",
                     )
-                } else if (info.reason == ApplicationExitInfo.REASON_ANR) {
-                    NotificationStore.add(
-                        "The app stopped responding",
-                        "Android closed the previous session because the interface froze (" + agoText(info.timestamp) +
-                            "). The persistent log (crumb-log) shows what it was doing.",
-                        NotificationStore.Type.INFO,
-                    )
-                    // BATCH6-P1 (advisor B1): the OS may still hold the ANR trace of
-                    // the previous process — recover the MAIN thread stack and pin it
-                    // in the Output ([EXIT]) so the freeze is attributed, not guessed.
-                    try {
-                        val traceText = info.traceInputStream?.use { stream ->
-                            stream.bufferedReader(Charsets.UTF_8).useLines { seq ->
-                                val sb = StringBuilder()
-                                var lines = 0
-                                for (line in seq) {
-                                    if (lines >= 400) break
-                                    sb.append(line).append('\n')
-                                    lines++
-                                }
-                                sb.toString()
-                            }
-                        }
-                        if (!traceText.isNullOrBlank()) {
-                            val mainSection = traceText.lineSequence()
-                                .dropWhile { !it.trim().startsWith("\"main\"") && !it.contains("\"main\" prio") }
-                                .take(40)
-                                .toList()
-                            val section = if (mainSection.isNotEmpty()) mainSection
-                                else traceText.lineSequence().take(40).toList()
-                            AppOutputLog.log("[EXIT] ANR trace of the previous exit (" + agoText(info.timestamp) + ") — main thread stack:", "terminal")
-                            section.forEach { AppOutputLog.log("[EXIT]   " + it, "terminal") }
-                            crumb("exit-info", "ANR trace recovered: " + section.take(8).joinToString(" | ").take(400))
-                        } else {
-                            crumb("exit-info", "ANR trace not held by the OS (already reclaimed)")
-                        }
-                    } catch (t: Throwable) {
-                        crumb("exit-info", "ANR trace read failed: " + (t.message ?: t.javaClass.simpleName))
-                    }
                 }
             } catch (e: Throwable) {
                 crumb("exit-info", "ApplicationExitInfo read failed: " + (e.message ?: e.javaClass.simpleName))
@@ -274,6 +251,71 @@ object CrumbLog {
             crumb("exit-info", "ApplicationExitInfo needs Android 11+ — device is API " + Build.VERSION.SDK_INT)
         }
     }
+
+    /**
+     * BATCH7-P0 (advisor 1a, 2026-10-18): recover the main-thread JAVA frames of ONE
+     * ANR record and pin them in Output. The old block printed the first 41 lines of
+     * the trace verbatim — the top of the stack is native regex/ICU frames, so the
+     * APP frames that NAMED the caller were cut off. Now: native lines ("#NN pc ...",
+     * "native: ...") are SKIPPED, only "at ..." JAVA frames are printed, up to 60,
+     * and frames from our own package are marked so the caller is readable at a
+     * glance. The OS may still hold the four traces from 11:11-11:13, so the next
+     * start could name the regex caller for real.
+     */
+    private fun logAnrJavaFrames(info: android.app.ApplicationExitInfo, total: Int, index: Int) {
+        try {
+            val traceText = info.traceInputStream?.use { stream ->
+                stream.bufferedReader(Charsets.UTF_8).useLines { seq ->
+                    val sb = StringBuilder()
+                    var lines = 0
+                    for (line in seq) {
+                        if (lines >= 400) break
+                        sb.append(line).append('\n')
+                        lines++
+                    }
+                    sb.toString()
+                }
+            }
+            if (traceText.isNullOrBlank()) {
+                crumb("exit-info", "ANR trace not held by the OS (already reclaimed)")
+                return
+            }
+            val frames = ArrayList<String>(64)
+            var inMain = false
+            var sawMainThread = false
+            for (raw in traceText.lineSequence()) {
+                val line = raw.trim()
+                if (line.startsWith("\"")) {
+                    if (inMain) break // main thread section ends at the next thread header
+                    if (line.startsWith("\"main\"")) {
+                        inMain = true
+                        sawMainThread = true
+                        frames.add(line)
+                    }
+                    continue
+                }
+                if (inMain && line.startsWith("at ")) {
+                    if (frames.size >= ANR_MAX_JAVA_FRAMES + 1) break
+                    frames.add((if (line.contains("com.codespace")) "APP " else "    ") + line)
+                }
+                // native lines ("#NN pc ...", "native: ...") and headers are SKIPPED.
+            }
+            if (frames.isEmpty()) {
+                crumb("exit-info", "ANR trace held but no main-thread Java frames found" +
+                    (if (sawMainThread) "" else " (main thread header absent)"))
+                return
+            }
+            val label = "exit " + (total - index) + "/" + total + " " + agoText(info.timestamp)
+            AppOutputLog.log("[EXIT] ANR trace (" + label + ") — main thread JAVA frames (APP = our code; native lines skipped, max " + ANR_MAX_JAVA_FRAMES + "):", "terminal")
+            frames.forEach { AppOutputLog.log("[EXIT]   " + it, "terminal") }
+            crumb("exit-info", "ANR Java frames recovered (" + label + "): " +
+                frames.filter { it.startsWith("APP ") }.take(6).joinToString(" | ").take(400))
+        } catch (t: Throwable) {
+            crumb("exit-info", "ANR trace read failed: " + (t.message ?: t.javaClass.simpleName))
+        }
+    }
+
+    private const val ANR_MAX_JAVA_FRAMES = 60
 
     /** Advisor 1a: the previous [start] crumb's pid and how long ago the previous
      *  process was last heard from (age of the last crumb in either log file). */
