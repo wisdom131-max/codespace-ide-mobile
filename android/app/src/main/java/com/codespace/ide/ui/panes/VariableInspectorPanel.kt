@@ -72,8 +72,83 @@ fun VariableInspectorPanel(
     var newExpr by remember { mutableStateOf("") }
     var expandedSections by remember { mutableStateOf(setOf("watch", "locals", "stack")) }
 
+    // ── BATCH7-P3 (advisor 6b, 2026-10-18, device evidence) ─────────────────────
+    // The last paused snapshot (stack + variables) lives in DebugPauseStore —
+    // OUTSIDE this panel — and the panel's HOISTED copies live HERE, at panel
+    // level, NOT inside the collapsible sections. READ (old bug): pausedVars and
+    // pausedStack were `remember` state declared INSIDE the
+    // `if (section in expandedSections)` block — collapsing the section destroyed
+    // the state AND unregistered the paused listener, so pauses while collapsed
+    // were missed and the re-expanded section showed "Running..." until the NEXT
+    // pause. A pause that happened before the panel was composed never appeared.
+    // Now: the store holds the truth; the panel syncs from it on compose, on
+    // every paused event, and on every session state change (continue/stop clear
+    // it there). Sections only READ these two states.
+    var pausedVars by remember {
+        mutableStateOf(
+            com.codespace.ide.debug.DebugPauseStore.currentFor(udm.getActiveSession()?.id)?.vars
+                ?: emptyList<com.codespace.ide.debug.DebugVariable>()
+        )
+    }
+    var pausedStack by remember {
+        mutableStateOf(
+            com.codespace.ide.debug.DebugPauseStore.currentFor(udm.getActiveSession()?.id)?.stack
+                ?: emptyList<com.codespace.ide.debug.DebugStackFrame>()
+        )
+    }
+
+    /** Single sync point: the store is the truth, the panel mirrors it. */
+    fun syncFromStore() {
+        val sid = udm.getActiveSession()?.id
+        val snap = com.codespace.ide.debug.DebugPauseStore.currentFor(sid)
+        pausedVars = snap?.vars ?: emptyList()
+        pausedStack = snap?.stack ?: emptyList()
+    }
+
+    val panelPausedListener: (List<com.codespace.ide.debug.DebugStackFrame>, List<com.codespace.ide.debug.DebugVariable>) -> Unit = { stack, vars ->
+        // UDM.notifyPaused recorded the snapshot BEFORE firing — sync from the store.
+        syncFromStore()
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[VARS-DIAG] paused event reached the panel: frames=" + stack.size +
+                " vars=" + vars.size + " (panel now holds " + pausedVars.size + ")", "debug")
+        // P26-1c/DG10: live watch refresh goes through the shared UDM store.
+        if (watchExprs.isNotEmpty()) {
+            udm.refreshWatches(udm.getActiveSession()?.id)
+            watchExprs = udm.getWatches()
+        }
+    }
+    val panelStateListener: (com.codespace.ide.debug.DebugSession) -> Unit = { _ ->
+        // Continue/step/stop transitions cleared the store — mirror that here so
+        // the panel shows "Running..." honestly instead of stale variables.
+        syncFromStore()
+    }
+    LaunchedEffect(Unit) {
+        // A pause that happened BEFORE this panel was composed (or while the
+        // VARIABLES tab was closed) shows IMMEDIATELY — no tap needed.
+        syncFromStore()
+        com.codespace.ide.debug.UniversalDebugManager.addOnPausedListener(panelPausedListener)
+        com.codespace.ide.debug.UniversalDebugManager.addOnSessionStateChangedListener(panelStateListener)
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[VARS-DIAG] panel composed (panel-level listeners, survive section collapse): vars=" + pausedVars.size +
+                " stack=" + pausedStack.size, "debug")
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            com.codespace.ide.debug.UniversalDebugManager.removeOnPausedListener(panelPausedListener)
+            com.codespace.ide.debug.UniversalDebugManager.removeOnSessionStateChangedListener(panelStateListener)
+        }
+    }
+
     fun toggleSection(key: String) {
-        expandedSections = if (key in expandedSections) expandedSections - key else expandedSections + key
+        val expanding = key !in expandedSections
+        // BATCH7-P3 (advisor 6c): the variable count the section is ABOUT to see —
+        // a repeat of the owner's repro (values vanish on collapse) is visible in logs.
+        if (key == "locals" || key == "stack") {
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[VARS-DIAG] " + key + " section " + (if (expanding) "expand" else "collapse") + ": vars=" +
+                    (if (key == "locals") pausedVars.size else pausedStack.size) + " held-outside=" + pausedVars.size, "debug")
+        }
+        expandedSections = if (expanding) expandedSections + key else expandedSections - key
     }
 
     Column(
@@ -192,35 +267,10 @@ fun VariableInspectorPanel(
                     fontFamily = FontFamily.Monospace,
                 )
             } else {
-                // P26-1: Multi-listener — no callback conflict with RunDebugPanel
-                var pausedVars by remember { mutableStateOf<List<com.codespace.ide.debug.DebugVariable>>(emptyList()) }
-                val varsListener: (List<com.codespace.ide.debug.DebugStackFrame>, List<com.codespace.ide.debug.DebugVariable>) -> Unit = { stack, vars ->
-                    pausedVars = vars
-                    com.codespace.ide.diagnostics.AppOutputLog.log(
-                        "[VARS-DIAG] paused event reached the panel: frames=" + stack.size +
-                            " vars=" + vars.size, "debug")
-                    // P26-1c/DG10: live watch refresh goes through the shared
-                    // UDM store so the Explorer watch list stays in sync too.
-                    if (watchExprs.isNotEmpty()) {
-                        udm.refreshWatches(udm.getActiveSession()?.id)
-                        watchExprs = udm.getWatches()
-                    }
-                }
-                LaunchedEffect(Unit) {
-                    // BATCH6-P2 (advisor C, READ hop): SUSPECT — this panel sees ONLY
-                    // paused events that arrive AFTER it is composed. If the pause
-                    // happened while the Variables tab was closed, pausedVars starts
-                    // empty and stays "Running..." until the NEXT pause. These two
-                    // lines make the sequence provable on device.
-                    com.codespace.ide.diagnostics.AppOutputLog.log(
-                        "[VARS-DIAG] locals panel composed: sees only paused events from NOW on " +
-                            "(session=" + (com.codespace.ide.debug.UniversalDebugManager.getActiveSession()?.id ?: "none") + ")",
-                        "debug")
-                    com.codespace.ide.debug.UniversalDebugManager.addOnPausedListener(varsListener)
-                }
-                DisposableEffect(Unit) {
-                    onDispose { com.codespace.ide.debug.UniversalDebugManager.removeOnPausedListener(varsListener) }
-                }
+                // BATCH7-P3: pausedVars is the PANEL-LEVEL state (see top) — the
+                // section only READS it, so collapse/expand never loses values and
+                // a pause from before compose shows immediately. Listener
+                // registration is also panel-level now.
                 val session = com.codespace.ide.debug.UniversalDebugManager.getActiveSession()
                 if (session == null) {
                     Text(
@@ -285,17 +335,8 @@ fun VariableInspectorPanel(
             onToggle = { toggleSection("stack") },
         )
         if ("stack" in expandedSections) {
-            // P26-1: Multi-listener for call stack
-            var pausedStack by remember { mutableStateOf<List<com.codespace.ide.debug.DebugStackFrame>>(emptyList()) }
-            val stackListener: (List<com.codespace.ide.debug.DebugStackFrame>, List<com.codespace.ide.debug.DebugVariable>) -> Unit = { stack, _ ->
-                pausedStack = stack
-            }
-            LaunchedEffect(Unit) {
-                com.codespace.ide.debug.UniversalDebugManager.addOnPausedListener(stackListener)
-            }
-            DisposableEffect(Unit) {
-                onDispose { com.codespace.ide.debug.UniversalDebugManager.removeOnPausedListener(stackListener) }
-            }
+            // BATCH7-P3: pausedStack is the PANEL-LEVEL state (see top) — the
+            // section only READS it; listener registration is panel-level.
             val session = com.codespace.ide.debug.UniversalDebugManager.getActiveSession()
             if (session == null) {
                 Text(

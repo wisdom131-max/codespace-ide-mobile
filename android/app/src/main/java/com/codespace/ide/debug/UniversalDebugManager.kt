@@ -409,6 +409,11 @@ object UniversalDebugManager {
             return
         }
         session.state = newState
+        // BATCH7-P3 (advisor 6b, 2026-10-18): any non-PAUSED transition (continue,
+        // stepping, stopping, stopped, crashed, failed) ends the pause — the last
+        // paused snapshot for THIS session is cleared so the panel honestly shows
+        // "Running..." instead of stale variables. Never touches another session.
+        if (newState != DebugState.PAUSED) DebugPauseStore.clear(session.id)
         // DEBUG-CHANNEL (2026-10-03, owner-approved): session-lifecycle markers for
         // EVERY session (starting/paused/resumed/stopped/failed/crashed), not just
         // crash lines — the Output tab's Debug channel previously had no way to show
@@ -436,7 +441,11 @@ object UniversalDebugManager {
     fun logDebugConsole(line: String) {
         if (line.isNotBlank()) notifyOutput(line)
     }
-    private fun notifyPaused(stack: List<DebugStackFrame>, vars: List<DebugVariable>) {
+    private fun notifyPaused(session: DebugSession, stack: List<DebugStackFrame>, vars: List<DebugVariable>) {
+        // BATCH7-P3 (advisor 6b): store the snapshot BEFORE firing listeners — the
+        // panel reads the store, so a pause that happened BEFORE the panel was
+        // composed (or while its section was collapsed) shows on the next compose.
+        DebugPauseStore.record(session.id, stack, vars)
         // BATCH6-P2 (advisor C, READ hop): owner evidence says vars DID arrive at the
         // adapter (paused delivered: frames=1 vars=3) but the panel showed nothing.
         // This line pins the DELIVERY side: how many listeners (band + variables
@@ -593,7 +602,7 @@ object UniversalDebugManager {
                 onOutput = { msg -> notifyOutput(msg) },
                 onPaused = { stack, vars ->
                     transitionState(session, DebugState.PAUSED)
-                    notifyPaused(stack, vars)
+                    notifyPaused(session, stack, vars)
                 },
                 onStopped = { exitCode ->
                     // P27-10: Crash detection — non-zero exit = CRASHED
@@ -616,7 +625,7 @@ object UniversalDebugManager {
                 onOutput = { msg -> notifyOutput(msg) },
                 onPaused = { stack, vars ->
                     transitionState(session, DebugState.PAUSED)
-                    notifyPaused(stack, vars)
+                    notifyPaused(session, stack, vars)
                 },
             )
         }
@@ -705,7 +714,7 @@ object UniversalDebugManager {
             onOutput = { msg -> notifyOutput(msg) },
             onPaused = { stack, vars ->
                 transitionState(session, DebugState.PAUSED)
-                notifyPaused(stack, vars)
+                notifyPaused(session, stack, vars)
             },
             onStopped = { exitCode ->
                 if (exitCode != 0) {
