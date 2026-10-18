@@ -127,7 +127,15 @@ public final class TerminalBuffer {
         // Get the text for the whole wrapped line
         String text = getSelectedText(0, y1, mColumns, y2, true, true);
         // The index of x in text
-        int textOffset = (y - y1) * mColumns + x;
+        // BATCH6-P4 (advisor ruling 3, 2026-10-18): the old line computed a CELL count
+                // ((y - y1) * mColumns + x) and used it as a CHAR index against the
+                // reconstructed text. TerminalRow stores width-2 code points once but
+                // they occupy TWO cells, and combining marks add java chars but ZERO
+                // cells, so after any such character the tap landed past the real text
+                // (out-of-range -> empty token). Convert the cell offset to a CHAR
+                // offset with the same width table the buffer uses; identity for ASCII.
+                int textOffset = com.codespace.ide.terminal.TerminalTapMap
+                    .cellOffsetToCharOffset(text, (y - y1) * mColumns + x);
 
         if (textOffset >= text.length()) {
           // The click was to the right of the last word on the line, so
@@ -171,7 +179,9 @@ public final class TerminalBuffer {
             y2++;
         }
         String text = getSelectedText(0, y1, mColumns, y2, true, true);
-        int textOffset = (y - y1) * mColumns + x;
+        // BATCH6-P4: same cell-to-char conversion as getWordAtLocation above.
+        int textOffset = com.codespace.ide.terminal.TerminalTapMap
+            .cellOffsetToCharOffset(text, (y - y1) * mColumns + x);
         if (textOffset >= text.length()) {
             return null;
         }
