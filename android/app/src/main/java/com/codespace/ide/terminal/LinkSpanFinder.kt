@@ -48,6 +48,20 @@ object LinkSpanFinder {
 
     /** Nearest quote pair (single or double) enclosing the tap, inclusive. */
     private fun quotedSpanAt(rowText: String, off: Int): ExplicitSpan? {
+        val direct = quotedSpanFromOpenerAtOrBefore(rowText, off)
+        if (direct != null) return direct
+        // Tap sitting ON the CLOSING quote: the first scan found that quote as
+        // the "opener" (nothing matches to its right). Rescan from just before
+        // the tap - the real opener sits left of the closing quote, and the
+        // tap offset itself equals q2 (off == q2 passes the enclosing check).
+        if (off > 0 && (rowText[off] == '"' || rowText[off] == '\'')) {
+            return quotedSpanFromOpenerAtOrBefore(rowText, off - 1)
+        }
+        return null
+    }
+
+    /** The quote pair whose opener is the last quote at or before [off]. */
+    private fun quotedSpanFromOpenerAtOrBefore(rowText: String, off: Int): ExplicitSpan? {
         // Scan left for the LAST quote char at or before the tap. The tap may
         // sit ON the opening quote (device D1: tap at the very start of the
         // path), so the left scan starts AT the tap offset.

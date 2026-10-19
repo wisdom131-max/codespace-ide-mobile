@@ -31,7 +31,7 @@ class TerminalLinkPaintTest {
 
     @Test fun plainTxtWithLine_isPainted() {
         val spans = TerminalLinkPaint.baseSpans("err file.txt:2 tail")
-        assertEquals(listOf(TerminalLinkPaint.Span(4, 13)), spans)
+        assertEquals(listOf(TerminalLinkPaint.Span(4, 14)), spans)
     }
 
     @Test fun rowWithoutDotOrSlash_paintsNothing() {
@@ -50,7 +50,7 @@ class TerminalLinkPaintTest {
         // shown AFTER resolution via the resolved-span overlay (advisor: "for
         // others, show the resolved span after resolution").
         val spans = TerminalLinkPaint.baseSpans("cat relative space test.txt")
-        assertEquals(listOf(TerminalLinkPaint.Span(20, 28)), spans)
+        assertEquals(listOf(TerminalLinkPaint.Span(19, 27)), spans)
     }
 
     // ── [RED] D2: :line:col must be painted (device: "file:2:1 is not
@@ -58,12 +58,12 @@ class TerminalLinkPaintTest {
 
     @Test fun lineColForm_isPainted() {
         val spans = TerminalLinkPaint.baseSpans("err file.txt:2:1 tail")
-        assertEquals(listOf(TerminalLinkPaint.Span(4, 15)), spans)
+        assertEquals(listOf(TerminalLinkPaint.Span(4, 16)), spans)
     }
 
     @Test fun lineColForm_fiveDigits_isPainted() {
         val spans = TerminalLinkPaint.baseSpans("err file.txt:12:34 tail")
-        assertEquals(listOf(TerminalLinkPaint.Span(4, 16)), spans)
+        assertEquals(listOf(TerminalLinkPaint.Span(4, 18)), spans)
     }
 
     // ── [RED] D3: a token cut by the wrap is painted on BOTH visual rows ────
@@ -118,7 +118,7 @@ class TerminalLinkPaintTest {
         // spans chars 4..15 in the LOGICAL text; the overlay must map it to
         // row 0 cells 4..10 and row 1 cells 0..5.
         val logical = "cat zz file.py more"
-        val span = TerminalLinkPaint.overlayCells(logical, 4, 15, 10)
+        val span = TerminalLinkPaint.overlayCells(logical, 4, 14, 10)
         assertEquals(2, span.size)
         assertEquals(TerminalLinkPaint.OverlayCell(0, 4, 10), span[0])
         assertEquals(TerminalLinkPaint.OverlayCell(1, 0, 4), span[1])
