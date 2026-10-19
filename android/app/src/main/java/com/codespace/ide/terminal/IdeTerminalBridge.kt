@@ -249,7 +249,7 @@ object IdeTerminalBridge {
             }
             val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
             when {
-                r != null -> TappedLinkResult(r.first, r.second, LinkResolveReason.RESOLVED)
+                r != null -> TappedLinkResult(r.first, r.second, LinkResolveReason.RESOLVED, null, r.third)
                 elapsedMs >= RESOLVE_TIMEOUT_MS -> TappedLinkResult(null, -1, LinkResolveReason.TIMEOUT)
                 else -> TappedLinkResult(null, -1, LinkResolveReason.NOT_FOUND)
             }
@@ -280,7 +280,7 @@ object IdeTerminalBridge {
         diagId: Int? = null,
         cwdCtx: CwdContext? = null,
         probe: LinkFileProbe = LinkFileProbe.REAL,
-    ): Pair<File, Int>? {
+    ): Triple<File, Int, Int>? {
         val resolved = resolveTappedFileLinkUnscoped(context, session, token, projectId, diagId, cwdCtx, probe)
         if (resolved == null) return null
         if (lockedRoot != null) {
@@ -303,14 +303,13 @@ object IdeTerminalBridge {
         diagId: Int? = null,
         cwdCtx: CwdContext? = null,
         probe: LinkFileProbe = LinkFileProbe.REAL,
-    ): Pair<File, Int>? {
+    ): Triple<File, Int, Int>? {
         // Advisor Part 3 cap: an absurdly long "token" is not probed at all.
         if (token.isBlank() || token.length > MAX_TOKEN_LENGTH) return null
-        // A5-SPAN: a span token may carry leading filler words ("at My Project/x.kt:42",
-        // "cd My Project/x.kt:42") that the whole-line match cannot exclude. Try the
-        // token as extracted FIRST, then progressively drop leading chunks. No-space
-        // tokens produce a single candidate = exactly the old behavior.
-        for (candidate in linkCandidates(token.trim().trimEnd(':', ',', ';'))) {
+        // BATCH11-S2: the cheap candidate pipeline (quotes, escapes, prompt
+        // prefix, junk, diff prefix, :line/:line:col suffixes, bounded chunk
+        // drops) — pure string work, existence picks the winner.
+        for (candidate in LinkCandidateBuilder.build(token)) {
             val r = resolveSingleToken(context, session, candidate, projectId, diagId, cwdCtx, probe)
             if (r != null) return r
         }
@@ -339,31 +338,29 @@ object IdeTerminalBridge {
      * tap catch).
      */
     fun parseFileLinkToken(token: String): Pair<String, Int> {
-        // CI-proven (6cafa41 red): "path ," left a TRAILING SPACE after the comma
-        // was stripped — the resolved path then never matched a real file. Punctuation
-        // AND whitespace are both stripped from the end, repeatedly.
+        // BATCH11-S2: delegates to LinkCandidateBuilder.parseToken (fixes the
+        // legacy :line:col gap — "Main.kt:42:5" used to leave ":42" in the path;
+        // the FileLinkReproTest pin is updated to the CORRECT behavior). The
+        // legacy Pair keeps its shape for existing callers; the column is
+        // dropped here and carried by the builder/resolver chain.
         val clean = token.trim().trimEnd { it == ':' || it == ',' || it == ';' || it.isWhitespace() }
-        val lastColon = clean.lastIndexOf(':')
-        if (lastColon > 0) {
-            val candidatePath = clean.substring(0, lastColon)
-            val candidateLine = clean.substring(lastColon + 1)
-            if (candidateLine.isNotEmpty() && candidateLine.length <= 6 && candidateLine.all { it.isDigit() }) {
-                return Pair(candidatePath, candidateLine.toInt())
-            }
-        }
-        return Pair(clean, -1)
+        val parsed = LinkCandidateBuilder.parseToken(clean)
+        return Pair(parsed.path, parsed.line)
     }
 
     private fun resolveSingleToken(
         context: Context? = null,
         session: com.termux.terminal.TerminalSession?,
-        token: String,
+        /** BATCH11-S2: the already-parsed candidate from LinkCandidateBuilder. */
+        candidate: LinkCandidateBuilder.Candidate,
         projectId: String?,
         diagId: Int? = null,
         cwdCtx: CwdContext? = null,
         probe: LinkFileProbe = LinkFileProbe.REAL,
-    ): Pair<File, Int>? {
-        val (pathPart, lineNum) = parseFileLinkToken(token)
+    ): Triple<File, Int, Int>? {
+        val pathPart = candidate.path
+        val lineNum = candidate.line
+        val colNum = candidate.col
         // BATCH11-S1: nullable for JVM tests (tests exercise the probe/cwd logic with
         // a fake file system and no Android Context); production always passes one.
         val appCtx = context?.applicationContext
@@ -380,7 +377,7 @@ object IdeTerminalBridge {
             } catch (_: Exception) { emptyList() }
             com.codespace.ide.diagnostics.AppOutputLog.log(
                 "[TAPDIAG] id=" + diagId + " resolve-enter" +
-                    " candidate='" + token.take(60) + "'" +
+                    " candidate='" + candidate.path.take(60) + "' line=" + candidate.line + " col=" + candidate.col + " origin=" + candidate.origin +
                     " sessionCwdProc='" + procCwd + "'" +
                     " roots=" + (if (projectId == null) "none(projectId=null)" else diagRoots.size.toString()) +
                     " rootsList='" + diagRoots.joinToString("|").take(120) + "'" +
@@ -392,11 +389,11 @@ object IdeTerminalBridge {
         // on-device test pinpoints exactly WHERE resolution fails instead of failing
         // silently. token=what was extracted from the tap, pathPart/lineNum=what each
         // branch tried.
-        AppOutputLog.log("[TAP] file-link tap: token='" + token + "' pathPart='" + pathPart + "' line=" + lineNum, CHANNEL)
+        AppOutputLog.log("[TAP] file-link tap: origin=" + candidate.origin + " pathPart='" + pathPart + "' line=" + lineNum + " col=" + colNum + " explicit=" + candidate.explicit, CHANNEL)
         // 1. absolute host path
         File(pathPart).takeIf { it.isAbsolute && probe.exists(pathPart) }?.let {
             AppOutputLog.log("[TAP] resolved via absolute host path: " + it.absolutePath, CHANNEL)
-            return Pair(it, lineNum - 1)
+            return Triple(it, lineNum - 1, colNum)
         }
         // 2. guest -> host translation. BATCH11-S1: guarded — a failing guest map
         // (no context, proot not installed, map error) must not kill the resolve;
@@ -405,7 +402,7 @@ object IdeTerminalBridge {
             try {
                 guestPathToHostFile(appCtx, pathPart, probe)?.let {
                     AppOutputLog.log("[TAP] resolved via guest->host map: " + it.absolutePath, CHANNEL)
-                    return Pair(it, lineNum - 1)
+                    return Triple(it, lineNum - 1, colNum)
                 }
             } catch (_: Throwable) {
                 AppOutputLog.log("[TAP] guest->host map branch failed (skipped)", CHANNEL)
@@ -462,7 +459,7 @@ object IdeTerminalBridge {
             for (root in capped) {
                 File(root, pathPart).takeIf { probe.exists(it.absolutePath) }?.let {
                     AppOutputLog.log("[TAP] resolved via workspace root " + root + ": " + it.absolutePath, CHANNEL)
-                    return Pair(it, lineNum - 1)
+                    return Triple(it, lineNum - 1, colNum)
                 }
             }
         }

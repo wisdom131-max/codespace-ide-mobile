@@ -112,9 +112,9 @@ class LinkResolverS1Test {
 
     @Test fun slowProbes_reasonIsTimeout() {
         // 3s budget vs. 400ms probes: branch 1 (absolute) + branch 3 (633, then
-        // initialDir) per candidate, and the 2-space token forces THREE candidates
-        // (linkCandidates leading-chunk drop) = 9 probes x 400ms = 3.6s — the
-        // budget is exceeded deterministically before the chain completes.
+        // initialDir) per candidate, and the 2-space token forces FOUR candidates
+        // (LinkCandidateBuilder full + three chunk drops) = 12 probes x 400ms =
+        // 4.8s — the budget is exceeded deterministically before the chain completes.
         // TIMEOUT (the ONLY honest "storage may be busy" verdict) is the result.
         // NOTE: blocking probes cannot be preempted — the block finishes past
         // the budget and the measured wall time is what classifies (same

@@ -76,9 +76,11 @@ class FileLinkReproTest {
         assertEquals(Pair("日本.txt", 3), IdeTerminalBridge.parseFileLinkToken("日本.txt:3"))
         // path with spaces
         assertEquals(Pair("My Project/main.kt", 7), IdeTerminalBridge.parseFileLinkToken("My Project/main.kt:7"))
-        // col suffix documents CURRENT behavior: last colon wins, so the path part
-        // carries ":42" and the token does not resolve — known gap, not a crash.
-        assertEquals(Pair("Main.kt:42", 5), IdeTerminalBridge.parseFileLinkToken("Main.kt:42:5"))
+        // BATCH11-S2: the col-suffix gap is FIXED — "Main.kt:42:5" now parses to
+        // path "Main.kt" line 42 (legacy helper drops the column; the resolver
+        // chain carries it via LinkCandidateBuilder). The OLD behavior left
+        // ":42" inside the path part so the token could never resolve.
+        assertEquals(Pair("Main.kt", 42), IdeTerminalBridge.parseFileLinkToken("Main.kt:42:5"))
     }
 
     @Test

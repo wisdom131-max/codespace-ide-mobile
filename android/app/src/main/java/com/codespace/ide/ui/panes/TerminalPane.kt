@@ -453,10 +453,11 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                         val linkToken = (spanToken ?: word).trim()
                         // LOG_TOKEN: extract candidates and LOG them — NO file access.
                         if (tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.LOG_TOKEN) {
-                            val cands = com.codespace.ide.terminal.IdeTerminalBridge.linkCandidates(linkToken.trim().trimEnd(':', ',', ';'))
-                            com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 2 done (LOG_TOKEN, no file access): candidates=" + cands.joinToString(" | ").take(200))
+                            val cands = com.codespace.ide.terminal.LinkCandidateBuilder.build(linkToken.trim().trimEnd(':', ',', ';'))
+                            val candText = cands.joinToString(" | ") { c -> (if (c.explicit) "!" else "") + c.path + ":" + c.line + (if (c.col > 0) ":" + c.col else "") + "(" + c.origin + ")" }
+                            com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 2 done (LOG_TOKEN, no file access): candidates=" + candText.take(200))
                             com.codespace.ide.diagnostics.AppOutputLog.log(
-                                "[TAP] (Log token mode) candidates: " + cands.joinToString(" | "), "terminal",
+                                "[TAP] (Log token mode) candidates: " + candText, "terminal",
                             )
                         } else if (com.codespace.ide.terminal.IdeTerminalBridge.isResolvableToken(linkToken)) {
                             // Advisor Part 3 (2026-10-16): resolve + exists + canonical
