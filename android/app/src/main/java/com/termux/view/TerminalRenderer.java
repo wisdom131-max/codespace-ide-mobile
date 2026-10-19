@@ -34,16 +34,28 @@ public final class TerminalRenderer {
     private final float[] asciiMeasures = new float[127];
 
     // BATCH-G-STYLE (2026-09-10): VS Code-style visual link styling for plain-text
-    // file paths ("src/Main.kt:42", "debug_test.py:13"). The tap resolver (TerminalPane
-    // A3, IdeTerminalBridge.resolveTappedFileLink) has worked since P2 but paths were
-    // visually indistinguishable from plain text. This pass runs AFTER each row's normal
-    // rendering and redraws recognized tokens with link color + underline. The whitelist
-    // is a strict SUBSET of what the tap resolver accepts, so anything underlined is
-    // guaranteed tappable (the reverse may not hold — fine, matches VS Code behavior).
-    private static final java.util.regex.Pattern LINK_TOKEN = java.util.regex.Pattern.compile(
-        "[^\\s]+\\.(kt|kts|java|py|js|ts|md|json|xml|gradle|yml|yaml|txt|sh|c|cpp|rs|go|rb|php|css|html)(:\\d+)?(?=\\s|$)");
+    // file paths. DEVICE PAINT FIXES D1/D2/D3 (advisor round 2026-10-19): the
+    // token MATCHING now lives in the pure Kotlin object TerminalLinkPaint
+    // (JVM-tested) — this renderer keeps only the paint geometry (plain-width
+    // gate, cell-column walk, drawTextRun). Changes shipped with the move:
+    //   D2: :line:col now anchors the paint (old pattern allowed one group).
+    //   D1: quoted + shell-escaped spans painted WHOLE at detection time.
+    //   D3: a token cut by the wrap is painted on BOTH visual rows (the
+    //       wrapping row joins its tail with the continuation row's head and
+    //       hands the segment to the next row via the seam carry).
     private static final int LINK_COLOR = 0xFF3794FF; // VS Code terminal link blue
     private final Paint mLinkPaint = new Paint();
+
+    // D1 resolved-span overlay (advisor: "for others, show the resolved span
+    // after resolution") — set by TerminalView before each render; pieces are
+    // {row, cellStart, cellEnd} triplets in EXTERNAL row coordinates.
+    private int[] mLinkOverlay;
+    private long mLinkOverlayExpiresAt;
+
+    public void setLinkOverlay(int[] pieces, long expiresAt) {
+        mLinkOverlay = pieces;
+        mLinkOverlayExpiresAt = expiresAt;
+    }
 
     public TerminalRenderer(int textSize, Typeface typeface) {
         mTextSize = textSize;
@@ -88,6 +100,10 @@ public final class TerminalRenderer {
             canvas.drawColor(palette[TextStyle.COLOR_INDEX_FOREGROUND], PorterDuff.Mode.SRC);
 
         float heightOffset = mFontLineSpacingAndAscent;
+        // D3 seam carry: the segment a WRAPPING row's join matched into the
+        // NEXT row (-1 = none). Reset automatically: paintForRow returns -1
+        // whenever no seam match was produced for this row.
+        int seamCarryIntoNextRow = -1;
         for (int row = topRow; row < endRow; row++) {
             heightOffset += mFontLineSpacing;
 
@@ -101,6 +117,18 @@ public final class TerminalRenderer {
             TerminalRow lineObject = screen.allocateFullLineIfNecessary(screen.externalToInternalRow(row));
             final char[] line = lineObject.mText;
             final int charsUsedInLine = lineObject.getSpaceUsed();
+
+            // D3 seam plumbing: does THIS row wrap into the next, and what is
+            // the next row's text (only read when it wraps — cheap flag + a
+            // buffer line that the next loop iteration reads anyway).
+            final boolean rowWraps = screen.getLineWrap(row);
+            char[] seamNextLine = null;
+            int seamNextChars = 0;
+            if (rowWraps && row + 1 < endRow) {
+                TerminalRow seamNextObj = screen.allocateFullLineIfNecessary(screen.externalToInternalRow(row + 1));
+                seamNextLine = seamNextObj.mText;
+                seamNextChars = seamNextObj.getSpaceUsed();
+            }
 
             long lastRunStyle = 0;
             boolean lastRunInsideCursor = false;
@@ -173,9 +201,29 @@ public final class TerminalRenderer {
                 measuredWidthForRun, cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor || lastRunInsideSelection);
 
             // BATCH-G-STYLE: redraw plain-text file-path tokens with link color + underline
-            drawFileLinkTokens(canvas, line, charsUsedInLine, heightOffset);
+            seamCarryIntoNextRow = drawFileLinkTokens(canvas, line, charsUsedInLine, heightOffset,
+                rowWraps, seamNextLine, seamNextChars, seamCarryIntoNextRow, columns);
+            // D1 resolved-span overlay: the tap resolver's winning span, mapped
+            // to cells by TerminalLinkPaint.overlayCells (set from TerminalPane
+            // after a successful resolve; TTL-checked here).
+            if (mLinkOverlay != null && System.currentTimeMillis() < mLinkOverlayExpiresAt) {
+                for (int p = 0; p + 2 < mLinkOverlay.length; p += 3) {
+                    if (mLinkOverlay[p] != row) continue;
+                    int oc1 = mLinkOverlay[p + 1];
+                    int oc2 = mLinkOverlay[p + 2];
+                    if (oc2 <= oc1 || oc1 >= columns) continue;
+                    if (oc2 > columns) oc2 = columns;
+                    int ocs = lineObject.findStartOfColumn(oc1);
+                    int oce = (oc2 < columns) ? lineObject.findStartOfColumn(oc2) : charsUsedInLine;
+                    if (oce > ocs) {
+                        canvas.drawTextRun(line, ocs, oce - ocs, ocs, oce - ocs,
+                            oc1 * mFontWidth, heightOffset - mFontLineSpacingAndAscent, false, mLinkPaint);
+                    }
+                }
+            }
         }
     }
+
 
     /**
      * BATCH-G-STYLE: scans a rendered row for file-path tokens and redraws them with
@@ -183,19 +231,25 @@ public final class TerminalRenderer {
      * containing any char whose terminal cell width is not exactly 1 (surrogates,
      * wide CJK/emoji, combining marks) so the monospace geometry stays exact.
      */
-    private void drawFileLinkTokens(Canvas canvas, char[] text, int charsUsed, float y) {
-        if (charsUsed <= 0) return;
+    /**
+     * BATCH-G-STYLE + DEVICE PAINT FIXES: the char ranges come from the pure
+     * TerminalLinkPaint.paintForRow (D2 col groups, D1 quoted/escaped whole
+     * spans, D3 wrap seam). Returns the seam carry for the NEXT row (>= 0:
+     * paint its leading [0, carry) chars as link), or -1.
+     */
+    private int drawFileLinkTokens(Canvas canvas, char[] text, int charsUsed, float y,
+                                   boolean rowWraps, char[] nextText, int nextChars,
+                                   int carriedSeam, int columns) {
+        if (charsUsed <= 0) return -1;
         String rowStr = new String(text, 0, charsUsed);
-        // stripTrailing to avoid styling padding spaces region
-        int endTrim = charsUsed;
-        while (endTrim > 0 && Character.isWhitespace(text[endTrim - 1])) endTrim--;
-        if (endTrim <= 0) return;
-        rowStr = new String(text, 0, endTrim);
-        if (rowStr.indexOf('.') == -1 && rowStr.indexOf('/') == -1) return;
-        java.util.regex.Matcher m = LINK_TOKEN.matcher(rowStr);
-        while (m.find()) {
-            int startIdx = m.start();
-            int len = m.end() - startIdx;
+        String nextStr = (rowWraps && nextText != null) ? new String(nextText, 0, nextChars) : null;
+        com.codespace.ide.terminal.TerminalLinkPaint.RowPaint paint =
+            com.codespace.ide.terminal.TerminalLinkPaint.paintForRow(rowStr, carriedSeam, rowWraps, nextStr);
+        for (com.codespace.ide.terminal.TerminalLinkPaint.Span span : paint.getSpans()) {
+            int startIdx = span.getStart();
+            int len = span.getEnd() - span.getStart();
+            if (len <= 0 || startIdx >= charsUsed) continue;
+            if (startIdx + len > charsUsed) len = charsUsed - startIdx;
             // All chars in the token must be plain width-1 chars (no surrogates/wide/combining)
             boolean plain = true;
             for (int i = 0; i < len; i++) {
@@ -222,6 +276,7 @@ public final class TerminalRenderer {
             float left = col * mFontWidth;
             canvas.drawTextRun(text, startIdx, len, startIdx, len, left, y - mFontLineSpacingAndAscent, false, mLinkPaint);
         }
+        return paint.getSeamIntoNext();
     }
 
     private void drawTextRun(Canvas canvas, char[] text, int[] palette, float y, int startColumn, int runWidthColumns,

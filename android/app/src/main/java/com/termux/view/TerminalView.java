@@ -1090,11 +1090,26 @@ public final class TerminalView extends View {
         }
     }
 
+    // D1 resolved-span overlay (advisor 2026-10-19): the tap resolver's winning
+    // span shown in the terminal after resolution. Pieces are {row, cellStart,
+    // cellEnd} triplets in EXTERNAL row coords; expiresAtMillis bounds the
+    // display (the renderer drops it on expiry — no explicit invalidation
+    // bookkeeping needed).
+    private int[] mLinkOverlay;
+    private long mLinkOverlayExpiresAt;
+
+    public void setLinkOverlay(int[] pieces, long expiresAtMillis) {
+        mLinkOverlay = pieces;
+        mLinkOverlayExpiresAt = expiresAtMillis;
+        invalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         if (mEmulator == null) {
             canvas.drawColor(0XFF000000);
         } else {
+            mRenderer.setLinkOverlay(mLinkOverlay, mLinkOverlayExpiresAt);
             // render the terminal view and highlight any selected text
             int[] sel = mDefaultSelectors;
             if (mTextSelectionCursorController != null) {

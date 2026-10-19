@@ -510,9 +510,36 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                                     if (r.file != null && tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.RESOLVE) {
                                         // RESOLVE mode: show the result, do NOT open.
                                         v.mTermSession?.write("\r\n[Link] Resolved (Resolve mode, not opened): " + r.file.absolutePath + ":" + r.line + (if (r.col > 0) " col " + r.col else "") + "\r\n")
+                                        try {
+                                            if (r.spanStart >= 0 && tapRowText != null && colRow != null) {
+                                                val pieces = com.codespace.ide.terminal.LinkPaintOverlay.piecesFor(
+                                                    v.mEmulator, colRow[1], tapRowText, r.spanStart, r.spanEnd)
+                                                if (pieces != null) {
+                                                    v.setLinkOverlay(pieces, com.codespace.ide.terminal.LinkPaintOverlay.expiresAt())
+                                                }
+                                            }
+                                        } catch (_: Exception) {
+                                            com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "overlay mapping failed (non-fatal)")
+                                        }
                                     } else if (r.file != null) {
+                                        // D1 resolved-span overlay: the winning span, mapped to
+                                        // cells, shown in the terminal for BOTH Resolve and Full
+                                        // (detection can only underline the last chunk of an
+                                        // unquoted spaces path — the overlay shows what the
+                                        // resolver actually resolved).
+                                        try {
+                                            if (r.spanStart >= 0 && tapRowText != null && colRow != null) {
+                                                val pieces = com.codespace.ide.terminal.LinkPaintOverlay.piecesFor(
+                                                    v.mEmulator, colRow[1], tapRowText, r.spanStart, r.spanEnd)
+                                                if (pieces != null) {
+                                                    v.setLinkOverlay(pieces, com.codespace.ide.terminal.LinkPaintOverlay.expiresAt())
+                                                }
+                                            }
+                                        } catch (_: Exception) {
+                                            com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "overlay mapping failed (non-fatal)")
+                                        }
                                         com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 4 start: open " + r.file.absolutePath + ":" + r.line)
-                                        onFileLinkTap?.invoke(r.file.absolutePath, r.line)
+                                        onFileLinkTap?.invoke(r.file.absolutePath, r.line, maxOf(r.col, 0))
                                         com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 4 done: open handed to editor")
                                     } else if (r.reason == com.codespace.ide.terminal.LinkResolveReason.AMBIGUOUS) {
                                         // Real tie between distinct files — show the choice, never pick silently.
@@ -563,7 +590,7 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                                     com.codespace.ide.diagnostics.CrumbLog.crumb(
                                         "tap", "resolved -> open " + resolved.first.absolutePath + ":" + resolved.second,
                                     )
-                                    onFileLinkTap?.invoke(resolved.first.absolutePath, resolved.second)
+                                    onFileLinkTap?.invoke(resolved.first.absolutePath, resolved.second, 0)
                                     return
                                 }
                             }
@@ -608,7 +635,9 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
 
     // Callbacks wired from TerminalPane so shortcuts can act on tab state
     // A3: plain-text file-link tap ("path/File.kt:42") -> open in editor.
-    var onFileLinkTap: ((String, Int) -> Unit)? = null
+    // D2 (advisor round 2026-10-19): the COLUMN rides along (1-based, LSP/gcc/
+    // ripgrep convention; 0 or negative = start of line). Wired in TerminalPane.
+    var onFileLinkTap: ((String, Int, Int) -> Unit)? = null
     // Project context for the tap resolver's workspace-root fallback (set at
     // view creation from the composable's projectId param).
     var projectId: String? = null
@@ -921,6 +950,11 @@ internal fun TerminalPane(
     // Part A: open-file-at-line entry point (0-based line; same lambda convention
     // as EditorPane/ProjectShellScreen onOpenFileAtLine). Used by OSC 7777 and tap detection.
     onOpenFileAtLine: ((String, Int) -> Unit)? = null,
+    /** D2 (advisor round 2026-10-19): the TAP open path with a COLUMN
+     *  (1-based; 0/negative = start of line). When wired, taps use this seam
+     *  so :line:col tokens place the caret at the column. OSC 7777 keeps the
+     *  2-arg [onOpenFileAtLine] (its protocol carries no column). */
+    onOpenFileAtLineCol: ((String, Int, Int) -> Unit)? = null,
     /** I2 — TERMINAL BRIDGE: explain-chip callback (opens chat with a prompt). */
     onAskAi: ((String) -> Unit)? = null,
 ) {
@@ -3215,7 +3249,10 @@ internal fun TerminalPane(
                             val viewClient2 = view.mClient as? SimpleTerminalViewClient
                             if (viewClient2 != null) {
                                 viewClient2.onNewTab      = { addTab() }
-                                viewClient2.onFileLinkTap = { p, l -> onOpenFileAtLine?.invoke(p, l) }
+                                viewClient2.onFileLinkTap = { p, l, c ->
+                                    if (onOpenFileAtLineCol != null) onOpenFileAtLineCol!!.invoke(p, l, c)
+                                    else onOpenFileAtLine?.invoke(p, l)
+                                }
                                 viewClient2.resolveScope = scope
                                 viewClient2.onCloseTab    = { closeTab(active.id) }
                                 viewClient2.onPrevTab     = { val i = tabs.indexOfFirst { it.id == activeId }; if (i > 0) activeId = tabs[i-1].id else if (tabs.isNotEmpty()) activeId = tabs.last().id }
