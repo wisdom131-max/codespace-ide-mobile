@@ -97,14 +97,14 @@ class TerminalLinkPaintTest {
 
     @Test fun quotedSpacesPath_paintedWhole() {
         val row = "echo '/sdcard/My codespace app 1/absolute space test.txt' done"
-        val spans = TerminalLinkPaint.paintForRow(row, -1, false, null)
+        val spans = TerminalLinkPaint.paintForRow(row, -1, false, null).spans
         val whole = spans.firstOrNull { row.substring(it.start, it.end) == "'/sdcard/My codespace app 1/absolute space test.txt'" }
         assertTrue("quoted span must be painted whole at detection: $spans", whole != null)
     }
 
     @Test fun escapedSpacesPath_paintedWhole() {
         val row = "echo /sdcard/My\\ codespace\\ app\\ 1/f.py done"
-        val spans = TerminalLinkPaint.paintForRow(row, -1, false, null)
+        val spans = TerminalLinkPaint.paintForRow(row, -1, false, null).spans
         val whole = spans.firstOrNull { row.substring(it.start, it.end) == "/sdcard/My\\ codespace\\ app\\ 1/f.py" }
         assertTrue("escaped span must be painted whole at detection: $spans", whole != null)
     }
