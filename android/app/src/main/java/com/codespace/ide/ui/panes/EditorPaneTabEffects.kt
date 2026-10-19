@@ -78,10 +78,44 @@ internal fun EditorPaneTabRequests(
                 tabFoldedRanges.remove(oldPath)?.let { tabFoldedRanges[newPath] = it }
                 fileBookmarks.remove(oldPath)?.let { fileBookmarks[newPath] = it }
                 if (pinnedPaths.remove(oldPath)) pinnedPaths.add(newPath)
-                // LSP bookkeeping: didRenameFiles already told the server, so NO
-                // protocol traffic here — just rekey the opened-doc tracker so
-                // future didClose/didChange use the new spelling.
+                // LSP bookkeeping: rekey the opened-doc tracker so future
+                // didClose/didChange use the new spelling...
                 lspOpenedFiles.remove(oldPath)?.let { lspOpenedFiles[newPath] = it }
+                // ...AND TB06-R (advisor round 2026-10-19): the PROTOCOL GAP —
+                // didRenameFiles alone never re-syncs an OPEN document. The
+                // server kept the OLD uri in trackedDocuments and later
+                // didChange(newUri) referenced a doc it never didOpen'd (edits
+                // stopped syncing, diagnostics froze). VS Code closes+opens:
+                // per LspRenameReopenPlan, close-old then open-new with the
+                // CURRENT tab content (no drift across the rename).
+                val reopenPlan = com.codespace.ide.lsp.LspRenameReopenPlan
+                    .stepsFor(tabWasOpen = true, oldPath = oldPath, newPath = newPath)
+                if (reopenPlan.isNotEmpty()) {
+                    try {
+                        val renameLang = com.codespace.ide.domain.Language.fromPath(newPath)
+                        val oldUri = com.codespace.ide.lsp.LspManager.fileUriFromHostPath(context, oldPath)
+                        val newUri = com.codespace.ide.lsp.LspManager.fileUriFromHostPath(context, newPath)
+                        if (oldUri != null && newUri != null) {
+                            val accepted = com.codespace.ide.lsp.LspManager.reopenAfterRename(
+                                renameLang, oldUri, newUri,
+                                com.codespace.ide.lsp.LspManager.languageId(renameLang), newTab.content)
+                            if (!accepted) lspOpenedFiles.remove(newPath)
+                        }
+                    } catch (_: Exception) {
+                        // A refused reopen is honest above (mirror cleaned); the
+                        // LSP GEN-WATCH re-sync will retry didOpen on next gen.
+                    }
+                }
+                // DiagnosticManager TB06 companion: diagnostics keyed by the
+                // old uri/path must move too, or the Problems panel rows keep
+                // pointing at the pre-rename file until the next publish.
+                try {
+                    val oldDiagUri = com.codespace.ide.lsp.LspManager.fileUriFromHostPath(context, oldPath)
+                    val newDiagUri = com.codespace.ide.lsp.LspManager.fileUriFromHostPath(context, newPath)
+                    if (oldDiagUri != null && newDiagUri != null) {
+                        com.codespace.ide.diagnostics.DiagnosticManager.renameFile(oldDiagUri, newDiagUri, newPath)
+                    }
+                } catch (_: Exception) {}
                 // canonical stores, breakpoints, cache
                 PerFileStateStore.rekey(oldPath, newPath)
                 SharedFileUndo.rekey(oldPath, newPath)

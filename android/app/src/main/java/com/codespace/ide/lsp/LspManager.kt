@@ -3102,6 +3102,25 @@ object LspManager {
         }
     }
 
+    /**
+     * TB06-R (advisor round 2026-10-19): reopen a RENAMED open document —
+     * didClose(oldUri) then didOpen(newUri, current content), in the order
+     * pinned by LspRenameReopenPlan (VS Code closes + reopens on rename; the
+     * workspace didRenameFiles the shell sent at rename time does NOT re-sync
+     * an open document). Returns the didOpen acceptance so callers keep the
+     * pane mirror honest (a refused reopen must not claim open).
+     */
+    fun reopenAfterRename(
+        language: Language,
+        oldUri: String,
+        newUri: String,
+        languageId: String,
+        text: String,
+    ): Boolean {
+        didClose(language, oldUri)
+        return didOpen(language, newUri, languageId, text, nextDocumentVersion(newUri))
+    }
+
     fun didClose(language: Language, uri: String): Boolean {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
