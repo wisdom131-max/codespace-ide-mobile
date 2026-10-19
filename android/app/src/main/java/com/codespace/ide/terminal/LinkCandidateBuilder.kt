@@ -119,7 +119,7 @@ object LinkCandidateBuilder {
 
     private val LINE_COL = Regex(":(\\d{1,7}):(\\d{1,7})$")
     private val LINE_ONLY = Regex(":(\\d{1,7})$")
-    private val PAREN_LINE_COL = Regex("\\((\\d{1,7}),(\\d{1,7})\\)$")
+    private val PAREN_LINE_COL = Regex("\\((\\d{1,7})\\s*,\\s*(\\d{1,7})\\)$")
     private val PAREN_LINE = Regex("\\((\\d{1,7})\\)$")
     private val COMMA_LINE_COL = Regex(", line (\\d{1,7}), column (\\d{1,7})$")
     private val COMMA_LINE = Regex(", line (\\d{1,7})$")

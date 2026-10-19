@@ -216,8 +216,11 @@ object LinkExpansion {
             return if (sawDirectory) Result.DirectoryOnly else Result.NotFound
         }
         // Ranking (design item 6): explicit quoted/escaped FIRST, then longest
-        // valid window (chunk span, then char width).
-        val best = matches.maxWith(compareBy({ !it.explicit }, { it.chunkSpan }, { it.charWidth }))
+        // valid window (chunk span, then char width). maxWith picks the LARGEST,
+        // so the comparator keys must ASCEND with rank (it.explicit: true sorts
+        // above false — the first red build had !it.explicit here, which ranked
+        // every NON-explicit hit above the quoted forms).
+        val best = matches.maxWith(compareBy({ it.explicit }, { it.chunkSpan }, { it.charWidth }))
         val contenders = matches.filter { it.explicit == best.explicit && it.chunkSpan == best.chunkSpan && it.charWidth == best.charWidth }
         val distinct = contenders.map { it.path }.distinct()
         if (distinct.size == 1) return Result.Found(contenders.first())
