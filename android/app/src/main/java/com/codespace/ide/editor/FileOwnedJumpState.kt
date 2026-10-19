@@ -10,8 +10,10 @@ import androidx.compose.runtime.setValue
 import com.codespace.ide.util.CanonicalPaths
 import kotlinx.coroutines.delay
 
-/** Resource identity is captured at request creation, never inferred after a tab switch. */
-data class PendingEditorJump(val path: String, val line: Int, val serial: Long)
+/** Resource identity is captured at request creation, never inferred after a tab switch.
+ *  D2 (advisor round 2026-10-19): the COLUMN rides the same owned jump — 1-based
+ *  (gcc/ripgrep convention); 0 = start of line (the old 2-arg behavior). */
+data class PendingEditorJump(val path: String, val line: Int, val serial: Long, val col: Int = 0)
 
 class FileOwnedJumpState(private val currentPath: () -> String?) : MutableState<Int> {
     var pending: PendingEditorJump? by mutableStateOf(null)
@@ -27,9 +29,12 @@ class FileOwnedJumpState(private val currentPath: () -> String?) : MutableState<
         }
     override fun component1(): Int = value
     override fun component2(): (Int) -> Unit = { value = it }
-    fun request(path: String, line: Int) {
+    fun request(path: String, line: Int) = requestWithCol(path, line, 0)
+
+    /** D2: the jump seam with a 1-based COLUMN (0 = start of line). */
+    fun requestWithCol(path: String, line: Int, col: Int) {
         if (line <= 0) { pending = null; return }
-        pending = PendingEditorJump(CanonicalPaths.canonicalKey(path), line, serial.incrementAndGet())
+        pending = PendingEditorJump(CanonicalPaths.canonicalKey(path), line, serial.incrementAndGet(), maxOf(col, 0))
     }
     fun acceptExternal(jump: PendingEditorJump) {
         if (lastExternal != jump) { lastExternal = jump; request(jump.path, jump.line) }
@@ -37,6 +42,11 @@ class FileOwnedJumpState(private val currentPath: () -> String?) : MutableState<
     fun lineFor(path: String): Int = pending?.takeIf {
         it.path == CanonicalPaths.canonicalKey(path)
     }?.line ?: 0
+
+    /** D2: the owned jump's column for [path] (0 = start of line). */
+    fun colFor(path: String): Int = pending?.takeIf {
+        it.path == CanonicalPaths.canonicalKey(path)
+    }?.col ?: 0
     fun clearIfCurrent(request: PendingEditorJump) { if (pending == request) pending = null }
     fun clearOtherFile(path: String?) {
         if (path == null || pending?.path != CanonicalPaths.canonicalKey(path)) pending = null

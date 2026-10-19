@@ -3282,6 +3282,8 @@ fun EditorPane(
                         semanticTokens = lspSemanticRanges,
                         // Resource-filtered at render time, before any asynchronous effect can run.
                         scrollToLine = ownedJump.lineFor(active.path),
+                        // D2 (advisor round 2026-10-19): the owned jump's column.
+                        scrollToColumn = ownedJump.colFor(active.path),
                     )
                 }
                 // P38: Hover popup now rendered inside CodeEditor as a compact overlay

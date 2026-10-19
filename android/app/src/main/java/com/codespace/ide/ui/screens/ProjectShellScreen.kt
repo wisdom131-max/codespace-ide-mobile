@@ -3541,7 +3541,7 @@ private fun PssBottomPanelContent(
     onBuildProblemsChange: (List<Problem>) -> Unit = {},
     onJumpToSource: (Int) -> Unit = {},
     onOpenFile: (String) -> Unit = {},
-    onJumpToSourceWithPath: (String, Int) -> Unit = { _, _ -> },
+    onJumpToSourceWithPath: (String, Int, Int) -> Unit = { _, _, _ -> },
     /** I2 — terminal explain-chip → open chat with a prefilled prompt. */
     onAskAi: (String) -> Unit = {},
     fullScreen: Boolean = false,
@@ -3690,7 +3690,11 @@ private fun PssBottomPanelContent(
                 // 0-based line convention. Delegates to the existing jump-to-source
                 // callback (opens the file in the editor + scrolls), matching the
                 // Problems panel behavior: bottom panel hides, editor takes focus.
-                onOpenFileAtLine = { path, line -> onJumpToSourceWithPath(path, line + 1) },
+                onOpenFileAtLine = { path, line -> onJumpToSourceWithPath(path, line + 1, 0) },
+                // D2: the TAP chain hands the parsed :line:col COLUMN through
+                // (1-based; 0 = none). OSC 7777 keeps the 2-arg seam (its
+                // protocol carries no column).
+                onOpenFileAtLineCol = { path, line, col -> onJumpToSourceWithPath(path, line + 1, col) },
                 onAskAi = onAskAi,
             )
             BottomTab.PROBLEMS -> AdvancedProblemsPanel(
@@ -3708,7 +3712,10 @@ private fun PssBottomPanelContent(
                             LspManager.hostPathFromFileUri(context, uri) ?: filePath
                         }
                     }
-                    onJumpToSourceWithPath(hostPath, line)
+                    // col 0 = start of line (the panel's column base is a
+                    // mixed-source seam — static analyzer 1-based, LSP 0-based —
+                    // verified separately before it can ride this seam).
+                    onJumpToSourceWithPath(hostPath, line, 0)
                 },
                 panelBg = panelBg,
                 dividerColor = dividerColor,
@@ -3719,7 +3726,7 @@ private fun PssBottomPanelContent(
                 dividerColor = dividerColor,
                 tabTextInactive = tabTextInactive,
                 // CW4: same jump-to-source route as terminal taps (0-based in, +1 at shell)
-                onOpenFileAtLine = { path, line -> onJumpToSourceWithPath(path, line + 1) },
+                onOpenFileAtLine = { path, line -> onJumpToSourceWithPath(path, line + 1, 0) },
                 projectId = projectId,
             )
             BottomTab.DEBUG    -> DebugConsolePanel(
@@ -3853,7 +3860,7 @@ private fun PssBottomPanelContent(
                                     LspManager.hostPathFromFileUri(context, uri) ?: file
                                 }
                             }
-                            onJumpToSourceWithPath(hostPath, line + 1)
+                            onJumpToSourceWithPath(hostPath, line + 1, 0)
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -3906,7 +3913,7 @@ private fun PssBottomPanelContent(
                             // the file but never jumped. TodoItem.line is 1-based (idx+1
                             // in PowerUserAnalyzer), so it routes to the 1-based seam raw.
                             val fullPath = projectRoot?.let { java.io.File(it, file).absolutePath }
-                            if (fullPath != null) onJumpToSourceWithPath(fullPath, line)
+                            if (fullPath != null) onJumpToSourceWithPath(fullPath, line, 0)
                         },
                     )
                 }
@@ -3922,7 +3929,7 @@ private fun PssBottomPanelContent(
                     projectId = projectId,
                     projectRootPath = projectRootFile?.absolutePath,
                     onOpenFileAtLine = { path, lineOneBased ->
-                        onJumpToSourceWithPath(path, lineOneBased)
+                        onJumpToSourceWithPath(path, lineOneBased, 0)
                     },
                 )
             }
@@ -5020,12 +5027,12 @@ private fun PssEditorColumn(
             buildProblems = buildProblems,
             onBuildProblemsChange = { problems -> buildProblems = problems },
             onJumpToSource = { line -> scrollTargetLine = line; showBottomPanel = false },
-            onJumpToSourceWithPath = jtp@{ filePath, line ->
+            onJumpToSourceWithPath = jtp@{ filePath, line, col ->
                 // PR08 (P4a-2): defense in depth — an empty/blank path can never
                 // enter the tab chain, whatever the calling surface sends.
                 if (filePath.isBlank()) return@jtp
                 // Advisor A.2 (2026-10-15): breadcrumb BEFORE opening the file.
-                com.codespace.ide.diagnostics.CrumbLog.crumb("open-file", "opening " + filePath + ":" + line)
+                com.codespace.ide.diagnostics.CrumbLog.crumb("open-file", "opening " + filePath + ":" + line + (if (col > 0) ":" + col else ""))
                 val targetCanon = canonicalPathOrSelf(filePath)
                 val existingTab = editorTabs.firstOrNull { canonicalPathOrSelf(it) == targetCanon }
                 val resolvedPath = existingTab ?: filePath
@@ -5033,7 +5040,10 @@ private fun PssEditorColumn(
                     if (existingTab == null && !editorTabs.contains(resolvedPath)) editorTabs.add(resolvedPath)
                     activeEditorTab = resolvedPath
                 }
-                scrollTargetLine = line
+                // D2 (advisor round 2026-10-19): the COLUMN rides the SAME owned
+                // jump (1-based; 0 = start of line = the old behavior). The
+                // serial bump makes a same-line different-column jump re-fire.
+                scrollTargetLineMs.requestWithCol(resolvedPath, line, col)
                 showBottomPanel = false
             },
             fullScreen = fullScreen,

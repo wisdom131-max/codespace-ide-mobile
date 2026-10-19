@@ -531,6 +531,10 @@ fun CodeEditor(
     reviewMarkLines: Set<Int> = emptySet(),
     wordWrap: Boolean = false,
     scrollToLine: Int = 0,
+    /** D2 (advisor round 2026-10-19): 1-based COLUMN of the jump (0/negative =
+     *  start of line). From a :line:col terminal link, diagnostics or go-to-def.
+     *  Keyed with the line so a same-line different-column jump re-fires. */
+    scrollToColumn: Int = 0,
     /** PAD-1: view id (tab path or split id) for per-view scroll lock.
      *  Gates ONLY the IME-AWARE-SCROLL effect; live sync is never gated. */
     viewKey: String? = null,
@@ -1120,7 +1124,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
     }
 
-    LaunchedEffect(currentFilePath, scrollToLine) {
+    LaunchedEffect(currentFilePath, scrollToLine, scrollToColumn) {
         if (scrollToLine > 0) {
             // LINE-JUMP-READY-FIX (2026-09-11): when a file is opened via `ide open
             // file:42` (OSC 7777) or a terminal path-tap, the CodeEditor REMOUNTS
@@ -1143,7 +1147,12 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             // wait out the full retry window before the cursor lands.
             val targetLineIdx = scrollToLine - 1  // convert 1-based to 0-based
             if (targetLineIdx >= 0) {
-                val clampedOffset = positionMapper.lineStart(targetLineIdx)
+                // D2: a jump with a COLUMN (1-based; <= 0 = line start) places
+                // the caret AT the column — CaretPlacement owns the base
+                // conversion + clamping exactly once (line start, line length).
+                val clampedOffset =
+                    if (scrollToColumn > 0) CaretPlacement.caretOffsetForJump(value.text, scrollToLine, scrollToColumn)
+                    else positionMapper.lineStart(targetLineIdx)
                 try { focusRequester.requestFocus() } catch (_: Exception) {}
                 programmaticCursorMove(clampedOffset, "scroll_to_line")
             }
