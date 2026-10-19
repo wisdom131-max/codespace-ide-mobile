@@ -35,7 +35,8 @@ class OutputExportRedactionTest {
 
     @Test fun privateKeyBlock_isRedacted() {
         val out = exportRedact("[info] -----BEGIN RSA PRIVATE KEY-----\\nMIIabc\\n-----END RSA PRIVATE KEY-----")
-        assertEquals(AttachmentSecrets.REDACTED_KEY_BLOCK, out)
+        // Only the key block is replaced; the "[info] " prefix survives.
+        assertEquals("[info] " + AttachmentSecrets.REDACTED_KEY_BLOCK, out)
     }
 
     @Test fun normalPathsAndBuildIds_areUntouched() {
