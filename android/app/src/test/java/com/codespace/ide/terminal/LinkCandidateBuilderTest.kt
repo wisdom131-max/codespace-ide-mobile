@@ -121,7 +121,7 @@ class LinkCandidateBuilderTest {
         // Rank 0 keeps the raw form ("../x.kt." with its sentence period); the
         // junk-stripped candidate is what existence selects at runtime. The pin:
         // the parent ref SURVIVES stripping intact (never "../x" or "/x.kt.").
-        assertTrue(paths("../x.kt.").any { it.path == "../x.kt" })
+        assertTrue(paths("../x.kt.").contains("../x.kt"))
     }
 
     @Test fun gitDiffPrefix_isStrippedAsCandidate() {
