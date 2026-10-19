@@ -4047,13 +4047,25 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
                 )
             }
         }
+        // C12 redaction policy for Output exports (advisor round 2026-10-19:
+        // BOTH copy and save must redact). The HIGH-CONFIDENCE tier
+        // (TIER_MESSAGE_TEXT) — key blocks, AKIA/ghp_, length-gated sk-/hf_/
+        // AIza. What it deliberately does NOT redact: the tier's exclusions
+        // (eyJ JWTs, bare hex/uuid, generic long tokens) — a scrub must never
+        // rewrite ordinary paths, build ids or prose in terminal output.
+        fun exportText(): String {
+            val (red, changed) = com.codespace.ide.chat.AttachmentSecrets.redact(
+                filteredLogs.joinToString("\n"), com.codespace.ide.chat.AttachmentSecrets.TIER_MESSAGE_TEXT)
+            if (changed) AppOutputLog.log("Output export: high-confidence secrets redacted", "info")
+            return red
+        }
         val actionIcons: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
             // P50-4: Copy to clipboard button
             Icon(
                 Icons.Default.ContentCopy, null,
                 tint = headerText,
                 modifier = Modifier.size(16.dp).clickable {
-                    val text = filteredLogs.joinToString("\n")
+                    val text = exportText()
                     val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Output", text))
                     AppOutputLog.log("Output copied to clipboard (${filteredLogs.size} lines)", "info")
@@ -4074,14 +4086,14 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
                             val dir = if (android.os.Environment.getExternalStorageState() == android.os.Environment.MEDIA_MOUNTED) downloadsDir else java.io.File(context.filesDir, "exports")
                             if (!dir.exists()) dir.mkdirs()
                             val file = java.io.File(dir, fileName)
-                            file.writeText(filteredLogs.joinToString("\n"))
+                            file.writeText(exportText())
                             AppOutputLog.log("Output saved to ${file.absolutePath}", "info")
                         } catch (e: Exception) {
                             // Fallback to internal storage
                             try {
                                 val ts2 = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
                                 val file = java.io.File(java.io.File(context.filesDir, "exports").also { it.mkdirs() }, "output_${ts2}.log")
-                                file.writeText(filteredLogs.joinToString("\n"))
+                                file.writeText(exportText())
                                 AppOutputLog.log("Output saved to ${file.absolutePath}", "info")
                             } catch (e2: Exception) {
                                 AppOutputLog.log("Failed to save output: ${e2.message}", "info")
