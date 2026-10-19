@@ -118,20 +118,25 @@ object IdeTerminalBridge {
      *   /storage/emulated/0/.. -> already host-style, kept as-is
      *   anything else          -> rootfs-relative (e.g. /root/... -> filesDir/ubuntu-rootfs/root/...)
      */
-    fun guestPathToHostFile(context: Context, guestPath: String): File? {
+    fun guestPathToHostFile(
+        context: Context,
+        guestPath: String,
+        /** BATCH11-S1: existence seam — JVM tests inject a fake file system. */
+        probe: LinkFileProbe = LinkFileProbe.REAL,
+    ): File? {
         val trimmed = guestPath.trim()
         if (trimmed.isEmpty()) return null
         return when {
             trimmed.startsWith("/sdcard/") || trimmed == "/sdcard" -> {
                 val hostPath = trimmed.replaceFirst("/sdcard", "/storage/emulated/0")
-                File(hostPath).takeIf { it.exists() }
+                File(hostPath).takeIf { probe.exists(hostPath) }
             }
-            trimmed.startsWith("/storage/emulated/") -> File(trimmed).takeIf { it.exists() }
+            trimmed.startsWith("/storage/emulated/") -> File(trimmed).takeIf { probe.exists(trimmed) }
             else -> {
                 // rootfs-relative (e.g. /root/x, /etc/x). ProotInstaller.guestToHostPath
                 // maps "/x" to rootfsDir/x on the host.
                 val f = ProotInstaller.guestToHostPath(context, trimmed)
-                f.takeIf { it.exists() }
+                f.takeIf { probe.exists(f.absolutePath) }
             }
         }
     }
@@ -188,27 +193,70 @@ object IdeTerminalBridge {
      * tap mode setting is the discriminator). Result is posted back by the caller's
      * main-thread scope. Never throws.
      */
-    data class TappedLinkResult(val file: File?, val line: Int, val timedOut: Boolean)
+    data class TappedLinkResult(
+        val file: File?,
+        val line: Int,
+        /** BATCH11-S1: honest outcome. The old timedOut flag collapsed NOT_FOUND,
+         *  TIMEOUT and ERROR into one value, which produced the wrong "(storage
+         *  busy)" wording for plain not-found tokens (advisor report gap). */
+        val reason: LinkResolveReason,
+        val errorClass: String? = null,
+        /** BATCH11-S2: parsed column when the token carried :line:col (editor open
+         *  still uses line only — the onFileLinkTap callback is (path, line); the
+         *  column is parsed and logged for the future editor change). -1 = none. */
+        val col: Int = -1,
+    )
+
+    /**
+     * BATCH11-S1 (advisor approved design item 4): the cwd CONTEXT, ordered.
+     * tracked633 = the OSC-633 shell-integration cwd (VERIFIED, in-memory);
+     * initialDir = the tab's recorded creation dir. The resolver inserts the
+     * /proc cwd BETWEEN them: [633, /proc, initialDir], filtering "/" and "/root"
+     * (never silently "/", never bare /root — V0-f legacy placeholder is absent).
+     * In-memory values only — built on the main thread, no I/O here.
+     */
+    data class CwdContext(
+        val tracked633: String? = null,
+        val initialDir: String? = null,
+    )
 
     suspend fun resolveTappedFileLinkAsync(
-        context: Context,
+        context: Context? = null,
         session: com.termux.terminal.TerminalSession?,
         token: String,
         projectId: String? = null,
         lockedRoot: String? = null,
         /** BATCH10-P0: DIAG-only tap-run id for [TAPDIAG] correlation (no behavior change). */
         diagId: Int? = null,
+        /** BATCH11-S1: ordered cwd context (633 + initial dir; /proc read stays IO-side). */
+        cwdCtx: CwdContext? = null,
+        /** BATCH11-S1/S3: existence seam — JVM tests inject a fake file system. */
+        probe: LinkFileProbe = LinkFileProbe.REAL,
     ): TappedLinkResult {
         return try {
+            // withTimeoutOrNull returns null BOTH on expiry AND when the block
+            // returns null. Worse: blocking probes (File on FUSE, the exact thing
+            // the budget guards) cannot be PREEMPTED — the block runs past the
+            // budget and only then hands back null. The honest classifier is the
+            // measured wall time: null + elapsed >= budget = TIMEOUT (the ONLY
+            // "storage may be busy" case, per the advisor's honest-wording rule);
+            // null + completed under budget = NOT_FOUND.
+            val startNs = System.nanoTime()
             val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
-                    resolveTappedFileLink(context, session, token, projectId, lockedRoot, diagId)
+                    resolveTappedFileLink(context, session, token, projectId, lockedRoot, diagId, cwdCtx, probe)
                 }
             }
-            if (r != null) TappedLinkResult(r.first, r.second, false)
-            else TappedLinkResult(null, -1, true)
-        } catch (_: Throwable) {
-            TappedLinkResult(null, -1, true)
+            val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
+            when {
+                r != null -> TappedLinkResult(r.first, r.second, LinkResolveReason.RESOLVED)
+                elapsedMs >= RESOLVE_TIMEOUT_MS -> TappedLinkResult(null, -1, LinkResolveReason.TIMEOUT)
+                else -> TappedLinkResult(null, -1, LinkResolveReason.NOT_FOUND)
+            }
+        } catch (t: Throwable) {
+            // TIMEOUT is ONLY the withTimeoutOrNull expiry above; a thrown
+            // Throwable is an ERROR with its class name (honest wording).
+            TappedLinkResult(null, -1, LinkResolveReason.ERROR, t.javaClass.simpleName)
         }
     }
 
@@ -224,14 +272,16 @@ object IdeTerminalBridge {
     }
 
     fun resolveTappedFileLink(
-        context: Context,
+        context: Context? = null,
         session: com.termux.terminal.TerminalSession?,
         token: String,
         projectId: String? = null,
         lockedRoot: String? = null,
         diagId: Int? = null,
+        cwdCtx: CwdContext? = null,
+        probe: LinkFileProbe = LinkFileProbe.REAL,
     ): Pair<File, Int>? {
-        val resolved = resolveTappedFileLinkUnscoped(context, session, token, projectId, diagId)
+        val resolved = resolveTappedFileLinkUnscoped(context, session, token, projectId, diagId, cwdCtx, probe)
         if (resolved == null) return null
         if (lockedRoot != null) {
             val lockCanonical = try { File(lockedRoot).canonicalPath } catch (_: Exception) { File(lockedRoot).absolutePath }
@@ -246,11 +296,13 @@ object IdeTerminalBridge {
     }
 
     fun resolveTappedFileLinkUnscoped(
-        context: Context,
+        context: Context? = null,
         session: com.termux.terminal.TerminalSession?,
         token: String,
         projectId: String? = null,
         diagId: Int? = null,
+        cwdCtx: CwdContext? = null,
+        probe: LinkFileProbe = LinkFileProbe.REAL,
     ): Pair<File, Int>? {
         // Advisor Part 3 cap: an absurdly long "token" is not probed at all.
         if (token.isBlank() || token.length > MAX_TOKEN_LENGTH) return null
@@ -259,7 +311,7 @@ object IdeTerminalBridge {
         // token as extracted FIRST, then progressively drop leading chunks. No-space
         // tokens produce a single candidate = exactly the old behavior.
         for (candidate in linkCandidates(token.trim().trimEnd(':', ',', ';'))) {
-            val r = resolveSingleToken(context, session, candidate, projectId, diagId)
+            val r = resolveSingleToken(context, session, candidate, projectId, diagId, cwdCtx, probe)
             if (r != null) return r
         }
         return null
@@ -303,14 +355,18 @@ object IdeTerminalBridge {
     }
 
     private fun resolveSingleToken(
-        context: Context,
+        context: Context? = null,
         session: com.termux.terminal.TerminalSession?,
         token: String,
         projectId: String?,
         diagId: Int? = null,
+        cwdCtx: CwdContext? = null,
+        probe: LinkFileProbe = LinkFileProbe.REAL,
     ): Pair<File, Int>? {
         val (pathPart, lineNum) = parseFileLinkToken(token)
-        val appCtx = context.applicationContext
+        // BATCH11-S1: nullable for JVM tests (tests exercise the probe/cwd logic with
+        // a fake file system and no Android Context); production always passes one.
+        val appCtx = context?.applicationContext
         // BATCH10-P0 (advisor Bug 2): DIAG-ONLY — the IO-side facts of the run:
         // the /proc-read session cwd (the value branch 3 actually uses, read on
         // this IO thread, never main) correlated with the main-thread [TAPDIAG] id.
@@ -338,31 +394,65 @@ object IdeTerminalBridge {
         // branch tried.
         AppOutputLog.log("[TAP] file-link tap: token='" + token + "' pathPart='" + pathPart + "' line=" + lineNum, CHANNEL)
         // 1. absolute host path
-        File(pathPart).takeIf { it.isAbsolute && it.exists() }?.let {
+        File(pathPart).takeIf { it.isAbsolute && probe.exists(pathPart) }?.let {
             AppOutputLog.log("[TAP] resolved via absolute host path: " + it.absolutePath, CHANNEL)
             return Pair(it, lineNum - 1)
         }
-        // 2. guest -> host translation
-        guestPathToHostFile(appCtx, pathPart)?.let {
-            AppOutputLog.log("[TAP] resolved via guest->host map: " + it.absolutePath, CHANNEL)
-            return Pair(it, lineNum - 1)
-        }
-        // 3. relative to the shell's real cwd (host-side view of the guest cwd)
-        val cwd = try { session?.cwd } catch (_: Exception) { null }
-        if (cwd != null) {
-            AppOutputLog.log("[TAP] trying session cwd=" + cwd, CHANNEL)
-            File(cwd, pathPart).takeIf { it.exists() }?.let {
-                AppOutputLog.log("[TAP] resolved via session cwd: " + it.absolutePath, CHANNEL)
-                return Pair(it, lineNum - 1)
+        // 2. guest -> host translation. BATCH11-S1: guarded — a failing guest map
+        // (no context, proot not installed, map error) must not kill the resolve;
+        // later branches still get their turn.
+        if (appCtx != null) {
+            try {
+                guestPathToHostFile(appCtx, pathPart, probe)?.let {
+                    AppOutputLog.log("[TAP] resolved via guest->host map: " + it.absolutePath, CHANNEL)
+                    return Pair(it, lineNum - 1)
+                }
+            } catch (_: Throwable) {
+                AppOutputLog.log("[TAP] guest->host map branch failed (skipped)", CHANNEL)
             }
-        } else {
-            AppOutputLog.log("[TAP] session cwd unavailable (null or /proc read failed)", CHANNEL)
+        }
+        // 3. relative to the session cwd. BATCH11-S1 (advisor approved design
+        // item 4): EXPLICIT source order — the OSC-633 tracked cwd (verified,
+        // in-memory) FIRST, then the /proc cwd (read here on the IO thread,
+        // never main), then the tab's recorded initial dir. "/" and "/root" are
+        // NEVER used as a cwd base (never silently "/", never bare /root); a
+        // source that is filtered out is LOGGED, not silent.
+        val procCwd = try { session?.cwd } catch (_: Exception) { null }
+        val cwdSources = listOf(
+            Pair("cwd633", cwdCtx?.tracked633),
+            Pair("proc", procCwd),
+            Pair("initialDir", cwdCtx?.initialDir),
+        )
+        var anyCwdUsable = false
+        for ((sourceLabel, cwdVal) in cwdSources) {
+            val cwd = cwdVal?.trim()?.trimEnd('/')
+            if (cwd == null || cwd.isEmpty()) {
+                AppOutputLog.log("[TAP] cwd source " + sourceLabel + ": null/empty", CHANNEL)
+                continue
+            }
+            if (cwd == "/" || cwd == "/root") {
+                // Honest diag for the owner's "trying session cwd=/" evidence:
+                // the /proc read reported "/" (or the legacy /root placeholder)
+                // — that base is deliberately NOT probed.
+                AppOutputLog.log("[TAP] cwd source " + sourceLabel + "='" + cwd + "' SKIPPED (never a base)", CHANNEL)
+                continue
+            }
+            anyCwdUsable = true
+            val joined = File(cwd, pathPart)
+            AppOutputLog.log("[TAP] trying cwd(" + sourceLabel + ")=" + cwd + " -> " + joined.absolutePath, CHANNEL)
+            if (probe.exists(joined.absolutePath)) {
+                AppOutputLog.log("[TAP] resolved via cwd(" + sourceLabel + "): " + joined.absolutePath, CHANNEL)
+                return Pair(joined, lineNum - 1)
+            }
+        }
+        if (!anyCwdUsable) {
+            AppOutputLog.log("[TAP] no usable cwd (all sources null or filtered) - cwd branch skipped", CHANNEL)
         }
         // 4. FIX: relative to every workspace root of the project. Build tools print
         // paths relative to the project root ("src/Main.kt:42") regardless of where
         // the shell happens to sit; branch 3 missed those whenever the shell cwd was
         // "/" (the initial proot cwd) or a different folder.
-        if (projectId != null) {
+        if (projectId != null && appCtx != null) {
             val roots = try {
                 com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(appCtx, projectId)
             } catch (_: Exception) { emptyList() }
@@ -370,7 +460,7 @@ object IdeTerminalBridge {
             val capped = roots.take(MAX_ROOTS_TO_PROBE)
             AppOutputLog.log("[TAP] workspace-root fallback: " + capped.size + "/" + roots.size + " root(s) for project " + projectId, CHANNEL)
             for (root in capped) {
-                File(root, pathPart).takeIf { it.exists() }?.let {
+                File(root, pathPart).takeIf { probe.exists(it.absolutePath) }?.let {
                     AppOutputLog.log("[TAP] resolved via workspace root " + root + ": " + it.absolutePath, CHANNEL)
                     return Pair(it, lineNum - 1)
                 }

@@ -336,6 +336,16 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
         // URL detection on tap — matches Termux shouldOpenTerminalTranscriptURLOnClick
         // Uses Termux's full multi-scheme URL regex (TermuxUrlUtils)
         if (emulator != null && e != null) {
+            // BATCH11-S1 (advisor report gap 2): ONE resolve per physical tap.
+            // The vendored GestureAndScaleRecognizer routes BOTH onSingleTapUp
+            // (at UP) and onSingleTapConfirmed (~300ms later) to this same
+            // handler, so every tap used to run word/span/URL extraction AND the
+            // whole resolve TWICE. Both callbacks carry the same MotionEvent
+            // downTime; the second one inside the confirm window is a duplicate
+            // and returns here (the first already ran the default tap path too).
+            if (!tapDedupe.shouldHandle(e.downTime, System.currentTimeMillis())) {
+                return
+            }
             try {
                 val colRow = v.getColumnAndRow(e, true)
                 // BATCH8-P2 (advisor, owner device evidence 2026-10-18): OFF mode's soft
@@ -457,28 +467,39 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                             val scope = resolveScope
                             if (scope != null) {
                                 com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 3 start: resolve dispatched async '" + linkToken.take(80) + "'")
+                                // BATCH11-S1: ordered cwd context — built at TAP time via the
+                                // provider (633 tracked cwd + this tab's initial dir, both
+                                // in-memory reads; the /proc cwd is read IO-side).
+                                val cwdCtx = try {
+                                    cwdContextProvider?.invoke(v.mTermSession)
+                                } catch (_: Exception) { null }
                                 scope.launch {
                                     val r = com.codespace.ide.terminal.IdeTerminalBridge
-                                        .resolveTappedFileLinkAsync(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke(), tapDiagId)
+                                        .resolveTappedFileLinkAsync(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke(), tapDiagId, cwdCtx)
                                     com.codespace.ide.diagnostics.CrumbLog.crumbSync(
                                         "tap", "stage 3 done: " +
                                             (if (r.file != null) "RESOLVED " + r.file.absolutePath + ":" + r.line
-                                             else if (r.timedOut) "TIMED OUT"
-                                             else "not found"),
+                                             else r.reason.name + (if (r.errorClass != null) "(" + r.errorClass + ")" else "")),
                                     )
                                     if (r.file != null && tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.RESOLVE) {
                                         // RESOLVE mode: show the result, do NOT open.
-                                        v.mTermSession?.write("\r\n[Link] Resolved (Resolve mode, not opened): " + r.file.absolutePath + ":" + r.line + "\r\n")
+                                        v.mTermSession?.write("\r\n[Link] Resolved (Resolve mode, not opened): " + r.file.absolutePath + ":" + r.line + (if (r.col > 0) " col " + r.col else "") + "\r\n")
                                     } else if (r.file != null) {
                                         com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 4 start: open " + r.file.absolutePath + ":" + r.line)
                                         onFileLinkTap?.invoke(r.file.absolutePath, r.line)
                                         com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 4 done: open handed to editor")
-                                    } else if (r.timedOut) {
+                                    } else if (r.reason == com.codespace.ide.terminal.LinkResolveReason.TIMEOUT) {
+                                        // TIMEOUT = the 3s probe budget was REALLY exceeded — the
+                                        // only case where "storage busy" is an honest suggestion
+                                        // (advisor: the old wording said it for EVERY failure).
                                         com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "resolve TIMED OUT '" + linkToken.take(80) + "'")
-                                        v.mTermSession?.write("\r\n[Link] Lookup timed out: " + linkToken + " (storage busy)\r\n")
+                                        v.mTermSession?.write("\r\n[Link] Lookup timed out after probe budget (3s): " + linkToken + " — storage may be busy, see Output [TAP] lines\r\n")
+                                    } else if (r.reason == com.codespace.ide.terminal.LinkResolveReason.ERROR) {
+                                        com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "resolve ERROR " + r.errorClass + " '" + linkToken.take(80) + "'")
+                                        v.mTermSession?.write("\r\n[Link] Lookup failed: " + linkToken.trim().trimEnd(':', ',', ';') + " (error: " + (r.errorClass ?: "unknown") + ", see Output [TAP] lines)\r\n")
                                     } else {
                                         com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "unresolved: no branch matched '" + linkToken.take(80) + "'")
-                                        v.mTermSession?.write("\r\n[Link] File not found: " + linkToken.trim().trimEnd(':', ',', ';') + "\r\n")
+                                        v.mTermSession?.write("\r\n[Link] File not found: " + linkToken.trim().trimEnd(':', ',', ';') + " (probed absolute, guest map, cwd, project roots)\r\n")
                                     }
                                 }
                                 // BATCH8-P2: FULL returns — a resolved file is about to open
@@ -488,8 +509,17 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                                 if (com.codespace.ide.terminal.LinkTapPolicy.returnsEarlyAfterDispatch(tapMode)) return
                             }
                             // Fallback (no scope wired — split panel edge): the old sync path.
-                            val resolved = com.codespace.ide.terminal.IdeTerminalBridge
-                                .resolveTappedFileLink(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke())
+                            // BATCH11-S1: same cwd context + honest ERROR wording as async.
+                            val syncCwdCtx = try {
+                                cwdContextProvider?.invoke(v.mTermSession)
+                            } catch (_: Exception) { null }
+                            val resolved = try {
+                                com.codespace.ide.terminal.IdeTerminalBridge
+                                    .resolveTappedFileLink(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke(), tapDiagId, syncCwdCtx)
+                            } catch (t: Throwable) {
+                                v.mTermSession?.write("\r\n[Link] Lookup failed: " + linkToken.trim().trimEnd(':', ',', ';') + " (error: " + t.javaClass.simpleName + ", see Output [TAP] lines)\r\n")
+                                return
+                            }
                             if (resolved != null) {
                                 if (tapMode == com.codespace.ide.terminal.LinkTapModeStore.Mode.RESOLVE) {
                                     // BATCH8-P2: the sync fallback OPENED files in Resolve mode —
@@ -561,6 +591,16 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     // the handler runs TWICE per tap — every [TAPDIAG] pair with the same second and
     // DIFFERENT ids is one physical tap, making duplicates visible in the logs.
     private val tapDiagCounter = java.util.concurrent.atomic.AtomicInteger(0)
+
+    // BATCH11-S1 (advisor approved design item 4): per-view tap dedupe gate — see
+    // LinkTapDedupe. One Gate per view; both recognizer callbacks arrive on main.
+    private val tapDedupe = com.codespace.ide.terminal.LinkTapDedupe.Gate()
+
+    // BATCH11-S1: ordered cwd context for the resolver — VERIFIED 633 tracked cwd
+    // FIRST, then the /proc cwd (resolver inserts it IO-side), then this tab's
+    // recorded initial dir. A provider (not a frozen value) so a recomposition
+    // can never leave the resolver with a stale cwd (Bug-2 class of defect).
+    var cwdContextProvider: ((com.termux.terminal.TerminalSession?) -> com.codespace.ide.terminal.IdeTerminalBridge.CwdContext?)? = null
 
     var onNewTab:      (() -> Unit)? = null
     var onCloseTab:    (() -> Unit)? = null
@@ -3055,6 +3095,18 @@ internal fun TerminalPane(
                             viewClient.resolveScope = scope
                             // LOCKED-ROOT (2026-09-12): tap resolver reads the ACTIVE tab's lock
                             viewClient.lockedRootProvider = { tabs.firstOrNull { it.id == activeId }?.lockedRootPath }
+                            // BATCH11-S1: ordered cwd context provider — fresh read at TAP time
+                            // (633 tracked cwd from the tapped session + the tab's initial dir;
+                            // both in-memory). A provider, not a frozen value, so recomposition
+                            // can never leave a stale context in the client (Bug-2 class).
+                            viewClient.cwdContextProvider = { tappedSession ->
+                                val tracked = try {
+                                    if (tappedSession == null) null
+                                    else com.codespace.ide.terminal.shellintegration.ShellIntegrationState.forSession(tappedSession)?.currentCwd
+                                } catch (_: Exception) { null }
+                                val initial = tabs.firstOrNull { it.session === tappedSession }?.initialWorkDir
+                                com.codespace.ide.terminal.IdeTerminalBridge.CwdContext(tracked633 = tracked, initialDir = initial)
+                            }
                             // Propagate pinch-zoom font changes back to Compose state + SharedPrefs
                             viewClient.onFontSizeChanged = { newSize ->
                                 prefs.edit().putInt("KEY_FONTSIZE", newSize).apply()
