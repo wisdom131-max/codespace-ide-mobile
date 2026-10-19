@@ -372,8 +372,16 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                     // the resolver never saw the full token. Try a span match over the full
                     // WRAPPED line (same wrapped-line reconstruction getWordAtLocation uses);
                     // falls back to the legacy word for plain single-word tokens.
+                    // BATCH11-S3: keep the wrapped-row TEXT + CHAR offset — the
+                    // existence-gated expansion grows its chunk windows from THIS
+                    // row text at tap time (window generation is pure; all probes
+                    // run IO-side inside the async resolve).
+                    var tapRowText: String? = null
+                    var tapRowOffset = -1
                     val spanToken = try {
                         emulator.screen?.getWrappedLineAtLocation(colRow[0], colRow[1])?.let { wl ->
+                            tapRowText = wl.text
+                            tapRowOffset = wl.offset
                             com.codespace.ide.terminal.IdeTerminalBridge.extractFileLinkToken(wl.text, wl.offset)
                         }
                     } catch (_: Exception) { null }
@@ -459,6 +467,12 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                             com.codespace.ide.diagnostics.AppOutputLog.log(
                                 "[TAP] (Log token mode) candidates: " + candText, "terminal",
                             )
+                            if (tapRowText != null) {
+                                val winCount = com.codespace.ide.terminal.LinkExpansion.windows(tapRowText!!, tapRowOffset).size
+                                com.codespace.ide.diagnostics.AppOutputLog.log(
+                                    "[TAP] (Log token mode) expansion windows: " + winCount, "terminal",
+                                )
+                            }
                         } else if (com.codespace.ide.terminal.IdeTerminalBridge.isResolvableToken(linkToken)) {
                             // Advisor Part 3 (2026-10-16): resolve + exists + canonical
                             // work runs OFF the main thread with a 3s limit (hardening;
@@ -474,9 +488,20 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                                 val cwdCtx = try {
                                     cwdContextProvider?.invoke(v.mTermSession)
                                 } catch (_: Exception) { null }
+                                // BATCH11-S3: a NEW tap cancels the previous tap's
+                                // in-flight resolve (advisor item 7) — one in-flight
+                                // job per view, plus a per-tap request id so a stale
+                                // result can never write messages or open files
+                                // after a newer tap took over.
+                                inFlightResolve?.cancel()
+                                val myReqId = resolveReqCounter.incrementAndGet()
                                 scope.launch {
                                     val r = com.codespace.ide.terminal.IdeTerminalBridge
-                                        .resolveTappedFileLinkAsync(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke(), tapDiagId, cwdCtx)
+                                        .resolveTappedFileLinkAsync(v.context, v.mTermSession, linkToken, projectId, lockedRootProvider?.invoke(), tapDiagId, cwdCtx, rowText = tapRowText, tapCharOffset = tapRowOffset)
+                                    if (myReqId != resolveReqCounter.get()) {
+                                        com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 3 done STALE (req " + myReqId + " superseded) — result dropped")
+                                        return@launch
+                                    }
                                     com.codespace.ide.diagnostics.CrumbLog.crumbSync(
                                         "tap", "stage 3 done: " +
                                             (if (r.file != null) "RESOLVED " + r.file.absolutePath + ":" + r.line
@@ -489,6 +514,13 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                                         com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 4 start: open " + r.file.absolutePath + ":" + r.line)
                                         onFileLinkTap?.invoke(r.file.absolutePath, r.line)
                                         com.codespace.ide.diagnostics.CrumbLog.crumbSync("tap", "stage 4 done: open handed to editor")
+                                    } else if (r.reason == com.codespace.ide.terminal.LinkResolveReason.AMBIGUOUS) {
+                                        // Real tie between distinct files — show the choice, never pick silently.
+                                        com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "AMBIGUOUS: " + r.ambiguousPaths.joinToString(" | "))
+                                        v.mTermSession?.write("\r\n[Link] Multiple files match: " + r.ambiguousPaths.joinToString(" | ") + " — tap a more specific path\r\n")
+                                    } else if (r.reason == com.codespace.ide.terminal.LinkResolveReason.DIRECTORY) {
+                                        com.codespace.ide.diagnostics.CrumbLog.crumb("tap", "DIRECTORY match only (not opened as a file)")
+                                        v.mTermSession?.write("\r\n[Link] That path is a directory (not opened as a file)\r\n")
                                     } else if (r.reason == com.codespace.ide.terminal.LinkResolveReason.TIMEOUT) {
                                         // TIMEOUT = the 3s probe budget was REALLY exceeded — the
                                         // only case where "storage busy" is an honest suggestion
@@ -596,6 +628,11 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
     // BATCH11-S1 (advisor approved design item 4): per-view tap dedupe gate — see
     // LinkTapDedupe. One Gate per view; both recognizer callbacks arrive on main.
     private val tapDedupe = com.codespace.ide.terminal.LinkTapDedupe.Gate()
+
+    // BATCH11-S3 (advisor item 7): the current tap's in-flight async resolve — a
+    // NEW tap cancels it; results older than resolveReqCounter are dropped.
+    internal var inFlightResolve: kotlinx.coroutines.Job? = null
+    internal val resolveReqCounter = java.util.concurrent.atomic.AtomicInteger(0)
 
     // BATCH11-S1: ordered cwd context for the resolver — VERIFIED 633 tracked cwd
     // FIRST, then the /proc cwd (resolver inserts it IO-side), then this tab's

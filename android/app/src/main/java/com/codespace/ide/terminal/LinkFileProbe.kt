@@ -48,4 +48,11 @@ enum class LinkResolveReason {
     TIMEOUT,
     /** The resolve threw; errorClass carries the throwable's class name. */
     ERROR,
+    /** BATCH11-S3: real tie between distinct existing files (design item 6:
+     *  "real ties show a choice or a clear message, never a silent pick").
+     *  ambiguityPaths carries the list. */
+    AMBIGUOUS,
+    /** BATCH11-S3: the only match was a DIRECTORY (design item 6: a directory
+     *  is never opened as a file). */
+    DIRECTORY,
 }

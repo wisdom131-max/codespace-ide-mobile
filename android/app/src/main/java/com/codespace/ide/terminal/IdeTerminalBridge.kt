@@ -205,6 +205,10 @@ object IdeTerminalBridge {
          *  still uses line only — the onFileLinkTap callback is (path, line); the
          *  column is parsed and logged for the future editor change). -1 = none. */
         val col: Int = -1,
+        /** BATCH11-S3: distinct existing files that tied (reason=AMBIGUOUS). */
+        val ambiguousPaths: List<String> = emptyList(),
+        /** BATCH11-S3: the only match was a directory (reason=DIRECTORY). */
+        val directoryOnly: Boolean = false,
     )
 
     /**
@@ -244,12 +248,14 @@ object IdeTerminalBridge {
             val startNs = System.nanoTime()
             val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
-                    resolveTappedFileLink(context, session, token, projectId, lockedRoot, diagId, cwdCtx, probe)
+                    resolveTappedFileLinkDetailed(context, session, token, projectId, lockedRoot, diagId, cwdCtx, probe, rowText, tapCharOffset)
                 }
             }
             val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
             when {
-                r != null -> TappedLinkResult(r.first, r.second, LinkResolveReason.RESOLVED, null, r.third)
+                r != null -> TappedLinkResult(r.hit.first, r.hit.second, LinkResolveReason.RESOLVED, null, r.hit.third)
+                r.ambiguousPaths.isNotEmpty() -> TappedLinkResult(null, -1, LinkResolveReason.AMBIGUOUS, null, -1, r.ambiguousPaths)
+                r.directoryOnly -> TappedLinkResult(null, -1, LinkResolveReason.DIRECTORY)
                 elapsedMs >= RESOLVE_TIMEOUT_MS -> TappedLinkResult(null, -1, LinkResolveReason.TIMEOUT)
                 else -> TappedLinkResult(null, -1, LinkResolveReason.NOT_FOUND)
             }
@@ -271,17 +277,16 @@ object IdeTerminalBridge {
         return t.isNotEmpty() && t.length <= MAX_TOKEN_LENGTH && (t.contains('/') || t.contains('.'))
     }
 
-    fun resolveTappedFileLink(
-        context: Context? = null,
-        session: com.termux.terminal.TerminalSession?,
-        token: String,
-        projectId: String? = null,
-        lockedRoot: String? = null,
-        diagId: Int? = null,
-        cwdCtx: CwdContext? = null,
-        probe: LinkFileProbe = LinkFileProbe.REAL,
-    ): Triple<File, Int, Int>? {
-        val resolved = resolveTappedFileLinkUnscoped(context, session, token, projectId, diagId, cwdCtx, probe)
+    /** BATCH11-S3: the FULL resolve outcome so the pane can word every failure
+     *  honestly (ambiguity list, directory-only) instead of collapsing to null. */
+    data class DetailedResult(
+        val hit: Triple<File, Int, Int>?,
+        val ambiguousPaths: List<String> = emptyList(),
+        val directoryOnly: Boolean = false,
+    )
+
+    /** BATCH11-S3: the lock guard applied to the DETAILED result's hit. */
+    fun lockFilter(resolved: Triple<File, Int, Int>?, lockedRoot: String?, token: String): Triple<File, Int, Int>? {
         if (resolved == null) return null
         if (lockedRoot != null) {
             val lockCanonical = try { File(lockedRoot).canonicalPath } catch (_: Exception) { File(lockedRoot).absolutePath }
@@ -295,6 +300,45 @@ object IdeTerminalBridge {
         return resolved
     }
 
+    fun resolveTappedFileLink(
+        context: Context? = null,
+        session: com.termux.terminal.TerminalSession?,
+        token: String,
+        projectId: String? = null,
+        lockedRoot: String? = null,
+        diagId: Int? = null,
+        cwdCtx: CwdContext? = null,
+        probe: LinkFileProbe = LinkFileProbe.REAL,
+        rowText: String? = null,
+        tapCharOffset: Int = -1,
+    ): Triple<File, Int, Int>? {
+        val detailed = resolveTappedFileLinkDetailed(context, session, token, projectId, lockedRoot, diagId, cwdCtx, probe, rowText, tapCharOffset)
+        return detailed.hit
+    }
+
+    /** BATCH11-S3: the honest full outcome — hit OR ambiguity list OR directory-only. */
+    fun resolveTappedFileLinkDetailed(
+        context: Context? = null,
+        session: com.termux.terminal.TerminalSession?,
+        token: String,
+        projectId: String? = null,
+        lockedRoot: String? = null,
+        diagId: Int? = null,
+        cwdCtx: CwdContext? = null,
+        probe: LinkFileProbe = LinkFileProbe.REAL,
+        rowText: String? = null,
+        tapCharOffset: Int = -1,
+    ): DetailedResult {
+        val outcome = resolveTappedFileLinkUnscoped(context, session, token, projectId, diagId, cwdCtx, probe, rowText, tapCharOffset)
+        if (outcome.ambiguousPaths.isNotEmpty() || outcome.directoryOnly) {
+            // Ambiguity / directory-only are VERDICTS — the token chain must not
+            // silently pick one of the tied files behind the user's back.
+            return DetailedResult(null, outcome.ambiguousPaths, outcome.directoryOnly)
+        }
+        val hit = lockFilter(outcome.hit, lockedRoot, token)
+        return DetailedResult(hit)
+    }
+
     fun resolveTappedFileLinkUnscoped(
         context: Context? = null,
         session: com.termux.terminal.TerminalSession?,
@@ -303,18 +347,89 @@ object IdeTerminalBridge {
         diagId: Int? = null,
         cwdCtx: CwdContext? = null,
         probe: LinkFileProbe = LinkFileProbe.REAL,
-    ): Triple<File, Int, Int>? {
+        rowText: String? = null,
+        tapCharOffset: Int = -1,
+    ): DetailedResult {
         // Advisor Part 3 cap: an absurdly long "token" is not probed at all.
-        if (token.isBlank() || token.length > MAX_TOKEN_LENGTH) return null
+        if (token.isBlank() || token.length > MAX_TOKEN_LENGTH) return DetailedResult(null)
+        // BATCH11-S3: EXISTENCE-GATED EXPANSION first (the iTerm2 model — the
+        // span scanner can only accept spaces when a :line suffix anchors the
+        // token, so plain "cd /My codespace app 1/1.py" rows never produced a
+        // full-path token; at tap time the chunk window around the tap grows
+        // and FILE EXISTENCE picks the winner). Falls back to the S2 token
+        // chain below when the expansion has nothing to work with.
+        if (rowText != null && tapCharOffset >= 0) {
+            val expansion = expandAndSelect(context, session, token, rowText, tapCharOffset, projectId, diagId, cwdCtx, probe)
+            if (expansion.hit != null) return DetailedResult(expansion.hit)
+            if (expansion.ambiguousPaths.isNotEmpty()) return DetailedResult(null, expansion.ambiguousPaths, false)
+            if (expansion.directoryOnly) return DetailedResult(null, emptyList(), true)
+        }
         // BATCH11-S2: the cheap candidate pipeline (quotes, escapes, prompt
         // prefix, junk, diff prefix, :line/:line:col suffixes, bounded chunk
         // drops) — pure string work, existence picks the winner.
+        val dirHits = mutableListOf<String>()
         for (candidate in LinkCandidateBuilder.build(token)) {
-            val r = resolveSingleToken(context, session, candidate, projectId, diagId, cwdCtx, probe)
-            if (r != null) return r
+            val r = resolveSingleToken(context, session, candidate, projectId, diagId, cwdCtx, probe, dirHits)
+            if (r != null) return DetailedResult(r)
         }
-        return null
+        if (dirHits.isNotEmpty()) return DetailedResult(null, emptyList(), true)
+        return DetailedResult(null)
     }
+
+    /**
+     * BATCH11-S3: run LinkExpansion.select with the S1-ordered cwd context and the
+     * project roots (IO-side reads only — this whole path runs on Dispatchers.IO).
+     * Returns the selected file, or null when the expansion found nothing (the
+     * caller falls back to the S2 token chain — the expansion is additive, never
+     * a regression for tokens the old path already handled).
+     */
+    private fun expandAndSelect(
+        context: Context?,
+        session: com.termux.terminal.TerminalSession?,
+        token: String,
+        rowText: String,
+        tapCharOffset: Int,
+        projectId: String?,
+        diagId: Int?,
+        cwdCtx: CwdContext?,
+        probe: LinkFileProbe,
+    ): LinkExpansionOutcome {
+        val appCtx = context?.applicationContext
+        val procCwd = try { session?.cwd } catch (_: Exception) { null }
+        val roots = if (projectId == null || appCtx == null) emptyList()
+            else try {
+                com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(appCtx, projectId).take(MAX_ROOTS_TO_PROBE)
+            } catch (_: Exception) { emptyList() }
+        val ctx = LinkExpansion.SelectionContext(cwdCtx = cwdCtx, procCwd = procCwd, roots = roots)
+        when (val sel = LinkExpansion.select(rowText, tapCharOffset, ctx, probe)) {
+            is LinkExpansion.Result.Found -> {
+                val h = sel.hit
+                AppOutputLog.log("[TAP] expansion RESOLVED: " + h.path + (if (h.line > 0) ":" + h.line else "") + " origin=" + h.origin + " window='" + h.window.take(80) + "'", CHANNEL)
+                return LinkExpansionOutcome(Triple(File(h.path), if (h.line > 0) h.line - 1 else -2, h.col), emptyList(), false)
+            }
+            is LinkExpansion.Result.Ambiguous -> {
+                val list = sel.matches.joinToString(" | ") { it.path }
+                AppOutputLog.log("[TAP] expansion AMBIGUOUS: " + list.take(200), CHANNEL)
+                return LinkExpansionOutcome(null, sel.matches.map { it.path }, false)
+            }
+            is LinkExpansion.Result.DirectoryOnly -> {
+                AppOutputLog.log("[TAP] expansion: only a DIRECTORY matched (not opened as a file)", CHANNEL)
+                return LinkExpansionOutcome(null, emptyList(), true)
+            }
+            is LinkExpansion.Result.NotFound -> {
+                AppOutputLog.log("[TAP] expansion: no window resolved to an existing file — falling back to token chain", CHANNEL)
+            }
+        }
+        return LinkExpansionOutcome(null, emptyList(), false)
+    }
+
+    /** BATCH11-S3: the expansion's full outcome — hit, honest ambiguity list,
+     *  directory-only marker (a directory is never opened as a file). */
+    data class LinkExpansionOutcome(
+        val hit: Triple<File, Int, Int>?,
+        val ambiguousPaths: List<String>,
+        val directoryOnly: Boolean,
+    )
 
     /** A5: progressive leading-chunk drop — bounded (max 5), pure (unit-tested). */
     fun linkCandidates(token: String): List<String> {
@@ -357,6 +472,9 @@ object IdeTerminalBridge {
         diagId: Int? = null,
         cwdCtx: CwdContext? = null,
         probe: LinkFileProbe = LinkFileProbe.REAL,
+        /** BATCH11-S3: populated when a DIRECTORY matched (design item 6: a
+         *  directory is never opened as a file — recorded for the honest verdict). */
+        directoryHits: MutableList<String>? = null,
     ): Triple<File, Int, Int>? {
         val pathPart = candidate.path
         val lineNum = candidate.line
@@ -390,8 +508,13 @@ object IdeTerminalBridge {
         // silently. token=what was extracted from the tap, pathPart/lineNum=what each
         // branch tried.
         AppOutputLog.log("[TAP] file-link tap: origin=" + candidate.origin + " pathPart='" + pathPart + "' line=" + lineNum + " col=" + colNum + " explicit=" + candidate.explicit, CHANNEL)
-        // 1. absolute host path
-        File(pathPart).takeIf { it.isAbsolute && probe.exists(pathPart) }?.let {
+        // 1. absolute host path (BATCH11-S3: a directory is recorded, not opened)
+        if (probe.exists(pathPart) && java.io.File(pathPart).isAbsolute && probe.isDirectory(pathPart)) {
+            directoryHits?.add(pathPart)
+        }
+        File(pathPart).takeIf {
+            it.isAbsolute && probe.exists(pathPart) && !probe.isDirectory(pathPart)
+        }?.let {
             AppOutputLog.log("[TAP] resolved via absolute host path: " + it.absolutePath, CHANNEL)
             return Triple(it, lineNum - 1, colNum)
         }
@@ -401,8 +524,13 @@ object IdeTerminalBridge {
         if (appCtx != null) {
             try {
                 guestPathToHostFile(appCtx, pathPart, probe)?.let {
-                    AppOutputLog.log("[TAP] resolved via guest->host map: " + it.absolutePath, CHANNEL)
-                    return Triple(it, lineNum - 1, colNum)
+                    if (probe.isDirectory(it.absolutePath)) {
+                        AppOutputLog.log("[TAP] guest->host map matched a DIRECTORY (not opened as a file)", CHANNEL)
+                        directoryHits?.add(it.absolutePath)
+                    } else {
+                        AppOutputLog.log("[TAP] resolved via guest->host map: " + it.absolutePath, CHANNEL)
+                        return Triple(it, lineNum - 1, colNum)
+                    }
                 }
             } catch (_: Throwable) {
                 AppOutputLog.log("[TAP] guest->host map branch failed (skipped)", CHANNEL)
@@ -438,8 +566,13 @@ object IdeTerminalBridge {
             val joined = File(cwd, pathPart)
             AppOutputLog.log("[TAP] trying cwd(" + sourceLabel + ")=" + cwd + " -> " + joined.absolutePath, CHANNEL)
             if (probe.exists(joined.absolutePath)) {
-                AppOutputLog.log("[TAP] resolved via cwd(" + sourceLabel + "): " + joined.absolutePath, CHANNEL)
-                return Pair(joined, lineNum - 1)
+                if (probe.isDirectory(joined.absolutePath)) {
+                    AppOutputLog.log("[TAP] cwd(" + sourceLabel + ") matched a DIRECTORY (not opened as a file)", CHANNEL)
+                    directoryHits?.add(joined.absolutePath)
+                } else {
+                    AppOutputLog.log("[TAP] resolved via cwd(" + sourceLabel + "): " + joined.absolutePath, CHANNEL)
+                    return Triple(joined, lineNum - 1, colNum)
+                }
             }
         }
         if (!anyCwdUsable) {
@@ -457,9 +590,10 @@ object IdeTerminalBridge {
             val capped = roots.take(MAX_ROOTS_TO_PROBE)
             AppOutputLog.log("[TAP] workspace-root fallback: " + capped.size + "/" + roots.size + " root(s) for project " + projectId, CHANNEL)
             for (root in capped) {
-                File(root, pathPart).takeIf { probe.exists(it.absolutePath) }?.let {
-                    AppOutputLog.log("[TAP] resolved via workspace root " + root + ": " + it.absolutePath, CHANNEL)
-                    return Triple(it, lineNum - 1, colNum)
+                val joined = File(root, pathPart)
+                if (probe.exists(joined.absolutePath) && !probe.isDirectory(joined.absolutePath)) {
+                    AppOutputLog.log("[TAP] resolved via workspace root " + root + ": " + joined.absolutePath, CHANNEL)
+                    return Triple(joined, lineNum - 1, colNum)
                 }
             }
         }

@@ -128,6 +128,13 @@ class ShellIntegrationState internal constructor(
     }
 
     private fun fire(kind: ChangeKind) {
+        // BATCH11-S3 (advisor item 3): when a terminal command FINISHES, the
+        // link-resolver existence cache is dropped — files created a moment
+        // ago must not be answered from a stale negative entry, and the cache
+        // only ever spans seconds (a command boundary is the honest reset).
+        if (kind == ChangeKind.COMMAND_COMPLETE) {
+            com.codespace.ide.terminal.LinkExistenceCache.clearAll()
+        }
         for (l in listeners) runCatching { l(kind) }
     }
 
