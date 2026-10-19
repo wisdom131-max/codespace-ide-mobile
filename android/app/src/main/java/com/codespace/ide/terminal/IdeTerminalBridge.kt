@@ -256,12 +256,21 @@ object IdeTerminalBridge {
                 }
             }
             val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
-            when {
-                r != null -> TappedLinkResult(r.hit.first, r.hit.second, LinkResolveReason.RESOLVED, null, r.hit.third)
-                r.ambiguousPaths.isNotEmpty() -> TappedLinkResult(null, -1, LinkResolveReason.AMBIGUOUS, null, -1, r.ambiguousPaths)
-                r.directoryOnly -> TappedLinkResult(null, -1, LinkResolveReason.DIRECTORY)
-                elapsedMs >= RESOLVE_TIMEOUT_MS -> TappedLinkResult(null, -1, LinkResolveReason.TIMEOUT)
-                else -> TappedLinkResult(null, -1, LinkResolveReason.NOT_FOUND)
+            // Kotlin smart-cast limit: a condition-only when {} does NOT narrow r
+            // for the branches after "r != null" — capture locals first (same
+            // class as the delegated-property smart-cast pitfall rule).
+            val res = r
+            val hit = res?.hit
+            if (hit != null) {
+                TappedLinkResult(hit.first, hit.second, LinkResolveReason.RESOLVED, null, hit.third)
+            } else if (res != null && res.ambiguousPaths.isNotEmpty()) {
+                TappedLinkResult(null, -1, LinkResolveReason.AMBIGUOUS, null, -1, res.ambiguousPaths)
+            } else if (res != null && res.directoryOnly) {
+                TappedLinkResult(null, -1, LinkResolveReason.DIRECTORY)
+            } else if (elapsedMs >= RESOLVE_TIMEOUT_MS) {
+                TappedLinkResult(null, -1, LinkResolveReason.TIMEOUT)
+            } else {
+                TappedLinkResult(null, -1, LinkResolveReason.NOT_FOUND)
             }
         } catch (t: Throwable) {
             // TIMEOUT is ONLY the withTimeoutOrNull expiry above; a thrown
