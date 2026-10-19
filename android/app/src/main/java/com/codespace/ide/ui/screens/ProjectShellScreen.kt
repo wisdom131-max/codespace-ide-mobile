@@ -4125,10 +4125,14 @@ private val OUTPUT_FILE_LINE = Regex("([\\w./+\\-]+?):(\\d+)")
                             if (canTap) Modifier.clickable {
                                 for (m in OUTPUT_FILE_LINE.findAll(line)) {
                                     val ln = m.groupValues[2].toIntOrNull() ?: continue
+                                    // BATCH11-S3: resolveTappedFileLinkUnscoped now returns a
+                                    // DetailedResult (hit OR ambiguity list OR directory-only) —
+                                    // only the hit opens a file here.
                                     val resolved = com.codespace.ide.terminal.IdeTerminalBridge
                                         .resolveTappedFileLinkUnscoped(context, null, m.groupValues[1] + ":" + ln, projectId)
-                                    if (resolved != null) {
-                                        onOpenFileAtLine?.invoke(resolved.first.absolutePath, resolved.second)
+                                    val hit = resolved.hit
+                                    if (hit != null) {
+                                        onOpenFileAtLine?.invoke(hit.first.absolutePath, hit.second)
                                         break
                                     }
                                 }

@@ -236,6 +236,10 @@ object IdeTerminalBridge {
         cwdCtx: CwdContext? = null,
         /** BATCH11-S1/S3: existence seam — JVM tests inject a fake file system. */
         probe: LinkFileProbe = LinkFileProbe.REAL,
+        /** BATCH11-S3: the tapped wrapped-row text + CHAR offset — feeds the
+         *  existence-gated expansion. Null = token-only path. */
+        rowText: String? = null,
+        tapCharOffset: Int = -1,
     ): TappedLinkResult {
         return try {
             // withTimeoutOrNull returns null BOTH on expiry AND when the block
@@ -490,7 +494,7 @@ object IdeTerminalBridge {
             // Roots count + loaded state (advisor Bug 2 fact) — probed ON THIS IO
             // thread, never main (File.exists on FUSE can stall; standing rule).
             val diagRoots = try {
-                if (projectId == null) emptyList()
+                if (projectId == null || appCtx == null) emptyList()
                 else com.codespace.ide.util.ProjectPathResolver.getAllWorkspaceRoots(appCtx, projectId)
             } catch (_: Exception) { emptyList() }
             com.codespace.ide.diagnostics.AppOutputLog.log(

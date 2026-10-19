@@ -12,7 +12,7 @@ package com.codespace.ide.terminal
  * Pure interface: no Android imports. Implementations must be cheap, never
  * throw (return defaults), and are always invoked OFF the main thread.
  */
-fun interface LinkFileProbe {
+interface LinkFileProbe {
     /** True when a file/dir exists at [path]. Never throws. */
     fun exists(path: String): Boolean
 
