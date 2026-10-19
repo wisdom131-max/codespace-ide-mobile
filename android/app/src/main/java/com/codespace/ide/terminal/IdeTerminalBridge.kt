@@ -209,6 +209,10 @@ object IdeTerminalBridge {
         val ambiguousPaths: List<String> = emptyList(),
         /** BATCH11-S3: the only match was a directory (reason=DIRECTORY). */
         val directoryOnly: Boolean = false,
+        /** D1 overlay: the winning span's char range in the tap row text.
+         *  -1 = none (not-resolved outcomes never highlight a span). */
+        val spanStart: Int = -1,
+        val spanEnd: Int = -1,
     )
 
     /**
@@ -262,7 +266,7 @@ object IdeTerminalBridge {
             val res = r
             val hit = res?.hit
             if (hit != null) {
-                TappedLinkResult(hit.first, hit.second, LinkResolveReason.RESOLVED, null, hit.third)
+                TappedLinkResult(hit.first, hit.second, LinkResolveReason.RESOLVED, null, hit.third, emptyList(), false, res?.spanStart ?: -1, res?.spanEnd ?: -1)
             } else if (res != null && res.ambiguousPaths.isNotEmpty()) {
                 TappedLinkResult(null, -1, LinkResolveReason.AMBIGUOUS, null, -1, res.ambiguousPaths)
             } else if (res != null && res.directoryOnly) {
@@ -296,6 +300,9 @@ object IdeTerminalBridge {
         val hit: Triple<File, Int, Int>?,
         val ambiguousPaths: List<String> = emptyList(),
         val directoryOnly: Boolean = false,
+        /** D1 overlay: the winning span's char range in the row text (-1 = none). */
+        val spanStart: Int = -1,
+        val spanEnd: Int = -1,
     )
 
     /** BATCH11-S3: the lock guard applied to the DETAILED result's hit. */
@@ -349,7 +356,7 @@ object IdeTerminalBridge {
             return DetailedResult(null, outcome.ambiguousPaths, outcome.directoryOnly)
         }
         val hit = lockFilter(outcome.hit, lockedRoot, token)
-        return DetailedResult(hit)
+        return DetailedResult(hit, spanStart = if (hit != null) outcome.spanStart else -1, spanEnd = if (hit != null) outcome.spanEnd else -1)
     }
 
     fun resolveTappedFileLinkUnscoped(
@@ -373,7 +380,7 @@ object IdeTerminalBridge {
         // chain below when the expansion has nothing to work with.
         if (rowText != null && tapCharOffset >= 0) {
             val expansion = expandAndSelect(context, session, token, rowText, tapCharOffset, projectId, diagId, cwdCtx, probe)
-            if (expansion.hit != null) return DetailedResult(expansion.hit)
+            if (expansion.hit != null) return DetailedResult(expansion.hit, spanStart = expansion.spanStart, spanEnd = expansion.spanEnd)
             if (expansion.ambiguousPaths.isNotEmpty()) return DetailedResult(null, expansion.ambiguousPaths, false)
             if (expansion.directoryOnly) return DetailedResult(null, emptyList(), true)
         }
@@ -418,7 +425,7 @@ object IdeTerminalBridge {
             is LinkExpansion.Result.Found -> {
                 val h = sel.hit
                 AppOutputLog.log("[TAP] expansion RESOLVED: " + h.path + (if (h.line > 0) ":" + h.line else "") + " origin=" + h.origin + " window='" + h.window.take(80) + "'", CHANNEL)
-                return LinkExpansionOutcome(Triple(File(h.path), if (h.line > 0) h.line - 1 else -2, h.col), emptyList(), false)
+                return LinkExpansionOutcome(Triple(File(h.path), if (h.line > 0) h.line - 1 else -2, h.col), emptyList(), false, h.spanStart, h.spanEnd)
             }
             is LinkExpansion.Result.Ambiguous -> {
                 val list = sel.matches.joinToString(" | ") { it.path }
@@ -442,6 +449,9 @@ object IdeTerminalBridge {
         val hit: Triple<File, Int, Int>?,
         val ambiguousPaths: List<String>,
         val directoryOnly: Boolean,
+        /** D1 overlay: the winning span's char range in the row text (-1 = none). */
+        val spanStart: Int = -1,
+        val spanEnd: Int = -1,
     )
 
     /** A5: progressive leading-chunk drop — bounded (max 5), pure (unit-tested). */

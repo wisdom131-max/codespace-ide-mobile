@@ -33,7 +33,14 @@ object LinkExpansion {
 
     /** iTerm2 grows leftward over the whole prefix; we bound it. */
     const val MAX_LEFT_CHUNKS = 6
-    const val MAX_RIGHT_CHUNKS = 3
+    /**
+     * DEVICE D1 (advisor round 2026-10-19): SYMMETRIC with the left cap. The
+     * old value 3 made growth position-dependent — a quoted absolute path
+     * spans SIX chunks, so a tap on chunk 0 could never reach the trailing
+     * chunks (1 + 3 = 4 chunks max), while taps on later chunks worked via
+     * left growth. The LinkExpansionD1Test pins pin this (RED at 3, GREEN at 6).
+     */
+    const val MAX_RIGHT_CHUNKS = 6
     /** Total window candidates per tap (advisor hard cap). */
     const val MAX_WINDOWS = 24
     /** Slice radius around the tap for chunking (bounded, like the span scanner). */
@@ -52,6 +59,10 @@ object LinkExpansion {
         /** Ranking: the window's chunk span, then its char width (longest valid wins). */
         val chunkSpan: Int,
         val charWidth: Int,
+        /** D1 resolved-span overlay: the winning span's char range in the row
+         *  text (start inclusive, end exclusive). -1 = unknown. */
+        val spanStart: Int = -1,
+        val spanEnd: Int = -1,
     )
 
     sealed class Result {
@@ -164,22 +175,73 @@ object LinkExpansion {
         val matches = mutableListOf<Hit>()
         var sawDirectory = false
 
-        fun consider(path: String, cand: LinkCandidateBuilder.Candidate, w: Window, origin: String) {
+        fun consider(path: String, cand: LinkCandidateBuilder.Candidate, w: Window, origin: String,
+                      spanStart: Int = -1, spanEnd: Int = -1) {
             if (LinkExistenceCache.isDirectory(probe, path)) {
                 sawDirectory = true
             } else {
-                matches.add(Hit(path, cand.line, cand.col, origin, w.text, cand.explicit, w.endChunk - w.startChunk, w.width))
+                matches.add(Hit(path, cand.line, cand.col, origin, w.text, cand.explicit,
+                    w.endChunk - w.startChunk, w.width, spanStart, spanEnd))
+            }
+        }
+
+        // ── D1 EXPLICIT-SPAN PRE-PASS (advisor design): a quoted or shell-
+        //    escaped span containing the tap is ONE unit BEFORE any chunking —
+        //    detection is pure string work (LinkSpanFinder), no file lookups.
+        //    If it resolves to an existing file it wins outright (explicit
+        //    forms rank first); if not, the windows path below still runs.
+        val explicit = LinkSpanFinder.explicitSpanAt(rowText, tapOffset)
+        if (explicit != null) {
+            for (cand in LinkCandidateBuilder.build(explicit.raw)) {
+                if (cand.path.isBlank()) continue
+                if (!cand.path.contains('/') && !cand.path.contains('.')) continue
+                if (cand.path.startsWith("/")) {
+                    if (LinkExistenceCache.exists(probe, cand.path)) {
+                        consider(cand.path, cand, Window(explicit.raw, 0, 0, explicit.raw.length), "explicit:" + cand.origin, explicit.start, explicit.end)
+                        break
+                    }
+                    continue
+                }
+                var resolved = false
+                for ((label, base) in cwds) {
+                    val joined = base + "/" + cand.path
+                    if (LinkExistenceCache.exists(probe, joined)) {
+                        consider(joined, cand, Window(explicit.raw, 0, 0, explicit.raw.length), "explicit-cwd-" + label + ":" + cand.origin, explicit.start, explicit.end)
+                        resolved = true
+                        break
+                    }
+                }
+                if (resolved) break
+                if (ctx.roots.isNotEmpty()) {
+                    var rootHits = 0
+                    for (root in ctx.roots) {
+                        val joined = root.trimEnd('/') + "/" + cand.path
+                        if (LinkExistenceCache.exists(probe, joined)) {
+                            consider(joined, cand, Window(explicit.raw, 0, 0, explicit.raw.length), "explicit-root:" + cand.origin, explicit.start, explicit.end)
+                            rootHits++
+                        }
+                    }
+                    if (rootHits > 0) break
+                }
+            }
+            // An explicit hit ranks above every window hit — Found now.
+            val explicitHit = matches.maxWith(compareBy({ it.explicit }, { it.charWidth }))
+            if (explicitHit != null && explicitHit.explicit) {
+                return Result.Found(explicitHit)
             }
         }
 
         for (w in wins) {
+            val cs = chunks(rowText, tapOffset)
+            val wStart = cs.getOrNull(w.startChunk)?.first ?: -1
+            val wEnd = cs.getOrNull(w.endChunk)?.let { it.first + it.second.length } ?: -1
             for (cand in LinkCandidateBuilder.build(w.text)) {
                 if (cand.path.isBlank()) continue
                 if (!cand.path.contains('/') && !cand.path.contains('.')) continue
                 // Tier A: absolute existing.
                 if (cand.path.startsWith("/")) {
                     if (LinkExistenceCache.exists(probe, cand.path)) {
-                        consider(cand.path, cand, w, "absolute:" + cand.origin)
+                        consider(cand.path, cand, w, "absolute:" + cand.origin, wStart, wEnd)
                         break
                     }
                     continue
@@ -189,7 +251,7 @@ object LinkExpansion {
                 for ((label, base) in cwds) {
                     val joined = base + "/" + cand.path
                     if (LinkExistenceCache.exists(probe, joined)) {
-                        consider(joined, cand, w, "cwd-" + label + ":" + cand.origin)
+                        consider(joined, cand, w, "cwd-" + label + ":" + cand.origin, wStart, wEnd)
                         resolved = true
                         break
                     }
@@ -203,7 +265,7 @@ object LinkExpansion {
                     for (root in ctx.roots) {
                         val joined = root.trimEnd('/') + "/" + cand.path
                         if (LinkExistenceCache.exists(probe, joined)) {
-                            consider(joined, cand, w, "root:" + cand.origin)
+                            consider(joined, cand, w, "root:" + cand.origin, wStart, wEnd)
                             rootHits++
                         }
                     }
