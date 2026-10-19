@@ -119,6 +119,7 @@ object TerminalLinkPaint {
      * @param nextRowText  the continuation row's text, when [rowWraps] (the
      *        renderer reads it from the buffer; null at the visible edge).
      */
+    @JvmStatic
     fun paintForRow(rowText: String, carriedSeam: Int, rowWraps: Boolean, nextRowText: String?): RowPaint {
         val out = mutableListOf<Span>()
         if (carriedSeam >= 0) out.add(Span(0, carriedSeam))
