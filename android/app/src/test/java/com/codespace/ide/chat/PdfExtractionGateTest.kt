@@ -47,9 +47,11 @@ class PdfExtractionGateTest {
      * pdfbox does. That interruptible variant gets its own test below.
      */
     @Test fun neverReturningEngine_waiterTimesOutPromptly_thenBusy_thenSelfHeals() {
-        @Volatile var released = false
+        // local vars cannot take @Volatile (CI red 39450920239) — the zombie
+        // reads cross-thread, so the release flag is an AtomicBoolean
+        val released = java.util.concurrent.atomic.AtomicBoolean(false)
         val stuck: (File) -> AttachmentIntake.ExtractedDoc = {
-            while (!released) {
+            while (!released.get()) {
                 try { Thread.sleep(20) } catch (_: InterruptedException) {
                     // pdfbox-like: the interrupt is swallowed — the CPU burn
                     // continues until the parse returns on its own
@@ -75,7 +77,7 @@ class PdfExtractionGateTest {
         assertTrue("Busy must be immediate (waited ${busyWait}ms)", busyWait < 150)
 
         // 3. release the zombie -> the stuck job completes -> flag self-clears
-        released = true
+        released.set(true)
         var healed = false
         val deadline = System.currentTimeMillis() + 5_000
         while (System.currentTimeMillis() < deadline) {
