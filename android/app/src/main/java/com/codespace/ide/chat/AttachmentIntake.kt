@@ -59,7 +59,8 @@ object AttachmentIntake {
      * AttachmentExtractionEffects). Returns the refusal verdict rather than
      * throwing for every recoverable case.
      */
-    fun extractBlocking(att: ChatAttachment): ExtractedDoc = try {
+    fun extractBlocking(att: ChatAttachment): ExtractedDoc {
+        return try {
         val f = File(att.path)
         if (!f.isFile || !f.canRead()) return ExtractedDoc(refusal = "Could not read the file.")
         if (f.length() > MAX_SOURCE_BYTES) {
@@ -78,4 +79,5 @@ object AttachmentIntake {
     } catch (e: Exception) {
         ExtractedDoc(refusal = "Extraction failed: ${e.message ?: "unreadable file"}")
     }
-}
+        }
+    }

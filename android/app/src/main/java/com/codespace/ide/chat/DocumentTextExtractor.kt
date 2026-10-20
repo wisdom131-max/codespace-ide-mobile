@@ -567,22 +567,22 @@ object DocumentTextExtractor {
             try {
                 when (val r = body(zip)) {
                     is AttachmentIntake.ExtractedDoc -> r
-                    is RefusalWrap -> Refusal(r.reason)
-                    else -> Refusal("unreadable document")
+                    is RefusalWrap -> refusalDoc(r.reason)
+                    else -> refusalDoc("unreadable document")
                 }
             } finally {
                 try { zip.close() } catch (_: Exception) {}
             }
         } catch (e: SafeZipReader.ZipLimitException) {
-            Refusal("archive limits exceeded (${e.what}) — showing file info only")
+            refusalDoc("archive limits exceeded (${e.what}) — showing file info only")
         } catch (e: SafeZipReader.ZipEncryptedException) {
-            Refusal("this file is password-encrypted — not supported; showing file info only")
+            refusalDoc("this file is password-encrypted — not supported; showing file info only")
         } catch (e: SafeZipReader.ZipMalformedException) {
-            Refusal("not a readable archive (${e.message}) — showing file info only")
+            refusalDoc("not a readable archive (${e.message}) — showing file info only")
         } catch (e: XmlReject) {
-            Refusal("rejected XML (${e.reason}) — showing file info only")
+            refusalDoc("rejected XML (${e.reason}) — showing file info only")
         } catch (e: Exception) {
-            Refusal("extraction failed (${e.message ?: "unreadable"}) — showing file info only")
+            refusalDoc("extraction failed (${e.message ?: "unreadable"}) — showing file info only")
         }
     }
 
