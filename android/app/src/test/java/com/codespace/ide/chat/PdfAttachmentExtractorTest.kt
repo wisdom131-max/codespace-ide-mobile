@@ -184,8 +184,8 @@ class PdfAttachmentExtractorTest {
             is PdfAttachmentExtractor.EngineOutcome.Text ->
                 for (p in out.pages) {
                     assertTrue(
-                        p.isEmpty() || p.contains("C12 U4") || p.contains("42 tokens") || p.contains("rides for redaction"),
-                        "recovered text must be the file's own content, not junk: " + p.take(40))
+                        "recovered text must be the file's own content, not junk: " + p.take(40),
+                        p.isEmpty() || p.contains("C12 U4") || p.contains("42 tokens") || p.contains("rides for redaction"))
                 }
         }
     }
