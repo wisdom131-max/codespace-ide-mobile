@@ -102,6 +102,12 @@ object PdfAttachmentExtractor {
             AttachmentIntake.ExtractedDoc(
                 refusal = "PDF extraction failed (${e.message ?: e.javaClass.simpleName}) — showing file info only."
             )
+        } catch (e: StackOverflowError) {
+            // Defense in depth, same Error-not-Exception family: a seam that
+            // recurses too deep gets words, never a crash.
+            AttachmentIntake.ExtractedDoc(
+                refusal = "PDF structure too deeply nested to read safely — showing file info only."
+            )
         } catch (e: Exception) {
             AttachmentIntake.ExtractedDoc(refusal = "PDF extraction failed (${e.message ?: "unreadable file"}) — showing file info only.")
         }
@@ -235,6 +241,12 @@ object PdfAttachmentExtractor {
                 return EngineOutcome.Corrupted(e.message ?: "unreadable")
             } catch (e: OutOfMemoryError) {
                 throw e // the decision core reports it
+            } catch (e: StackOverflowError) {
+                // A hostile PDF can nest its page tree / font program deep
+                // enough to exhaust the thread stack inside pdfbox parsing.
+                // StackOverflowError is a VirtualMachineError (an Error),
+                // so catch(Exception) cannot stop it — refuse honestly.
+                return EngineOutcome.Failed("PDF structure too deeply nested to read safely")
             } catch (e: Exception) {
                 return EngineOutcome.Failed(e.message ?: e.javaClass.simpleName)
             } finally {

@@ -223,4 +223,27 @@ class PdfAttachmentExtractorTest {
         assertTrue(doc.refusal!!.contains("PDF extraction failed"))
         assertEquals("", doc.text)
     }
+
+    @Test fun core_survivesStackOverflowErrorFromSeam_noCrash() {
+        // Advisor item 1 (hostile page tree / font recursion): a deeply
+        // nested PDF exhausts the thread stack inside pdfbox parsing.
+        // StackOverflowError is a VirtualMachineError — catch(Exception)
+        // cannot stop it; without the SOE branches this row would CRASH the
+        // test JVM instead of returning an honest refusal.
+        val deep = PdfAttachmentExtractor.PdfTextEngine { throw StackOverflowError("parser recursion") }
+        val doc = PdfAttachmentExtractor.extract(pdfFile(), tmp.root, engine = deep)
+        assertTrue(doc.refusal!!.contains("too deeply nested"))
+        assertEquals("", doc.text)
+    }
+
+    @Test fun core_survivesStackOverflowErrorFromRendererSeam_noCrash() {
+        // Same Error family on the RENDER seam (page image path): the
+        // renderer propagates OOM by contract; an SOE there must also get
+        // words, never a crash.
+        val deep = PdfAttachmentExtractor.PageImageRenderer { _, _, _ -> throw StackOverflowError("render recursion") }
+        val doc = PdfAttachmentExtractor.extract(pdfFile(), tmp.root,
+            providerAcceptsImages = true, engine = engine(""), renderer = deep)
+        assertTrue(doc.refusal!!.contains("too deeply nested") || doc.refusal!!.contains("PDF extraction failed"))
+        assertEquals("", doc.text)
+    }
 }
