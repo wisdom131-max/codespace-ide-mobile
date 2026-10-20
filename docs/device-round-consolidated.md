@@ -1,12 +1,13 @@
 # CONSOLIDATED DEVICE ROUND — target artifact: latest GREEN after G-E-a (see header)
 
 > Status: READY — DO NOT TEST until the owner says so (advisor 2026-10-20).
-> Artifact: pin the newest CI-GREEN build at round time (baseline verifies the
-> build stamp). 997774b carried BATCH6-BATCH12 + C12 Stage 3 + U4; since then
-> 23fdf2c adds the StackOverflowError hardening (same PDF surfaces) and 24b3b30
-> adds G-E-a (INERT: no call sites touched, switch OFF — cannot affect the
-> round; only its APK build is exercised). Supersedes: 8580adc, 12f0e40,
-> 416f417, b85b2cc, 922fe49.
+> Artifact: 0271b7b (CI-GREEN 39436811454, newest green at doc time; the
+> baseline build-stamp check confirms the installed APK). 997774b carried
+> BATCH6-BATCH12 + C12 Stage 3 + U4; since then 23fdf2c adds the
+> StackOverflowError hardening (same PDF surfaces) and 24b3b30..0271b7b add
+> G-E-a (INERT: no call sites touched, switch OFF — cannot affect the round;
+> only its APK build is exercised). Supersedes: 8580adc, 12f0e40, 416f417,
+> b85b2cc, 922fe49.
 > Phone: TECNO KL4, Android 14. Fixtures: `/sdcard/Download/zz_stage3/`
 > (generator block in `docs/c12-stage3-u4-test-sheet.md`).
 

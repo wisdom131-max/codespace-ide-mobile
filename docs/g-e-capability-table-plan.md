@@ -170,8 +170,17 @@ byte-identical to today. The bundled asset and overrides stay dormant on disk.
 
 ### Phasing (each phase = one CI run, owner go before the next)
 
-- **G-E-a**: data model + resolution + bundled table + tests (no UI, no seam
-  change; flag off).
+- **G-E-a**: **SHIPPED 2026-10-20, CI-GREEN 39436811454 @ 0271b7b** (red trail
+  24b3b30 -> b4d7e10 -> bc794c0 -> 110ddbc -> 0271b7b; fixes were: expression-
+  body-with-return x2, non-val ctor param, Map.Entry.toMap, one eaten object
+  brace, 2 wrong test expectations, and one REAL contract gap the test caught
+  — plain OpenAI /models shapes now parse to null, zero-claim payloads claim
+  NOTHING). Data model + resolution + bounded bundled table (19 rows from
+  LiteLLM MIT catalog, 3.1 KB, 64 KiB enforced cap) + 20 JVM tests; NO UI, NO
+  seam change, flag OFF by default. DEVIATION from advisor condition (c): the
+  table-date UI line ships with G-E-b's picker line instead (API + test ready:
+  ModelCapabilityTable.tableDate()); no cheap safe hook exists this phase and
+  the flag is off. OWNER RULING NEEDED on that before G-E-b goes.
 - **G-E-b**: seam switch (send path + picker line) + tests; flag default on
   for the device round, off-switch documented.
 - **G-E-c**: override UI in MK settings + attach-sheet unknown-offer.
