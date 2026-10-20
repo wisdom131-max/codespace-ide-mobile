@@ -98,3 +98,4 @@ object ModelCapabilityHints {
             null
         }
     }
+}
