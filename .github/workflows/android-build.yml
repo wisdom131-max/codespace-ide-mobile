@@ -51,6 +51,24 @@ jobs:
         working-directory: android
         run: ./gradlew assembleProdDebug --stacktrace --no-build-cache
 
+      - name: Verify pinned pdfbox-android checksum
+        # C12 Stage 3 U4: the pdfbox-android dependency is PINNED. Gradle
+        # resolved the exact AAR during the build above; this step re-verifies
+        # its SHA-256 against the pinned value from Maven Central and FAILS the
+        # build if the artifact bytes ever change (supply-chain guard; same
+        # posture as the pinned Ubuntu rootfs asset).
+        run: |
+          AAR=$(find ~/.gradle/caches -name "pdfbox-android-2.0.27.0.aar" | head -n 1)
+          if [ -z "$AAR" ]; then
+            echo "FATAL: pdfbox-android-2.0.27.0.aar not found in the Gradle cache"; exit 1
+          fi
+          echo "resolved: $AAR"
+          ACTUAL=$(sha256sum "$AAR" | cut -d' ' -f1)
+          EXPECTED=30277f879cfd571db2a137582c95516a0d4ea6778e945519bc58ca93d57d88c7
+          echo "actual:   $ACTUAL"
+          echo "expected:  $EXPECTED"
+          [ "$ACTUAL" = "$EXPECTED" ] || { echo "CHECKSUM MISMATCH — refusing to build"; exit 1; }
+
       # ADVISOR 2026-10-13 (item 1): REAL-ASSET fixtures. The pinned Ubuntu
       # arm64 asset that "Download fresh" installs — fetched, size+SHA-256
       # verified, extracted and cached — replaces hand-made fixtures that

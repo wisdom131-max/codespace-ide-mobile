@@ -232,6 +232,19 @@ dependencies {
 
     // Tar/XZ extraction for Ubuntu rootfs
     implementation("org.apache.commons:commons-compress:1.26.0")
+    // C12 Stage 3 U4 (advisor GO 2026-10-20): PDF text extraction. Apache-2.0
+    // port of Apache PDFBox 2.0.27 to Android (TomRoush/PdfBox-Android), latest
+    // stable release (2.0.27.0, 2023-01-02), min API 19 (our minSdk 26), no
+    // native parts, ships its own R8/ProGuard consumer rules. PINNED: the CI
+    // "Verify pinned pdfbox-android checksum" step fails the build on any
+    // change to the artifact bytes. BouncyCastle (bcprov/bcpkix/bcutil) is
+    // EXCLUDED on purpose: it is only needed to DECRYPT encrypted PDFs, which
+    // we honestly refuse anyway ("encrypted or password-protected — not
+    // supported yet"); an encrypted PDF surfaces as a NoClassDefFoundError
+    // that we classify into that same honest refusal.
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0") {
+        exclude(group = "org.bouncycastle")
+    }
     implementation("org.tukaani:xz:1.9")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("com.github.luben:zstd-jni:1.5.6-4")
