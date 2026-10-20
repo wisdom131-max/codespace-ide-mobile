@@ -1380,6 +1380,11 @@ internal fun CopilotChatPanelInline(
         mutableStateOf<List<com.codespace.ide.chat.ChatAttachment>>(emptyList())
     }
     var showAttachPicker by remember { mutableStateOf(false) }
+    // C12 Stage 3 U2/U3 (2026-10-20): off-main, cancellable, time-limited
+    // document/archive extraction for pending attachments.
+    AttachmentExtractionEffects(attachments) { enriched ->
+        attachments = attachments.map { if (it.path == enriched.path && it.extractedDoc == null) enriched else it }
+    }
     // I3 — SCM AI: repo context pill (VS Code sessionPullRequestPill analog).
     // Triple(branch, dirtyCount, workingDiffVsHead) — computed once per project root.
     var repoPill by remember { mutableStateOf<Triple<String, Int, String>?>(null) }

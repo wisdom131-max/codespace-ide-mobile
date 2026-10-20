@@ -193,6 +193,45 @@ internal fun AttachmentSheet(
                         fontSize = 11.sp, color = colors.text,
                         modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
                     )
+                } else if (attachment.extractedDoc != null) {
+                    // C12 Stage 3 U2/U3 (2026-10-20): extracted document text —
+                    // read-only view (editing extracted docs is out of scope
+                    // this batch), with the honest markers and refusals.
+                    val doc = attachment.extractedDoc!!
+                    for (note in doc.notes) {
+                        Text(
+                            note,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = colors.accent,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                    val refusal = doc.refusal
+                    if (refusal != null) {
+                        Text(
+                            "No text extracted: " + refusal,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = colors.textSecondary,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    } else {
+                        Text(
+                            "[extracted file text — read-only]",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = colors.textSecondary,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                        Text(
+                            doc.text,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = colors.text,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
                 } else if (snap != null && snap.isBinary) {
                     // C12 s1-c: binary — editor disabled, read-only notice (ruling wording).
                     Text(

@@ -52,4 +52,29 @@ object AttachmentIntake {
         val truncated: Boolean = false,
         val refusal: String? = null,
     )
+
+    /**
+     * U2/U3 EXTRACTION — BLOCKING worker. MUST be called from a background
+     * dispatcher; callers wrap in a timeout + cancellation (see
+     * AttachmentExtractionEffects). Returns the refusal verdict rather than
+     * throwing for every recoverable case.
+     */
+    fun extractBlocking(att: ChatAttachment): ExtractedDoc = try {
+        val f = File(att.path)
+        if (!f.isFile || !f.canRead()) return ExtractedDoc(refusal = "Could not read the file.")
+        if (f.length() > MAX_SOURCE_BYTES) {
+            return ExtractedDoc(refusal = "File is larger than 10 MB — showing file info only.")
+        }
+        val verdict = verdictOf(att)
+        when (verdict.extraction) {
+            AttachmentExtraction.DOCUMENT -> DocumentTextExtractor.extract(f, verdict)
+            AttachmentExtraction.TEXT_SNAPSHOT, AttachmentExtraction.LATER_PHASE ->
+                // text snapshot path / later phase: nothing to extract here
+                ExtractedDoc("", refusal = null)
+            AttachmentExtraction.UNSUPPORTED ->
+                ExtractedDoc(refusal = verdict.reason)
+        }
+    } catch (e: Exception) {
+        ExtractedDoc(refusal = "Extraction failed: ${e.message ?: "unreadable file"}")
+    }
 }
