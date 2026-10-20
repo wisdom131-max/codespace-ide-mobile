@@ -39,10 +39,22 @@ class PdfExtractionGateTest {
         assertFalse(PdfExtractionGate.isBusyForTest())
     }
 
+    /**
+     * The REAL hostile case: a pdfbox page parse is a CPU loop that IGNORES
+     * Thread.interrupted() — the first CI run proved a latch-blocked fake
+     * engine gets killed by the gate's interrupt (CountDownLatch.await IS
+     * interruptible), so the zombie here must swallow interrupts like
+     * pdfbox does. That interruptible variant gets its own test below.
+     */
     @Test fun neverReturningEngine_waiterTimesOutPromptly_thenBusy_thenSelfHeals() {
-        val release = CountDownLatch(1)
+        @Volatile var released = false
         val stuck: (File) -> AttachmentIntake.ExtractedDoc = {
-            release.await() // NEVER returns until the test releases it
+            while (!released) {
+                try { Thread.sleep(20) } catch (_: InterruptedException) {
+                    // pdfbox-like: the interrupt is swallowed — the CPU burn
+                    // continues until the parse returns on its own
+                }
+            }
             doc("late")
         }
         val t0 = System.currentTimeMillis()
@@ -63,7 +75,7 @@ class PdfExtractionGateTest {
         assertTrue("Busy must be immediate (waited ${busyWait}ms)", busyWait < 150)
 
         // 3. release the zombie -> the stuck job completes -> flag self-clears
-        release.countDown()
+        released = true
         var healed = false
         val deadline = System.currentTimeMillis() + 5_000
         while (System.currentTimeMillis() < deadline) {
@@ -75,6 +87,31 @@ class PdfExtractionGateTest {
         // ...and the next extraction runs normally again
         val r3 = PdfExtractionGate.extract(file, timeoutMs = 2_000) { doc("recovered") }
         assertEquals("recovered", (r3 as PdfExtractionGate.GateResult.Done).doc.text)
+    }
+
+    /**
+     * CI-taught (2026-10-20 red): CountDownLatch.await-blocked work IS
+     * interruptible — the gate's future.cancel(true) ends it without any
+     * manual release, the lane heals on its own. pdfbox is NOT in this
+     * class (see the zombie test); this pins the rescue path for engines
+     * that are.
+     */
+    @Test fun interruptibleStuckWork_interruptRescuesIt_laneSelfHeals() {
+        val latch = CountDownLatch(1)
+        val r = PdfExtractionGate.extract(file, timeoutMs = 300) {
+            latch.await()
+            doc("late")
+        }
+        assertTrue("expected TimedOut, got $r", r is PdfExtractionGate.GateResult.TimedOut)
+        var healed = false
+        val deadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < deadline) {
+            if (!PdfExtractionGate.isBusyForTest()) { healed = true; break }
+            Thread.sleep(25)
+        }
+        assertTrue("interrupt must rescue interruptible stuck work", healed)
+        val r2 = PdfExtractionGate.extract(file, timeoutMs = 2_000) { doc("next") }
+        assertEquals("next", (r2 as PdfExtractionGate.GateResult.Done).doc.text)
     }
 
     @Test fun twoSequentialJobs_neverBothBusy() {
