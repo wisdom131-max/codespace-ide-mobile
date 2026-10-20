@@ -38,6 +38,11 @@ fun AttachmentExtractionEffects(
                 verdictNeedsExtraction(att)
         }
     }
+    // s1-e consistency (2026-10-20): a CLEAN UTF-8 text file (html/csv/rtf/txt)
+    // keeps the EDITABLE path — the user's sheet edits and the fresh disk read
+    // must keep winning the send. Extraction runs for BINARY-based documents
+    // (docx/xlsx/pptx/odf, non-UTF-8 encodings the text path cannot send) and
+    // for archives; the gate is here so one rule covers every attach site.
     for (att in pending) {
         LaunchedEffect(att.path) {
             val result = withTimeoutOrNull(AttachmentIntake.EXTRACT_TIMEOUT_MS) {
@@ -56,6 +61,10 @@ private fun verdictNeedsExtraction(att: ChatAttachment): Boolean {
     val verdict = try {
         AttachmentIntake.verdictOf(att)
     } catch (_: Exception) { return false }
-    return verdict.extraction == com.codespace.ide.chat.AttachmentExtraction.DOCUMENT ||
-        verdict.extraction == com.codespace.ide.chat.AttachmentExtraction.ARCHIVE
+    if (verdict.extraction == com.codespace.ide.chat.AttachmentExtraction.ARCHIVE) return true
+    if (verdict.extraction != com.codespace.ide.chat.AttachmentExtraction.DOCUMENT) return false
+    // Documents: only when the plain-text path cannot carry them (binary
+    // snapshot = the text sniff failed — office formats, odd encodings).
+    val snapBinary = att.snapshot?.isBinary ?: true
+    return snapBinary
 }

@@ -68,6 +68,7 @@ object AttachmentIntake {
         val verdict = verdictOf(att)
         when (verdict.extraction) {
             AttachmentExtraction.DOCUMENT -> DocumentTextExtractor.extract(f, verdict)
+            AttachmentExtraction.ARCHIVE -> ArchiveEntryLister.defaultListing(f)
             AttachmentExtraction.TEXT_SNAPSHOT, AttachmentExtraction.LATER_PHASE ->
                 // text snapshot path / later phase: nothing to extract here
                 ExtractedDoc("", refusal = null)

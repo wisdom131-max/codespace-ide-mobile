@@ -158,7 +158,8 @@ object AttachmentTypeSniffer {
     /** Capability + honesty, one place. The chips and sheet show this line. */
     fun verdictOf(kind: AttachmentTypeKind, label: String): TypeVerdict = when (kind) {
         AttachmentTypeKind.TEXT, AttachmentTypeKind.HTML, AttachmentTypeKind.CSV, AttachmentTypeKind.RTF -> TypeVerdict(
-            kind, label, AttachmentExtraction.DOCUMENT, "Text will be extracted and sent to the model")
+            kind, label, AttachmentExtraction.DOCUMENT,
+            "Text is sent as an editable copy; non-UTF-8 encodings are decoded first")
         AttachmentTypeKind.DOCX, AttachmentTypeKind.XLSX, AttachmentTypeKind.PPTX,
         AttachmentTypeKind.ODT, AttachmentTypeKind.ODS, AttachmentTypeKind.ODP -> TypeVerdict(
             kind, label, AttachmentExtraction.DOCUMENT, "Document text will be extracted and sent to the model")
