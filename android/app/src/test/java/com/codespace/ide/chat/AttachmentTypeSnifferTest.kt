@@ -64,10 +64,20 @@ class AttachmentTypeSnifferTest {
     }
 
     @Test fun laterPhases_areLabeledNotExtracted() {
-        for (n in listOf("paper.pdf", "photo.png", "song.mp3", "clip.mp4")) {
+        // U4 (2026-10-20): PDF moved to the DOCUMENT path; image/audio/video
+        // stay later-phase (U5).
+        for (n in listOf("photo.png", "song.mp3", "clip.mp4")) {
             val v = AttachmentTypeSniffer.sniff(n, null)
             assertEquals(AttachmentExtraction.LATER_PHASE, v.extraction)
         }
+    }
+
+    @Test fun pdf_isNowExtracted() {
+        // U4: text PDFs extract; scanned PDFs fall back to page images when
+        // the provider accepts them (see PdfAttachmentExtractorTest).
+        val v = AttachmentTypeSniffer.sniff("paper.pdf", "%PDF-1.4".toByteArray())
+        assertEquals(AttachmentExtraction.DOCUMENT, v.extraction)
+        assertEquals(AttachmentTypeKind.PDF, v.kind)
     }
 
     @Test fun macroFormats_labeledNeverExecuted() {
