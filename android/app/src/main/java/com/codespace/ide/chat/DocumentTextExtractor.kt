@@ -413,13 +413,10 @@ object DocumentTextExtractor {
         var skipDepth = -1   // -1 = not skipping
         var depth = 0
         val cp1252 = Charset.forName("windows-1252")
-        val byteBuf = java.io.ByteArrayOutputStream()
-        fun flushBytes() {
-            if (byteBuf.size() > 0) {
-                sb.appendText(String(byteBuf.toByteArray(), cp1252))
-                byteBuf.reset()
-            }
-        }
+        // 'hh decodes IMMEDIATELY (cp1252, single byte): a deferred buffer
+        // flushed at the next backslash landed the decoded char AFTER the
+        // words that followed it ("caf world." + late e). CI run 39381328637.
+        val singleByte = ByteArray(1)
         while (i < n) {
             val c = src[i]
             when {
@@ -430,10 +427,9 @@ object DocumentTextExtractor {
                     }
                     i++
                 }
-                c == '{' -> { depth++; flushBytes(); i++ }
-                c == '}' -> { flushBytes(); depth--; i++ }
+                c == '{' -> { depth++; i++ }
+                c == '}' -> { depth--; i++ }
                 c == '\\' -> {
-                    flushBytes()
                     if (i + 1 >= n) break
                     val d = src[i + 1]
                     when {
@@ -444,7 +440,10 @@ object DocumentTextExtractor {
                             if (i + 3 < n) {
                                 val hex = src.substring(i + 2, i + 4)
                                 val b = hex.toIntOrNull(16)
-                                if (b != null) byteBuf.write(b) else sb.appendText("?")
+                                if (b != null) {
+                                    singleByte[0] = b.toByte()
+                                    sb.appendText(String(singleByte, cp1252))
+                                } else sb.appendText("?")
                                 i += 4
                             } else i = n
                         }
@@ -457,7 +456,11 @@ object DocumentTextExtractor {
                             var code = if (neg) -num else num
                             if (code < 0) code += 65536
                             sb.appendText(code.toChar().toString())
-                            // skip the backup char (\uN nextchar)
+                            // delimiter + backup char: \uN is commonly written
+                            // "u65 ?" (space delimiter, '?' fallback for
+                            // non-Unicode readers) — consume both so the text
+                            // reads "A line", not "A ? line".
+                            if (j < n && src[j] == ' ') j++
                             if (j < n && src[j] == '?') j++
                             i = j
                         }
@@ -486,11 +489,10 @@ object DocumentTextExtractor {
                         }
                     }
                 }
-                c == '\r' || c == '\n' -> { flushBytes(); i++ }
+                c == '\r' || c == '\n' -> { i++ }
                 else -> { sb.appendText(c.toString()); i++ }
             }
         }
-        flushBytes()
         return finish(RawExtract(sb.result(), emptyList(), sb.hitCap), "text")
     }
 
@@ -585,6 +587,10 @@ object DocumentTextExtractor {
             refusalDoc("archive limits exceeded (${e.what}) — showing file info only")
         } catch (e: SafeZipReader.ZipEncryptedException) {
             refusalDoc("this file is password-encrypted — not supported; showing file info only")
+        } catch (e: java.util.zip.ZipException) {
+            // raw JDK exception (no central directory, truncated, corrupt) —
+            // the same honest class as SafeZipReader's malformed verdict.
+            refusalDoc("not a readable archive (${e.message}) — showing file info only")
         } catch (e: SafeZipReader.ZipMalformedException) {
             refusalDoc("not a readable archive (${e.message}) — showing file info only")
         } catch (e: XmlReject) {
@@ -689,10 +695,13 @@ object DocumentTextExtractor {
                     val close = src.indexOf('>', i)
                     if (close < 0) break
                     var inner = src.substring(i + 1, close).trim()
-                    if (inner.endsWith("/>")) {
+                    if (inner.endsWith("/")) {
                         flushText()
-                        // self-closing: report open+close for empty elements
-                        val nm = tagName(inner.removeSuffix("/>"))
+                        // self-closing: report open+close for empty elements.
+                        // (inner excludes '>' — endsWith("/>") was never true,
+                        // so <w:tab/> became a phantom open tag and the tab/br
+                        // close handlers never fired. CI run 39381328637.)
+                        val nm = tagName(inner.removeSuffix("/"))
                         h.open(nm.first, nm.second)
                         h.close(nm.first)
                         i = close + 1

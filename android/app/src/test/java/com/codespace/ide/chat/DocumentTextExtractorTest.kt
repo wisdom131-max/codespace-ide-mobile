@@ -222,7 +222,14 @@ class DocumentTextExtractorTest {
     }
 
     @Test fun xml_adversarialDeepNesting_completesBounded() {
-        val deep = "<w:document>".repeat(20_000) + "<w:t>deep</w:t>" + "</w:document>".repeat(20_000)
+        // Varied per-level content keeps the deflate ratio under the 100:1
+        // bomb guard (that guard has its own test with the bomb fixture).
+        val open = StringBuilder(); val close = StringBuilder()
+        for (i in 0 until 20_000) {
+            open.append("<w:document d").append(i % 997).append(">")
+            close.append("</w:document>")
+        }
+        val deep = open.toString() + "<w:t>deep</w:t>" + close.toString()
         val f = zipOf("word/document.xml" to deep)
         val start = System.currentTimeMillis()
         val doc = extract(f, AttachmentTypeKind.DOCX)
