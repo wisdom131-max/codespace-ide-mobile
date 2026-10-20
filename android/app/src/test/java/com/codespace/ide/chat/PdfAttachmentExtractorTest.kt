@@ -184,18 +184,18 @@ class PdfAttachmentExtractorTest {
 
     @Test fun bcClassifier_directNoClassDefFound() {
         val e = NoClassDefFoundError("org/bouncycastle/jce/provider/BouncyCastleProvider")
-        assertTrue(PdfAttachmentExtractor.isBouncyCastleMissing(e))
+        assertTrue(PdfAttachmentExtractor.PdfBoxTextEngine.isBouncyCastleMissing(e))
     }
 
     @Test fun bcClassifier_staticInitFailureViaCause() {
         val cause = NoClassDefFoundError("org.bouncycastle.jce.provider.BouncyCastleProvider")
         val e = ExceptionInInitializerError(cause)
-        assertTrue(PdfAttachmentExtractor.isBouncyCastleMissing(e))
+        assertTrue(PdfAttachmentExtractor.PdfBoxTextEngine.isBouncyCastleMissing(e))
     }
 
     @Test fun bcClassifier_unrelatedLinkageError_isFalse() {
         val e = NoSuchMethodError("pdfbox internal mismatch")
-        assertFalse(PdfAttachmentExtractor.isBouncyCastleMissing(e))
+        assertFalse(PdfAttachmentExtractor.PdfBoxTextEngine.isBouncyCastleMissing(e))
     }
 
     @Test fun core_survivesNonBcLinkageErrorFromSeam_noCrash() {

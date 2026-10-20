@@ -16,6 +16,9 @@
 
 ## Fixture generator (paste into Termux at /sdcard/Download/zz_stage3/)
 
+The FULL advisor set (2026-10-20) — every fixture below was built and
+verified in-sandbox against pypdf parsing rules before landing here:
+
 ```python
 import os
 
@@ -47,14 +50,77 @@ def make_pdf(path, text_lines, blank=False):
     out += b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + str(xref_pos).encode() + b"\n%%EOF"
     open(path, "wb").write(out)
 
+def make_multipage(path, n, lines):
+    """Sequential object numbering (no xref gaps, no number collisions)."""
+    objs = {}
+    objs[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    first_page, first_content, font_num = 3, 3 + n, 3 + 2 * n
+    kids = " ".join(f"{first_page + j} 0 R" for j in range(n))
+    objs[2] = f"<< /Type /Pages /Kids [ {kids} ] /Count {n} >>".encode()
+    for j in range(n):
+        stream = f"BT /F1 18 Tf 72 720 Td (Page {j+1} of {n}: {lines[j % len(lines)]}) Tj ET".encode()
+        objs[first_page + j] = (f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 {font_num} 0 R >> >> /Contents {first_content + j} 0 R >>").encode()
+        objs[first_content + j] = b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream"
+    objs[font_num] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = {}
+    for num in sorted(objs):
+        offsets[num] = len(out)
+        out += f"{num} 0 obj\n".encode() + objs[num] + b"\nendobj\n"
+    xref_pos = len(out)
+    total = max(objs) + 1
+    out += f"xref\n0 {total}\n0000000000 65535 f \n".encode()
+    for num in sorted(objs):
+        out += f"{offsets[num]:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {total} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF".encode()
+    open(path, "wb").write(out)
+
+# 1. text fixture + 2. scanned proxy (blank)
 make_pdf("text.pdf", ["Hello from the C12 U4 fixture.", "Second line has 42 tokens.", "sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12 rides for redaction."])
 make_pdf("blank.pdf", [], blank=True)
-print("generated")
+# 3. multi-page (10 pages)
+make_multipage("multipage-10.pdf", 10, ["line one alpha", "line two beta"])
+# 4. very large page count (200 pages, ~57 KB — over the 50-page cap)
+make_multipage("many-pages-200.pdf", 200, ["tiny page"])
+
+# 5. password-protected (needs pypdf: pip install pypdf)
+from pypdf import PdfWriter
+w = PdfWriter(clone_from="text.pdf")
+w.encrypt(user_password="secret", owner_password="ownerpass")
+with open("encrypted.pdf", "wb") as f:
+    w.write(f)
+
+# 6. corrupted: valid %PDF header + junk body
+open("corrupted.pdf", "wb").write(
+    b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Root 9 0 R >>\ngarbage that never parses \x00\x01\x02\n" + b"junk" * 100 + b"\n%%EOF")
+
+# 7. truncated: first 60% of the valid text.pdf bytes
+data = open("text.pdf", "rb").read()
+open("truncated.pdf", "wb").write(data[: int(len(data) * 0.6)])
+print("generated 7 fixtures")
 ```
 
-Verified in-sandbox against upstream PDFBox 2.0.27 parsing rules (pypdf):
-text.pdf = 1 page, not encrypted, 3 text lines; blank.pdf = 1 page, zero
-extractable text (the scanned-path proxy; a real scanned PDF behaves the same).
+**Sandbox verification (2026-10-20, pypdf):** text.pdf = 1 page, 3 text lines;
+blank.pdf = 1 page, zero text; multipage-10.pdf = 10 pages; many-pages-200.pdf
+= 200 pages, 57.8 KB; encrypted.pdf = AES-128, correct password opens it;
+corrupted.pdf = PARSE-FAIL "startxref not found" (intended); truncated.pdf =
+PARSE-FAIL "Stream has ended unexpectedly" (intended).
+
+**What the container can make** (READ/verified vs listed): `python3 + pypdf`
+(VERIFIED here — makes the encrypted fixture and everything above; smallest
+footprint; Termux `pip install pypdf` or the proot container's
+`apt install python3-pypdf`/pip). `qpdf` (Termux `pkg install qpdf` / proot
+`apt install qpdf` — AVAILABLE but NOT exercised here: encrypt via
+`qpdf --encrypt in.pdf out.pdf 256 --user-password=secret`, corrupt/truncate
+with `head -c`). LibreOffice (proot `apt install libreoffice`, ~700 MB —
+HEAVY on mobile data; only if a GUI-exported wild PDF is needed — NOT
+recommended for this round).
+
+**Where the attach picker reaches them:** all fixtures go to
+`/sdcard/Download/zz_stage3/` — the Chat attach picker browses device
+storage (same folder as the U1-U3 fixtures). **Cleanup:**
+`rm -rf /sdcard/Download/zz_stage3/` after the round (or keep only text.pdf
+for future regression rounds).
 
 ## Checks (attach each in the Chat panel, watch the chip BEFORE sending)
 
@@ -66,6 +132,10 @@ extractable text (the scanned-path proxy; a real scanned PDF behaves the same).
 | U4-4 | Any real password-protected PDF from the wild | "Encrypted or password-protected PDF — not supported yet. Showing file info only." — no crash, no junk text, no password prompt. |
 | U4-5 | A real-world multi-page PDF from Downloads | Text extracts (layout may read interleaved on multi-column — stated limitation); >50 pages shows the "showing pages 1-50 of N" marker. |
 | U4-6 | `pdf` opened from a terminal link | Unchanged BATCH12 behavior — regression only. |
+| U4-7 | `multipage-10.pdf` | All 10 pages' text extracts; send block contains "Page 7 of 10" style lines. |
+| U4-8 | `encrypted.pdf` (password `secret`, wrong/none entered) | Clean "Encrypted or password-protected PDF" refusal, no crash, no password prompt, no junk text. |
+| U4-9 | `corrupted.pdf` then `truncated.pdf` | "Not a readable PDF (...)" refusal each — honest, no crash. |
+| U4-10 | `many-pages-200.pdf` | Extraction completes with the "showing pages 1-50 of 200" marker; send block has page-50 text, never page-51. |
 
 ## Notes
 
