@@ -1,0 +1,172 @@
+{
+ "generated": "2026-10-20",
+ "providers": {
+  "claude": [
+   {
+    "images": true,
+    "match": "claude-haiku-4",
+    "maxContext": 200000,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": true,
+    "match": "claude-sonnet-4",
+    "maxContext": 200000,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": true,
+    "match": "claude-opus-4",
+    "maxContext": 200000,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   }
+  ],
+  "deepseek": [
+   {
+    "images": false,
+    "match": "deepseek-chat",
+    "maxContext": 131072,
+    "pdf": false,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": false,
+    "match": "deepseek-coder",
+    "maxContext": 128000,
+    "pdf": false,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": false,
+    "match": "deepseek-reasoner",
+    "maxContext": 131072,
+    "pdf": false,
+    "streaming": true,
+    "tools": false
+   }
+  ],
+  "gemini": [
+   {
+    "images": true,
+    "match": "gemini-2.5-flash",
+    "maxContext": 1048576,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": true,
+    "match": "gemini-2.5-pro",
+    "maxContext": 1048576,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   }
+  ],
+  "openai": [
+   {
+    "images": false,
+    "match": "gpt-3.5-turbo",
+    "maxContext": 16385,
+    "pdf": false,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": false,
+    "match": "gpt-4",
+    "maxContext": 8192,
+    "pdf": false,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": true,
+    "match": "gpt-4-turbo",
+    "maxContext": 128000,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": true,
+    "match": "gpt-4.1",
+    "maxContext": 1047576,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": true,
+    "match": "gpt-4o",
+    "maxContext": 128000,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": true,
+    "match": "gpt-5",
+    "maxContext": 272000,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": true,
+    "match": "o1",
+    "maxContext": 200000,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": true,
+    "match": "o3",
+    "maxContext": 200000,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": false,
+    "match": "o3-mini",
+    "maxContext": 200000,
+    "pdf": false,
+    "streaming": true,
+    "tools": true
+   },
+   {
+    "images": true,
+    "match": "o4-mini",
+    "maxContext": 200000,
+    "pdf": true,
+    "streaming": true,
+    "tools": true
+   }
+  ],
+  "xai": [
+   {
+    "images": true,
+    "match": "grok-4",
+    "maxContext": 1000000,
+    "pdf": false,
+    "streaming": true,
+    "tools": true
+   }
+  ]
+ },
+ "row_count": 19,
+ "source": "BerriAI/LiteLLM model_prices_and_context_window.json",
+ "source_license": "MIT",
+ "source_url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+ "version": 1
+}
