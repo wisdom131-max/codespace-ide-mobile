@@ -33,7 +33,8 @@ object ModelCapabilityHints {
     /** Replace the hints for one endpoint (called by the G-C refetch in G-E-b). */
     fun replaceForEndpoint(providerId: String, modelIdToFlags: Map<String, ModelCapabilityFlags>) {
         if (providerId.isBlank()) return
-        store = store + (providerId.take(MAX_ID_LEN) to modelIdToFlags.entries.take(MAX_MODELS).toMap())
+        store = store + (providerId.take(MAX_ID_LEN) to
+            modelIdToFlags.entries.take(MAX_MODELS).associate { it.key to it.value })
     }
 
     fun get(providerId: String?, modelId: String?): ModelCapabilityFlags? {
@@ -48,7 +49,8 @@ object ModelCapabilityHints {
      * any endpoint whose payload is not that shape (nothing claimed).
      * Poisioned input -> null, never an exception, never a guess.
      */
-    fun parseOpenRouterStyle(payload: String): Map<String, ModelCapabilityFlags>? = try {
+    fun parseOpenRouterStyle(payload: String): Map<String, ModelCapabilityFlags>? {
+        return try {
         val root = JSONObject(payload)
         val arr = root.optJSONArray("data") ?: return null
         val out = LinkedHashMap<String, ModelCapabilityFlags>()
@@ -92,7 +94,7 @@ object ModelCapabilityHints {
             )
         }
         out
-    } catch (_: Exception) {
-        null
+        } catch (_: Exception) {
+            null
+        }
     }
-}

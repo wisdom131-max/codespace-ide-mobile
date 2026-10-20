@@ -35,7 +35,7 @@ object ModelCapabilityOverrides {
         fun save(value: String)
     }
 
-    private class PrefsPersistence(p: SharedPreferences) : Persistence {
+    private class PrefsPersistence(private val p: SharedPreferences) : Persistence {
         override fun load(): String? = p.getString(KEY_OVERRIDES, null)
         override fun save(value: String) { p.edit().putString(KEY_OVERRIDES, value).apply() }
     }
@@ -109,27 +109,29 @@ object ModelCapabilityOverrides {
 
     // ── Bounded JSON persistence ────────────────────────────────────────
 
-    private fun all(): Map<String, Override> = try {
-        val raw = persistence?.load() ?: return emptyMap()
-        if (raw.isBlank()) return emptyMap()
-        val arr = JSONArray(raw)
-        val out = LinkedHashMap<String, Override>()
-        for (i in 0 until arr.length()) {
-            if (out.size >= MAX_ENTRIES) break
-            val o = arr.optJSONObject(i) ?: continue
-            val k = o.optString("k", "").take(MAX_KEY_LEN * 2)
-            if (k.isBlank()) continue
-            out[k] = Override(
-                acceptsImages = if (o.has("i")) o.getBoolean("i") else null,
-                acceptsAudio = if (o.has("a")) o.getBoolean("a") else null,
-                acceptsVideo = if (o.has("v")) o.getBoolean("v") else null,
-            )
+    private fun all(): Map<String, Override> {
+        return try {
+            val raw = persistence?.load() ?: return emptyMap()
+            if (raw.isBlank()) return emptyMap()
+            val arr = JSONArray(raw)
+            val out = LinkedHashMap<String, Override>()
+            for (i in 0 until arr.length()) {
+                if (out.size >= MAX_ENTRIES) break
+                val o = arr.optJSONObject(i) ?: continue
+                val k = o.optString("k", "").take(MAX_KEY_LEN * 2)
+                if (k.isBlank()) continue
+                out[k] = Override(
+                    acceptsImages = if (o.has("i")) o.getBoolean("i") else null,
+                    acceptsAudio = if (o.has("a")) o.getBoolean("a") else null,
+                    acceptsVideo = if (o.has("v")) o.getBoolean("v") else null,
+                )
+            }
+            out
+        } catch (_: Exception) {
+            // Poisoned store -> treat as empty overrides (source 1 contributes
+            // nothing); never crash, never guess.
+            emptyMap()
         }
-        out
-    } catch (_: Exception) {
-        // Poisoned store -> treat as empty overrides (source 1 contributes
-        // nothing); never crash, never guess.
-        emptyMap()
     }
 
     private fun persist(map: Map<String, Override>) {
