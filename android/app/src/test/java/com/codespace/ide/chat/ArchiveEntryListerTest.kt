@@ -87,7 +87,8 @@ class ArchiveEntryListerTest {
         f.writeBytes(byteArrayOf(0x50, 0x4b, 0x03, 0x04) + "trunc".toByteArray())
         val doc = ArchiveEntryLister.defaultListing(f)
         assertNotNull(doc.refusal)
-        assertTrue(doc.refusal.contains("not a readable archive"))
+        val msg = doc.refusal
+        assertTrue(msg != null && msg.contains("not a readable archive"))
     }
 
     @Test fun binaryEntry_refusesTextPreview() {

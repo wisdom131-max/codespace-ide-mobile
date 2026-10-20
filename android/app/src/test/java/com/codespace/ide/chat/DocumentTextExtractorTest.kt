@@ -80,7 +80,8 @@ class DocumentTextExtractorTest {
         val doc = extract(f, AttachmentTypeKind.DOCX)
         val elapsed = System.currentTimeMillis() - start
         assertNotNull(doc.refusal)
-        assertTrue("refusal names the rejection: ${doc.refusal}", doc.refusal.contains("DOCTYPE"))
+        val reason = doc.refusal
+        assertTrue("refusal names the rejection: $reason", reason != null && reason.contains("DOCTYPE"))
         assertTrue("completed fast (was ${elapsed}ms)", elapsed < 5000)
         assertTrue("never expanded the entities", !doc.text.contains("lol") || doc.text.isEmpty())
     }
@@ -258,7 +259,8 @@ class DocumentTextExtractorTest {
         }
         val doc = extract(f, AttachmentTypeKind.DOCX)
         assertNotNull(doc.refusal)
-        assertTrue("ratio refusal: ${doc.refusal}", doc.refusal.contains("limits exceeded") || doc.refusal.contains("ratio"))
+        val why = doc.refusal
+        assertTrue("ratio refusal: $why", why != null && (why.contains("limits exceeded") || why.contains("ratio")))
     }
 
     @Test fun truncatedZip_isHonestRefusal() {
@@ -266,7 +268,8 @@ class DocumentTextExtractorTest {
         f.writeBytes(byteArrayOf(0x50, 0x4b, 0x03, 0x04, 0x00, 0x00) + "garbage".toByteArray())
         val doc = extract(f, AttachmentTypeKind.DOCX)
         assertNotNull(doc.refusal)
-        assertTrue(doc.refusal.contains("not a readable archive") || doc.refusal.contains("unreadable"))
+        val msg = doc.refusal
+        assertTrue(msg != null && (msg.contains("not a readable archive") || msg.contains("unreadable")))
     }
 
     @Test fun entryNames_areDisplayOnly_neverPaths() {
