@@ -79,7 +79,7 @@ class PdfAttachmentExtractorTest {
             pdfFile(), tmp.root,
             engine = PdfAttachmentExtractor.PdfTextEngine { PdfAttachmentExtractor.EngineOutcome.Encrypted },
         )
-        assertNull(doc.text)
+        assertEquals("", doc.text) // Stage 3 convention: refusal docs keep EMPTY text, never junk
         assertTrue(doc.refusal!!.contains("Encrypted or password-protected"))
         assertTrue(doc.refusal!!.contains("file info only"))
     }
