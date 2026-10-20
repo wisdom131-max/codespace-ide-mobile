@@ -1,9 +1,10 @@
-# CONSOLIDATED DEVICE ROUND — target artifact 12f0e40 (CI run 39407034819)
+# CONSOLIDATED DEVICE ROUND — target artifact 997774b (CI-GREEN 39410307929)
 
 > Status: READY — DO NOT TEST until the owner says so (advisor 2026-10-20).
-> Artifact: whichever of 12f0e40 (U4 advisor hardening: LinkageError/crypto
-> classification) or 8580adc is the latest GREEN when the round starts.
-> Supersedes: 416f417, b85b2cc, 922fe49.
+> Artifact: 997774b — carries BATCH6-BATCH12, C12 Stage 3, U4 PDF attachments
+> AND the U4 advisor hardening (LinkageError/crypto classification, 603
+> tests green).
+> Supersedes: 8580adc, 12f0e40, 416f417, b85b2cc, 922fe49.
 > Phone: TECNO KL4, Android 14. Fixtures: `/sdcard/Download/zz_stage3/`
 > (generator block in `docs/c12-stage3-u4-test-sheet.md`).
 
