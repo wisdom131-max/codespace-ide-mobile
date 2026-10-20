@@ -68,7 +68,10 @@ class ModelCapabilitiesTest {
         ModelCapabilityOverrides.usePersistence(memory)
         ModelCapabilityTable.loadForTest(sampleTableJson())
         withFlagOn {
-            // all three sources present, each a different claim
+            // all three sources present, each a different claim:
+            // override TRUE, live FALSE, bundled TRUE — only the override
+            // rank can produce true here.
+            ModelCapabilityOverrides.set("openai", "gpt-4o", ModelCapabilityOverrides.Override(acceptsImages = true))
             ModelCapabilityHints.replaceForEndpoint("openai", mapOf("gpt-4o" to ModelCapabilityFlags(acceptsImages = false)))
             assertEquals(true, ChatCapabilityGate.acceptsImages("openai", "gpt-4o", true))
             // override removed -> live wins (live says false, fallback true: live must beat it)
@@ -158,7 +161,8 @@ class ModelCapabilitiesTest {
         assertEquals(true, parsed?.get("vendor/x")?.supportsStreaming)
         // explicit text-only modality list = an honest NO, not unknown
         assertEquals(false, parsed?.get("vendor/text-only")?.acceptsImages)
-        assertEquals(false, parsed?.get("vendor/text-only")?.supportsTools)
+        // EMPTY params list = UNKNOWN (nothing claimed), not an explicit false
+        assertNull(parsed?.get("vendor/text-only")?.supportsTools)
         // absent architecture = UNKNOWN, never a guess
         assertNull(parsed?.get("vendor/no-arch")?.acceptsImages)
         // plain OpenAI /models shape (no "data" array of models with
