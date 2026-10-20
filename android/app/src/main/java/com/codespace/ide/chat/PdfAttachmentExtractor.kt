@@ -96,6 +96,12 @@ object PdfAttachmentExtractor {
             AttachmentIntake.ExtractedDoc(
                 refusal = "Ran out of memory reading this PDF — showing file info only."
             )
+        } catch (e: LinkageError) {
+            // Defense in depth: an Error is NOT an Exception — without this
+            // branch a linkage failure from any seam would crash the process.
+            AttachmentIntake.ExtractedDoc(
+                refusal = "PDF extraction failed (${e.message ?: e.javaClass.simpleName}) — showing file info only."
+            )
         } catch (e: Exception) {
             AttachmentIntake.ExtractedDoc(refusal = "PDF extraction failed (${e.message ?: "unreadable file"}) — showing file info only.")
         }
@@ -210,11 +216,21 @@ object PdfAttachmentExtractor {
                 return EngineOutcome.Text(pages, total)
             } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
                 return EngineOutcome.Encrypted
-            } catch (e: NoClassDefFoundError) {
+            } catch (e: java.security.GeneralSecurityException) {
+                // Password-protected PDF with a cipher Android no longer ships
+                // (e.g. RC4): decryption cannot run. That is still an encrypted
+                // PDF from our side — refuse honestly, never Failed-junk.
+                return EngineOutcome.Encrypted
+            } catch (e: LinkageError) {
                 // BouncyCastle is EXCLUDED from the build (see build.gradle.kts):
                 // it exists only to DECRYPT encrypted PDFs, which we refuse
-                // anyway. An encrypted PDF classifies here — honestly.
-                return EngineOutcome.Encrypted
+                // anyway — a BC reference (public-key handlers, SecurityProvider)
+                // resolves to NoClassDefFoundError/ExceptionInInitializerError.
+                // LinkageError, not just NoClassDefFoundError: an Error is NOT
+                // an Exception, so the core's catch(Exception) would let it
+                // CRASH the process if it slipped past here.
+                if (isBouncyCastleMissing(e)) return EngineOutcome.Encrypted
+                return EngineOutcome.Failed(e.message ?: e.javaClass.simpleName)
             } catch (e: java.io.IOException) {
                 return EngineOutcome.Corrupted(e.message ?: "unreadable")
             } catch (e: OutOfMemoryError) {
@@ -225,6 +241,29 @@ object PdfAttachmentExtractor {
                 try { doc?.close() } catch (_: Exception) {}
             }
         }
+
+    /**
+     * True when a [LinkageError] chain involves the excluded BouncyCastle
+     * classes (direct reference, static-init failure, or a cause wrapped in
+     * NoClassDefFoundError). Walks causes AND suppressed exceptions — a
+     * class-not-found inside a static initializer reports as
+     * ExceptionInInitializerError whose CAUSE is the ClassNotFoundException.
+     */
+    internal fun isBouncyCastleMissing(error: Throwable): Boolean {
+        var depth = 0
+        var t: Throwable? = error
+        while (t != null && depth < 8) {
+            val name = t.javaClass.name + " " + (t.message ?: "")
+            if (name.contains("bouncycastle") || name.contains("spongycastle")) return true
+            for (s in t.suppressed) {
+                val sn = s.javaClass.name + " " + (s.message ?: "")
+                if (sn.contains("bouncycastle") || sn.contains("spongycastle")) return true
+            }
+            t = t.cause
+            depth++
+        }
+        return false
+    }
     }
 
     /**
