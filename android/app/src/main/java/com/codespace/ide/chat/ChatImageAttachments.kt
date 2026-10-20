@@ -221,6 +221,27 @@ object ChatImageAttachments {
      * silent skip. Not counted toward the 24k text-attachment char cap (images are
      * billed/tokens by vendors separately; gauge underestimates — accepted v1).
      */
+    /**
+     * C12 U4: rendered PDF page images ride the SAME structured-parts path as
+     * real image chips (same 5 MB per-image cap; a vanished/oversized render
+     * file is skipped here — the text block already told the model how many
+     * page images were rendered, so a skip is visible as fewer parts).
+     */
+    fun pdfPageImagesToRequests(paths: List<String>): List<ChatRequestImage> {
+        if (paths.isEmpty()) return emptyList()
+        return paths.mapNotNull { p ->
+            try {
+                val f = File(p)
+                if (!f.isFile || f.length() == 0L || f.length() > MAX_IMAGE_BYTES) return@mapNotNull null
+                ChatRequestImage(
+                    mimeType = "image/png",
+                    base64 = android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP),
+                    name = f.name,
+                )
+            } catch (_: Exception) { null }
+        }
+    }
+
     fun toRequestImages(attachments: List<ChatAttachment>): List<ChatRequestImage> {
         val images = attachments.filter { it.kind == ChatAttachment.Kind.IMAGE }
         if (images.isEmpty()) return emptyList()

@@ -994,11 +994,22 @@ private suspend fun chat(
     // multimodal parts (vendor shapes converted inside each provider; never
     // injected as text, never persisted). Iteration >0 re-sends are tool-result
     // turns — images stay on the original user turn only.
+    val pdfRenderedPages = attachments
+        .flatMap { it.extractedDoc?.pageImages ?: emptyList() }
     val requestImages = if (attachments.any { it.kind == com.codespace.ide.chat.ChatAttachment.Kind.IMAGE }) {
         if (provider != null && !provider.supportsImages) {
             throw Exception("Image attachments are not supported by ${provider.displayName}. Remove the image chips or switch models.")
         }
-        com.codespace.ide.chat.ChatImageAttachments.toRequestImages(attachments)
+        // U4: rendered scanned-PDF pages ride the SAME structured parts path.
+        // Send-time re-gate: a provider switch to a non-image provider drops
+        // them instead of failing the send (the text block already noted
+        // them as page images — the model just sees fewer parts).
+        com.codespace.ide.chat.ChatImageAttachments.toRequestImages(attachments) +
+            (if (provider == null || provider.supportsImages)
+                com.codespace.ide.chat.ChatImageAttachments.pdfPageImagesToRequests(pdfRenderedPages)
+            else emptyList())
+    } else if (pdfRenderedPages.isNotEmpty() && (provider == null || provider.supportsImages)) {
+        com.codespace.ide.chat.ChatImageAttachments.pdfPageImagesToRequests(pdfRenderedPages)
     } else emptyList()
     // R9-AUDIO: audio clips ride the same structured-parts path (iteration 0 only).
     val requestAudios = if (attachments.any { it.kind == com.codespace.ide.chat.ChatAttachment.Kind.AUDIO }) {
@@ -1380,11 +1391,6 @@ internal fun CopilotChatPanelInline(
         mutableStateOf<List<com.codespace.ide.chat.ChatAttachment>>(emptyList())
     }
     var showAttachPicker by remember { mutableStateOf(false) }
-    // C12 Stage 3 U2/U3 (2026-10-20): off-main, cancellable, time-limited
-    // document/archive extraction for pending attachments.
-    AttachmentExtractionEffects(attachments) { enriched ->
-        attachments = attachments.map { if (it.path == enriched.path && it.extractedDoc == null) enriched else it }
-    }
     // I3 — SCM AI: repo context pill (VS Code sessionPullRequestPill analog).
     // Triple(branch, dirtyCount, workingDiffVsHead) — computed once per project root.
     var repoPill by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
@@ -1418,6 +1424,24 @@ internal fun CopilotChatPanelInline(
     }
     var availModels   by remember { mutableStateOf(registeredModelEntries(tokenStore)) }
     var selectedModel by remember { mutableStateOf(chatModelSelectionInitial(context, tokenStore)) }
+    // C12 Stage 3 U2/U3/U4 (2026-10-20): off-main, cancellable, time-limited
+    // document/archive/PDF extraction for pending attachments. The U4 scanned-
+    // PDF page-image fallback runs ONLY when the ACTIVE provider accepts
+    // images (the same supportsImages gate real image chips use); a provider
+    // switch re-runs extraction for still-pending attachments only — an
+    // already-extracted PDF keeps its verdict (send-time re-gates).
+    val pdfProviderAcceptsImages by remember(selectedModel) {
+        mutableStateOf(
+            com.codespace.ide.chat.ChatProviderRegistry
+                .byId(selectedModel.substringBefore(':', ""))?.supportsImages ?: true
+        )
+    }
+    val attachImageDir by remember(context) {
+        mutableStateOf(java.io.File(context.filesDir, "chat-images").apply { mkdirs() })
+    }
+    AttachmentExtractionEffects(attachments, pdfProviderAcceptsImages, attachImageDir) { enriched ->
+        attachments = attachments.map { if (it.path == enriched.path && it.extractedDoc == null) enriched else it }
+    }
     // R5-PINNING: starred favorites shown first in the picker
     var pinnedModels by remember { mutableStateOf(com.codespace.ide.chat.ChatModelSelection.getPinned(context)) }
     // 404-fix: fetch the LIVE model lists once when the panel first composes,

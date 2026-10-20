@@ -51,6 +51,8 @@ object AttachmentIntake {
         val notes: List<String> = emptyList(),
         val truncated: Boolean = false,
         val refusal: String? = null,
+        /** U4: rendered page-image file paths for scanned PDFs (sent as images). */
+        val pageImages: List<String> = emptyList(),
     )
 
     /**
@@ -59,7 +61,11 @@ object AttachmentIntake {
      * AttachmentExtractionEffects). Returns the refusal verdict rather than
      * throwing for every recoverable case.
      */
-    fun extractBlocking(att: ChatAttachment): ExtractedDoc {
+    fun extractBlocking(
+        att: ChatAttachment,
+        providerAcceptsImages: Boolean = true,
+        imageDir: File? = null,
+    ): ExtractedDoc {
         return try {
         val f = File(att.path)
         if (!f.isFile || !f.canRead()) return ExtractedDoc(refusal = "Could not read the file.")
@@ -68,7 +74,15 @@ object AttachmentIntake {
         }
         val verdict = verdictOf(att)
         when (verdict.extraction) {
-            AttachmentExtraction.DOCUMENT -> DocumentTextExtractor.extract(f, verdict)
+            AttachmentExtraction.DOCUMENT ->
+                // U4: PDFs take the PDF path (text engine + scanned-image
+                // fallback); every other document kind the U2 extractor.
+                if (verdict.kind == AttachmentTypeKind.PDF) {
+                    val dir = imageDir ?: f.parentFile ?: File(".")
+                    PdfAttachmentExtractor.extract(f, dir, providerAcceptsImages)
+                } else {
+                    DocumentTextExtractor.extract(f, verdict)
+                }
             AttachmentExtraction.ARCHIVE -> ArchiveEntryLister.defaultListing(f)
             AttachmentExtraction.TEXT_SNAPSHOT, AttachmentExtraction.LATER_PHASE ->
                 // text snapshot path / later phase: nothing to extract here

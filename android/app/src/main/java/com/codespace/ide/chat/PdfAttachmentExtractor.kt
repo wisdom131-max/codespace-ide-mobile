@@ -1,0 +1,266 @@
+package com.codespace.ide.chat
+
+import java.io.File
+
+/**
+ * C12 STAGE 3 — U4 (advisor GO 2026-10-20): PDF ATTACHMENTS. Two engines, one
+ * honest decision core:
+ *
+ *  - TEXT PDFs: Apache PDFBox (Tom Roush's Android port, pinned
+ *    com.tom-roush:pdfbox-android:2.0.27.0, Apache-2.0, BC excluded — see
+ *    build.gradle.kts). Text order/hyphenation is whatever PDFBox gives;
+ *    multi-column layouts can read interleaved (stated limitation, honest).
+ *  - SCANNED PDFs (no extractable text): page images rendered with Android's
+ *    BUILT-IN PdfRenderer — ONLY when the active provider accepts images
+ *    (the same supportsImages gate real image chips use); otherwise the honest
+ *    metadata fallback with the reason.
+ *
+ * Safety stance (advisor items): encrypted/password PDFs refuse honestly (no
+ * password prompts yet); no JavaScript execution, no link following, embedded
+ * files and form actions are ignored (we never call into any such path); one
+ * page at a time; bounded memory; OutOfMemoryError is caught and reported,
+ * never crashes; the outer 5 s timeout (AttachmentIntake.EXTRACT_TIMEOUT_MS)
+ * is backed by an internal deadline so a slow PDF returns PARTIAL text with an
+ * honest "showing pages 1-N of M" marker instead of a bare timeout refusal.
+ *
+ * The DECISION CORE is pure and JVM-testable; the real pdfbox/PdfRenderer
+ * objects (PdfBoxTextEngine / AndroidPdfPageRenderer) are injected seams —
+ * pdfbox's font resources are Android ASSETS (PDFBoxResourceLoader), so the
+ * real text engine can only be exercised on-device (fixtures sheet in docs).
+ */
+object PdfAttachmentExtractor {
+
+    /** Page cap: never parse more than 50 pages of one attachment. */
+    const val MAX_PAGES = 50
+    /** Per-page text cap (chars) — one pathological page cannot fill the snapshot. */
+    const val MAX_CHARS_PER_PAGE = 10_000
+    /** Page images sent for a scanned PDF (first pages only). */
+    const val MAX_RENDER_PAGES = 3
+    /** Render target: page images are downscaled to this width. */
+    const val RENDER_TARGET_WIDTH = 1_280
+    /**
+     * Internal deadline: the outer effect cancels at EXTRACT_TIMEOUT_MS (5 s);
+     * the engine stops at 4.5 s so the run returns partial text + marker
+     * instead of the bare "timed out" refusal.
+     */
+    const val INTERNAL_DEADLINE_MS = 4_500L
+
+    /** Classified engine outcome — the real engine maps exceptions to these. */
+    sealed class EngineOutcome {
+        /** Raw per-page text (already capped at [MAX_PAGES] + deadline by the engine). */
+        data class Text(val pages: List<String>, val totalPageCount: Int) : EngineOutcome()
+        /** Password-protected or encrypted document. */
+        object Encrypted : EngineOutcome()
+        /** Not a readable PDF at all. */
+        data class Corrupted(val why: String) : EngineOutcome()
+        /** Any other honest failure. */
+        data class Failed(val why: String) : EngineOutcome()
+    }
+
+    fun interface PdfTextEngine {
+        fun extract(file: File): EngineOutcome
+    }
+
+    /**
+     * Renders one page (0-based) as PNG bytes downscaled to [targetWidthPx],
+     * or null when that page could not be rendered. OutOfMemoryError
+     * PROPAGATES — the decision core catches it and reports honestly.
+     */
+    fun interface PageImageRenderer {
+        fun renderPage(file: File, pageIndex: Int, targetWidthPx: Int): ByteArray?
+    }
+
+    fun extract(
+        file: File,
+        imageDir: File,
+        providerAcceptsImages: Boolean = true,
+        engine: PdfTextEngine = PdfBoxTextEngine,
+        renderer: PageImageRenderer = AndroidPdfPageRenderer,
+    ): AttachmentIntake.ExtractedDoc {
+        return try {
+            when (val outcome = engine.extract(file)) {
+                is EngineOutcome.Encrypted -> AttachmentIntake.ExtractedDoc(
+                    refusal = "Encrypted or password-protected PDF — not supported yet. Showing file info only."
+                )
+                is EngineOutcome.Corrupted -> AttachmentIntake.ExtractedDoc(
+                    refusal = "Not a readable PDF (${outcome.why}) — showing file info only."
+                )
+                is EngineOutcome.Failed -> AttachmentIntake.ExtractedDoc(
+                    refusal = "PDF extraction failed (${outcome.why}) — showing file info only."
+                )
+                is EngineOutcome.Text -> finishText(outcome, file, imageDir, providerAcceptsImages, renderer)
+            }
+        } catch (e: OutOfMemoryError) {
+            // Bounded by construction, but a hostile file still gets words,
+            // never a crash (advisor item b).
+            AttachmentIntake.ExtractedDoc(
+                refusal = "Ran out of memory reading this PDF — showing file info only."
+            )
+        } catch (e: Exception) {
+            AttachmentIntake.ExtractedDoc(refusal = "PDF extraction failed (${e.message ?: "unreadable file"}) — showing file info only.")
+        }
+    }
+
+    private fun finishText(
+        outcome: EngineOutcome.Text,
+        file: File,
+        imageDir: File,
+        providerAcceptsImages: Boolean,
+        renderer: PageImageRenderer,
+    ): AttachmentIntake.ExtractedDoc {
+        val notes = mutableListOf<String>()
+        if (outcome.pages.size < outcome.totalPageCount) {
+            notes.add("showing pages 1-${outcome.pages.size} of ${outcome.totalPageCount}")
+        }
+        val sb = StringBuilder()
+        for ((i, page) in outcome.pages.withIndex()) {
+            if (sb.length >= AttachmentIntake.MAX_EXTRACTED_SNAPSHOT_CHARS) break
+            if (i > 0) sb.append('\n')
+            val capped = page.take(MAX_CHARS_PER_PAGE)
+            sb.append(capped)
+            if (capped.length < page.length) {
+                notes.add("page ${i + 1} text truncated")
+            }
+        }
+        val rawText = sb.toString()
+        val scanned = outcome.totalPageCount > 0 && rawText.isBlank()
+        if (scanned) {
+            return renderScanned(file, imageDir, outcome.totalPageCount, providerAcceptsImages, renderer)
+        }
+        var text = if (rawText.length > AttachmentIntake.MAX_EXTRACTED_SNAPSHOT_CHARS)
+            rawText.take(AttachmentIntake.MAX_EXTRACTED_SNAPSHOT_CHARS)
+        else rawText
+        val truncated = text.length < rawText.length
+        if (truncated) notes.add("extracted text truncated at the snapshot cap")
+        // Same attachment-tier secrets pipeline as every extractor (U2/U3).
+        val (redacted, changed) = AttachmentSecrets.redact(text, AttachmentSecrets.TIER_ATTACHMENT)
+        if (changed) notes.add("secrets redacted")
+        return AttachmentIntake.ExtractedDoc(
+            text = redacted,
+            notes = notes,
+            truncated = truncated,
+        )
+    }
+
+    private fun renderScanned(
+        file: File,
+        imageDir: File,
+        totalPageCount: Int,
+        providerAcceptsImages: Boolean,
+        renderer: PageImageRenderer,
+    ): AttachmentIntake.ExtractedDoc {
+        if (!providerAcceptsImages) {
+            return AttachmentIntake.ExtractedDoc(
+                refusal = "No extractable text (scanned or image-only PDF) and the active provider does not accept page images — showing file info only."
+            )
+        }
+        val notes = mutableListOf("scanned PDF — no extractable text")
+        val paths = mutableListOf<String>()
+        val count = minOf(MAX_RENDER_PAGES, totalPageCount)
+        var oom = false
+        for (i in 0 until count) {
+            try {
+                val png = renderer.renderPage(file, i, RENDER_TARGET_WIDTH) ?: continue
+                val dir = File(imageDir, "pdf-pages").apply { mkdirs() }
+                val out = File(dir, "page-${file.nameWithoutExtension}-$i.png")
+                out.writeBytes(png)
+                paths.add(out.absolutePath)
+            } catch (_: OutOfMemoryError) {
+                oom = true
+                break
+            }
+        }
+        if (paths.isEmpty()) {
+            return if (oom) AttachmentIntake.ExtractedDoc(
+                refusal = "Ran out of memory rendering this scanned PDF — showing file info only."
+            ) else AttachmentIntake.ExtractedDoc(
+                refusal = "Scanned PDF — no extractable text and no page could be rendered — showing file info only."
+            )
+        }
+        notes.add("${paths.size} page image(s) rendered for the model")
+        if (oom) notes.add("page rendering stopped early (out of memory)")
+        return AttachmentIntake.ExtractedDoc(notes = notes, pageImages = paths)
+    }
+
+    /**
+     * REAL text engine (device only — pdfbox font resources are Android
+     * assets; see class KDoc). Loads with main-memory-only usage (no scratch
+     * files on Android FUSE storage), walks pages one at a time under the
+     * internal deadline, classifies every failure honestly.
+     */
+    object PdfBoxTextEngine : PdfTextEngine {
+        override fun extract(file: File): EngineOutcome {
+            var doc: com.tom_roush.pdfbox.pdmodel.PDDocument? = null
+            try {
+                val start = System.currentTimeMillis()
+                val deadline = start + INTERNAL_DEADLINE_MS
+                doc = com.tom_roush.pdfbox.pdmodel.PDDocument.load(
+                    file, com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMainMemoryOnly()
+                )
+                val total = doc.numberOfPages
+                val pages = mutableListOf<String>()
+                for (i in 1..minOf(total, MAX_PAGES)) {
+                    if (System.currentTimeMillis() > deadline) break
+                    val stripper = com.tom_roush.pdfbox.text.PDFTextStripper()
+                    stripper.setStartPage(i)
+                    stripper.setEndPage(i)
+                    // getText() appends a trailing newline per page; trim later.
+                    pages.add(stripper.getText(doc))
+                }
+                return EngineOutcome.Text(pages, total)
+            } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
+                return EngineOutcome.Encrypted
+            } catch (e: NoClassDefFoundError) {
+                // BouncyCastle is EXCLUDED from the build (see build.gradle.kts):
+                // it exists only to DECRYPT encrypted PDFs, which we refuse
+                // anyway. An encrypted PDF classifies here — honestly.
+                return EngineOutcome.Encrypted
+            } catch (e: java.io.IOException) {
+                return EngineOutcome.Corrupted(e.message ?: "unreadable")
+            } catch (e: OutOfMemoryError) {
+                throw e // the decision core reports it
+            } catch (e: Exception) {
+                return EngineOutcome.Failed(e.message ?: e.javaClass.simpleName)
+            } finally {
+                try { doc?.close() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    /**
+     * REAL page renderer (device only): Android's built-in PdfRenderer — one
+     * page at a time, downscaled to the target width, bitmap recycled, OOM
+     * left to propagate to the honest catch above.
+     */
+    object AndroidPdfPageRenderer : PageImageRenderer {
+        override fun renderPage(file: File, pageIndex: Int, targetWidthPx: Int): ByteArray? {
+            var pfd: android.os.ParcelFileDescriptor? = null
+            var renderer: android.graphics.pdf.PdfRenderer? = null
+            var page: android.graphics.pdf.PdfRenderer.Page? = null
+            var bitmap: android.graphics.Bitmap? = null
+            try {
+                pfd = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                renderer = android.graphics.pdf.PdfRenderer(pfd)
+                page = renderer.openPage(pageIndex)
+                val scale = (targetWidthPx.toFloat() / page.width).coerceIn(1f, 2f)
+                val w = (page.width * scale).toInt().coerceAtLeast(1)
+                val h = (page.height * scale).toInt().coerceAtLeast(1)
+                bitmap = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(android.graphics.Color.WHITE)
+                page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                val baos = java.io.ByteArrayOutputStream()
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, baos)
+                return baos.toByteArray()
+            } catch (e: SecurityException) {
+                return null // password-protected for the OS renderer — refused honestly upstream
+            } catch (e: Exception) {
+                return null // this page could not be rendered; honest notes cover it
+            } finally {
+                try { bitmap?.recycle() } catch (_: Exception) {}
+                try { page?.close() } catch (_: Exception) {}
+                try { renderer?.close() } catch (_: Exception) {}
+                try { pfd?.close() } catch (_: Exception) {}
+            }
+        }
+    }
+}

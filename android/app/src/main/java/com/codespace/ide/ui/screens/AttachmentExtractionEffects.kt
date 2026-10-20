@@ -27,6 +27,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 @Composable
 fun AttachmentExtractionEffects(
     attachments: List<ChatAttachment>,
+    providerAcceptsImages: Boolean = true,
+    imageDir: java.io.File,
     onExtracted: (ChatAttachment) -> Unit,
 ) {
     // Pending document/archive attachments: extract once each. The verdict is
@@ -47,7 +49,7 @@ fun AttachmentExtractionEffects(
         LaunchedEffect(att.path) {
             val result = withTimeoutOrNull(AttachmentIntake.EXTRACT_TIMEOUT_MS) {
                 withContext(Dispatchers.IO) {
-                    AttachmentIntake.extractBlocking(att)
+                    AttachmentIntake.extractBlocking(att, providerAcceptsImages, imageDir)
                 }
             } ?: AttachmentIntake.ExtractedDoc(
                 refusal = "Extraction timed out after ${AttachmentIntake.EXTRACT_TIMEOUT_MS / 1000} s — nothing extracted."

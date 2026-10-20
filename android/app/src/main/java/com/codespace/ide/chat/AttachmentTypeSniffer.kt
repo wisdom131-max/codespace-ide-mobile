@@ -183,8 +183,8 @@ object AttachmentTypeSniffer {
             kind, label, AttachmentExtraction.ARCHIVE,
             "Entries will be listed; pick one to preview its text (never auto-opened)")
         AttachmentTypeKind.PDF -> TypeVerdict(
-            kind, label, AttachmentExtraction.LATER_PHASE,
-            "PDF text extraction ships in a later phase — metadata only for now")
+            kind, label, AttachmentExtraction.DOCUMENT,
+            "PDF text will be extracted and sent to the model; scanned pages are sent as images when the provider accepts them")
         AttachmentTypeKind.IMAGE -> TypeVerdict(
             kind, label, AttachmentExtraction.LATER_PHASE, "Sent as an image part")
         AttachmentTypeKind.AUDIO -> TypeVerdict(
