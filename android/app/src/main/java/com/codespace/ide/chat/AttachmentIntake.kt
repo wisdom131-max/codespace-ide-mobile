@@ -76,10 +76,24 @@ object AttachmentIntake {
         when (verdict.extraction) {
             AttachmentExtraction.DOCUMENT ->
                 // U4: PDFs take the PDF path (text engine + scanned-image
-                // fallback); every other document kind the U2 extractor.
+                // fallback) — ALWAYS through PdfExtractionGate (advisor item
+                // 2, 2026-10-20): one dedicated bounded lane thread, a
+                // caller-side wait, abandoned-work flag + Busy refusal, so a
+                // parse stuck inside one page burns at most ONE background
+                // thread and the user sees an honest prompt refusal.
                 if (verdict.kind == AttachmentTypeKind.PDF) {
                     val dir = imageDir ?: f.parentFile ?: File(".")
-                    PdfAttachmentExtractor.extract(f, dir, providerAcceptsImages)
+                    when (val g = PdfExtractionGate.extract(f, PdfExtractionGate.GATE_WAIT_MS) { file ->
+                        PdfAttachmentExtractor.extract(file, dir, providerAcceptsImages)
+                    }) {
+                        is PdfExtractionGate.GateResult.Done -> g.doc
+                        is PdfExtractionGate.GateResult.Busy -> ExtractedDoc(
+                            refusal = "Another PDF extraction timed out and is still finishing on its own — wait a moment and try again."
+                        )
+                        is PdfExtractionGate.GateResult.TimedOut -> ExtractedDoc(
+                            refusal = "PDF extraction did not finish within ${g.waitedMs / 1000} s — showing file info only."
+                        )
+                    }
                 } else {
                     DocumentTextExtractor.extract(f, verdict)
                 }
