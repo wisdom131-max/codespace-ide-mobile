@@ -25,6 +25,9 @@ data class ChatAttachment(
     val mimeType: String? = null,
     /** C12 s1-b (2026-10-08): attach-time copy + edit state for the sheet. */
     val snapshot: AttachmentSnapshot? = null,
+    /** C12 Stage 3 U1 (2026-10-20): capability-disclosure line (TypeVerdict
+     *  label + reason), shown on chips and in the sheet BEFORE send. */
+    val typeLine: String? = null,
 ) {
     enum class Kind { FILE, SELECTION, IMAGE, AUDIO }
 }

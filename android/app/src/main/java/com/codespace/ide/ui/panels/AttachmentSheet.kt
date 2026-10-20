@@ -116,6 +116,17 @@ internal fun AttachmentSheet(
                 // B3 FIX (2026-10-10): the header counts CHARS of the copy being
                 // viewed (the send basis) — never the on-disk BYTE length, which
                 // lied for every multibyte file and for stale-disk edits.
+                // C12 Stage 3 U1 (2026-10-20): capability disclosure under the
+                // title — what will be sent, BEFORE send.
+                attachment.typeLine?.let { line ->
+                    Text(
+                        line,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = colors.textSecondary,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                }
                 Text(
                     "kind: " + kindLabel + "  |  " +
                         com.codespace.ide.chat.AttachmentSheetNotices.sizeHeaderChars(shown.length, snap != null && snap.edited),

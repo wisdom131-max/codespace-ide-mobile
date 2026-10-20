@@ -596,7 +596,13 @@ private fun attachmentWithSnapshot(att: com.codespace.ide.chat.ChatAttachment): 
             com.codespace.ide.chat.AttachmentSnapshot.forSelection(att.selText ?: "")
         else -> null
     }
-    return if (snap == null) att else att.copy(snapshot = snap)
+    val withSnap = if (snap == null) att else att.copy(snapshot = snap)
+    // C12 Stage 3 U1 (2026-10-20): attach-time TYPE SNIFF + capability line —
+    // the disclosure shows BEFORE send, per the U1 spec. FILE kinds read at
+    // most SNIFF_WINDOW_BYTES more from an already-open file; IMAGE/AUDIO are
+    // labeled from their own kind (no extra I/O).
+    return withSnap.copy(typeLine = com.codespace.ide.chat.AttachmentTypeSniffer.capabilityLine(
+        com.codespace.ide.chat.AttachmentIntake.verdictOf(withSnap)))
 }
 
 /**

@@ -142,14 +142,28 @@ internal fun ChatAttachmentChips(
                         tint = colors.accent,
                         modifier = Modifier.padding(end = 4.dp).height(12.dp).width(12.dp),
                     )
-                    Text(
-                        att.relPath + if (att.snapshot != null && att.snapshot.edited) " (edited)" else "",
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = colors.text,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Column {
+                        Text(
+                            att.relPath + if (att.snapshot != null && att.snapshot.edited) " (edited)" else "",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = colors.text,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        // C12 Stage 3 U1 (2026-10-20): capability disclosure on
+                        // the chip — what will be sent, BEFORE send.
+                        att.typeLine?.let { line ->
+                            Text(
+                                line,
+                                fontSize = 8.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = colors.textSecondary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                     if (!readOnly) {
                         androidx.compose.foundation.layout.Box(
                             modifier = Modifier
