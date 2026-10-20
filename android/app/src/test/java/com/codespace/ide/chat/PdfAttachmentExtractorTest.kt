@@ -115,6 +115,7 @@ class PdfAttachmentExtractorTest {
         val doc = PdfAttachmentExtractor.extract(
             pdfFile(), tmp.root, providerAcceptsImages = true,
             engine = engine("", "", "", "", total = 5),
+            renderer = pngRenderer, // JVM test: the REAL renderer needs android stubs
         )
         assertNull(doc.refusal)
         assertEquals("", doc.text)
