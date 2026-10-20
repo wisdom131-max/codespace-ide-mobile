@@ -1,6 +1,7 @@
 package com.codespace.ide.chat
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -167,10 +168,26 @@ class PdfAttachmentExtractorTest {
         assertTrue(out is PdfAttachmentExtractor.EngineOutcome.Corrupted)
     }
 
-    @Test fun realEngine_truncatedPdf_classifiesCorrupted() {
+    @Test fun realEngine_truncatedPdf_honestOutcome_noCrashNoJunk() {
+        // PDFBox's parser is LENIENT (it repairs broken xrefs by scanning), so
+        // a specific byte-cut is NOT a stable contract: a truncated PDF may
+        // classify Corrupted OR recover with partial text. The STABLE contract
+        // from the advisor item 1f: a refusal, or text that is genuinely the
+        // file's own content — never binary junk, never a crash, and NEVER
+        // misread as encrypted (there is no encryption dict in this file).
         val out = PdfAttachmentExtractor.PdfBoxTextEngine.extract(
             b64("JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvQ29udGVudHMgNCAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCAxNzggPj4Kc3RyZWFtCkJUIC9GMSAyNCBUZiA3MiA3MDAgVGQKKEhlbGxvIGZyb20gdGhlIEMxMiBVNCBmaXh0dXJlLikgVGogMCAtMzAgVGQKKFNlY29uZCBsaW5lIGhhcyA0MiB0b2tlbnMuKSBUaiAwIC0zMCBUZAooc2stQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMiByaWRlcyBmb3IgcmVkYWN0aQ=="))
-        assertTrue(out is PdfAttachmentExtractor.EngineOutcome.Corrupted)
+        when (out) {
+            is PdfAttachmentExtractor.EngineOutcome.Corrupted -> {}
+            is PdfAttachmentExtractor.EngineOutcome.Failed -> {}
+            is PdfAttachmentExtractor.EngineOutcome.Encrypted -> fail("truncated PDF misread as encrypted")
+            is PdfAttachmentExtractor.EngineOutcome.Text ->
+                for (p in out.pages) {
+                    assertTrue(
+                        p.isEmpty() || p.contains("C12 U4") || p.contains("42 tokens") || p.contains("rides for redaction"),
+                        "recovered text must be the file's own content, not junk: " + p.take(40))
+                }
+        }
     }
 
     @Test fun realEngine_passwordProtectedPdf_classifiesEncrypted() {
