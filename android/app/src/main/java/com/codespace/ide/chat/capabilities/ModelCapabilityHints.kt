@@ -54,6 +54,12 @@ object ModelCapabilityHints {
         val root = JSONObject(payload)
         val arr = root.optJSONArray("data") ?: return null
         val out = LinkedHashMap<String, ModelCapabilityFlags>()
+        // A payload is OpenRouter-style ONLY if at least one model carries
+        // capability data (architecture / supported_parameters /
+        // context_length). A plain OpenAI /models body parses to zero
+        // claims -> null: NOTHING is claimed for such endpoints (advisor
+        // condition d) — the refetch must not treat it as live metadata.
+        var claims = 0
         for (i in 0 until arr.length()) {
             if (out.size >= MAX_MODELS) break
             val m = arr.optJSONObject(i) ?: continue
@@ -85,6 +91,8 @@ object ModelCapabilityHints {
             val ctx = try {
                 m.getLong("context_length").coerceIn(1L, MAX_CONTEXT)
             } catch (_: Exception) { null }
+            if (images != null || pdf != null || tools != null ||
+                streaming != null || ctx != null) claims++
             out[id] = ModelCapabilityFlags(
                 acceptsImages = images,
                 acceptsPdf = pdf,
@@ -93,7 +101,7 @@ object ModelCapabilityHints {
                 maxContextTokens = ctx,
             )
         }
-        out
+        if (claims == 0) null else out
         } catch (_: Exception) {
             null
         }
