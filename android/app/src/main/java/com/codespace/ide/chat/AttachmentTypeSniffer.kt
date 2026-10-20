@@ -116,8 +116,21 @@ object AttachmentTypeSniffer {
         return verdictOf(kind, label)
     }
 
-    private fun zipFamily(ext: String): Pair<AttachmentTypeKind, String> =
-        BY_EXT[ext]?.let { it } ?: (AttachmentTypeKind.ZIP to "Zip archive")
+    private val ZIP_FAMILY_KINDS = setOf(
+        AttachmentTypeKind.DOCX, AttachmentTypeKind.XLSX, AttachmentTypeKind.PPTX,
+        AttachmentTypeKind.DOCM, AttachmentTypeKind.XLSM,
+        AttachmentTypeKind.ODT, AttachmentTypeKind.ODS, AttachmentTypeKind.ODP,
+        AttachmentTypeKind.ZIP,
+    )
+
+    /** Zip magic + zip-family extension (docx/xlsx/odt...) keeps the specific
+     *  kind; zip magic + a NON-zip extension (.png, .txt...) follows the
+     *  MAGIC — the bytes are a zip, whatever the name claims. */
+    private fun zipFamily(ext: String): Pair<AttachmentTypeKind, String> {
+        val entry = BY_EXT[ext] ?: return (AttachmentTypeKind.ZIP to "Zip archive")
+        return if (entry.first in ZIP_FAMILY_KINDS) entry
+        else (AttachmentTypeKind.ZIP to "Zip archive")
+    }
 
     private fun isZip(m: ByteArray?) = m != null && m.size >= 4 &&
         m[0] == 'P'.code.toByte() && m[1] == 'K'.code.toByte() &&

@@ -54,6 +54,14 @@ object DocumentTextExtractor {
             AttachmentTypeKind.ODT, AttachmentTypeKind.ODS, AttachmentTypeKind.ODP -> extractOdf(file)
             else -> return AttachmentIntake.ExtractedDoc(refusal = verdict.reason)
         }
+        // Refusal passthrough (CI run 39377825485 lesson): rebuilding the
+        // result WITHOUT carrying raw.refusal silently turned every honest
+        // refusal (billion-laughs rejection, zip bomb, truncated archive)
+        // into a success with empty text. The refusal travels with the text.
+        val refusal = raw.refusal
+        if (refusal != null) {
+            return AttachmentIntake.ExtractedDoc(refusal = refusal, notes = raw.notes)
+        }
         // Advisor item 5: attachment-tier redaction on ALL extracted text.
         val (redacted, changed) = AttachmentSecrets.redact(raw.text, AttachmentSecrets.TIER_ATTACHMENT)
         val notes = raw.notes.toMutableList()
@@ -332,7 +340,7 @@ object DocumentTextExtractor {
                 }
                 !inScript && !inStyle && c == '&' -> {
                     val semi = src.indexOf(';', i)
-                    if (semi in i + 1..i + 10) {
+                    if (semi in i + 1..i + 32) {
                         sb.appendText(decodeEntity(src.substring(i + 1, semi)))
                         i = semi + 1
                     } else { sb.appendText("&"); i++ }
@@ -711,8 +719,11 @@ object DocumentTextExtractor {
                     }
                 }
             } else if (c == '&') {
+                // window 32: bounded but long enough for real entity names
+                // ("customentity" stayed literal at window 10 — CI run
+                // 39377825485).
                 val semi = src.indexOf(';', i)
-                if (semi in i + 1..i + 10) {
+                if (semi in i + 1..i + 32) {
                     textBuf.append(decodeEntity(src.substring(i + 1, semi)))
                     i = semi + 1
                 } else { textBuf.append('&'); i++ }
