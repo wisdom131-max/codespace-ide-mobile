@@ -480,6 +480,11 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
+            // ── Language Servers (P1e, read-only status) ─────────────────────
+            LspServersStatusSection()
+
+            HorizontalDivider()
+
             // ── Container Backup ─────────────────────────────────────────────
             Text("Container Backup", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             var backupInfo by remember { mutableStateOf(BackupManager.backupInfo()) }
@@ -1764,6 +1769,7 @@ private val SETTINGS_SEARCH_INDEX = listOf(
     SettingsIndexEntry("GitHub account", "Accounts", "Settings"),
     SettingsIndexEntry("AI provider keys", "AI Providers", "Settings"),
     SettingsIndexEntry("Container backup & restore", "Container Backup", "Settings"),
+    SettingsIndexEntry("Language servers status", "Language Servers", "Settings"),
     SettingsIndexEntry("Reinstall Ubuntu rootfs", "Ubuntu Container", "Settings"),
     SettingsIndexEntry("Settings backup (export / import JSON)", "Settings Backup", "Settings"),
     SettingsIndexEntry("Restore previous session on project open", "Workspace Memory", "Settings"),

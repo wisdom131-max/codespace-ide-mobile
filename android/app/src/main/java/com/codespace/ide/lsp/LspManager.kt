@@ -803,6 +803,15 @@ object LspManager {
     // on every start so the Retry button can restart without an editor open.
     private val lastWorkspacePath = ConcurrentHashMap<Language, String>()
 
+    // P1e (2026-10-20): READ-ONLY status bookkeeping for the Settings "Language
+    // servers" section. Written at the SAME sites that already emit the
+    // [LSP-LIFECYCLE] START/STOP/CRASH/GIVE_UP lines — no new decisions, no
+    // behavior change; these maps only REMEMBER what those logs already knew.
+    /** Server spawn time per language (reset on every start; uptime source). */
+    val serverStartedAtMs = ConcurrentHashMap<Language, Long>()
+    /** Last stop reason per language, kept across restarts ("last stop reason" column). */
+    val lastStopReasons = ConcurrentHashMap<Language, String>()
+
     // P1c: mirror of CrashRestartPolicy's default cap for log lines (informational only)
     private val CrashRestartPolicy_MAX_SHORT = 4
 
@@ -835,6 +844,30 @@ object LspManager {
     // Phase V-A: Get the authoritative state of a server
     fun getServerState(language: Language): LspState =
         serverStates[language] ?: LspState.STOPPED
+
+    /**
+     * P1e (2026-10-20): READ-ONLY status rows for the Settings "Language
+     * servers" section — one row per CONFIGURED language (a language with no
+     * history yet shows Stopped / placeholders). Pure assembly of already
+     * tracked state via LspStatus.buildRow; no mutations, no I/O.
+     */
+    fun statusRows(): List<LspStatusRow> {
+        val now = System.currentTimeMillis()
+        return configs.keys.map { lang ->
+            val server = servers[lang]
+            val project = server?.rootUri?.removePrefix("file://")
+                ?: lastWorkspacePath[lang]
+            LspStatus.buildRow(
+                languageName = lang.displayName,
+                state = getServerState(lang),
+                project = project,
+                startedAtMs = serverStartedAtMs[lang] ?: 0L,
+                nowMs = now,
+                restartCount = restartBackoffs[lang]?.consecutiveRestarts ?: 0,
+                lastStopReason = lastStopReasons[lang],
+            )
+        }
+    }
 
     // Phase V-A: Set server state with structured logging (Section N)
     // LS11 (P4b): event-driven state signal — every editor used to run its OWN 2s
@@ -1948,6 +1981,8 @@ object LspManager {
         generationCounters[language] = generation
         val server = LspServer(language, process, client, rootUri, config.command, generation)
         servers[language] = server
+        // P1e: spawn-time bookkeeping for the Settings status row (read-only).
+        serverStartedAtMs[language] = System.currentTimeMillis()
         // Phase V-M: Set generation on the client for stale response protection
         client.generation = generation
 
@@ -2076,6 +2111,7 @@ object LspManager {
             if (!wasIntentional) {
                 server.lastDeathWasCrash = true
                 lifecycleLog("CRASH lang=${language.displayName} gen=$gen — unexpected disconnect")
+                lastStopReasons[language] = "crash — unexpected disconnect"
                 notifyLspEvent(language, "crash", NotificationStore.Severity.ERROR, "Server crashed unexpectedly. Restarting with backoff.", listOf(
                     NotificationStore.NotificationAction("restart", "Restart"),
                     NotificationStore.NotificationAction("view_logs", "View Logs"),
@@ -2498,6 +2534,7 @@ object LspManager {
                         }
                     } else ""
                     lifecycleLog("CRASH lang=${language.displayName} gen=$gen exit=$exitCode$oomIndicator")
+                    lastStopReasons[language] = "crash (exit=$exitCode)"
                     lifecycleEvent(server = language.displayName, event = "CRASH", reason = "exit=$exitCode$oomIndicator", generation = gen, evidence = "CONFIRMED")
                     if (oomIndicator.contains("OOM")) {
                         notifyLspEvent(language, "oom", NotificationStore.Severity.WARNING, "Server may have been killed by OOM (exit code $exitCode). High memory usage detected.")
@@ -2537,6 +2574,7 @@ object LspManager {
         if (!policy.canAutoRestart(now)) {
             val attempts = policy.attemptsInWindow(now)
             setServerState(language, LspState.FAILED_DISABLED, "crash cap")
+            lastStopReasons[language] = "crash cap — auto-restart disabled until manual Retry"
             lifecycleLog("GIVE_UP lang=${language.displayName} — CRASH CAP: ${attempts} auto-restarts inside the rolling 3-min window; auto-restart DISABLED until manual Retry")
             lifecycleEvent(server = language.displayName, event = "GIVE_UP", reason = "$attempts auto-restart attempts inside the rolling 3-min window")
             // VS Code parity: auto-restart stops; the user is told clearly and one
@@ -2847,6 +2885,8 @@ object LspManager {
 
     private fun stopServerLocked(language: Language, reason: String = "manual") {
         val server = servers.remove(language) ?: return
+        // P1e: last-stop-reason bookkeeping (Settings status row, read-only).
+        lastStopReasons[language] = reason
         // Phase V-A: Transition to STOPPING
         setServerState(language, LspState.STOPPING)
         // Phase P: Mark diagnostics from this LSP server as stale
