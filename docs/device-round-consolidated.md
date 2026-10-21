@@ -4,12 +4,18 @@
 > Artifact: 35b9c8d (CI-GREEN 39527504041, newest green at doc time; the
 > baseline build-stamp check confirms the installed APK). 997774b carried
 > BATCH6-BATCH12 + C12 Stage 3 + U4; since then 23fdf2c adds the
-> StackOverflowError hardening, 24b3b30..0271b7b add G-E-a, and 401d65d +
+> StackOverflowError hardening, 24b3b30..0271b7b add G-E-a, 401d65d +
 > 9e12950 add the PDF stuck-parse gate (PdfExtractionGate: one dedicated
 > lane thread, prompt caller-side wait, Busy refusal while a zombie parse
-> burns) — G-E-a INERT (no call sites, switch OFF), the gate only changes
-> PDF extraction behavior (PDF rows below exercise it). Supersedes:
-> 8580adc, 12f0e40, 416f417, b85b2cc, 922fe49, 0271b7b.
+> burns), and 984bd8d/8f976a0/35b9c8d add G-E-b (the supportsImages seam +
+> read-only picker line) and G-E-c (MK override rows + attach-sheet unknown
+> offer) — BOTH INERT while the capability switch is OFF: the seam returns
+> the provider constant byte-for-byte (pinned by the flag-off equivalence
+> tests) and every new UI row (overrides section, picker line, attach-sheet
+> offer) renders NOTHING while the switch is off. G-E-a INERT (no call
+> sites, switch OFF), the gate only changes PDF extraction behavior (PDF
+> rows below exercise it). Supersedes:
+> 8580adc, 12f0e40, 416f417, b85b2cc, 922fe49, 0271b7b, 9e12950.
 > Phone: TECNO KL4, Android 14. Fixtures: `/sdcard/Download/zz_stage3/`
 > (generator block in `docs/c12-stage3-u4-test-sheet.md`).
 
