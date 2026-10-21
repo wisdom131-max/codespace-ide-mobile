@@ -200,3 +200,26 @@ service driven from a foreground-visible app.
 
 All three checks are now CLOSED in the plan; U4-P remains PLAN ONLY and is
 NOT built before the owner's device round (advisor ruling 2026-10-21).
+
+## 9. Byte cap for the sequential read (advisor item 2026-10-21, PLAN ONLY)
+
+READ, existing cap: the attach path already refuses sources above
+`AttachmentIntake.MAX_SOURCE_BYTES = 10 MB` (AttachmentIntake.kt:15-72 —
+the attach picker checks `f.length()` and refuses BEFORE any extraction).
+WORKER CAP = THE SAME 10 MB. Rationale: every PDF that can legally reach
+the extractor is already <= 10 MB, so the worker's sequential read needs
+no new policy number — it inherits the intake cap exactly, and the two can
+never disagree.
+
+- **Above the cap** (defensive only — the intake path refuses earlier): the
+  worker stops reading at the cap boundary and returns the honest "file too
+  large to extract safely" verdict; the app falls back to the same
+  metadata-only chip the in-process path produces for oversized files, with
+  retry allowed. It never OOMs trying to finish a giant read.
+- **Memory cost in the worker**: one transient byte array <= 10 MB (the
+  sequential read), handed to `PDDocument.load(byte[])` which WRAPS it
+  (RandomAccessBuffer(byte[]) — no second copy, pdfbox source) plus the
+  mainMemoryOnly parse structures already bounded by the existing
+  page/char caps. Peak worker memory attributable to the buffer path is
+  therefore ~<= 10 MB + parse overhead, freed when the doc closes; the
+  worker process is killed after idle regardless.
