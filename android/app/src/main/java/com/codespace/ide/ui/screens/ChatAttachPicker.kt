@@ -201,6 +201,15 @@ internal fun ChatAttachPickerDialog(
     onPickImage: (() -> Unit)? = null,
     // R10-E: non-null enables the "attach screenshot of the app" row
     onPickScreenshot: (() -> Unit)? = null,
+    /**
+     * G-E-c (advisor GO 2026-10-21): unknown-model image offer. The caller
+     * computes modelImagesUnknown via ChatCapabilitySeam.imagesUnknownFor —
+     * which is FALSE while the capability switch is OFF, so the row never
+     * exists while the switch is off (no dead controls, the ruling).
+     */
+    modelImagesUnknown: Boolean = false,
+    modelImagesLabel: String = "",
+    onAcceptImagesForModel: (() -> Unit)? = null,
 ) {
     if (projectRoot.isNullOrBlank()) { onDismiss(); return }
     // R3-PICKER-FIX (2026-09-14): the dialog body overflowed short screens with
@@ -234,6 +243,32 @@ internal fun ChatAttachPickerDialog(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                 )
+                // G-E-c (2026-10-21): the unknown-model offer row — only when
+                // the caller says the ACTIVE model is UNKNOWN for images (the
+                // caller's computation is flag-gated, so this row cannot exist
+                // while the switch is off).
+                if (modelImagesUnknown && onAcceptImagesForModel != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .background(colors.surface, RoundedCornerShape(8.dp))
+                            .clickable { onAcceptImagesForModel() }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "'$modelImagesLabel' may accept images — set it to accepted?",
+                            fontSize = 11.sp,
+                            color = colors.text,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Accepts", fontSize = 11.sp, color = colors.accent)
+                    }
+                }
                 // I2 — TERMINAL BRIDGE attach sources (computed unconditionally)
                 val termCtx = LocalContext.current
                 val termPasted = remember { com.codespace.ide.terminal.TerminalAiBridge.lastPastedCommand }

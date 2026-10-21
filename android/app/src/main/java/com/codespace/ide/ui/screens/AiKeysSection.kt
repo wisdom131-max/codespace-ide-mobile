@@ -127,6 +127,14 @@ internal fun AiKeysSection(tokenStore: SecureTokenStore) {
         modifier = Modifier.padding(horizontal = 16.dp),
     )
 
+    // G-E-c (advisor GO 2026-10-21): per-model image capability override
+    // rows. The section itself renders NOTHING while the capability switch
+    // is OFF (the advisor's no-dead-controls ruling) — the early-return
+    // lives inside it, so this mount line needs no guard of its own.
+    CapabilityOverridesSection(
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+
     providers.forEach { provider ->
         val state = uiStates[provider.id] ?: AiKeyUiState()
         val isActive = provider.id == activeProviderId

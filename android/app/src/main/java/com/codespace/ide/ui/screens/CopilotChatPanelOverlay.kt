@@ -2701,6 +2701,19 @@ internal fun CopilotChatPanelInline(
             )
         }
         if (showAttachPicker) {
+            // G-E-c (advisor GO 2026-10-21): the unknown-model image offer.
+            // imagesUnknownFor is FALSE while the capability switch is OFF,
+            // so with the switch off this passes false and the row never
+            // exists (no dead controls, the ruling).
+            var offerModelImagesUnknown by remember(selectedModel) {
+                mutableStateOf(
+                    com.codespace.ide.chat.capabilities.ChatCapabilitySeam.imagesUnknownFor(
+                        selectedModel,
+                        com.codespace.ide.chat.ChatProviderRegistry
+                            .byId(selectedModel.substringBefore(':', ""))?.supportsImages
+                    )
+                )
+            }
             ChatAttachPickerDialog(
                 projectRoot = projectRootPath,
                 onPick = { a ->
@@ -2736,6 +2749,14 @@ internal fun CopilotChatPanelInline(
                 },
                 onDismiss = { showAttachPicker = false },
                 colors = colors,
+                modelImagesUnknown = offerModelImagesUnknown,
+                modelImagesLabel = selectedModel.substringAfter(':', "").take(24),
+                onAcceptImagesForModel = {
+                    com.codespace.ide.chat.capabilities.ChatCapabilitySeam
+                        .setImagesOverride(selectedModel, true)
+                    // recompute so the offer disappears once the override exists
+                    offerModelImagesUnknown = false
+                },
             )
         }
 
