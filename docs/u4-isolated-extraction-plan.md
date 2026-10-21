@@ -133,3 +133,70 @@ cancellation of an unkillable parse — the one property the thread-based
 containment cannot have — at the cost of one extra process during PDF
 extraction only. NOT recommended before the device round, and NOT
 recommended for the Office extractors in v1.
+
+## 8. Advisor check triad (2026-10-21, READ from source / AOSP; DOC where docs-only)
+
+**(a) pdfbox-android resource loading in an isolatedProcess service.**
+READ, pdfbox-android 2.0.27.0 source (the pinned dependency),
+`library/src/main/java/com/tom_roush/pdfbox/android/PDFBoxResourceLoader.java`:
+`init(Context)` does exactly ONE thing — caches
+`context.getApplicationContext().getAssets()` (an `AssetManager`); every
+resource load (the Noto font fallback set) goes through that AssetManager
+as an `InputStream`. An AssetManager reads the app's OWN APK assets; the
+isolated process runs the app's code under the app_domain rules — the same
+mechanism the WebView renderer (isolated_app) uses to load its resources.
+VERDICT: works, with ONE discipline: `PDFBoxResourceLoader.init(...)` is
+per-process static state — the main process's init does NOT carry over,
+so the worker service MUST call `init(this)` in `onCreate()` with its OWN
+context (a Context is not parcelable across processes anyway). Confidence:
+source-based HIGH for the mechanism; the one device-verify row of U4-P1
+confirms the first PDF's font fallback in the worker.
+
+**(b) Random access / seekability of a passed /sdcard FUSE descriptor.**
+READ, pdfbox-android source: today's `PdfBoxTextEngine` calls
+`PDDocument.load(File, mainMemoryOnly)`, which routes through
+`RandomAccessBufferedFileInputStream(File)` (PDDocument.java:1076) — that
+constructor OPENS THE FILE BY PATH (`new RandomAccessRandomAccessFile(file,
+"r")`). An isolated process CANNOT open paths — the AOSP
+`system/sepolicy/private/isolated_app.te` rule is explicitly
+fd-passing-only ("Open should never be allowed"), so the File overload is
+UNUSABLE in the worker regardless of seekability. The load-bearing
+subtlety: the sepolicy fuse rule for passed descriptors allows
+`{ read write append getattr lock map }` — **seek is NOT in that list**, and
+whether a later AOSP branch added a `file:seek` allow for isolated_app is
+not something this plan assumes. ENGINEERING ANSWER: don't seek the
+descriptor at all. The worker reads the passed ParcelFileDescriptor
+SEQUENTIALLY into a bounded byte array (the extraction path already caps
+sizes; add an explicit worker-side buffer cap), then calls the pdfbox
+`PDDocument.load(byte[])` overload, which builds an in-memory
+`RandomAccessBuffer` (PDDocument.java:1298) — no file open, no seek, no
+temp file. Sequential read of a passed fuse fd is exactly what the
+sepolicy rule blesses (b/32896414). The byte[] route also AVOIDS the
+`RandomAccessBufferedFileInputStream(InputStream)` constructor's
+`File.createTempFile` path (source: `createTmpFile` in that class) — an
+isolated process cannot write app-data temp files either, so the byte[]
+overload is the ONLY safe pdfbox entry point in the worker.
+VERDICT: feasible, but ONLY via the byte[] overload; this is now a design
+requirement of section 2, not an open question.
+
+**(c) Binder reply limits + Android 14 start/bind restrictions.**
+READ, AOSP `frameworks/native/libs/binder/ProcessState.cpp`:
+`#define BINDER_VM_SIZE ((1 * 1024 * 1024) - sysconf(_SC_PAGE_SIZE) * 2)`
+(line 47) — each process maps ~1 MB of shared binder buffer, and ONE-WAY
+(asynchronous, Messenger-style) transactions occupy that buffer on the
+RECEIVING side until consumed. Plan's 256 KB chunks: at most a few pending
+chunks against a ~1 MB buffer — safe headroom; a full extracted text at our
+60k-char snapshot cap fits in ONE chunk anyway, the chunking exists for the
+worst case, not the common one. ANDROID 14 RESTRICTIONS (DOC +
+code-of-record): binding has NO caller-foreground requirement —
+`bindService` is always legal from a running app process; what Android 14
+restricts is STARTING services from the background and launching foreground
+services from background states, neither of which the design uses (the app
+binds while the chat UI is up; the isolated worker is bound, never
+startService'd, and holds no foreground type). On-demand spawn is handled
+by AMS's isolated-process path (ActivityManagerService.startIsolatedProcess,
+cited in section 1). VERDICT: no Android-14 blocker for a bound isolated
+service driven from a foreground-visible app.
+
+All three checks are now CLOSED in the plan; U4-P remains PLAN ONLY and is
+NOT built before the owner's device round (advisor ruling 2026-10-21).
