@@ -996,8 +996,14 @@ private suspend fun chat(
     // turns — images stay on the original user turn only.
     val pdfRenderedPages = attachments
         .flatMap { it.extractedDoc?.pageImages ?: emptyList() }
+    // G-E-b (2026-10-21, flag OFF): the ONE seam read replaces every direct
+    // provider.supportsImages read here. Flag off = the provider constant
+    // EXACTLY (byte-identical send path); flag on = override > live > bundled,
+    // UNKNOWN falls back to the provider constant.
+    val seamAcceptsImages = com.codespace.ide.chat.capabilities.ChatCapabilitySeam
+        .supportsImagesFor(model, provider?.supportsImages)
     val requestImages = if (attachments.any { it.kind == com.codespace.ide.chat.ChatAttachment.Kind.IMAGE }) {
-        if (provider != null && !provider.supportsImages) {
+        if (provider != null && !seamAcceptsImages) {
             throw Exception("Image attachments are not supported by ${provider.displayName}. Remove the image chips or switch models.")
         }
         // U4: rendered scanned-PDF pages ride the SAME structured parts path.
@@ -1005,10 +1011,10 @@ private suspend fun chat(
         // them instead of failing the send (the text block already noted
         // them as page images — the model just sees fewer parts).
         com.codespace.ide.chat.ChatImageAttachments.toRequestImages(attachments) +
-            (if (provider == null || provider.supportsImages)
+            (if (seamAcceptsImages)
                 com.codespace.ide.chat.ChatImageAttachments.pdfPageImagesToRequests(pdfRenderedPages)
             else emptyList())
-    } else if (pdfRenderedPages.isNotEmpty() && (provider == null || provider.supportsImages)) {
+    } else if (pdfRenderedPages.isNotEmpty() && seamAcceptsImages) {
         com.codespace.ide.chat.ChatImageAttachments.pdfPageImagesToRequests(pdfRenderedPages)
     } else emptyList()
     // R9-AUDIO: audio clips ride the same structured-parts path (iteration 0 only).
@@ -1430,10 +1436,16 @@ internal fun CopilotChatPanelInline(
     // images (the same supportsImages gate real image chips use); a provider
     // switch re-runs extraction for still-pending attachments only — an
     // already-extracted PDF keeps its verdict (send-time re-gates).
+    // G-E-b (2026-10-21, flag OFF): extraction-time scanned-PDF fallback gate
+    // reads through the SAME seam as the send path — flag off = provider
+    // constant exactly (today's value), flag on = capability resolution.
     val pdfProviderAcceptsImages by remember(selectedModel) {
         mutableStateOf(
-            com.codespace.ide.chat.ChatProviderRegistry
-                .byId(selectedModel.substringBefore(':', ""))?.supportsImages ?: true
+            com.codespace.ide.chat.capabilities.ChatCapabilitySeam.supportsImagesFor(
+                selectedModel,
+                com.codespace.ide.chat.ChatProviderRegistry
+                    .byId(selectedModel.substringBefore(':', ""))?.supportsImages
+            )
         )
     }
     val attachImageDir by remember(context) {

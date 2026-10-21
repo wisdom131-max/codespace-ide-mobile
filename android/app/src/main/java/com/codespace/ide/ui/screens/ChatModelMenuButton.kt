@@ -84,6 +84,16 @@ internal fun ChatModelMenuButton(
     var addFor by remember { mutableStateOf<String?>(null) }
     var addText by remember { mutableStateOf("") }
     val customPrefixes = remember(customGroups) { customGroups.map { it.providerId + ":" } }
+    // G-E-b (2026-10-21, flag OFF): read-only capability line for the ACTIVE
+    // model. Blank while the switch is off or the selection has no registered
+    // provider — the row simply never renders (no dead UI).
+    val capabilityLine = remember(selectedModel) {
+        com.codespace.ide.chat.capabilities.ChatCapabilitySeam.pickerLineFor(
+            selectedModel,
+            com.codespace.ide.chat.ChatProviderRegistry
+                .byId(selectedModel.substringBefore(':', ""))?.supportsImages
+        )
+    }
     Box {
         Text(
             label,
@@ -263,6 +273,21 @@ internal fun ChatModelMenuButton(
                         onClick = { onPick(m); onExpandedChange(false) },
                     )
                 }
+            }
+            if (capabilityLine.isNotBlank()) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            capabilityLine,
+                            fontSize = 10.sp,
+                            color = colors.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    onClick = { },
+                    enabled = false,
+                )
             }
             DropdownMenuItem(
                 text = {
