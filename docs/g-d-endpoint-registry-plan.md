@@ -141,3 +141,78 @@ No UI redesign, no registry persistence redesign (endpoints_v2 shape stays),
 no key storage change (SecureTokenStore stays the ONLY secret primitive),
 no G-E interaction (flag stays OFF and untouched), no V1/backup/container/
 link work.
+
+## 6. Migration discipline (advisor requirements, 2026-10-21 — PLAN ONLY)
+
+Stored shapes this plan is written against (READ from current code, not
+assumed): selections live in the `chat_model_selection` SharedPreferences
+file as FLAT "provider:model" strings (global key + per-mode
+`selected_model_<MODE>` keys, ChatModelSelection.kt:21); endpoints live in
+the `custom_endpoint` file under the `endpoints_v2` key as a JSONArray
+(CustomEndpointStore.kt:59); live model cache in `provider_model_cache`
+under `<providerId>.models` (ProviderModelCache.kt:71); KEYS live in
+SecureTokenStore slots via ChatKeyPool — G-D NEVER writes those.
+
+**(a) What I am removing — the honest list.** G-D-a/b/c remove NO stored
+key and NO file format. Replaced (not deleted): every ad-hoc
+`split(":")`/`substringBefore(":")` parse call-site becomes a typed
+Selection parse; every per-call-site registry enumeration becomes ONE
+ordered enumeration. The only data ever DELETED is derived dead data:
+selection strings whose provider prefix no longer exists (G-D-b, after the
+dry-run report). SecureTokenStore, endpoints_v2, provider_model_cache:
+never written by any G-D phase.
+
+**(b) Exact migration steps per phase (old key/format -> new, idempotence,
+versioning).**
+- G-D-a (typed selection + rectify-at-load): NO migration at all — the
+  stored format IS the input format (flat strings, unchanged). Load parses
+  "provider:model" into a typed Selection and rectifies against the
+  registry in memory; nothing is written back. Idempotent by construction
+  (pure read transform); versioning unnecessary (no format change).
+- G-D-b (orphan cleanup): step 0 BACKUP (see (d)); step 1 dry-run sweep
+  computes orphans (selection prefix not in registry + custom endpoints,
+  AUTO excluded) and LOGS the list — no deletion on the first run; step 2
+  on the NEXT run (or same run behind a written "sweep_applied_v1" marker
+  key in `chat_migration_backups`) deletes exactly the logged orphans, one
+  prefs.apply per key. Idempotent: a re-run finds zero orphans and writes
+  nothing; the marker makes double-application impossible.
+- G-D-c: pure code, zero migration.
+
+**(c) Rollback path.** All phases are code-only/additive except G-D-b's
+orphan deletion, which is: (1) preceded by the key-by-key backup copy, (2)
+restorable by a dedicated restore function (tested), (3) revertable by
+plain commit revert since no other stored shape moved. The AUTO sentinel
+and every live selection are untouched by construction.
+
+**(d) Failed/interrupted migration safety.** BEFORE the first mutation of
+any kind, every key/value of `chat_model_selection` is copied into a
+separate `chat_migration_backups` prefs file (JSON snapshot per key, with
+timestamp), KEPT until a later version (advisor rule — no auto-expiry).
+Every step (backup written, sweep computed, N deleted, restore available)
+is logged to the debug channel with counts. An interruption at ANY point
+leaves: endpoints untouched (never written), keys untouched (SecureTokenStore
+has no G-D write path at all), and the selection either the original
+(no deletion happened yet) or byte-restoreable from the backup. Deletion is
+the LAST step and applies one key at a time.
+
+**(e) Tests.** Old-format fixtures built from the CURRENT code's real
+stored shapes, not guesses: fixture A = `chat_model_selection` with global
++ `selected_model_ASK/AGENT/PLAN` literal strings incl. one orphan
+("goneep:modelx") and the AUTO sentinel; fixture B = `endpoints_v2` array
+exactly as today's writer emits it; fixture C = `<providerId>.models`
+cache entry. Tests: parse->rectify roundtrip preserves every live
+selection; the sweep finds EXACTLY the orphan; backup->restore is
+byte-identical; interrupted-migration simulation (throw between steps)
+proves endpoints/keys/selection unchanged; marker-key double-run is a no-op.
+
+**G-D-d (per-endpoint custom headers) — what a security review must decide.**
+Header VALUES are near-credentials (org tokens, "X-Api-Key"-class), so it
+stays parked until: (1) storage ruling — SecureTokenStore vs plaintext
+prefs (today's MK fields are plaintext; headers would be the first
+secret-ish thing outside SecureTokenStore if kept plaintext); (2) redaction
+discipline in every log/error/diagnostic path (the 402/429 error bubbles
+echo request config today — headers must never join them); (3) Authorization
+collision rule — can a custom header override the key-slot's Authorization
+injection (double-header hazard) or is that combination refused; (4) export/
+diagnostic-state exclusion; (5) per-endpoint header count/size caps for
+poison-safety like the other stores.

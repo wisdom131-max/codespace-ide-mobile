@@ -1,7 +1,7 @@
 # CONSOLIDATED DEVICE ROUND — target artifact: latest GREEN after G-E-a (see header)
 
 > Status: READY — DO NOT TEST until the owner says so (advisor 2026-10-20).
-> Artifact: 9e12950 (CI-GREEN 39457243496, newest green at doc time; the
+> Artifact: 35b9c8d (CI-GREEN 39527504041, newest green at doc time; the
 > baseline build-stamp check confirms the installed APK). 997774b carried
 > BATCH6-BATCH12 + C12 Stage 3 + U4; since then 23fdf2c adds the
 > StackOverflowError hardening, 24b3b30..0271b7b add G-E-a, and 401d65d +
