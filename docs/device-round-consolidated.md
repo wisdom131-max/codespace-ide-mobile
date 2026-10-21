@@ -18,6 +18,28 @@
 > 8580adc, 12f0e40, 416f417, b85b2cc, 922fe49, 0271b7b, 9e12950.
 > Phone: TECNO KL4, Android 14. Fixtures: `/sdcard/Download/zz_stage3/`
 > (generator block in `docs/c12-stage3-u4-test-sheet.md`).
+>
+> EXACT BUILD (workflow "Build Android APK" = .github/workflows/android-build.yml,
+> run 39527504041, commit 35b9c8d, artifact `codespace-ide-arm64-v8a`,
+> 77,681,416 bytes (~74.0 MiB)). Settings-About build stamp MUST show:
+> `Build 530 (35b9c8d) — v1.0.0`. Wrong code or wrong hash = wrong APK = STOP.
+>
+> NEW IN THIS BUILD (one line, what to notice): PDF attachments now extract
+> text (and up to 3 page images for scanned PDFs) with honest refusals for
+> encrypted/corrupted files instead of silence; documents/archives attach
+> with entry previews; terminal link-taps resolve to real files with
+> diagnostics; an LSP lifecycle manager (no more restart storms, background
+> idle-stop); StackOverflowError/OutOfMemoryError hardened PDF engine; a
+> stuck-PDF Busy refusal instead of a frozen panel. (G-E capability rows are
+> present but INERT — nothing shows until the owner flips a switch that
+> stays off this round.)
+>
+> BEFORE STARTING (5 min): (1) WiFi on + charger plugged — a full round on
+> mobile data is costly and a mid-round battery drop produces fake failures;
+> (2) at least 2 GB free on shared storage (fixture generation + bug-report
+> ZIPs); (3) confirm `container-backup.tar.gz` sits in Documents and opens
+> (it is the destructive-step safety net — check BEFORE anything that can
+> touch state); (4) NO UNINSTALL — install is always fresh-install-OVER.
 
 ## ROUND SHAPE (advisor 2026-10-20)
 

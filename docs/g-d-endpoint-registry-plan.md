@@ -176,6 +176,13 @@ versioning).**
   key in `chat_migration_backups`) deletes exactly the logged orphans, one
   prefs.apply per key. Idempotent: a re-run finds zero orphans and writes
   nothing; the marker makes double-application impossible.
+
+  ORPHAN DEFINITION (advisor ruling 2026-10-21, LOCKED): an orphan is a
+  selection whose provider id DOES NOT EXIST AT ALL — not in the static
+  registry AND not among custom endpoints (any state). DISABLED endpoints
+  and endpoints with EMPTY key slots are NOT orphans: their selections are
+  NEVER swept, exactly as live endpoints'. The sweep's existence check is
+  by id only; it never consults enabled/removed-on-device/key state.
 - G-D-c: pure code, zero migration.
 
 **(c) Rollback path.** All phases are code-only/additive except G-D-b's
