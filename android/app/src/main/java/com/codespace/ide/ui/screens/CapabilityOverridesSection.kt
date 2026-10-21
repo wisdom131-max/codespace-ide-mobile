@@ -26,8 +26,8 @@ import androidx.compose.ui.unit.sp
 import com.codespace.ide.chat.CustomEndpointStore
 import com.codespace.ide.chat.capabilities.ChatCapabilityFlags
 import com.codespace.ide.chat.capabilities.ChatCapabilityGate
-import com.codespace.ide.chat.capabilities.ChatCapabilityOverrides
 import com.codespace.ide.chat.capabilities.ChatCapabilitySeam
+import com.codespace.ide.chat.capabilities.ModelCapabilityOverrides
 
 /**
  * G-E-c (advisor GO 2026-10-21, with the hiding change): per-model IMAGE
@@ -145,9 +145,9 @@ private fun CapabilityOverrideModelRow(
         Spacer(Modifier.width(8.dp))
         Text(
             when (current) {
-                null -> "Images: follow"
                 true -> "Images: yes"
                 false -> "Images: no"
+                else -> "Images: follow"
             },
             fontSize = 10.sp,
             color = MaterialTheme.colorScheme.primary,

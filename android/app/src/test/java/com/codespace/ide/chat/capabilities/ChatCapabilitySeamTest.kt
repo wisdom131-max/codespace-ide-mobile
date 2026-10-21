@@ -18,8 +18,30 @@ import org.junit.Test
  */
 class ChatCapabilitySeamTest {
 
-    @Before fun setUp() { ChatCapabilityFlags.capabilityTableEnabled = false; ModelCapabilityOverrides.clearAll() }
-    @After fun tearDown() { ChatCapabilityFlags.capabilityTableEnabled = false; ModelCapabilityOverrides.clearAll() }
+    /**
+     * CI red (runs 39523592261/39523715800): the default persistence is
+     * SharedPreferences-backed and cannot be touched from JVM tests — the
+     * G-E-a suite's MemoryPersistence pattern is required. The bundled table
+     * is loaded for EVERY test: with the flag off it is ignored (so the
+     * equivalence rows prove the OFF switch outranks a KNOWN table), and
+     * with the flag on the openai/gpt-4o row is available to the chain.
+     */
+    private val memory = MemoryPersistence()
+    private fun sampleTableJson(): String = "{\"version\":1,\"generated\":\"2026-10-20\",\"source\":\"test\"," +
+        "\"providers\":{\"openai\":[{\"match\":\"gpt-4o\",\"images\":true,\"tools\":true,\"maxContext\":128000,\"streaming\":true}]}}"
+
+    @Before fun setUp() {
+        ChatCapabilityFlags.capabilityTableEnabled = false
+        ModelCapabilityOverrides.usePersistence(memory)
+        ModelCapabilityHints.clearForTest()
+        ModelCapabilityTable.resetForTest()
+        ModelCapabilityTable.loadForTest(sampleTableJson())
+    }
+    @After fun tearDown() {
+        ChatCapabilityFlags.capabilityTableEnabled = false
+        ModelCapabilityHints.clearForTest()
+        ModelCapabilityTable.resetForTest()
+    }
 
     private fun withFlagOn(body: () -> Unit) {
         ChatCapabilityFlags.capabilityTableEnabled = true
