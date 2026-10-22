@@ -7205,3 +7205,9 @@ C. ROADMAP BUILD ITEMS (ledger delivered in chat 2026-10-19; gates updated for t
 **ROADMAP (all pending):** [1] owner's device round on 35b9c8d — phase (a) sent, (b)..(e) owner-gated; [2] G-E switch OFF until owner word post-round; [3] G-D phases await owner ruling (no code; orphan definition locked: id-does-not-exist only, disabled/empty-key endpoints never swept); [4] U4-P plan complete incl. triad + byte cap, awaits round + freeze lift; [5] parked: G-E-4b native PDF parts, XG01-04, S1-c warm path, U5 audio/video gates, F6/Option C, G-D-d headers, terminal-link U4/U5.
 
 **FREEZE HOLDS: no new features; docs commits only this entry (U4-P plan byte-cap commit + this changelog).**
+
+### [2026-10-22 14:00 WAT] [DOCS ONLY — DEVICE ROUND LIVE: BASELINE PASS + ALL-PHASES DELIVERY (advisor change of plan 2026-10-22)] [DEVICE-ROUND][U4][C12]
+
+**BASELINE B1-B5: ALL PASS on device, owner-run (2026-10-22, build 35b9c8d, run 39527504041, stamp Build 530 (35b9c8d) — v1.0.0).** The 7 PDF fixtures (text, blank, multipage-10, many-pages-200, encrypted, corrupted, truncated) were generated in the APP'S OWN terminal (root, Python 3.13.7), not Termux — first recorded in-app-terminal fixture generation; the generator ran clean there.
+
+**DELIVERY PLAN CHANGE (advisor 2026-10-22):** no waiting between phases — ALL remaining phases (A1, A2, B1, B3, then OPTIONAL A3, A4, B2, Sitting C) delivered together, each phase a self-contained inline block, STOP rules repeated per phase, phases 5-8 marked OPTIONAL (owner may stop after phase 4). All paste blocks target the app's own terminal. No repo references in the sheets. Freeze holds; docs only.
