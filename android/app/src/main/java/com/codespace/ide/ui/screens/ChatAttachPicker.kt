@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -126,7 +127,12 @@ internal fun ChatAttachmentChips(
                 // (opens the AttachmentSheet) — the x removal is a SEPARATE
                 // trailing button with a 48dp touch target, so open-tap and
                 // remove-tap cannot be confused on a phone.
-                modifier = Modifier.clickable { onOpen(att) },
+                // C12-U6a (advisor fix 2026-10-22, owner device report): the
+                // chip is COMPACT — filename + type label only. The long
+                // capability reason (118 chars for PDFs) and ALL content stay
+                // in the sheet (tap = the separate preview). One uniform shape
+                // for every kind; width-capped so one chip cannot eat the row.
+                modifier = Modifier.clickable { onOpen(att) }.widthIn(max = 240.dp),
             ) {
                 Row(
                     modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 6.dp).height(48.dp),
@@ -151,15 +157,16 @@ internal fun ChatAttachmentChips(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        // C12 Stage 3 U1 (2026-10-20): capability disclosure on
-                        // the chip — what will be sent, BEFORE send.
+                        // C12-U6a (2026-10-22): the chip shows the TYPE LABEL
+                        // only ("PDF document"), not the full capability line —
+                        // the reason stays in the sheet's separate preview.
                         att.typeLine?.let { line ->
                             Text(
-                                line,
+                                line.substringBefore(" — ").ifBlank { line },
                                 fontSize = 8.sp,
                                 fontFamily = FontFamily.Monospace,
                                 color = colors.textSecondary,
-                                maxLines = 2,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }

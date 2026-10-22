@@ -14,7 +14,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -92,6 +95,31 @@ internal fun AttachmentSheet(
             } catch (_: Exception) { false }
         } else false
     }
+
+    // C12-U6a (advisor fix 2026-10-22, owner device report): a FILE whose
+    // sniffed KIND is a document/archive binary format (PDF/zip/tar/gzip/
+    // legacy office) must NEVER fall through to the editable text-copy field.
+    // Real-world case: an ASCII-only PDF has no NUL in the first 8 KB, so the
+    // snapshot text-sniff marks it non-binary and the old sheet rendered the
+    // RAW PDF SOURCE ("x1e %PDF-1.4 1 0 obj ...") in an editable field — and
+    // the send rode the same raw source. The sheet now shows an honest
+    // info row instead; extraction (when it runs) replaces it with the
+    // extracted view below.
+    val sniffedKind = remember(attachment) {
+        if (isFileKind) {
+            try {
+                com.codespace.ide.chat.AttachmentIntake.verdictOf(attachment).kind
+            } catch (_: Exception) { null }
+        } else null
+    }
+    val rawBinaryKindHidden = sniffedKind in setOf(
+        com.codespace.ide.chat.AttachmentTypeKind.PDF,
+        com.codespace.ide.chat.AttachmentTypeKind.ZIP,
+        com.codespace.ide.chat.AttachmentTypeKind.TAR,
+        com.codespace.ide.chat.AttachmentTypeKind.GZIP,
+        com.codespace.ide.chat.AttachmentTypeKind.LEGACY_OFFICE,
+        com.codespace.ide.chat.AttachmentTypeKind.OTHER_BINARY,
+    )
 
     val kindLabel = when (attachment.kind) {
         ChatAttachment.Kind.FILE -> "file"
@@ -197,6 +225,10 @@ internal fun AttachmentSheet(
                     // C12 Stage 3 U2/U3 (2026-10-20): extracted document text —
                     // read-only view (editing extracted docs is out of scope
                     // this batch), with the honest markers and refusals.
+                    // C12-U6a (2026-10-22): the extracted body is BEHIND an
+                    // expandable, COLLAPSED by default — the sheet is a preview
+                    // header (name/kind/size/notes/refusal), not a wall of raw
+                    // extracted content (owner device report).
                     val doc = attachment.extractedDoc!!
                     for (note in doc.notes) {
                         Text(
@@ -217,20 +249,33 @@ internal fun AttachmentSheet(
                             modifier = Modifier.padding(top = 8.dp),
                         )
                     } else {
-                        Text(
-                            "[extracted file text — read-only]",
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = colors.textSecondary,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
-                        Text(
-                            doc.text,
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = colors.text,
+                        var showExtracted by remember(attachment) { mutableStateOf(false) }
+                        TextButton(
+                            onClick = { showExtracted = !showExtracted },
                             modifier = Modifier.padding(top = 4.dp),
-                        )
+                        ) {
+                            Text(
+                                (if (showExtracted) "Hide" else "Show") + " extracted text (" + doc.text.length + " chars)" +
+                                    if (doc.truncated) " — truncated" else "",
+                                fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                        if (showExtracted) {
+                            Text(
+                                "[extracted file text — read-only]",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = colors.textSecondary,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                            Text(
+                                doc.text,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = colors.text,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
                     }
                 } else if (snap != null && snap.isBinary) {
                     // C12 s1-c: binary — editor disabled, read-only notice (ruling wording).
@@ -262,6 +307,16 @@ internal fun AttachmentSheet(
                         "Read-only stored copy of what was sent. Attach the file again to edit a new copy.",
                         fontSize = 10.sp, color = colors.textSecondary,
                         modifier = Modifier.padding(top = 6.dp),
+                    )
+                } else if (rawBinaryKindHidden) {
+                    // C12-U6a (2026-10-22): document/archive-kind file that the
+                    // text sniff let through (NUL-free PDF/zip source) — the raw
+                    // source is NEVER rendered or offered for editing here.
+                    Text(
+                        "Document/archive file — the raw source is not shown or editable here. " +
+                            "Extraction status and the extracted preview appear once extraction has run.",
+                        fontSize = 11.sp, color = colors.text,
+                        modifier = Modifier.padding(top = 10.dp),
                     )
                 } else {
                     OutlinedTextField(
