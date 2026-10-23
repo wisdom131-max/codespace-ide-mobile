@@ -198,8 +198,11 @@ class PdfAttachmentExtractorTest {
     }
 
     @Test fun salvage_markerIsUntrustedHeaderedAndRedacted() {
+        // ONE pdfFile() per test: TemporaryFolder.newFile(name) throws
+        // IOException on a second same-name call — create once, use twice.
+        val pdf = pdfFile()
         val doc = PdfAttachmentExtractor.extract(
-            pdfFile(), tmp.root,
+            pdf, tmp.root,
             engine = salvageEngine(
                 listOf("page one with key sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12 here\n", "", "page three"),
                 3, listOf(2)),
@@ -208,9 +211,6 @@ class PdfAttachmentExtractorTest {
         assertTrue(doc.notes.any { it.contains("secrets redacted") })
         assertTrue(doc.text, doc.text.contains("[REDACTED]"))
         assertFalse(doc.text, doc.text.contains("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12"))
-        // ONE pdfFile() per test: TemporaryFolder.newFile(name) throws
-        // IOException on a second same-name call — reuse the file.
-        val pdf = pdfFile()
         val att = ChatAttachment(
             path = pdf.absolutePath, relPath = "doc.pdf", name = "doc.pdf",
             kind = ChatAttachment.Kind.FILE, extractedDoc = doc)
