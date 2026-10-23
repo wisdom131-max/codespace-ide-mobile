@@ -39,8 +39,9 @@ class NotificationLaunchSpecTest {
             f and Intent.FLAG_ACTIVITY_CLEAR_TASK != 0)
         assertFalse("RESET_TASK_IF_NEEDED has nothing to reset (no clearTaskOnLaunch)",
             f and Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED != 0)
-        assertFalse("SINGLE_INSTANCE is an anachronism for a single-activity app",
-            f and Intent.FLAG_ACTIVITY_SINGLE_INSTANCE != 0)
+        // (FLAG_ACTIVITY_SINGLE_INSTANCE is deliberately NOT asserted: it is
+        // not a constant every compile target exposes; the exact-value check
+        // below already excludes everything except NEW_TASK + SINGLE_TOP.)
         assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP, f)
     }
 
