@@ -208,8 +208,11 @@ class PdfAttachmentExtractorTest {
         assertTrue(doc.notes.any { it.contains("secrets redacted") })
         assertTrue(doc.text, doc.text.contains("[REDACTED]"))
         assertFalse(doc.text, doc.text.contains("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12"))
+        // ONE pdfFile() per test: TemporaryFolder.newFile(name) throws
+        // IOException on a second same-name call — reuse the file.
+        val pdf = pdfFile()
         val att = ChatAttachment(
-            path = pdfFile().absolutePath, relPath = "doc.pdf", name = "doc.pdf",
+            path = pdf.absolutePath, relPath = "doc.pdf", name = "doc.pdf",
             kind = ChatAttachment.Kind.FILE, extractedDoc = doc)
         val block = ChatAttachmentInjector.buildBlock(listOf(att))
         assertTrue(block, block.contains("### Document text extracted from doc.pdf"))
