@@ -159,7 +159,6 @@ class TerminalService : Service() {
                 // lock stays the separate user switch it is today.
                 startFgs("Keeping the app alive in the background")
             }
-            ACTION_STOP        -> actionStop()
             ACTION_WAKE_LOCK   -> actionAcquireWakeLock()
             ACTION_WAKE_UNLOCK -> actionReleaseWakeLock()
             else -> {
@@ -258,19 +257,6 @@ class TerminalService : Service() {
         rebuildNotification("Terminal session active")
     }
 
-    /**
-     * C12-U6-b item 3: the notification "Stop" action — the explicit user
-     * control that replaces the rejected settings toggle. Honest semantics:
-     * a full stop. onDestroy() releases the locks and finishes any live
-     * terminal sessions, so Stop ends them too — the button is the app's
-     * "exit keep-alive" switch, not a session-preserving pause.
-     */
-    private fun actionStop() {
-        android.util.Log.i("TerminalService", "Stop action: explicit user teardown of the keep-alive service")
-        actionReleaseWakeLock()
-        stopSelf()
-    }
-
     // ── Notification ──
 
     private fun buildNotification(text: String): Notification {
@@ -319,23 +305,12 @@ class TerminalService : Service() {
             NotificationCompat.Action(android.R.drawable.ic_lock_lock, "Acquire WakeLock", pi)
         }
 
-        // C12-U6-b item 3: the Stop action — explicit user teardown instead
-        // of a settings toggle (owner rejected the toggle).
-        val stopPi = PendingIntent.getService(
-            this, 2,
-            Intent(this, TerminalService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val stopAction = NotificationCompat.Action(
-            android.R.drawable.ic_media_pause, "Stop", stopPi)
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("VN Code")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .addAction(toggleAction)
-            .addAction(stopAction)
             .build()
     }
 
@@ -444,12 +419,10 @@ class TerminalService : Service() {
         const val ACTION_WAKE_UNLOCK      = "com.codespace.ide.terminal.ACTION_WAKE_UNLOCK"
         // C12-U6-b item 3 (advisor ruling 2026-10-23): whole-app keep-alive.
         // AppKeepAlive starts the service with ACTION_KEEP_ALIVE — no terminal
-        // session required. The notification's "Stop" button sends
-        // ACTION_STOP: explicit user teardown (lock release + sessions end +
-        // service stop) — the user-control replacement for the rejected
-        // settings toggle.
+        // session required, no Stop action exists (owner overrule 2026-10-23:
+        // the notification keeps ONLY the WakeLock toggle; teardown is the OS's
+        // business — swipe the notification away or uninstall).
         const val ACTION_KEEP_ALIVE        = "com.codespace.ide.terminal.ACTION_KEEP_ALIVE"
-        const val ACTION_STOP              = "com.codespace.ide.terminal.ACTION_STOP"
 
         fun start(context: Context, text: String = "Terminal session active") {
             val intent = Intent(context, TerminalService::class.java).apply {
