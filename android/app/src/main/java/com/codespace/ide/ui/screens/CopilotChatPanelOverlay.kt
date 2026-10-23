@@ -582,6 +582,21 @@ private fun registeredModelEntries(tokenStore: SecureTokenStore?): List<String> 
         }
 
 /**
+ * C12-U6-b fix 2b (2026-10-23): display rel-path for a binary-dialog attach —
+ * relative to the project root when the file lives under it, else just the name
+ * (same display form the attach picker shows for project files).
+ */
+private fun chatAttachRelPath(path: String, projectRootPath: String?): String {
+    val name = java.io.File(path).name
+    if (projectRootPath.isNullOrBlank()) return name
+    val root = try { java.io.File(projectRootPath).canonicalPath } catch (_: Exception) { java.io.File(projectRootPath).absolutePath }
+    val rootNorm = root.trimEnd('/')
+    return if (path == rootNorm) name
+    else if (path.startsWith(rootNorm + "/")) path.substring(rootNorm.length + 1)
+    else name
+}
+
+/**
  * C12 s1-b (2026-10-08): attach-time snapshot creation — FILE attachments get the
  * first 64 KB copy + first-8 KB view hash + binary sniff; SELECTION attachments
  * snapshot their snippet; IMAGE/AUDIO get no snapshot (sheet shows an info row).
@@ -1319,6 +1334,11 @@ internal fun CopilotChatPanelInline(
     // their prompt here to be auto-sent as a new chat message.
     pendingPrompt: String? = null,
     onPendingPromptConsumed: (() -> Unit)? = null,
+    // C12-U6-b fix 2b (2026-10-23): binary-dialog Attach-to-chat — the shell's
+    // binary-file dialog hands a path here; it rides the SAME pipeline as the
+    // attach picker (snapshot + type line + extraction effect + redaction).
+    pendingAttachPath: String? = null,
+    onPendingAttachConsumed: (() -> Unit)? = null,
     // P41-X: Workspace-aware AI context — project root + current file + open files
     projectRootPath: String? = null,
     currentFilePath: String? = null,
@@ -1971,6 +1991,27 @@ internal fun CopilotChatPanelInline(
         if (!pendingPrompt.isNullOrBlank()) {
             send(pendingPrompt)
             onPendingPromptConsumed?.invoke()
+        }
+    }
+
+    // C12-U6-b fix 2b: binary-dialog attach — builds the chip EXACTLY like the
+    // picker's project-file row (Kind.FILE + relPath + snapshot + type line); the
+    // extraction effect then treats it like any attachment (extract / list / preview).
+    LaunchedEffect(pendingAttachPath) {
+        if (!pendingAttachPath.isNullOrBlank()) {
+            try {
+                val f = java.io.File(pendingAttachPath)
+                if (f.isFile && attachments.none { it.path == pendingAttachPath }) {
+                    attachments = attachments + attachmentWithSnapshot(
+                        com.codespace.ide.chat.ChatAttachment(
+                            path = pendingAttachPath,
+                            relPath = chatAttachRelPath(pendingAttachPath, projectRootPath),
+                            name = f.name,
+                            kind = com.codespace.ide.chat.ChatAttachment.Kind.FILE,
+                        ))
+                }
+            } catch (_: Exception) { }
+            onPendingAttachConsumed?.invoke()
         }
     }
 

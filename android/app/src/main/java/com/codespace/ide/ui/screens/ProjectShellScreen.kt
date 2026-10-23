@@ -159,6 +159,35 @@ private data class IdeColors(
 private fun canonicalPathOrSelf(path: String): String =
     try { java.io.File(path).canonicalPath } catch (_: Exception) { path }
 
+/**
+ * C12-U6-b fix 2b (advisor-approved 2026-10-23): binary-file open gate. The code
+ * editor renders TEXT only; opening a binary (PDF/zip/office/image/other) dumped
+ * raw bytes into a giant readText tab (the owner's U4-6 "partial"). Every shell
+ * open route funnels here: a NON-text verdict (AttachmentTypeSniffer — the SAME
+ * 8-byte magic + extension sniff the attachment sheet uses) routes to the honest
+ * binary dialog instead of the editor. Text kinds (TEXT/HTML/CSV/RTF) open as
+ * before; session restore and untitled-file creation stay unguarded by design.
+ */
+private fun binaryOpenVerdictFor(path: String): com.codespace.ide.chat.TypeVerdict? {
+    return try {
+        val f = java.io.File(path)
+        if (!f.isFile || !f.canRead()) return null
+        val head = java.io.RandomAccessFile(f, "r").use { raf ->
+            val buf = ByteArray(com.codespace.ide.chat.AttachmentTypeSniffer.SNIFF_WINDOW_BYTES)
+            val n = raf.read(buf)
+            if (n <= 0) ByteArray(0) else buf.copyOf(n)
+        }
+        val v = com.codespace.ide.chat.AttachmentTypeSniffer.sniff(f.name, head)
+        when (v.kind) {
+            com.codespace.ide.chat.AttachmentTypeKind.TEXT,
+            com.codespace.ide.chat.AttachmentTypeKind.HTML,
+            com.codespace.ide.chat.AttachmentTypeKind.CSV,
+            com.codespace.ide.chat.AttachmentTypeKind.RTF -> null
+            else -> v
+        }
+    } catch (_: Exception) { null }
+}
+
 @Composable
 private fun ideColors(themeName: String): IdeColors {
     val _isDark = !themeName.contains("Light")
@@ -795,6 +824,12 @@ fun ProjectShellScreen(
     val showChatPanelMs = remember { mutableStateOf(false) }; var showChatPanel by showChatPanelMs
     // P39: AI code actions from the editor lightbulb menu deliver their prompt here
     val pendingChatPromptMs = remember { mutableStateOf<String?>(null) }
+    // C12-U6-b fix 2b (2026-10-23): binary-open gate states. A non-text file hit
+    // through any editor-open route raises the honest dialog (path to verdict);
+    // "Attach to chat" hands the path to the chat panel through the SAME Ms-state
+    // + consumed-callback channel as pendingChatPromptMs.
+    val binaryOpenRequestMs = remember { mutableStateOf<Pair<String, com.codespace.ide.chat.TypeVerdict>?>(null) }
+    val pendingChatAttachMs = remember { mutableStateOf<String?>(null) }
     val aiPanelWidthMs = remember { mutableFloatStateOf(300f) }; var _aiPanelWidth by aiPanelWidthMs
     val bottomPanelHeightMs = remember { mutableFloatStateOf(300f) }; var _bottomPanelHeight by bottomPanelHeightMs
     val bottomPanelPrevHeightMs = remember { mutableFloatStateOf(300f) }; var _bottomPanelPrevHeight by bottomPanelPrevHeightMs
@@ -1023,9 +1058,16 @@ fun ProjectShellScreen(
                     destFile.outputStream().use { output -> input.copyTo(output) }
                 }
                 val path = destFile.absolutePath
-                if (!editorTabs.contains(path)) editorTabs.add(path)
-                activeEditorTab = path
-                showNotification("Opened $fileName", "success")
+                // C12-U6-b fix 2b: importing a binary (PDF/zip/image) raises the
+                // dialog instead of dumping raw bytes into an editor tab.
+                val bvSaf = binaryOpenVerdictFor(path)
+                if (bvSaf == null) {
+                    if (!editorTabs.contains(path)) editorTabs.add(path)
+                    activeEditorTab = path
+                    showNotification("Opened $fileName", "success")
+                } else {
+                    binaryOpenRequestMs.value = path to bvSaf
+                }
             } catch (e: Exception) {
                 showNotification("Failed to open file: ${e.message}", "error")
             }
@@ -1476,7 +1518,10 @@ fun ProjectShellScreen(
                                     activeBottomTab = BottomTab.PROBLEMS
                                     activePanel = null
                                 },
-                                onOpenFile = { path ->
+                                onOpenFile = ogate@{ path ->
+                                    // C12-U6-b fix 2b: binaries never dump into the editor — dialog.
+                                    val bv = binaryOpenVerdictFor(path)
+                                    if (bv != null) { binaryOpenRequestMs.value = path to bv; return@ogate }
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
                                     pushNavEntry(activeEditorTab, scrollTargetLine)
                                     activeEditorTab = path
@@ -1589,7 +1634,10 @@ fun ProjectShellScreen(
                                         }
                                     }
                                 },
-                                onOpenFileAtLine = { path, line ->
+                                onOpenFileAtLine = ogate@{ path, line ->
+                                    // C12-U6-b fix 2b: binaries never dump into the editor — dialog.
+                                    val bv = binaryOpenVerdictFor(path)
+                                    if (bv != null) { binaryOpenRequestMs.value = path to bv; return@ogate }
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
                                     pushNavEntry(activeEditorTab, scrollTargetLine)
                                     activeEditorTab = path
@@ -1705,7 +1753,10 @@ fun ProjectShellScreen(
                                 // C3: SearchPanel now invokes with a 0-BASED line (lineNum - 1
                                 // at its source); this wrapper owns the single +1 like every other
                                 // onOpenFileAtLine consumer. Notification still shows the 1-based line.
-                                onOpenFileAtLine = { path, line ->
+                                onOpenFileAtLine = ogate@{ path, line ->
+                                    // C12-U6-b fix 2b: binaries never dump into the editor — dialog.
+                                    val bv = binaryOpenVerdictFor(path)
+                                    if (bv != null) { binaryOpenRequestMs.value = path to bv; return@ogate }
                                     if (!editorTabs.contains(path)) editorTabs.add(path)
                                     pushNavEntry(activeEditorTab, scrollTargetLine)
                                     activeEditorTab = path
@@ -1744,11 +1795,17 @@ fun ProjectShellScreen(
                     // call-stack and breakpoint jumps ONE LINE EARLY.
                     if (file.isNotBlank()) {
                         val path = file
-                        if (path !in editorTabs) {
-                            editorTabs.add(path)
+                        // C12-U6-b fix 2b: debug jump into a binary file — dialog, not editor.
+                        val bv1748 = binaryOpenVerdictFor(path)
+                        if (bv1748 == null) {
+                            if (path !in editorTabs) {
+                                editorTabs.add(path)
+                            }
+                            activeEditorTab = path
+                            scrollTargetLine = line + 1
+                        } else {
+                            binaryOpenRequestMs.value = path to bv1748
                         }
-                        activeEditorTab = path
-                        scrollTargetLine = line + 1
                     }
                 },
                 // BUG-6 FIX: Run file without debugger — sends run command to terminal
@@ -1883,6 +1940,8 @@ fun ProjectShellScreen(
                     showBottomPanelMs = showBottomPanelMs,
                     showChatPanelMs = showChatPanelMs,
                     pendingChatPromptMs = pendingChatPromptMs,
+                    binaryOpenRequestMs = binaryOpenRequestMs,
+                    pendingChatAttachMs = pendingChatAttachMs,
                     showFileSearchMs = showFileSearchMs,
                     showFindBarMs = showFindBarMs,
                     showReplaceRowMs = showReplaceRowMs,
@@ -1972,7 +2031,10 @@ fun ProjectShellScreen(
     if (showFileSearch) {
         ProjectFileSearchPanel(
             projectRoot = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: "",
-            onOpenFile = { path ->
+            onOpenFile = fsg@{ path ->
+                // C12-U6-b fix 2b: binaries never dump into the editor — dialog.
+                val bv = binaryOpenVerdictFor(path)
+                if (bv != null) { binaryOpenRequestMs.value = path to bv; return@fsg }
                 if (!editorTabs.contains(path)) editorTabs.add(path)
                 activeEditorTab = path
                 if (com.codespace.ide.ui.panes.MarkdownPreviewRouter.shouldShowPreviewTab(path)) {
@@ -1981,7 +2043,10 @@ fun ProjectShellScreen(
                 }
                 showFileSearch = false
             },
-            onOpenFileAtLine = { path, line ->
+            onOpenFileAtLine = fsg@{ path, line ->
+                // C12-U6-b fix 2b: binaries never dump into the editor — dialog.
+                val bv = binaryOpenVerdictFor(path)
+                if (bv != null) { binaryOpenRequestMs.value = path to bv; return@fsg }
                 if (!editorTabs.contains(path)) editorTabs.add(path)
                 activeEditorTab = path
                 if (com.codespace.ide.ui.panes.MarkdownPreviewRouter.shouldShowPreviewTab(path)) {
@@ -2119,6 +2184,37 @@ fun ProjectShellScreen(
             handleMenuAction = { handleMenuAction(it) },
             showNotification = { msg, type -> showNotification(msg, type) },
         )
+
+        // C12-U6-b fix 2b (2026-10-23): honest binary-file dialog. A non-text file
+        // (PDF/zip/office/image/binary) hit through any editor-open route NEVER
+        // dumps raw bytes into a tab; this dialog says so and routes "Attach to
+        // chat" through the SAME attachment pipeline (extraction + preview +
+        // redaction) as the paperclip picker.
+        binaryOpenRequestMs.value?.let { req ->
+            val (bPath, bVerdict) = req
+            AlertDialog(
+                onDismissRequest = { binaryOpenRequestMs.value = null },
+                title = { Text("Binary file") },
+                text = {
+                    Column {
+                        Text(bPath.substringAfterLast("/"),
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text(bVerdict.label)
+                        Text("This file is not text, so it is not opened in the code editor. Attach it to the chat to use it as context: text is extracted from PDFs and documents, entries are listed for archives.")
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showChatPanel = true
+                        pendingChatAttachMs.value = bPath
+                        binaryOpenRequestMs.value = null
+                    }) { Text("Attach to chat") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { binaryOpenRequestMs.value = null }) { Text("Cancel") }
+                },
+            )
+        }
 
         // P2-TOOLBAR: floating debug toolbar — self-contained, renders only while debugging
         DebugToolbarOverlay()
@@ -4729,6 +4825,9 @@ private fun PssEditorColumn(
     showBottomPanelMs: MutableState<Boolean>,
     showChatPanelMs: MutableState<Boolean>,
     pendingChatPromptMs: MutableState<String?>,
+    // C12-U6-b fix 2b: binary-open gate (path to verdict) + dialog attach channel
+    binaryOpenRequestMs: MutableState<Pair<String, com.codespace.ide.chat.TypeVerdict>?>,
+    pendingChatAttachMs: MutableState<String?>,
     showFileSearchMs: MutableState<Boolean>,
     showFindBarMs: MutableState<Boolean>,
     showReplaceRowMs: MutableState<Boolean>,
@@ -4779,6 +4878,9 @@ private fun PssEditorColumn(
     var showBottomPanel by showBottomPanelMs
     var showChatPanel by showChatPanelMs
     var pendingChatPrompt by pendingChatPromptMs
+    // C12-U6-b fix 2b: delegated gate state for the open routes in this column
+    var binaryOpenRequest by binaryOpenRequestMs
+    var pendingChatAttach by pendingChatAttachMs
     var _showFileSearch by showFileSearchMs
     var showFindBar by showFindBarMs
     var showReplaceRow by showReplaceRowMs
@@ -4904,7 +5006,10 @@ private fun PssEditorColumn(
                     toggles            = FeatureToggleStore.toEditorFeatureToggles(),
                     externalJump       = scrollTargetLineMs.pending,
                     onExternalJumpConsumed = scrollTargetLineMs::clearIfCurrent,
-                    onOpenFileAtLine = { path, line ->
+                    onOpenFileAtLine = egate@{ path, line ->
+                        // C12-U6-b fix 2b: binaries never dump into the editor — dialog.
+                        val bv = binaryOpenVerdictFor(path)
+                        if (bv != null) { binaryOpenRequest = path to bv; return@egate }
                         if (!editorTabs.contains(path)) editorTabs.add(path)
                         pushNavEntry(activeEditorTab, scrollTargetLine)
                         activeEditorTab = path
@@ -5043,6 +5148,10 @@ private fun PssEditorColumn(
                 // PR08 (P4a-2): defense in depth — an empty/blank path can never
                 // enter the tab chain, whatever the calling surface sends.
                 if (filePath.isBlank()) return@jtp
+                // C12-U6-b fix 2b: terminal link into a binary file (the U4-6 route) —
+                // honest dialog instead of raw bytes in the editor.
+                val bvJtp = binaryOpenVerdictFor(filePath)
+                if (bvJtp != null) { binaryOpenRequest = filePath to bvJtp; return@jtp }
                 // Advisor A.2 (2026-10-15): breadcrumb BEFORE opening the file.
                 com.codespace.ide.diagnostics.CrumbLog.crumb("open-file", "opening " + filePath + ":" + line + (if (col > 0) ":" + col else ""))
                 val targetCanon = canonicalPathOrSelf(filePath)
@@ -5099,7 +5208,10 @@ private fun PssEditorColumn(
                 }
                 HorizontalDivider(color = DividerColor)
                 TerminalPane(externalState = sharedTerminalState, projectId = projectId, onFileSystemChanged = onFileSystemChanged,
-                    onOpenFileAtLine = { path, line ->
+                    onOpenFileAtLine = stgate@{ path, line ->
+                        // C12-U6-b fix 2b: binaries never dump into the editor — dialog.
+                        val bv = binaryOpenVerdictFor(path)
+                        if (bv != null) { binaryOpenRequest = path to bv; return@stgate }
                         if (!editorTabs.contains(path)) editorTabs.add(path)
                         pushNavEntry(activeEditorTab, scrollTargetLine)
                         activeEditorTab = path
@@ -5151,6 +5263,10 @@ private fun PssEditorColumn(
                 keyInsertDispatcher = keyInsertDispatcher,
                 pendingPrompt = pendingChatPrompt,
                 onPendingPromptConsumed = { pendingChatPrompt = null },
+                // C12-U6-b fix 2b: binary-dialog "Attach to chat" channel (same
+                // pattern as pendingPrompt — Ms state + consumed callback).
+                pendingAttachPath = pendingChatAttach,
+                onPendingAttachConsumed = { pendingChatAttach = null },
                 colors = ChatPanelColors(
                     background = BgColor,
                     surface = PanelBg,
@@ -5166,7 +5282,10 @@ private fun PssEditorColumn(
                 ),
                 tokenStore = tokenStore,
                 // AI auto-opens files it writes — no manual navigation needed
-                onOpenFile = { path ->
+                onOpenFile = cgate@{ path ->
+                    // C12-U6-b fix 2b: binaries never dump into the editor — dialog.
+                    val bv = binaryOpenVerdictFor(path)
+                    if (bv != null) { binaryOpenRequest = path to bv; return@cgate }
                     if (!editorTabs.contains(path)) editorTabs.add(path)
                     activeEditorTab = path
                 },
