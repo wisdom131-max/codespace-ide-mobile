@@ -276,6 +276,7 @@ class TerminalService : Service() {
                 .setPriority(NotificationCompat.PRIORITY_MIN)
                 .setShowWhen(false)
                 .setSilent(true)
+                .setContentIntent(NotificationLaunch.contentPendingIntent(this))
                 .build()
         }
 
@@ -305,12 +306,16 @@ class TerminalService : Service() {
             NotificationCompat.Action(android.R.drawable.ic_lock_lock, "Acquire WakeLock", pi)
         }
 
+        // C12-U6-b item 2: tapping the notification brings the existing app
+        // task to the front (launcher-style, no recreation, no stacking) —
+        // works identically for the keep-alive text and the terminal text.
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("VN Code")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .addAction(toggleAction)
+            .setContentIntent(NotificationLaunch.contentPendingIntent(this))
             .build()
     }
 
