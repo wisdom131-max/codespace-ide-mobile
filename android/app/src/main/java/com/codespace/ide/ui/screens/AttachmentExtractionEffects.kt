@@ -65,7 +65,16 @@ private fun verdictNeedsExtraction(att: ChatAttachment): Boolean {
     } catch (_: Exception) { return false }
     if (verdict.extraction == com.codespace.ide.chat.AttachmentExtraction.ARCHIVE) return true
     if (verdict.extraction != com.codespace.ide.chat.AttachmentExtraction.DOCUMENT) return false
-    // Documents: only when the plain-text path cannot carry them (binary
+    // Advisor item 1, APPROVED + shipped (2026-10-23): a PDF ALWAYS takes the
+    // extraction lane, regardless of snapshot binary-ness. Root cause: the
+    // delivered gen.py fixture text.pdf is NUL-FREE ASCII, so the snapshot's
+    // text sniff marks it non-binary and the old gate let the RAW PDF SOURCE
+    // ride the send (raw header, no redaction, no UNTRUSTED label). Real-world
+    // PDFs carry NULs in compressed streams and extract; hand-built NUL-free
+    // PDFs must not ride raw. Redacted + labeled + capped lives only on the
+    // extraction lane, so every PDF goes there.
+    if (verdict.kind == com.codespace.ide.chat.AttachmentTypeKind.PDF) return true
+    // Other documents: only when the plain-text path cannot carry them (binary
     // snapshot = the text sniff failed — office formats, odd encodings).
     val snapBinary = att.snapshot?.isBinary ?: true
     return snapBinary

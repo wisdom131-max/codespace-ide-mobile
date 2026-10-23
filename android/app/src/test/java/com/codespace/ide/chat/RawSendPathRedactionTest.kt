@@ -28,15 +28,11 @@ import org.junit.rules.TemporaryFolder
  *    file rides as-is; redaction protects the EXTRACTED/persisted surfaces).
  *    The asymmetry is asserted by contrast in [extractedBranchRedactsByContrast].
  *
- * CONSEQUENCE (the known open item, reported to the advisor 2026-10-23): a
- * NUL-free PDF attached as a file rides its RAW SOURCE to the model instead
- * of the extracted text. Real-world PDFs almost always contain NULs in
- * compressed streams and take the extraction lane properly; only hand-built
- * NUL-free fixtures like the gen.py text.pdf hit the raw ride. Minimal
- * proposed fix (NOT shipped in this commit — the advisor said report before
- * coding): verdictNeedsExtraction returns true for kind == PDF regardless of
- * snapshot binary-ness, so every PDF takes the extraction lane (redacted,
- * labeled UNTRUSTED, capped).
+ * FIX SHIPPED (advisor item 1, APPROVED 2026-10-23):
+ * verdictNeedsExtraction now returns true for kind == PDF regardless of
+ * snapshot binary-ness, so EVERY PDF takes the extraction lane (redacted,
+ * labeled UNTRUSTED, capped) — a NUL-free PDF can no longer ride its raw
+ * source to the model. The exact-fixture test below locks the new behavior.
  */
 class RawSendPathRedactionTest {
 
@@ -67,6 +63,8 @@ class RawSendPathRedactionTest {
         } catch (_: Exception) { return false }
         if (verdict.extraction == AttachmentExtraction.ARCHIVE) return true
         if (verdict.extraction != AttachmentExtraction.DOCUMENT) return false
+        // Advisor item 1, APPROVED (2026-10-23): PDFs ALWAYS extract.
+        if (verdict.kind == AttachmentTypeKind.PDF) return true
         val snapBinary = att.snapshot?.isBinary ?: true
         return snapBinary
     }
@@ -84,8 +82,14 @@ class RawSendPathRedactionTest {
         assertTrue(b.decodeToString().contains("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12"))
     }
 
+    /**
+     * Regression (advisor item 1, 2026-10-23): the EXACT delivered gen.py
+     * text.pdf bytes are NUL-free ASCII — the honest sniff says text, NOT
+     * binary — yet the attachment MUST take the extraction lane now: the
+     * PDF-always rule beats the snapshot binary-ness.
+     */
     @Test
-    fun exactGenPdfBytesRideRawUnredacted() {
+    fun exactGenPdfBytesNowTakeTheExtractionLane() {
         val f = tmp.newFile("text.pdf")
         f.writeBytes(fixtureBytes("text-fixture.pdf"))
         val snap = AttachmentSnapshot.forFile(f.absolutePath)
@@ -97,19 +101,58 @@ class RawSendPathRedactionTest {
         val verdict = AttachmentIntake.verdictOf(att)
         assertEquals(AttachmentTypeKind.PDF, verdict.kind)
         assertEquals(AttachmentExtraction.DOCUMENT, verdict.extraction)
-        // The shipped gate: DOCUMENT verdict + NON-binary snapshot => NO extraction
-        // (extractedDoc stays null on the real attach path).
-        assertFalse("shipped verdictNeedsExtraction semantic: this PDF never extracts", shippedGate(att))
-        val block = ChatAttachmentInjector.buildBlock(listOf(att))
-        // HEADER: the raw-file branch, never the extracted-document branch.
-        assertTrue(block, block.contains("### File: text.pdf"))
-        assertFalse(block, block.contains("### Document text extracted from"))
-        // The RAW PDF SOURCE rides the send.
-        assertTrue(block, block.contains("%PDF-1.4"))
-        assertTrue(block, block.contains("1 0 obj"))
-        // And the secret rides UNREDACTED — the raw branch has no redaction call.
-        assertTrue(block, block.contains("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12"))
-        assertFalse(block, block.contains("[REDACTED]"))
+        // The FIXED gate: a PDF extracts even when its snapshot is non-binary.
+        assertTrue("PDF-always rule: this PDF must extract now", shippedGate(att))
+    }
+
+    /**
+     * End-to-end regression (advisor item 1): the exact gen.py bytes through
+     * the REAL send path. The engine is faked to return EXACTLY what the real
+     * upstream parser extracts from these bytes (locked in CI by
+     * PdfTruncatedFixtureUpstreamTest.realParserExtractsAllThreeLinesFromTheFullFixture);
+     * everything DOWNSTREAM of the engine is real: the decision core
+     * (finishText: cap, redaction, notes), the ChatAttachment carrier, and
+     * ChatAttachmentInjector.buildBlock. Expected: the EXTRACT header, the
+     * UNTRUSTED label, redacted text (secret gone, honest note) — and NEVER
+     * the raw PDF source riding the send.
+     */
+    @Test
+    fun exactGenPdfBytesExtractHeaderedAndRedacted() {
+        val f = tmp.newFile("text.pdf")
+        f.writeBytes(fixtureBytes("text-fixture.pdf"))
+        val att = ChatAttachment(
+            path = f.absolutePath, relPath = "text.pdf", name = "text.pdf",
+            kind = ChatAttachment.Kind.FILE,
+            snapshot = AttachmentSnapshot.forFile(f.absolutePath))
+        assertTrue(shippedGate(att))
+        // What upstream 2.0.27 extracts from these exact bytes (CI-locked).
+        val pages = listOf(
+            "Hello from the C12 U4 fixture.\n" +
+                "Second line has 42 tokens.\n" +
+                "sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12 rides for redaction.\n")
+        val doc = PdfAttachmentExtractor.extract(
+            f, tmp.root, providerAcceptsImages = false,
+            engine = PdfAttachmentExtractor.PdfTextEngine {
+                PdfAttachmentExtractor.EngineOutcome.Text(pages, 1)
+            })
+        // The extraction lane's guarantees on the EXACT fixture bytes:
+        assertEquals(null, doc.refusal)
+        assertTrue(doc.notes.any { it.contains("secrets redacted") })
+        assertTrue(doc.text, doc.text.contains("[REDACTED"))
+        assertFalse(doc.text, doc.text.contains("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12"))
+        val sent = ChatAttachmentInjector.buildBlock(
+            listOf(att.copy(extractedDoc = doc)))
+        // HEADER: the extracted-document branch, never the raw-file branch.
+        assertTrue(sent, sent.contains("### Document text extracted from text.pdf"))
+        assertFalse(sent, sent.contains("### File: text.pdf"))
+        assertTrue(sent, sent.contains("(UNTRUSTED file content"))
+        // The extracted text rides, REDACTED.
+        assertTrue(sent, sent.contains("Hello from the C12 U4 fixture."))
+        assertTrue(sent, sent.contains("[REDACTED"))
+        assertFalse(sent, sent.contains("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12"))
+        // And the raw PDF source NEVER rides the send anymore.
+        assertFalse(sent, sent.contains("%PDF-1.4"))
+        assertFalse(sent, sent.contains("1 0 obj"))
     }
 
     @Test
