@@ -289,6 +289,21 @@ class MainActivity : FragmentActivity() {
         super.onStop()
     }
 
+    // C12-U6-b item 3 (advisor ruling 2026-10-23): whole-app keep-alive hooks.
+    // First resume arms a ONE-SHOT 5 s delayed FGS start (AppKeepAlive); pausing
+    // before it fires CANCELS it (visible-only). Never started from process
+    // start, crash-loop-guarded — see AppKeepAlive + CodeSpaceApplication's
+    // "Do NOT acquire WakeLocks or start foreground service here" guard.
+    override fun onResume() {
+        super.onResume()
+        com.codespace.ide.terminal.AppKeepAlive.onAppResumed(this)
+    }
+
+    override fun onPause() {
+        com.codespace.ide.terminal.AppKeepAlive.onAppPaused()
+        super.onPause()
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         updateSystemUIForOrientation(newConfig.orientation)

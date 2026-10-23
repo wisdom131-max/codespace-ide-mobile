@@ -144,6 +144,16 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         // Termux does NOT do this — it only starts the service + WakeLock when a
         // terminal session is actually being created (from the Activity, not Application).
         // We match that pattern: service starts from TerminalPane's DisposableEffect.
+        // C12-U6-b item 3 (advisor ruling 2026-10-23): the ONLY keep-alive work
+        // at process start is a timestamp stamp for the crash-loop guard — a
+        // plain file write. No WakeLock, no FGS, nothing the old crash-loop
+        // trigger (the block above) ever touched: AppKeepAlive starts the
+        // service >= 5 s after the FIRST MainActivity.onResume, visible-only,
+        // and skips entirely when the guard detects a fresh crash or rapid
+        // restarts.
+        try {
+            com.codespace.ide.terminal.AppKeepAlive.recordProcessStart(this)
+        } catch (_: Exception) { }
         installCrashLogger()
         installNativeCrashHandler()
     }
