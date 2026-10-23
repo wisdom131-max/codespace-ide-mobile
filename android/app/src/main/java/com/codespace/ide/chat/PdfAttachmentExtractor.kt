@@ -47,8 +47,20 @@ object PdfAttachmentExtractor {
 
     /** Classified engine outcome — the real engine maps exceptions to these. */
     sealed class EngineOutcome {
-        /** Raw per-page text (already capped at [MAX_PAGES] + deadline by the engine). */
-        data class Text(val pages: List<String>, val totalPageCount: Int) : EngineOutcome()
+        /**
+         * Raw per-page text (already capped at [MAX_PAGES] + deadline by the
+         * engine). [unreadable] lists the 1-BASED page numbers that threw
+         * individually (salvage, advisor item 2, approved 2026-10-23): the
+         * engine keeps reading the remaining pages instead of failing the
+         * whole file, and the decision core turns the list into the honest
+         * "(partial: X of Y pages unreadable)" marker. Blank placeholders keep
+         * the pages list index-aligned.
+         */
+        data class Text(
+            val pages: List<String>,
+            val totalPageCount: Int,
+            val unreadable: List<Int> = emptyList(),
+        ) : EngineOutcome()
         /** Password-protected or encrypted document. */
         object Encrypted : EngineOutcome()
         /** Not a readable PDF at all. */
@@ -136,14 +148,35 @@ object PdfAttachmentExtractor {
         }
         val rawText = sb.toString()
         val scanned = outcome.totalPageCount > 0 && rawText.isBlank()
+        // SALVAGE (advisor item 2, approved 2026-10-23): unreadable pages are
+        // reported per page; the marker is never presented as a complete read.
+        val unreadable = outcome.unreadable
+        if (unreadable.isNotEmpty() && unreadable.size >= outcome.pages.size) {
+            // EVERY page we attempted threw: honest refusal, never an
+            // empty-string success, never a false "scanned" claim.
+            return AttachmentIntake.ExtractedDoc(
+                refusal = "No readable text was found in this PDF — " +
+                    "${unreadable.size} of ${outcome.totalPageCount} pages could not be read; " +
+                    "the file may be truncated or damaged — showing file info only."
+            )
+        }
         if (scanned) {
-            return renderScanned(file, imageDir, outcome.totalPageCount, providerAcceptsImages, renderer)
+            return renderScanned(file, imageDir, outcome.totalPageCount, providerAcceptsImages, renderer, unreadable)
         }
         var text = if (rawText.length > AttachmentIntake.MAX_EXTRACTED_SNAPSHOT_CHARS)
             rawText.take(AttachmentIntake.MAX_EXTRACTED_SNAPSHOT_CHARS)
         else rawText
         val truncated = text.length < rawText.length
         if (truncated) notes.add("extracted text truncated at the snapshot cap")
+        if (unreadable.isNotEmpty()) {
+            // The honest partial marker rides the extracted text the model
+            // receives AND the notes channel (one channel, mammoth-style) —
+            // appended AFTER the cap so it can never be cut away.
+            val marker = "(partial: ${unreadable.size} of ${outcome.totalPageCount} pages unreadable — " +
+                "pages ${unreadable.joinToString(", ")})"
+            text += "\n" + marker
+            notes.add(marker)
+        }
         // Same attachment-tier secrets pipeline as every extractor (U2/U3).
         val (redacted, changed) = AttachmentSecrets.redact(text, AttachmentSecrets.TIER_ATTACHMENT)
         if (changed) notes.add("secrets redacted")
@@ -160,13 +193,22 @@ object PdfAttachmentExtractor {
         totalPageCount: Int,
         providerAcceptsImages: Boolean,
         renderer: PageImageRenderer,
+        unreadable: List<Int> = emptyList(),
     ): AttachmentIntake.ExtractedDoc {
+        // Wording fix (advisor item 2, approved 2026-10-23): blank text does
+        // NOT prove "scanned" — the upstream lenient parser returns BLANK
+        // text for a truncated file (CI-locked by
+        // PdfTruncatedFixtureUpstreamTest). Never claim image-only alone.
         if (!providerAcceptsImages) {
             return AttachmentIntake.ExtractedDoc(
-                refusal = "No extractable text (scanned or image-only PDF) and the active provider does not accept page images — showing file info only."
+                refusal = "No readable text was found in this PDF — it may be truncated or image-only — " +
+                    "and the active provider does not accept page images — showing file info only."
             )
         }
-        val notes = mutableListOf("scanned PDF — no extractable text")
+        val notes = mutableListOf("no readable text — the PDF may be truncated or image-only")
+        if (unreadable.isNotEmpty()) {
+            notes.add("${unreadable.size} page(s) could not be read (pages ${unreadable.joinToString(", ")})")
+        }
         val paths = mutableListOf<String>()
         val count = minOf(MAX_RENDER_PAGES, totalPageCount)
         var oom = false
@@ -186,7 +228,8 @@ object PdfAttachmentExtractor {
             return if (oom) AttachmentIntake.ExtractedDoc(
                 refusal = "Ran out of memory rendering this scanned PDF — showing file info only."
             ) else AttachmentIntake.ExtractedDoc(
-                refusal = "Scanned PDF — no extractable text and no page could be rendered — showing file info only."
+                refusal = "No readable text was found in this PDF — it may be truncated or image-only — " +
+                    "and no page could be rendered — showing file info only."
             )
         }
         notes.add("${paths.size} page image(s) rendered for the model")
@@ -211,15 +254,29 @@ object PdfAttachmentExtractor {
                 )
                 val total = doc.numberOfPages
                 val pages = mutableListOf<String>()
+                val unreadable = mutableListOf<Int>()
                 for (i in 1..minOf(total, MAX_PAGES)) {
                     if (System.currentTimeMillis() > deadline) break
-                    val stripper = com.tom_roush.pdfbox.text.PDFTextStripper()
-                    stripper.setStartPage(i)
-                    stripper.setEndPage(i)
-                    // getText() appends a trailing newline per page; trim later.
-                    pages.add(stripper.getText(doc))
+                    // SALVAGE (advisor item 2, approved 2026-10-23): ONE page
+                    // that throws (corrupt content stream, missing font,
+                    // broken remnant) must never kill the whole file — the
+                    // upstream parser silently produces blank text for many
+                    // damaged files, but when it THROWS we keep the pages
+                    // that DID read and report the rest as unreadable.
+                    // Exception only: OOM/StackOverflowError still propagate
+                    // to the honest process-level handlers below.
+                    try {
+                        val stripper = com.tom_roush.pdfbox.text.PDFTextStripper()
+                        stripper.setStartPage(i)
+                        stripper.setEndPage(i)
+                        // getText() appends a trailing newline per page; trim later.
+                        pages.add(stripper.getText(doc))
+                    } catch (e: Exception) {
+                        unreadable.add(i)
+                        pages.add("")
+                    }
                 }
-                return EngineOutcome.Text(pages, total)
+                return EngineOutcome.Text(pages, total, unreadable)
             } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
                 return EngineOutcome.Encrypted
             } catch (e: java.security.GeneralSecurityException) {

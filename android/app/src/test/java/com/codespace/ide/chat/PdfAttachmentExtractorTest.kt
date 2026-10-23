@@ -108,7 +108,11 @@ class PdfAttachmentExtractorTest {
             engine = engine(" ", " ", total = 2),
         )
         assertTrue(doc.pageImages.isEmpty())
-        assertTrue(doc.refusal!!.contains("scanned or image-only"))
+        // Item 2 wording fix (2026-10-23): blank text must never claim
+        // "scanned" alone — truncated files produce blank text too.
+        assertTrue(doc.refusal!!.contains("No readable text was found"))
+        assertTrue(doc.refusal!!.contains("truncated or image-only"))
+        assertFalse(doc.refusal!!.contains("scanned or image-only"))
         assertTrue(doc.refusal!!.contains("does not accept page images"))
     }
 
@@ -152,6 +156,94 @@ class PdfAttachmentExtractorTest {
         )
         assertTrue(doc.pageImages.isEmpty())
         assertTrue(doc.refusal!!.contains("no page could be rendered"))
+    }
+
+    // ---- Advisor item 2 (APPROVED 2026-10-23): per-page SALVAGE ----
+    // One unreadable page never kills the file; the honest marker rides the
+    // extracted text AND the notes channel; wording never claims "scanned".
+
+    private fun salvageEngine(
+        pages: List<String>, total: Int, unreadable: List<Int>,
+    ): PdfAttachmentExtractor.PdfTextEngine = PdfAttachmentExtractor.PdfTextEngine {
+        PdfAttachmentExtractor.EngineOutcome.Text(pages, total, unreadable)
+    }
+
+    @Test fun salvage_onePageThrowsOthersParse() {
+        val doc = PdfAttachmentExtractor.extract(
+            pdfFile(), tmp.root,
+            engine = salvageEngine(listOf("page one text\n", "", "page three text"), 3, listOf(2)),
+        )
+        assertNull(doc.refusal)
+        assertTrue(doc.text, doc.text.contains("page one text"))
+        assertTrue(doc.text, doc.text.contains("page three text"))
+        // The honest marker rides the text the model receives...
+        assertTrue(doc.text, doc.text.contains("(partial: 1 of 3 pages unreadable — pages 2)"))
+        // ...AND the notes channel (one channel, mammoth-style).
+        assertTrue(doc.notes.any { it.contains("(partial: 1 of 3 pages unreadable") })
+    }
+
+    @Test fun salvage_allPagesUnreadable_refusesHonestly() {
+        val doc = PdfAttachmentExtractor.extract(
+            pdfFile(), tmp.root, providerAcceptsImages = true,
+            engine = salvageEngine(listOf("", "", ""), 3, listOf(1, 2, 3)),
+            renderer = pngRenderer,
+        )
+        // Never an empty-string success, never a false "scanned" claim, and
+        // no render attempt either — every page already threw.
+        assertTrue(doc.refusal, doc.refusal!!.contains("No readable text was found"))
+        assertTrue(doc.refusal, doc.refusal!!.contains("3 of 3 pages could not be read"))
+        assertTrue(doc.refusal, doc.refusal!!.contains("may be truncated or damaged"))
+        assertTrue(doc.pageImages.isEmpty())
+        assertTrue(doc.text.isEmpty())
+    }
+
+    @Test fun salvage_markerIsUntrustedHeaderedAndRedacted() {
+        val doc = PdfAttachmentExtractor.extract(
+            pdfFile(), tmp.root,
+            engine = salvageEngine(
+                listOf("page one with key sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12 here\n", "", "page three"),
+                3, listOf(2)),
+        )
+        // Extraction-lane guarantees still apply on the partial read:
+        assertTrue(doc.notes.any { it.contains("secrets redacted") })
+        assertTrue(doc.text, doc.text.contains("[REDACTED]"))
+        assertFalse(doc.text, doc.text.contains("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12"))
+        val att = ChatAttachment(
+            path = pdfFile().absolutePath, relPath = "doc.pdf", name = "doc.pdf",
+            kind = ChatAttachment.Kind.FILE, extractedDoc = doc)
+        val block = ChatAttachmentInjector.buildBlock(listOf(att))
+        assertTrue(block, block.contains("### Document text extracted from doc.pdf"))
+        assertTrue(block, block.contains("(UNTRUSTED file content"))
+        assertTrue(block, block.contains("(partial: 1 of 3 pages unreadable"))
+        assertFalse(block, block.contains("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12"))
+    }
+
+    @Test fun salvage_cappedPageStillCountsAsRead() {
+        // A page at the per-page cap is NOT miscounted as unreadable; only
+        // the page that THREW carries the marker.
+        val longPage = "a".repeat(PdfAttachmentExtractor.MAX_CHARS_PER_PAGE + 500)
+        val doc = PdfAttachmentExtractor.extract(
+            pdfFile(), tmp.root,
+            engine = salvageEngine(listOf(longPage, "", "page three"), 3, listOf(2)),
+        )
+        assertTrue(doc.notes.any { it.contains("page 1 text truncated") })
+        assertTrue(doc.text, doc.text.contains("(partial: 1 of 3 pages unreadable — pages 2)"))
+        // The marker names ONLY the unreadable page.
+        assertFalse(doc.text, doc.text.contains("pages 1"))
+    }
+
+    @Test fun salvage_scannedWordingWithUnreadablePagesKeepsHonestClaim() {
+        // Blank text + a subset of unreadable pages (the rest silent-blank):
+        // the scanned fallback wording stays honest and carries the count.
+        val doc = PdfAttachmentExtractor.extract(
+            pdfFile(), tmp.root, providerAcceptsImages = true,
+            engine = salvageEngine(listOf("", ""), 2, listOf(2)),
+            renderer = pngRenderer,
+        )
+        assertNull(doc.refusal)
+        assertTrue(doc.notes.any { it.contains("no readable text — the PDF may be truncated or image-only") })
+        assertTrue(doc.notes.any { it.contains("1 page(s) could not be read (pages 2)") })
+        assertFalse(doc.notes.any { it.contains("scanned PDF — no extractable text") })
     }
 
     // ---- Advisor item 1(a): Error-class failures (READ: BC excluded, so
