@@ -286,6 +286,13 @@ dependencies {
     // DAPClientTest DAP-message codec) — the Android stub throws.
     testImplementation("org.json:json:20240303")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    // C12-U6-b fix 4 (advisor item 4, 2026-10-23): the REAL upstream PDFBox
+    // 2.0.27 parser for JVM tests (PdfTruncatedFixtureUpstreamTest) — upstream
+    // of the pinned com.tom-roush:pdfbox-android:2.0.27.0 port, same parsing
+    // code line (COSParser/PDDocument/PDFTextStripper). No classpath
+    // collision: the port lives under com.tom_roush.pdfbox.*, this under
+    // org.apache.pdfbox.*. JVM tests only, never packaged.
+    testImplementation("org.apache.pdfbox:pdfbox:2.0.27")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(composeBom)
