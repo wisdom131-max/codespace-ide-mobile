@@ -1686,6 +1686,19 @@ internal fun CopilotChatPanelInline(
         }
     }
 
+    // C12-U6-b fix 2a (2026-10-23, advisor-approved): after a send that did NOT
+    // complete (failure or user stop), put back any attachment that rode the ask
+    // but is no longer held by the composer — chips the user deliberately removed
+    // mid-send stay removed; the ask's own attachments return so Retry rides them.
+    fun restoreSentAttachments(sent: List<com.codespace.ide.chat.ChatAttachment>) {
+        val missing = sent.filter { s -> attachments.none { it.path == s.path } }
+        if (missing.isNotEmpty()) {
+            attachments = attachments + missing
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[chat] send did not complete — " + missing.size + " attachment(s) kept in the composer", "chat")
+        }
+    }
+
     fun send(userText: String) {
         if (userText.isBlank()) return
         // R10-B: every sent input (message or slash) lands in the history walker
@@ -1700,10 +1713,13 @@ internal fun CopilotChatPanelInline(
             handleCommand(cmd.name, cmd.arg)
             return
         }
-        // R3-ATTACH: merge explicit chips + "#file" tokens; chips clear on send
+        // R3-ATTACH: merge explicit chips + "#file" tokens.
+        // C12-U6-b fix 2a (2026-10-23): chips clear ONLY after confirmed success —
+        // a failed or stopped send KEEPS them so Retry rides the same attachments
+        // (advisor rule: cleanup only after confirmed success). Visible change:
+        // chips stay in the composer while the reply streams, then leave on success.
         val hashAtts = com.codespace.ide.chat.ChatAttachmentInjector.resolveHashTokens(userText, projectRootPath)
         val sendAtts = (attachments + hashAtts).distinctBy { it.path }
-        attachments = emptyList()
         // CH04 (P4h): the message carries its resolved attachments so the session
         // persists them and a restored conversation re-sends faithfully.
         val msg = ChatMsg("user", userText, attachments = sendAtts)
@@ -1746,6 +1762,9 @@ internal fun CopilotChatPanelInline(
                     messages.add(ChatMsg("card_connect", svc))
                 }
                 persistSessions()
+                // C12-U6-b fix 2a: confirmed success — only now do the sent chips
+                // leave the composer (chips added mid-send are untouched).
+                attachments = attachments.filter { a -> sendAtts.none { s -> s.path == a.path } }
             } catch (ce: kotlinx.coroutines.CancellationException) {
                 // C6: never silent again — a cancelled send leaves a trace so a
                 // device log can always answer "did the ask ever reach the model?"
@@ -1753,6 +1772,8 @@ internal fun CopilotChatPanelInline(
                     "[chat] send CANCELLED — " + (if (chatStopRequested) "user stopped the request" else "external cancellation (request died mid-flight)"), "chat")
                 // The user's ask must not vanish: persist it even when cancelled.
                 runCatching { persistSessions() }
+                // C12-U6-b fix 2a: a stopped send keeps the ask's attachments.
+                restoreSentAttachments(sendAtts)
             } catch (e: Exception) {
                 // I5 — quota notification (VS Code chatQuotaNotification analog):
                 // rate-limit / quota errors also surface in the notification bell,
@@ -1804,6 +1825,9 @@ internal fun CopilotChatPanelInline(
                 error = redacted2
                 messages.add(ChatMsg("assistant", "Error: " + redacted2))
                 persistSessions()
+                // C12-U6-b fix 2a: a failed send keeps the ask's attachments so the
+                // Retry button (and any manual re-send) rides them again.
+                restoreSentAttachments(sendAtts)
             } finally {
                 chatLoading = false
                 liveStreamText = ""
@@ -1825,7 +1849,13 @@ internal fun CopilotChatPanelInline(
         val lastUserIdx = messages.indexOfLast { it.role == "user" }
         if (lastUserIdx < 0) return
         val userText = messages[lastUserIdx].text
+        // C12-U6-b fix 2a (2026-10-23): the retry re-attaches what rode the original
+        // turn — CH04 persists the resolved attachment list on the user message, so
+        // restored chips keep snapshot + extracted text (a text-only retry loses
+        // them). "#file" tokens re-resolve from the text; distinctBy path prevents dupes.
+        val retryAtts = messages[lastUserIdx].attachments
         while (messages.size > lastUserIdx) messages.removeAt(messages.size - 1)
+        restoreSentAttachments(retryAtts)
         send(userText)
     }
 
