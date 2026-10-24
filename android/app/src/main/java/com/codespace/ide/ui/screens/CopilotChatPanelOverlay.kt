@@ -1616,6 +1616,30 @@ internal fun CopilotChatPanelInline(
         }
     }
 
+    /**
+     * A4 (advisor ruling 2026-10-24): a completed send's messages land in the
+     * session the send was SENT IN. Sends run in ChatSendScope (they survive
+     * panel unmount — C6), but switchSession() reseeds the shared `messages`
+     * list IN PLACE: an in-flight send completing after a conversation-tab
+     * switch used to graft its reply (or its Error bubble) onto the WRONG
+     * session — the original conversation looked "cleared" of its send. Every
+     * send-path write now goes through here with the session id captured at
+     * send START.
+     */
+    fun appendSendResult(sendSessionId: String, msg: ChatMsg) {
+        if (activeSessionId == sendSessionId) {
+            messages.add(msg)
+            persistSessions()
+        } else {
+            val target = sessions.find { it.id == sendSessionId }
+            if (target != null) {
+                target.messages.add(msg)
+                target.updatedAt = System.currentTimeMillis()
+                saveSessions(context, sessions, dirtyIds = setOf(sendSessionId))
+            }
+        }
+    }
+
     fun startNewSession() {
         persistSessions()
         val s = newSession(mode, activeCustomModeId)
@@ -1758,6 +1782,11 @@ internal fun CopilotChatPanelInline(
         // persists them and a restored conversation re-sends faithfully.
         val msg = ChatMsg("user", userText, attachments = sendAtts)
         messages.add(msg)
+        // A4: the send is bound to THIS session; sendMessages is a stable
+        // snapshot so a mid-flight conversation-tab switch can neither change
+        // the request's conversation nor steal its reply.
+        val sendSessionId = activeSessionId
+        val sendMessages = messages.toList()
         chatInput = ""
         error = ""
         chatLoading = true
@@ -1781,21 +1810,20 @@ internal fun CopilotChatPanelInline(
                         is ChatStreamEvent.Delta -> liveStreamText += ev.text
                         is ChatStreamEvent.ToolDone -> { liveStreamText += "\n" + ev.tool + ": " + ev.status; toolsUsed.add(ev.tool + " (" + ev.status + ")") }
                         // P4 (BATCH3): "Switched to key N" persists as its own chip line in the transcript.
-                        is ChatStreamEvent.KeySwitch -> messages.add(ChatMsg("tool", ev.line))
+                        is ChatStreamEvent.KeySwitch -> appendSendResult(sendSessionId, ChatMsg("tool", ev.line))
                     }
                 }
-                val reply = chat(effModel, messages.toList(), mode, activeCustomModeId, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
+                val reply = chat(effModel, sendMessages, mode, activeCustomModeId, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
                 // C6 probe: completion trace — reply size + tools used.
                 com.codespace.ide.diagnostics.AppOutputLog.log(
                     "[chat] send OK — reply " + reply.length + " chars, tools=" + (toolsUsed.distinct().joinToString(",").ifEmpty { "none" }), "chat")
                 // R4-TYPED-ENTRY: tools-used transcript chip rides before the reply
-                if (toolsUsed.isNotEmpty()) messages.add(ChatMsg("tool", toolsUsed.distinct().joinToString(", ")))
-                messages.add(ChatMsg("assistant", reply))
+                if (toolsUsed.isNotEmpty()) appendSendResult(sendSessionId, ChatMsg("tool", toolsUsed.distinct().joinToString(", ")))
+                appendSendResult(sendSessionId, ChatMsg("assistant", reply))
                 // Phase 1 C3: request_connector ran mid-loop -> inline Connect card
                 com.codespace.ide.agent.AgentConnectorManager.consumePendingConnectCard()?.let { svc ->
-                    messages.add(ChatMsg("card_connect", svc))
+                    appendSendResult(sendSessionId, ChatMsg("card_connect", svc))
                 }
-                persistSessions()
                 // C12-U6-b fix 2a: confirmed success — only now do the sent chips
                 // leave the composer (chips added mid-send are untouched).
                 attachments = attachments.filter { a -> sendAtts.none { s -> s.path == a.path } }
@@ -1805,9 +1833,14 @@ internal fun CopilotChatPanelInline(
                 com.codespace.ide.diagnostics.AppOutputLog.log(
                     "[chat] send CANCELLED — " + (if (chatStopRequested) "user stopped the request" else "external cancellation (request died mid-flight)"), "chat")
                 // The user's ask must not vanish: persist it even when cancelled.
-                runCatching { persistSessions() }
-                // C12-U6-b fix 2a: a stopped send keeps the ask's attachments.
-                restoreSentAttachments(sendAtts)
+                // A4: if a conversation-tab switch already happened, the switch's
+                // own persistSessions saved the ask — never re-write the (now
+                // foreign) active session from this send.
+                runCatching { if (activeSessionId == sendSessionId) persistSessions() }
+                // C12-U6-b fix 2a: a stopped send keeps the ask's attachments
+                // (only into the same session's composer; a switched-to session
+                // keeps ITS composer untouched).
+                if (activeSessionId == sendSessionId) restoreSentAttachments(sendAtts)
             } catch (e: Exception) {
                 // I5 — quota notification (VS Code chatQuotaNotification analog):
                 // rate-limit / quota errors also surface in the notification bell,
@@ -1857,11 +1890,12 @@ internal fun CopilotChatPanelInline(
                 }
                 val redacted2 = com.codespace.ide.chat.AttachmentSecrets.redact(errText, com.codespace.ide.chat.AttachmentSecrets.TIER_ATTACHMENT).first
                 error = redacted2
-                messages.add(ChatMsg("assistant", "Error: " + redacted2))
-                persistSessions()
+                appendSendResult(sendSessionId, ChatMsg("assistant", "Error: " + redacted2))
                 // C12-U6-b fix 2a: a failed send keeps the ask's attachments so the
-                // Retry button (and any manual re-send) rides them again.
-                restoreSentAttachments(sendAtts)
+                // Retry button (and any manual re-send) rides them again — in the
+                // session the ask was sent in (A4; CH04 persists the attachment
+                // list on the message, so Retry re-attaches regardless).
+                if (activeSessionId == sendSessionId) restoreSentAttachments(sendAtts)
             } finally {
                 chatLoading = false
                 liveStreamText = ""
