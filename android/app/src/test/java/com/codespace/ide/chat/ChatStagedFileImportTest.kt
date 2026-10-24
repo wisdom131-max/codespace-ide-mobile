@@ -60,15 +60,25 @@ class ChatStagedFileImportTest {
         assertEquals("hello staged", f.readText())
     }
 
-    @Test fun stagedCopy_overCap_leavesNoPartialFile() {
+    @Test fun stagedCopy_failedCopy_leavesNoPartialFile() {
+        // A3 CI fix (run 3330): 3000 bytes can never trip the 10 MB intake cap —
+        // the over-cap path itself is covered by copyCapped_overCap with a small
+        // injected cap. What stagedCopy OWNS is cleanup: a copy that dies midway
+        // (simulated I/O failure) must leave NO partial file behind.
         val dir = tmp.newFolder()
-        val data = ByteArray(3000) { 9 }
+        val evil = object : java.io.InputStream() {
+            var n = 0
+            override fun read(): Int {
+                if (n++ < 100) return 7
+                throw java.io.IOException("simulated mid-copy failure")
+            }
+        }
         try {
-            ChatStagedFileImport.stagedCopy(ByteArrayInputStream(data), dir, "big.bin")
-            throw AssertionError("expected over-cap failure")
+            ChatStagedFileImport.stagedCopy(evil, dir, "half.bin")
+            throw AssertionError("expected copy failure")
         } catch (_: Exception) { }
         assertEquals(0, dir.listFiles()?.size ?: 0)
-        assertFalse(File(dir, "big.bin").exists())
+        assertFalse(File(dir, "half.bin").exists())
     }
 
     @Test fun stagedCopy_nameCollision_getsUniqueName() {
