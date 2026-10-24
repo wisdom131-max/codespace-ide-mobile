@@ -99,9 +99,27 @@ object AttachmentTypeSniffer {
      * that is really a PNG is an image; a .png that is really a zip follows
      * the zip family). Unknown extension + unknown magic = OTHER_BINARY.
      */
+    /**
+     * A1 (advisor 2026-10-24): language-source extensions. Unlike BY_EXT
+     * (the name wins outright), source extensions are TEXT-PREFERRED: the
+     * name proposes text and the CONTENT still vetoes real binaries (NULs
+     * without a BOM or UTF-16 pattern). This is what keeps a real binary
+     * renamed to .java in the honest dialog while a UTF-16 source file opens
+     * normally. List mirrors the Explorer's runnable-language table.
+     */
+    private val SOURCE_EXTS = setOf(
+        "java", "kt", "kts", "py", "js", "mjs", "cjs", "ts", "tsx", "jsx",
+        "c", "h", "cpp", "hpp", "cc", "cs", "go", "rs", "rb", "php", "swift",
+        "scala", "sh", "bash", "zsh", "sql", "ini", "toml", "gradle",
+        "properties", "ps1", "bat", "dart", "lua", "pl", "r", "jl", "vue", "svelte",
+    )
+
     fun sniff(fileName: String, magic: ByteArray?): TypeVerdict {
         val ext = fileName.substringAfterLast('.', "").lowercase()
-        val m = magic?.takeIf { it.isNotEmpty() }
+        // A1: keep the EMPTY array — a zero-byte file is text (VS Code parity;
+        // encoding.ts treats absence of bytes as absence of evidence). Only a
+        // null window (read unavailable) stays unknown.
+        val m = magic
         val (kind, label) = when {
             isZip(m) -> zipFamily(ext)               // magic first: a real zip
             isGzip(m) -> (AttachmentTypeKind.GZIP to "Gzip archive")
@@ -110,8 +128,13 @@ object AttachmentTypeSniffer {
             isImage(m) -> (AttachmentTypeKind.IMAGE to "Image")
             isAudio(m) -> (AttachmentTypeKind.AUDIO to "Audio")
             isVideo(m) -> (AttachmentTypeKind.VIDEO to "Video")
-            else -> BY_EXT[ext] ?: (if (looksTexty(m)) (AttachmentTypeKind.TEXT to "File")
-                                   else (AttachmentTypeKind.OTHER_BINARY to "Binary file"))
+            else -> {
+                val src = if (ext in SOURCE_EXTS) (AttachmentTypeKind.TEXT to "Source code") else null
+                src?.takeIf { looksTexty(m) }
+                    ?: BY_EXT[ext]
+                    ?: (if (looksTexty(m)) (AttachmentTypeKind.TEXT to "File")
+                        else (AttachmentTypeKind.OTHER_BINARY to "Binary file"))
+            }
         }
         return verdictOf(kind, label)
     }
@@ -162,10 +185,34 @@ object AttachmentTypeSniffer {
     private fun isVideo(m: ByteArray?) = m != null && m.size >= 8 &&
         m[4] == 'f'.code.toByte() && m[5] == 't'.code.toByte() && m[6] == 'y'.code.toByte() && m[7] == 'p'.code.toByte()
 
+    /**
+     * A1 (advisor 2026-10-24): BOM-aware text test, modeled on VS Code
+     * encoding.ts (UTF8_BOM at encoding.ts:25, detectEncodingByBOMFromBuffer
+     * at encoding.ts:280). Order: empty = text; UTF-8 / UTF-16 LE / BE BOMs =
+     * text regardless of NULs; no NUL = text; NULs = binary UNLESS every pair
+     * in the window matches the byte,0 (LE) or 0,byte (BE) pattern of ASCII
+     * text in BOM-less UTF-16 — the documented heuristic. VS Code decodes
+     * UTF-16 only with a BOM; this best-effort analog plus the binary
+     * dialog's Open-anyway escape hatch means a wrong call never blocks.
+     */
     private fun looksTexty(m: ByteArray?): Boolean {
         if (m == null) return false
-        for (b in m) if (b == 0.toByte()) return false
-        return true
+        if (m.isEmpty()) return true
+        if (m.size >= 3 && m[0] == 0xEF.toByte() && m[1] == 0xBB.toByte() && m[2] == 0xBF.toByte()) return true
+        if (m.size >= 2 && ((m[0] == 0xFF.toByte() && m[1] == 0xFE.toByte()) ||
+                (m[0] == 0xFE.toByte() && m[1] == 0xFF.toByte()))) return true
+        var hasNul = false
+        for (b in m) if (b == 0.toByte()) { hasNul = true; break }
+        if (!hasNul) return true
+        var le = true
+        var be = true
+        var i = 0
+        while (i + 1 < m.size) {
+            if (m[i + 1] != 0.toByte()) le = false
+            if (m[i] != 0.toByte()) be = false
+            i += 2
+        }
+        return le || be
     }
 
     /** Capability + honesty, one place. The chips and sheet show this line. */

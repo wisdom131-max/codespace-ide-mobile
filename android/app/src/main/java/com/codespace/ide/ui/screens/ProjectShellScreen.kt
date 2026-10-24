@@ -2200,6 +2200,8 @@ fun ProjectShellScreen(
                         Text(bPath.substringAfterLast("/"),
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                         Text(bVerdict.label)
+                        // A1 (advisor 2026-10-24): short reason line, code only.
+                        Text("Reason: " + bVerdict.kind.name)
                         Text("This file is not text, so it is not opened in the code editor. Attach it to the chat to use it as context: text is extracted from PDFs and documents, entries are listed for archives.")
                     }
                 },
@@ -2211,7 +2213,19 @@ fun ProjectShellScreen(
                     }) { Text("Attach to chat") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { binaryOpenRequestMs.value = null }) { Text("Cancel") }
+                    // A1 (advisor 2026-10-24): VS Code-style escape hatch
+                    // (binaryEditor.ts:67 "Open Anyway") — a classifier false
+                    // positive can never block a valid source file.
+                    androidx.compose.foundation.layout.Row {
+                        TextButton(onClick = {
+                            if (!editorTabs.contains(bPath)) editorTabs.add(bPath)
+                            activeEditorTab = bPath
+                            activePanel = null
+                            binaryOpenRequestMs.value = null
+                            showNotification("Opened " + bPath.substringAfterLast("/") + " as text (override)", "success")
+                        }) { Text("Open anyway as text") }
+                        TextButton(onClick = { binaryOpenRequestMs.value = null }) { Text("Cancel") }
+                    }
                 },
             )
         }
