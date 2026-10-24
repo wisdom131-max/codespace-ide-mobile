@@ -65,7 +65,7 @@ object ChatStagedFileImport {
     internal fun stagedCopy(ins: InputStream, dir: File, safeName: String): File {
         val dest = uniqueDest(dir, safeName)
         try {
-            dest.outputStream().use { outs -> copyCapped(ins, outs, ChatAttachment.INTAKE_CAP_BYTES) }
+            dest.outputStream().use { outs -> copyCapped(ins, outs, ChatAttachmentInjector.INTAKE_CAP_BYTES) }
             return dest
         } catch (t: Throwable) {
             dest.delete()

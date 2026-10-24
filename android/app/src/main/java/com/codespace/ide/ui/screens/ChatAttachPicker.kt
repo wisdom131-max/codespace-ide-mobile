@@ -78,7 +78,7 @@ private const val PICKER_MAX_FILES = 400
 // A2 (advisor ruling 2026-10-24): the walk keeps its 400-entry LIST cap (with an
 // honest "showing first 400" row) but loses the silent 512 KB SIZE filter —
 // any file can be PICKED; classification, the 10 MB intake cap and honest
-// refusals all happen at attach/send time (verdict + ChatAttachment.INTAKE_CAP_BYTES).
+// refusals all happen at attach/send time (verdict + ChatAttachmentInjector.INTAKE_CAP_BYTES).
 private const val PICKER_SEARCH_SCAN_CAP = 20000
 private const val PICKER_SEARCH_RESULT_CAP = 120
 
