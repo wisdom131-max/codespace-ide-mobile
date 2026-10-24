@@ -90,6 +90,9 @@ class GeminiProvider : ChatProvider {
             .put("contents", contents)
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", request.systemPrompt))))
             .toString()
+        // B.2 TIMING: exact UTF-8 bytes; no prompt text ever logged.
+        val bodyBytes = body.toByteArray(Charsets.UTF_8).size
+        val t0 = com.codespace.ide.chat.ChatTimingLog.now()
         val url = "https://generativelanguage.googleapis.com/v1beta/models/" + request.model + ":generateContent?key=" + apiKey
         val resp = http.newCall(
             Request.Builder().url(url).header("Content-Type", "application/json")
@@ -97,10 +100,18 @@ class GeminiProvider : ChatProvider {
         ).execute()
         // FIX (404 regression): include the vendor error body so 404 model-not-found
         // is distinguishable from auth errors (old message always blamed the key).
-        if (!resp.isSuccessful) throw com.codespace.ide.chat.ChatHttpException(resp.code, OpenAiCompatibleTransport.transportErrorParts("Gemini API error", resp).first, OpenAiCompatibleTransport.retryAfterMs(resp))
+        if (!resp.isSuccessful) {
+            com.codespace.ide.chat.ChatTimingLog.log("gemini.complete", "gemini", request.model,
+                com.codespace.ide.chat.ChatTimingLog.elapsedMs(t0), bodyBytes, bodyBytes / 4,
+                status = resp.code.toString(), errClass = "http")
+            throw com.codespace.ide.chat.ChatHttpException(resp.code, OpenAiCompatibleTransport.transportErrorParts("Gemini API error", resp).first, OpenAiCompatibleTransport.retryAfterMs(resp))
+        }
         val json = JSONObject(resp.body?.string() ?: "")
-        json.getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
+        val out = json.getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
             .getJSONArray("parts").getJSONObject(0).getString("text")
+        com.codespace.ide.chat.ChatTimingLog.log("gemini.complete", "gemini", request.model,
+            com.codespace.ide.chat.ChatTimingLog.elapsedMs(t0), bodyBytes, bodyBytes / 4)
+        out
     }
 
     /**
@@ -114,6 +125,9 @@ class GeminiProvider : ChatProvider {
                 .put("contents", buildContents(request.convMsgs, request.images, request.audios))
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", request.systemPrompt))))
                 .toString()
+            val bodyBytes = body.toByteArray(Charsets.UTF_8).size
+            val t0 = com.codespace.ide.chat.ChatTimingLog.now()
+            var ttfbMs = -1L
             val streamClient = http.newBuilder()
                 .readTimeout(180, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
@@ -124,7 +138,12 @@ class GeminiProvider : ChatProvider {
                     .post(body.toRequestBody("application/json".toMediaType())).build()
             )
             val resp = call.execute()
-            if (!resp.isSuccessful) throw com.codespace.ide.chat.ChatHttpException(resp.code, OpenAiCompatibleTransport.transportErrorParts("Gemini API error", resp).first, OpenAiCompatibleTransport.retryAfterMs(resp))
+            if (!resp.isSuccessful) {
+                com.codespace.ide.chat.ChatTimingLog.log("gemini.stream", "gemini", request.model,
+                    com.codespace.ide.chat.ChatTimingLog.elapsedMs(t0), bodyBytes, bodyBytes / 4,
+                    status = resp.code.toString(), errClass = "http")
+                throw com.codespace.ide.chat.ChatHttpException(resp.code, OpenAiCompatibleTransport.transportErrorParts("Gemini API error", resp).first, OpenAiCompatibleTransport.retryAfterMs(resp))
+            }
             val sb = StringBuilder()
             val reader = resp.body?.byteStream()?.bufferedReader()
             try {
@@ -144,13 +163,19 @@ class GeminiProvider : ChatProvider {
                     } ?: continue
                     for (i in 0 until parts.length()) {
                         val t = parts.getJSONObject(i).optString("text")
-                        if (t.isNotEmpty()) { sb.append(t); onDelta(t) }
+                        if (t.isNotEmpty()) {
+                            if (ttfbMs < 0) ttfbMs = com.codespace.ide.chat.ChatTimingLog.elapsedMs(t0)
+                            sb.append(t); onDelta(t)
+                        }
                     }
                 }
             } finally {
                 try { call.cancel() } catch (_: Exception) { }
                 try { reader?.close() } catch (_: Exception) { }
             }
+            com.codespace.ide.chat.ChatTimingLog.log("gemini.stream", "gemini", request.model,
+                com.codespace.ide.chat.ChatTimingLog.elapsedMs(t0), bodyBytes, bodyBytes / 4,
+                ttfbMs = ttfbMs)
             sb.toString()
         }
 

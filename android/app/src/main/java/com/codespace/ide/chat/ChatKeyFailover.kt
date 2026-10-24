@@ -68,14 +68,23 @@ object ChatKeyFailover {
         block: suspend (apiKey: String) -> T,
     ): T {
         var lastError: ChatHttpException? = null
+        // B.2 TIMING: attempt count + total backoff wait per send (429 retry
+        // re-sends the FULL prompt, so waits are first-class slowness data).
+        var attempts = 0
+        var totalWaitMs = 0L
+        val t0 = com.codespace.ide.chat.ChatTimingLog.now()
         for ((ci, candidate) in candidates.withIndex()) {
             val (suffix, key) = candidate
             val label = ChatKeyPool.label(suffix).ifEmpty { suffix }
             var rateLimitAttempt = 0
             while (true) {
                 try {
+                    attempts++
                     val result = block(key)
                     authCooldowns.remove(suffix)
+                    com.codespace.ide.chat.ChatTimingLog.log("keyfailover", "chat", "-",
+                        com.codespace.ide.chat.ChatTimingLog.elapsedMs(t0),
+                        attempts = attempts, waitMs = totalWaitMs)
                     return result
                 } catch (he: ChatHttpException) {
                     if (hasStarted?.invoke() == true) {
@@ -99,6 +108,7 @@ object ChatKeyFailover {
                         if (rateLimitAttempt <= 2) {
                             val waitMs = he.retryAfterMs ?: if (rateLimitAttempt == 1) 1500L else 4000L
                             onInfo?.invoke("[KEY-FAILOVER] '" + label + "' rate-limited (429) \\u2014 retrying the SAME key in " + waitMs + "ms")
+                            totalWaitMs += waitMs
                             delay(waitMs)
                             continue
                         }
@@ -124,6 +134,9 @@ object ChatKeyFailover {
                 }
             }
         }
+        com.codespace.ide.chat.ChatTimingLog.log("keyfailover", "chat", "-",
+            com.codespace.ide.chat.ChatTimingLog.elapsedMs(t0),
+            status = "exhausted", attempts = attempts, waitMs = totalWaitMs)
         val base = lastError?.message ?: "Key rejected"
         throw ChatHttpException(lastError?.statusCode ?: 401, base + " \\u2014 no other working key for this provider.")
     }

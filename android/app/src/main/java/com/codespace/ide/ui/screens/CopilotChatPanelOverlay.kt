@@ -900,11 +900,15 @@ private suspend fun computeContextUsage(
     val apiModel = model.substring(colonIdx + 1)
     val key = try { tokenStore?.aiKey(providerId.uppercase()) } catch (_: Exception) { null }
     val req = ChatRequest(apiModel, systemPrompt, convMsgs, key)
+    val tGauge0 = com.codespace.ide.chat.ChatTimingLog.now()
     val used = try {
         kotlinx.coroutines.withTimeoutOrNull(5000) { provider.countTokens(req) }
     } catch (_: Exception) { null }
         ?: com.codespace.ide.chat.TokenCounter.countOpenAiCompatible(systemPrompt, convMsgs, apiModel)
     val max = com.codespace.ide.chat.TokenCounter.modelContextLimit(provider, apiModel, key)
+    com.codespace.ide.chat.ChatTimingLog.log("gauge.countTokens", providerId, apiModel,
+        com.codespace.ide.chat.ChatTimingLog.elapsedMs(tGauge0),
+        status = if (used == null) "fallback" else "ok")
     return used to max
 }
 
@@ -975,6 +979,8 @@ private suspend fun chat(
     // tools/list results feed the external-tools docs block below.
     com.codespace.ide.agent.McpClientManager.ensureDiscovered(context)
     
+    // B.2 TIMING: request-BUILD cost (our side) measured from here.
+    val tBuild0 = com.codespace.ide.chat.ChatTimingLog.now()
     var systemPrompt = buildSystemPrompt(mode, context, workspaceCtx, projectRootPath, customModeId)
     // R9-A (D3): custom-mode tool allowlist \u2014 RESTRICT-ONLY. FlowGate and
     // ChatPermissionStore levels stay supreme in every case.
@@ -995,6 +1001,11 @@ private suspend fun chat(
     }
 
     val convMsgs = convMsgsOf(systemPrompt, messages, attachments)
+    run {
+        val chars = com.codespace.ide.chat.ChatTimingLog.estimateChars(systemPrompt, convMsgs)
+        com.codespace.ide.chat.ChatTimingLog.log("send.build", model.substringBefore(':'), model,
+            com.codespace.ide.chat.ChatTimingLog.elapsedMs(tBuild0), chars, chars / 4, sizeUnit = "chars")
+    }
 
     // Agentic loop: call model -> parse tool calls -> execute -> feed results -> repeat
     val maxIterations = 10
@@ -1047,6 +1058,7 @@ private suspend fun chat(
     }
     for (iteration in 0 until maxIterations) {
         onStreamEvent?.invoke(ChatStreamEvent.IterationStart(iteration))
+        val tIter0 = com.codespace.ide.chat.ChatTimingLog.now()
         val deltaSink: ((String) -> Unit)? =
             onStreamEvent?.let { sink -> { d: String -> sink(ChatStreamEvent.Delta(d)) } }
         val content = if (provider != null) {
@@ -1080,6 +1092,8 @@ private suspend fun chat(
         } else {
             throw Exception("'$model' is not a registered chat provider. Add an API key in Settings first.")
         }
+        com.codespace.ide.chat.ChatTimingLog.log("send.iter", model.substringBefore(':'), model,
+            com.codespace.ide.chat.ChatTimingLog.elapsedMs(tIter0))
 
         if (mode == ChatMode.AGENT && AgentTools.hasToolCalls(content)) {
             // Add assistant response to conversation
