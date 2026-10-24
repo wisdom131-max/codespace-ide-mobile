@@ -1990,6 +1990,23 @@ internal fun CopilotChatPanelInline(
         }
     }
 
+    // A3 (advisor ruling 2026-10-24): attach ANY file from the device via the
+    // SYSTEM picker (ACTION_OPEN_DOCUMENT, MIME * / *) — imported through the
+    // app-private staging path (ChatStagedFileImport: sanitized name, 10 MB cap
+    // enforced while streaming, no persisted URI grants, no partial files) and
+    // then classified by the SAME sniffer as every other attachment.
+    val deviceFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                val att = com.codespace.ide.chat.ChatStagedFileImport.importFromUri(context, uri)
+                if (attachments.none { it.path == att.path }) attachments = attachments + attachmentWithSnapshot(att)
+                showAttachPicker = false
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(context, e.message ?: "Could not attach file", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     // R8-QUEUE + CH07 (P4h): queued messages auto-send in ORDER as turns end.
     LaunchedEffect(queuedTexts, chatLoading) {
         if (queuedTexts.isNotEmpty() && !chatLoading) {
@@ -2820,6 +2837,8 @@ internal fun CopilotChatPanelInline(
                 },
                 onRunSkill = { sk -> runSkill(sk) },
                 onPickImage = { imageLauncher.launch("*/*") },
+                // A3: system-picker route for files outside the project.
+                onPickDeviceFile = { deviceFileLauncher.launch(arrayOf("*/*")) },
                 // R10-E: capture THIS app's window via PixelCopy → IMAGE attachment
                 onPickScreenshot = {
                     val activity = com.codespace.ide.ui.screens.ChatScreenshotCapture.findActivity(context)

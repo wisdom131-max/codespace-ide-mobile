@@ -250,6 +250,8 @@ internal fun ChatAttachPickerDialog(
     onRunSkill: ((com.codespace.ide.chat.SkillsCatalog.Skill) -> Unit)? = null,
     // R8-VISION: non-null enables the "attach image from device" row
     onPickImage: (() -> Unit)? = null,
+    /** A3 (advisor 2026-10-24): non-null enables the "attach file from device" row (system picker). */
+    onPickDeviceFile: (() -> Unit)? = null,
     // R10-E: non-null enables the "attach screenshot of the app" row
     onPickScreenshot: (() -> Unit)? = null,
     /**
@@ -772,6 +774,31 @@ internal fun ChatAttachPickerDialog(
                         Column {
                             Text("Attach image or audio from device", fontSize = 11.sp, color = colors.text)
                             Text("Images: JPEG/PNG/GIF/WebP \u2264 5 MB · Audio: MP3/WAV \u2264 10 MB — sent with your next message",
+                                fontSize = 9.sp, color = colors.textSecondary, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+                // A3 (advisor ruling 2026-10-24): attach ANY file from the device
+                // via the SYSTEM picker — staged privately, capped at 10 MB while
+                // streaming, classified after import by the same sniffer.
+                if (onPickDeviceFile != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .clickable { onPickDeviceFile() }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Description, null,
+                            tint = colors.accent,
+                            modifier = Modifier.padding(end = 8.dp).height(14.dp).width(14.dp),
+                        )
+                        Column {
+                            Text("Attach file from device", fontSize = 11.sp, color = colors.text)
+                            Text("Any type ≤ 10 MB — staged privately, classified like project files",
                                 fontSize = 9.sp, color = colors.textSecondary, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis)
                         }
