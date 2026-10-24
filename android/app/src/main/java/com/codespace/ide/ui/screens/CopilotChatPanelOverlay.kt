@@ -2600,19 +2600,16 @@ internal fun CopilotChatPanelInline(
                     com.codespace.ide.chat.ChatRetryExportBar(
                         showRetry = showRetryBar,
                         canExport = canExportBar,
-                        onRetry = {
-                            if (!chatLoading) {
-                                var lastUserIdx = -1
-                                for (i in messages.indices.reversed()) {
-                                    if (messages[i].role == "user") { lastUserIdx = i; break }
-                                }
-                                if (lastUserIdx >= 0) {
-                                    val text = messages[lastUserIdx].text
-                                    while (messages.size > lastUserIdx) messages.removeAt(messages.size - 1)
-                                    send(text)
-                                }
-                            }
-                        },
+                        // A5 (advisor ruling 2026-10-24): this bar had its OWN inline
+                        // retry that dropped the turn and called send(text) WITHOUT
+                        // restoring the message's attachments — after any successful
+                        // send the composer is empty (chips clear on confirmed
+                        // success), so the retried message was rebuilt with NO
+                        // attachments and the historical message lost its chip
+                        // (d03ea87 fixed retryLastTurn, not this duplicate path).
+                        // One retry path now: retryLastTurn() re-attaches what the
+                        // CH04-persisted message carried, composer or not.
+                        onRetry = { if (!chatLoading) retryLastTurn() },
                         onExport = {
                             // CH08 (P4h): typed export result — a real write failure is no
                             // longer misreported as "open a project first".
