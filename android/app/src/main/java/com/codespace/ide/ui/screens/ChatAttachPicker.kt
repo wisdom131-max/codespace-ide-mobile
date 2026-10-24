@@ -74,14 +74,23 @@ private val PICKER_SKIP_DIRS = setOf(
 )
 
 private const val PICKER_MAX_FILES = 400
-private const val PICKER_MAX_FILE_KB = 512
 
-private fun walkProjectFiles(projectRoot: String): List<String> {
+// A2 (advisor ruling 2026-10-24): the walk keeps its 400-entry LIST cap (with an
+// honest "showing first 400" row) but loses the silent 512 KB SIZE filter —
+// any file can be PICKED; classification, the 10 MB intake cap and honest
+// refusals all happen at attach/send time (verdict + ChatAttachment.INTAKE_CAP_BYTES).
+private const val PICKER_SEARCH_SCAN_CAP = 20000
+private const val PICKER_SEARCH_RESULT_CAP = 120
+
+/** Returns (files, truncated): truncated = the 400-entry walk cap was hit. */
+internal fun walkProjectFiles(projectRoot: String): Pair<List<String>, Boolean> {
     val out = ArrayList<String>()
+    var truncated = false
     try {
         val queue = ArrayDeque<File>()
         queue.add(File(projectRoot))
-        while (queue.isNotEmpty() && out.size < PICKER_MAX_FILES) {
+        while (queue.isNotEmpty()) {
+            if (out.size >= PICKER_MAX_FILES) { truncated = true; break }
             val dir = queue.removeFirst()
             val children = dir.listFiles() ?: continue
             for (child in children.sortedBy { it.name }) {
@@ -91,13 +100,48 @@ private fun walkProjectFiles(projectRoot: String): List<String> {
                     // list above now carries .git/.ide-trash/.versionhistory/.autosave
                     // etc., so user dot-dirs (.codespace, .wisdom, .env...) attach fine.
                     if (child.name !in PICKER_SKIP_DIRS) queue.add(child)
-                } else if (child.isFile && child.length() in 1..(PICKER_MAX_FILE_KB * 1024) && !child.name.endsWith(".chatapply.tmp")) {
+                } else if (child.isFile && child.length() > 0L && !child.name.endsWith(".chatapply.tmp")) {
                     out.add(child.relativeTo(File(projectRoot)).path)
                 }
             }
         }
     } catch (_: Exception) { }
-    return out
+    return out to truncated
+}
+
+/**
+ * A2: search walks the WHOLE project (bounded by a 20,000-file scan budget) so
+ * "search to find more" is honest for files beyond the 400-file list. Only
+ * invoked when the in-list filter found nothing, keeping the common keystroke
+ * path an in-memory filter. Returns (matches, scanTruncated).
+ */
+internal fun searchProjectFiles(projectRoot: String, query: String): Pair<List<String>, Boolean> {
+    val matches = ArrayList<String>()
+    var scanned = 0
+    var scanTruncated = false
+    try {
+        val queue = ArrayDeque<File>()
+        queue.add(File(projectRoot))
+        while (queue.isNotEmpty()) {
+            if (scanned >= PICKER_SEARCH_SCAN_CAP) { scanTruncated = true; break }
+            val dir = queue.removeFirst()
+            val children = dir.listFiles() ?: continue
+            for (child in children.sortedBy { it.name }) {
+                if (scanned >= PICKER_SEARCH_SCAN_CAP) { scanTruncated = true; break }
+                if (child.isDirectory) {
+                    if (child.name !in PICKER_SKIP_DIRS) queue.add(child)
+                } else if (child.isFile && !child.name.endsWith(".chatapply.tmp")) {
+                    scanned++
+                    val rel = child.relativeTo(File(projectRoot)).path
+                    if (rel.contains(query, ignoreCase = true)) {
+                        matches.add(rel)
+                        if (matches.size >= PICKER_SEARCH_RESULT_CAP) return matches to false
+                    }
+                }
+            }
+        }
+    } catch (_: Exception) { }
+    return matches to scanTruncated
 }
 
 @Composable
@@ -225,11 +269,21 @@ internal fun ChatAttachPickerDialog(
     val maxDialogH = (android.content.res.Resources.getSystem().displayMetrics.heightPixels /
         android.content.res.Resources.getSystem().displayMetrics.density * 0.85f).dp
     var query by remember { mutableStateOf("") }
-    val allFiles = remember(projectRoot) { walkProjectFiles(projectRoot) }
-    val shown = remember(query, allFiles) {
-        if (query.isBlank()) allFiles
-        else allFiles.filter { it.contains(query, ignoreCase = true) }.take(120)
+    val walk = remember(projectRoot) { walkProjectFiles(projectRoot) }
+    val allFiles = walk.first
+    val listTruncated = walk.second
+    val shownState = remember(query, allFiles, projectRoot) {
+        if (query.isBlank()) allFiles to false
+        else {
+            val inList = allFiles.filter { it.contains(query, ignoreCase = true) }.take(120)
+            // A2: the in-list filter is instant; only when it finds nothing does
+            // the search do a full (budgeted) project walk to find more.
+            if (inList.isNotEmpty()) inList to false
+            else searchProjectFiles(projectRoot, query)
+        }
     }
+    val shown = shownState.first
+    val searchTruncated = shownState.second
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -787,6 +841,23 @@ internal fun ChatAttachPickerDialog(
                                 overflow = TextOverflow.Ellipsis)
                         }
                     }
+                }
+                // A2: the honest replacement for the silent 400-file cutoff.
+                if (query.isBlank() && listTruncated) {
+                    Text(
+                        "Showing first " + allFiles.size + " \u2014 search to find more",
+                        fontSize = 11.sp,
+                        color = colors.textSecondary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    )
+                }
+                if (query.isNotBlank() && shown.isEmpty() && searchTruncated) {
+                    Text(
+                        "No matches in the first " + "20,000" + " files \u2014 refine your search",
+                        fontSize = 11.sp,
+                        color = colors.textSecondary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    )
                 }
                 if (allFiles.isEmpty()) {
                     Text(

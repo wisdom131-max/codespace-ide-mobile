@@ -119,6 +119,9 @@ object ChatAttachmentInjector {
     // let the sheet drift (hardcoded 12000) from the real cap.
     const val SEND_CAP_PER_FILE = 12000
     const val SEND_CAP_PER_MESSAGE = 24000
+    /** A2 (advisor ruling 2026-10-24): intake cap — files larger than this are
+     *  attached as FILE INFO ONLY (name/kind/capability line), never read. */
+    const val INTAKE_CAP_BYTES = 10L * 1024 * 1024
     private const val MAX_FILE_CHARS = SEND_CAP_PER_FILE
     private const val MAX_TOTAL_CHARS = SEND_CAP_PER_MESSAGE
 
@@ -240,6 +243,15 @@ object ChatAttachmentInjector {
                 if (!f.isFile || !f.canRead()) continue
                 val remaining = MAX_TOTAL_CHARS - total
                 if (remaining <= 0) { sb.append("\n(remaining attachments skipped — context cap reached)\n"); break }
+                // A2: the 10 MB intake cap applies to the FRESH DISK READ too —
+                // with the picker's size filter gone, an oversize file must never
+                // be fully read into memory; it rides as an honest info-only note.
+                if (f.length() > INTAKE_CAP_BYTES) {
+                    sb.append("\n### File: ").append(att.relPath)
+                        .append(" — not sent as content (larger than the 10 MB intake cap; file info only)\n")
+                    noted++
+                    continue
+                }
                 val raw = f.readText().trim()
                 if (raw.isEmpty()) continue
                 val capped = raw.take(minOf(MAX_FILE_CHARS, remaining))
