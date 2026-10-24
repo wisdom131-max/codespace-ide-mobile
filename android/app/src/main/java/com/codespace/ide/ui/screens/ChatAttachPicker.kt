@@ -93,8 +93,18 @@ internal fun walkProjectFiles(projectRoot: String): Pair<List<String>, Boolean> 
             if (out.size >= PICKER_MAX_FILES) { truncated = true; break }
             val dir = queue.removeFirst()
             val children = dir.listFiles() ?: continue
-            for (child in children.sortedBy { it.name }) {
-                if (out.size >= PICKER_MAX_FILES) break
+            val sorted = children.sortedBy { it.name }
+            for ((i, child) in sorted.withIndex()) {
+                if (out.size >= PICKER_MAX_FILES) {
+                    // A2 CI fix (run 3330, caught by walkCap400_isHonest): the cap
+                    // filling on the FINAL directory in the queue used to exit the
+                    // outer while (queue empty) WITHOUT ever setting truncated —
+                    // the "showing 400 of more" honesty row broke exactly when the
+                    // cap hit on the last dir. Truncated is now set when the unread
+                    // remainder of THIS directory still holds listable files.
+                    if (sorted.drop(i).any { c -> c.isFile && c.length() > 0L && !c.name.endsWith(".chatapply.tmp") }) truncated = true
+                    break
+                }
                 if (child.isDirectory) {
                     // CW7: blanket dot-dir skip removed — the targeted PICKER_SKIP_DIRS
                     // list above now carries .git/.ide-trash/.versionhistory/.autosave
