@@ -1294,6 +1294,13 @@ fun ExplorerSidePanel(
                         val isDex    = !node.file.isDirectory && isDexFile(node.file.name)
                         val isElf    = !node.file.isDirectory && isElfFile(node.file.name)
                         val isHexBin = !node.file.isDirectory && !isSqlite && !isDex && !isElf && (isHexViewFile(node.file.name) || sniffLooksBinary(node.file.absolutePath))
+                        // A1-device-fix (2026-10-26): the TAP route must honor the shared
+                        // classifier, not the blind 8KB NUL sniff — sniffLooksBinary routed
+                        // UTF-16/zip-magic/random files to the hex dump BEFORE onOpenFile,
+                        // so the A1 gate (dialog + Open-anyway + Attach) never fired and the
+                        // owner saw "raw bytes" where the device sheet promised the dialog.
+                        // Extension-declared binaries (.class/.o/.db...) keep the hex viewer.
+                        val isHexByExt = !node.file.isDirectory && !isSqlite && !isDex && !isElf && isHexViewFile(node.file.name)
                         val isMultiSelected = selectedFiles.contains(node.file.absolutePath)
                         Row(
                             Modifier
@@ -1340,9 +1347,11 @@ fun ExplorerSidePanel(
                                             previewElfPath = node.file.absolutePath
                                         } else if (isApkAnalyzable(node.file.name)) {
                                             previewApkPath = node.file.absolutePath
-                                        } else if (isHexBin) {
-                                            // Compiled binaries/DBs/fonts (or anything the NUL-byte sniff
-                                            // catches) — hex dump instead of corrupting/crashing the text editor.
+                                        } else if (isHexByExt) {
+                                            // Extension-declared binaries only — hex dump instead of
+                                            // corrupting the text editor. Everything else goes through
+                                            // onOpenFile, where the shared-verdict gate decides
+                                            // (dialog + Open anyway as text + Attach to chat).
                                             previewHexPath = node.file.absolutePath
                                         } else {
                                             onOpenFile(node.file.absolutePath)
@@ -1645,6 +1654,9 @@ fun ExplorerSidePanel(
                     val isDex    = isDexFile(f.name)
                     val isElf    = isElfFile(f.name)
                     val isHexBin = !isDex && !isElf && (isHexViewFile(f.name) || sniffLooksBinary(f.absolutePath))
+                    // A1-device-fix: TAP-route hex only for extension-declared binaries;
+                    // sniff-caught files go to onOpenFile so the shared gate rules.
+                    val isHexByExt = !isDex && !isElf && isHexViewFile(f.name)
                     val hasPreview = isImg || isArch || isPdf || isVid || isAud || isHexBin
                     val hasPaste = clipboardFile != null
                     buildList {
@@ -1702,7 +1714,7 @@ fun ExplorerSidePanel(
                                                    else if (isAud) previewAudioPath = f.absolutePath
                                                    else if (isDex) previewDexPath = f.absolutePath
                                                    else if (isElf) previewElfPath = f.absolutePath
-                                                   else if (isHexBin) previewHexPath = f.absolutePath
+                                                   else if (isHexByExt) previewHexPath = f.absolutePath
                                                    else onOpenFile(f.absolutePath)
                                         "Preview" -> when {
                                             isImg -> { previewImagePath = f.absolutePath; showCtxMenu = false }

@@ -168,7 +168,7 @@ private fun canonicalPathOrSelf(path: String): String =
  * binary dialog instead of the editor. Text kinds (TEXT/HTML/CSV/RTF) open as
  * before; session restore and untitled-file creation stay unguarded by design.
  */
-private fun binaryOpenVerdictFor(path: String): com.codespace.ide.chat.TypeVerdict? {
+internal fun binaryOpenVerdictFor(path: String): com.codespace.ide.chat.TypeVerdict? {
     return try {
         val f = java.io.File(path)
         if (!f.isFile || !f.canRead()) return null
@@ -955,7 +955,11 @@ fun ProjectShellScreen(
         if (editorTabs.isEmpty() && restoredState?.openFilePaths?.isNotEmpty() == true) {
             restoredState.openFilePaths.forEach { path ->
                 if (path.isNotBlank() && !editorTabs.contains(path)) {
-                    editorTabs.add(path)
+                    // A1-device-fix: a restored tab whose file is now BINARY must
+                    // NOT dump raw bytes into the editor on startup. No dialog spam
+                    // either — the tab is simply not restored; the gate verdict
+                    // decides, the same shared classifier every open route uses.
+                    if (binaryOpenVerdictFor(path) == null) editorTabs.add(path)
                 }
             }
             if (activeEditorTab == null) {

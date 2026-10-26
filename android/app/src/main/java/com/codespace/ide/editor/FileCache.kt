@@ -54,7 +54,10 @@ object FileCache {
             val size = file.length().toInt()
             val isLarge = size > LARGE_FILE_THRESHOLD
             val content = try {
-                file.readText()
+                // A1-device-fix: BOM-aware decode (UTF-16 LE/BE, UTF-8 BOM) —
+                // a UTF-16 source file the classifier cleared as TEXT must read
+                // READABLE, not as mojibake raw bytes.
+                com.codespace.ide.editor.TextFileDecoder.decode(file.readBytes())
             } catch (e: Exception) {
                 "// Could not read file: ${e.message}"
             }
