@@ -1393,6 +1393,8 @@ internal fun CopilotChatPanelInline(
     var ctxMax         by remember { mutableStateOf<Int?>(null) }
     // 1b: gauge value provenance — estimate after every send, "exact" only after a tap
     var ctxExact       by remember { mutableStateOf(false) }
+    // 1c: honest row — how many older messages the LAST send left out of the request
+    var historyTrimmedNote by remember { mutableStateOf(0) }
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) } // Item3: chat-panel overflow menu
@@ -1801,6 +1803,18 @@ internal fun CopilotChatPanelInline(
         // the request's conversation nor steal its reply.
         val sendSessionId = activeSessionId
         val sendMessages = messages.toList()
+        // 1c (advisor 2026-10-26): TOKEN-BUDGETED HISTORY — below 60k chars the
+        // plan keeps EVERY message and the request is byte-identical to before;
+        // above it, newest turns stay whole (the newest never trimmed),
+        // tool-call pairs stay inside their turn, attachment blocks ride only
+        // kept turns, and older turns collapse to one-line notes. The note
+        // entries are REQUEST-ONLY — the session store keeps the full history.
+        val budgetPlan = com.codespace.ide.chat.HistoryBudget.trim(
+            sendMessages.map { Triple(it.role, it.text, it.attachments.size) })
+        val sendMessagesBudget = budgetPlan.entries.mapIndexed { i, e ->
+            if (e.kept) sendMessages[i] else ChatMsg(e.role, e.text)
+        }
+        historyTrimmedNote = budgetPlan.trimmed
         chatInput = ""
         error = ""
         chatLoading = true
@@ -1827,7 +1841,7 @@ internal fun CopilotChatPanelInline(
                         is ChatStreamEvent.KeySwitch -> appendSendResult(sendSessionId, ChatMsg("tool", ev.line))
                     }
                 }
-                val reply = chat(effModel, sendMessages, mode, activeCustomModeId, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
+                val reply = chat(effModel, sendMessagesBudget, mode, activeCustomModeId, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
                 // C6 probe: completion trace — reply size + tools used.
                 com.codespace.ide.diagnostics.AppOutputLog.log(
                     "[chat] send OK — reply " + reply.length + " chars, tools=" + (toolsUsed.distinct().joinToString(",").ifEmpty { "none" }), "chat")
@@ -2681,6 +2695,15 @@ internal fun CopilotChatPanelInline(
                 }
             },
         )
+        // 1c: honest disclosure — the last send trimmed N older messages
+        if (historyTrimmedNote > 0) {
+            Text(
+                "Older messages trimmed: " + historyTrimmedNote + " message(s) were left out of the last request to fit the history budget (" + com.codespace.ide.chat.HistoryBudget.DEFAULT_BUDGET_CHARS + " chars). Full history stays saved.",
+                fontSize = 9.sp,
+                color = colors.textSecondary,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 1.dp),
+            )
+        }
 
         // I3 — SCM AI: repo pill — branch + dirty count; tap attaches the working diff
         val pillNow = repoPill
