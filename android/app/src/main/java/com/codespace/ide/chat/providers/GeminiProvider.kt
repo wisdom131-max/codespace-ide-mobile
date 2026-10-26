@@ -89,6 +89,14 @@ class GeminiProvider : ChatProvider {
         val body = JSONObject()
             .put("contents", contents)
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", request.systemPrompt))))
+            .apply {
+                // 1a: bounded thinking — vendor default is DYNAMIC (up to 8,192
+                // reasoning tokens), which is the slow-full-prompt root cause.
+                if (request.thinkingBudget != null) {
+                    put("generationConfig", JSONObject()
+                        .put("thinkingConfig", JSONObject().put("thinkingBudget", request.thinkingBudget)))
+                }
+            }
             .toString()
         // B.2 TIMING: exact UTF-8 bytes; no prompt text ever logged.
         val bodyBytes = body.toByteArray(Charsets.UTF_8).size
@@ -124,6 +132,15 @@ class GeminiProvider : ChatProvider {
             val body = JSONObject()
                 .put("contents", buildContents(request.convMsgs, request.images, request.audios))
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", request.systemPrompt))))
+                .apply {
+                    // 1a: bounded thinking — same as complete(); the vendor
+                    // default (dynamic, up to 8,192 reasoning tokens) made full
+                    // prompts slow to first token.
+                    if (request.thinkingBudget != null) {
+                        put("generationConfig", JSONObject()
+                            .put("thinkingConfig", JSONObject().put("thinkingBudget", request.thinkingBudget)))
+                    }
+                }
                 .toString()
             val bodyBytes = body.toByteArray(Charsets.UTF_8).size
             val t0 = com.codespace.ide.chat.ChatTimingLog.now()

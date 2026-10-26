@@ -76,6 +76,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         // P4 (BATCH3): opt-in 402 failover flag (default OFF) — cached in memory
         // for the key-failover engine, which has no Context.
         com.codespace.ide.chat.Chat402FailoverSetting.init(this)
+        com.codespace.ide.chat.GeminiThinkingBudgetSetting.init(this)
         // R7-PLAN: per-session structured plans (plan tool + ChatPlanCard)
         com.codespace.ide.chat.ChatPlanStore.init(this)
         com.codespace.ide.chat.ChatImageAttachments.pruneOldImages(this) // R8-VISION: 7-day image hygiene

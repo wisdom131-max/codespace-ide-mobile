@@ -417,6 +417,36 @@ fun SettingsScreen(
             )
             HorizontalDivider()
 
+            // 1a (advisor 2026-10-26): bounded Gemini thinking — user-visible.
+            var geminiThinking by remember { mutableStateOf(com.codespace.ide.chat.GeminiThinkingBudgetSetting.current()) }
+            ListItem(
+                headlineContent = { Text("Gemini thinking budget") },
+                supportingContent = {
+                    Text(
+                        "Gemini models think by default, and the default is dynamic (up to 8,192 reasoning tokens) — the main cause of long waits before the first word on big prompts. " +
+                        com.codespace.ide.chat.GeminiThinkingBudgetSetting.label(geminiThinking) + " — " +
+                        "Bounded caps thinking at 1,024 tokens (recommended), Off disables thinking where the model allows, Dynamic restores the vendor default."
+                    )
+                },
+                trailingContent = {
+                    Row {
+                        TextButton(onClick = {
+                            geminiThinking = com.codespace.ide.chat.GeminiThinkingBudgetSetting.OFF
+                            com.codespace.ide.chat.GeminiThinkingBudgetSetting.set(context, geminiThinking)
+                        }) { Text("Off", fontWeight = if (geminiThinking == com.codespace.ide.chat.GeminiThinkingBudgetSetting.OFF) FontWeight.Bold else null) }
+                        TextButton(onClick = {
+                            geminiThinking = com.codespace.ide.chat.GeminiThinkingBudgetSetting.BOUNDED
+                            com.codespace.ide.chat.GeminiThinkingBudgetSetting.set(context, geminiThinking)
+                        }) { Text("1024", fontWeight = if (geminiThinking == com.codespace.ide.chat.GeminiThinkingBudgetSetting.BOUNDED) FontWeight.Bold else null) }
+                        TextButton(onClick = {
+                            geminiThinking = com.codespace.ide.chat.GeminiThinkingBudgetSetting.DYNAMIC
+                            com.codespace.ide.chat.GeminiThinkingBudgetSetting.set(context, geminiThinking)
+                        }) { Text("Dynamic", fontWeight = if (geminiThinking == com.codespace.ide.chat.GeminiThinkingBudgetSetting.DYNAMIC) FontWeight.Bold else null) }
+                    }
+                },
+            )
+            HorizontalDivider()
+
             // ── Accounts ────────────────────────────────────────────────────
             Text("Accounts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             if (githubUsername != null) {

@@ -1107,6 +1107,10 @@ private suspend fun chat(
                     if (iteration == 0) requestAudios else emptyList(),
                     tools = if (mode == ChatMode.AGENT && provider.supportsNativeTools)
                         com.codespace.ide.chat.NativeToolProtocol.schemas(context, cmAllow) else null,
+                    // 1a: bounded thinking — Gemini only; null leaves every
+                    // other provider byte-identical.
+                    thinkingBudget = if (provider.id == "gemini")
+                        com.codespace.ide.chat.GeminiThinkingBudgetSetting.current() else null,
                 )
                 if (deltaSink != null) {
                     provider.completeStreaming(req) { d -> streamedAnything = true; deltaSink(d) }

@@ -129,6 +129,12 @@ data class ChatRequest(
     /** API key from SecureTokenStore — null for local providers (requiresApiKey = false). */
     val apiKey: String?,
     /**
+     * 1a (advisor 2026-10-26): BOUNDED thinking for Gemini — 0 off, N capped
+     * thinking tokens, -1 vendor dynamic default. Null = provider default
+     * (non-Gemini providers ignore this entirely).
+     */
+    val thinkingBudget: Int? = null,
+    /**
      * R8-VISION: images riding the LAST user message, converted to each vendor's
      * multimodal part shape inside the provider. Text attachments keep riding
      * convMsgs as the ATTACHED CONTEXT block; images NEVER enter the text path.
