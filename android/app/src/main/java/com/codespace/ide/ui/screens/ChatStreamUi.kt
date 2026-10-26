@@ -43,24 +43,53 @@ internal fun LiveStreamIndicator(
     surface: Color,
     text: Color,
     textSecondary: Color,
+    // 1e (advisor 2026-10-26): visible THINKING state from send until the
+    // first token, with elapsed seconds. -1 hides the timer row (post-first-
+    // token or idle); 0+ shows "Thinking... Ns". Shown in BOTH branches so a
+    // rate-limit line or the unverified-output banner never hides the wait.
+    thinkingSecs: Int = -1,
 ) {
     if (liveText.isEmpty()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(16.dp),
-                color = accent,
-                strokeWidth = 2.dp,
-            )
-            Spacer(Modifier.width(8.dp))
-            Text("Thinking...", color = textSecondary, fontSize = 11.sp)
+        Column {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    color = accent,
+                    strokeWidth = 2.dp,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (thinkingSecs >= 0) "Thinking... " + thinkingSecs + "s" else "Thinking...",
+                    color = textSecondary,
+                    fontSize = 11.sp,
+                )
+            }
         }
     } else {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = surface,
-                modifier = Modifier.widthIn(max = 280.dp),
-            ) {
+        Column {
+            // 1e: pre-first-token wait stays visible even while a rate-limit
+            // line or the unverified-output banner occupies the bubble.
+            if (thinkingSecs >= 0) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        color = accent,
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Thinking... " + thinkingSecs + "s (waiting for the first token)",
+                        color = textSecondary,
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = surface,
+                    modifier = Modifier.widthIn(max = 280.dp),
+                ) {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
@@ -84,6 +113,7 @@ internal fun LiveStreamIndicator(
                 }
             }
         }
+        } // 1e: Column (thinking row + bubble)
     }
 }
 
