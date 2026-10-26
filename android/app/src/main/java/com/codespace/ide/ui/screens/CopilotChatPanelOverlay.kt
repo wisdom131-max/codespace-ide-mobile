@@ -937,8 +937,8 @@ private suspend fun updateContextGauge(
     projectRootPath: String?,
     currentFilePath: String?,
     openFilePaths: List<String>,
-    onComputed: (Int?, Int?) -> Unit,
     exact: Boolean = false,
+    onComputed: (Int?, Int?) -> Unit,
 ) {
     try {
         val wsCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
@@ -2706,7 +2706,7 @@ internal fun CopilotChatPanelInline(
             exact = ctxExact,
             onRefreshExact = {
                 scope.launch {
-                    updateContextGauge(com.codespace.ide.chat.ChatModelSelection.resolveAuto(context, selectedModel, tokenStore), mode, activeCustomModeId, context, tokenStore, messages.toList(), projectRootPath, currentFilePath, openFilePaths) { u, m ->
+                    updateContextGauge(com.codespace.ide.chat.ChatModelSelection.resolveAuto(context, selectedModel, tokenStore), mode, activeCustomModeId, context, tokenStore, messages.toList(), projectRootPath, currentFilePath, openFilePaths, exact = true) { u, m ->
                         ctxUsed = u; ctxMax = m; ctxExact = true
                     }
                 }
