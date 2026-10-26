@@ -44,7 +44,14 @@ data class TypeVerdict(
 
 object AttachmentTypeSniffer {
 
-    const val SNIFF_WINDOW_BYTES = 8
+    /** A1-device-fix part 3 (advisor 2026-10-26): 8 bytes could not see the NUL
+     * that proves binary — a 4 KiB random file whose first 8 bytes happened to be
+     * NUL-free sailed through the open gate as TEXT (the BinaryOpenGateTest
+     * fixture put its first NUL at offset 219 and FAILED green CI for exactly
+     * this reason). VS Code's binary detection scans the first ~8 KB; 8192
+     * matches the Explorer's own sniffLooksBinary window. Magic checks only
+     * ever look at the first few bytes, so a larger window is free. */
+    const val SNIFF_WINDOW_BYTES = 8192
 
     /** Extension → (kind, human label). Magic bytes OVERRIDE the extension. */
     private val BY_EXT = mapOf(
