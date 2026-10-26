@@ -892,6 +892,7 @@ private suspend fun computeContextUsage(
     systemPrompt: String,
     convMsgs: JSONArray,
     tokenStore: SecureTokenStore?,
+    exact: Boolean = false,
 ): Pair<Int?, Int?> {
     val colonIdx = model.indexOf(':')
     if (colonIdx <= 0) return null to null
@@ -899,16 +900,26 @@ private suspend fun computeContextUsage(
     val provider = ChatProviderRegistry.byId(providerId) ?: return null to null
     val apiModel = model.substring(colonIdx + 1)
     val key = try { tokenStore?.aiKey(providerId.uppercase()) } catch (_: Exception) { null }
-    val req = ChatRequest(apiModel, systemPrompt, convMsgs, key)
+    // 1b (advisor 2026-10-26): the post-send gauge is LOCAL-ONLY by default
+    // (TokenCounter estimate). The old path fired a REAL :countTokens network
+    // request with the FULL payload after EVERY send — burning the same
+    // project quota the NEXT send needs (429 bait) for a number nothing
+    // depends on. The exact count runs ONLY on an explicit gauge tap
+    // (exact = true); the timing log records which path ran.
     val tGauge0 = com.codespace.ide.chat.ChatTimingLog.now()
-    val used = try {
-        kotlinx.coroutines.withTimeoutOrNull(5000) { provider.countTokens(req) }
-    } catch (_: Exception) { null }
-        ?: com.codespace.ide.chat.TokenCounter.countOpenAiCompatible(systemPrompt, convMsgs, apiModel)
+    val used = if (!exact) {
+        com.codespace.ide.chat.TokenCounter.countOpenAiCompatible(systemPrompt, convMsgs, apiModel)
+    } else {
+        val req = ChatRequest(apiModel, systemPrompt, convMsgs, key)
+        try {
+            kotlinx.coroutines.withTimeoutOrNull(5000) { provider.countTokens(req) }
+        } catch (_: Exception) { null }
+            ?: com.codespace.ide.chat.TokenCounter.countOpenAiCompatible(systemPrompt, convMsgs, apiModel)
+    }
     val max = com.codespace.ide.chat.TokenCounter.modelContextLimit(provider, apiModel, key)
     com.codespace.ide.chat.ChatTimingLog.log("gauge.countTokens", providerId, apiModel,
         com.codespace.ide.chat.ChatTimingLog.elapsedMs(tGauge0),
-        status = if (used == null) "fallback" else "ok")
+        status = if (exact) "exact" else "local-estimate")
     return used to max
 }
 
@@ -924,11 +935,12 @@ private suspend fun updateContextGauge(
     currentFilePath: String?,
     openFilePaths: List<String>,
     onComputed: (Int?, Int?) -> Unit,
+    exact: Boolean = false,
 ) {
     try {
         val wsCtx = WorkspaceContextProvider.buildContext(projectRootPath, currentFilePath, openFilePaths)
         val systemPrompt = buildSystemPrompt(mode, context, wsCtx, projectRootPath, customModeId)
-        val usage = computeContextUsage(selectedModel, systemPrompt, convMsgsOf(systemPrompt, messages), tokenStore)
+        val usage = computeContextUsage(selectedModel, systemPrompt, convMsgsOf(systemPrompt, messages), tokenStore, exact)
         onComputed(usage.first, usage.second)
     } catch (_: Exception) { }
 }
@@ -1379,6 +1391,8 @@ internal fun CopilotChatPanelInline(
     var liveStreamText by remember { mutableStateOf("") }
     var ctxUsed        by remember { mutableStateOf<Int?>(null) }
     var ctxMax         by remember { mutableStateOf<Int?>(null) }
+    // 1b: gauge value provenance — estimate after every send, "exact" only after a tap
+    var ctxExact       by remember { mutableStateOf(false) }
     var error         by remember { mutableStateOf("") }
     var showModelMenu by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) } // Item3: chat-panel overflow menu
@@ -1902,7 +1916,7 @@ internal fun CopilotChatPanelInline(
                 // CONTEXT GAUGE: estimate for the NEXT send — unawaited, never delays the reply
                 scope.launch {
                     updateContextGauge(com.codespace.ide.chat.ChatModelSelection.resolveAuto(context, selectedModel, tokenStore), mode, activeCustomModeId, context, tokenStore, messages.toList(), projectRootPath, currentFilePath, openFilePaths) { u, m ->
-                        ctxUsed = u; ctxMax = m
+                        ctxUsed = u; ctxMax = m; ctxExact = false
                     }
                 }
             }
@@ -2658,6 +2672,14 @@ internal fun CopilotChatPanelInline(
             textSecondary = colors.textSecondary,
             warning = Color(0xFFF59E0B),
             error = Color(0xFFEF4444),
+            exact = ctxExact,
+            onRefreshExact = {
+                scope.launch {
+                    updateContextGauge(com.codespace.ide.chat.ChatModelSelection.resolveAuto(context, selectedModel, tokenStore), mode, activeCustomModeId, context, tokenStore, messages.toList(), projectRootPath, currentFilePath, openFilePaths) { u, m ->
+                        ctxUsed = u; ctxMax = m; ctxExact = true
+                    }
+                }
+            },
         )
 
         // I3 — SCM AI: repo pill — branch + dirty count; tap attaches the working diff

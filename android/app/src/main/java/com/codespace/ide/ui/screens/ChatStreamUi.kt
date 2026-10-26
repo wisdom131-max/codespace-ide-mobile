@@ -1,6 +1,7 @@
 package com.codespace.ide.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -94,6 +95,8 @@ internal fun ChatContextGauge(
     textSecondary: Color,
     warning: Color,
     error: Color,
+    exact: Boolean = false,
+    onRefreshExact: (() -> Unit)? = null,
 ) {
     val text: String
     val color: Color
@@ -112,14 +115,16 @@ internal fun ChatContextGauge(
             else -> textSecondary
         }
     }
+    val shown = if (exact) text + "  \u00b7  exact (tap to refresh)" else text + "  \u00b7  estimated (tap for exact)"
     Text(
-        text,
+        shown,
         fontSize = 10.sp,
         color = color,
         fontFamily = FontFamily.Monospace,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 2.dp),
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .then(if (onRefreshExact != null) Modifier.clickable { onRefreshExact() } else Modifier),
     )
 }
 
