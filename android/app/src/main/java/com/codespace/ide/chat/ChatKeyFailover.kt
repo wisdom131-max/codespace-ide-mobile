@@ -107,7 +107,7 @@ object ChatKeyFailover {
                         rateLimitAttempt++
                         if (rateLimitAttempt <= 2) {
                             val waitMs = he.retryAfterMs ?: if (rateLimitAttempt == 1) 1500L else 4000L
-                            onInfo?.invoke("[KEY-FAILOVER] '" + label + "' rate-limited (429) \\u2014 retrying the SAME key in " + waitMs + "ms")
+                            onInfo?.invoke("[KEY-FAILOVER] '" + label + "' rate-limited (429) \\u2014 retry " + rateLimitAttempt + " of 2 on the same key in " + waitMs + "ms" + (if (he.retryAfterMs != null) " (Retry-After honored)" else ""))
                             totalWaitMs += waitMs
                             delay(waitMs)
                             continue

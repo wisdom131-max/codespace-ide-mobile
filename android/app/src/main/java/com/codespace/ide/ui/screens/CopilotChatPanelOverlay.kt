@@ -130,6 +130,9 @@ private sealed interface ChatStreamEvent {
     // P4 (BATCH3): surfaced when the opt-in 402 failover moves to another key
     // ("Switched to key N of M — previous key's account is out of credits (402)").
     data class KeySwitch(val line: String) : ChatStreamEvent
+    // 1d (advisor 2026-10-26): a 429 back-off wait is VISIBLE in the bubble
+    // ("Waiting for Gemini \u2014 retry 1 of 2 in 1s"), never a silent stall.
+    data class RateLimit(val line: String) : ChatStreamEvent
 }
 
 private const val PREFS_CHAT = "copilot_chat"
@@ -1088,6 +1091,14 @@ private suspend fun chat(
                     com.codespace.ide.diagnostics.AppOutputLog.log(line, "chat")
                     // P4 (BATCH3): key-switch notices are VISIBLE in the chat, not only the log.
                     if (line.startsWith("Switched to key ")) onStreamEvent?.invoke(ChatStreamEvent.KeySwitch(line))
+                    // 1d: rate-limit waits are visible too \u2014 never a silent full-payload resend.
+                    val m = Regex("retry (\\d+) of 2 on the same key in (\\d+)ms").find(line)
+                    if (m != null && provider != null) {
+                        val secs = (m.groupValues[2].toLong() + 999) / 1000
+                        onStreamEvent?.invoke(ChatStreamEvent.RateLimit(
+                            "Waiting for " + provider.displayName + " \u2014 rate limited, retry " +
+                                m.groupValues[1] + " of 2 in " + secs + "s"))
+                    }
                 },
             ) { key ->
                 val req = ChatRequest(
@@ -1839,6 +1850,8 @@ internal fun CopilotChatPanelInline(
                         is ChatStreamEvent.ToolDone -> { liveStreamText += "\n" + ev.tool + ": " + ev.status; toolsUsed.add(ev.tool + " (" + ev.status + ")") }
                         // P4 (BATCH3): "Switched to key N" persists as its own chip line in the transcript.
                         is ChatStreamEvent.KeySwitch -> appendSendResult(sendSessionId, ChatMsg("tool", ev.line))
+                        // 1d: the waiting line replaces the (still empty) bubble until deltas arrive.
+                        is ChatStreamEvent.RateLimit -> liveStreamText = ev.line + "\n"
                     }
                 }
                 val reply = chat(effModel, sendMessagesBudget, mode, activeCustomModeId, context, tokenStore, onOpenFile, onSwitchToPreview, projectRootPath, currentFilePath, openFilePaths, onStreamEvent = sink, includeImplicitCtx = implicitCtxOn, attachments = sendAtts)
