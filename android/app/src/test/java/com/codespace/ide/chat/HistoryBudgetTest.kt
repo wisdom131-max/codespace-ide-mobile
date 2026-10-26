@@ -53,7 +53,10 @@ class HistoryBudgetTest {
 
     @Test
     fun toolPairs_neverSplit() {
-        val big = "y".repeat(30_000)
+        val big = "y".repeat(70_000)  // genuinely OVER the 60k budget (the first
+                                     // cut at 30k FIT and nothing was trimmed —
+                                     // which is the no-behavior-change rule
+                                     // working, not a pair-split)
         val entries = turnList(
             Triple("user", big, 0),                  // old turn (over budget -> trimmed whole)
             Triple("assistant", "calling tool", 0),  // tool-call pair, same turn
