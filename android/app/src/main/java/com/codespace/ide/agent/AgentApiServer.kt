@@ -182,16 +182,12 @@ object AgentApiServer {
 
                 // List all tools
                 method == "GET" && path == "/tools" -> {
-                    val tools = listOf(
-                        "run_command","read_file","write_file","list_files","search_files",
-                        "git_commit_push","git_pull_rebase","git_branch","git_status","git_diff",
-                        "save_secret","get_secret","detect_secrets",
-                        "web_fetch","web_search","save_memory","read_memory","delete_memory",
-                        "list_connectors","connect_service","use_connector",
-                        "create_entity","read_entities","update_entity","delete_entity",
-                        "schedule_task","list_tasks","cancel_task",
-                        "upload_file","install_package"
-                    ) + McpClientManager.cachedToolNames(ctx)
+                    // TOOL-COUNT FIX (2026-10-27): this hand-maintained list drifted to
+                    // 30 vs the execution registry's 32 builtins (missing: plan stub,
+                    // request_connector), so agent_tools reported fewer tools than exist.
+                    // Single source = AgentTools.BUILTIN_TOOL_NAMES (plan is the rebuild
+                    // stub, answered honestly until the new chat re-registers it).
+                    val tools = AgentTools.toolNames() + McpClientManager.cachedToolNames(ctx)
                     val toolsJson = tools.joinToString(",") { """"$it"""" }
                     httpJson(200, """{"tools":[$toolsJson],"count":${tools.size}}""")
                 }
