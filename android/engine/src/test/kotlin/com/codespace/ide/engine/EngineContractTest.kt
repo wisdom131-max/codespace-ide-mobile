@@ -1,5 +1,7 @@
 package com.codespace.ide.engine
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -114,14 +116,18 @@ class EngineContractTest {
     @Test fun `cancelled mid-stream keeps partial text in the transcript`() = runTest {
         val lines = (1..400).map { """data: {"choices":[{"delta":{"content":"ab"}}]}""" }
         server.lastScript = FakeChatServer.Script(200, emptyList(), flat(lines))
-        val received = ArrayList<EngineEvent>()
-        val job = launch {
+        // Real concurrency: the collector MUST run on a real dispatcher. On
+        // the test's single-threaded virtual dispatcher the collector can
+        // never run while the test thread spins in Thread.sleep — it would
+        // block its own dispatcher and see zero events.
+        val received = java.util.concurrent.CopyOnWriteArrayList<EngineEvent>()
+        val job = launch(Dispatchers.IO) {
             engine.send("hi", EngineConfig("m1")).collect { received.add(it) }
         }
         // Wait for some deltas then cancel (capped spin, real server timing).
         var spins = 0
         while (received.size < 3 && spins < 600) { spins++; Thread.sleep(5) }
-        job.cancel()
+        job.cancelAndJoin()
         assertTrue(received.filterIsInstance<EngineEvent.Delta>().isNotEmpty())
         // Engine is cancelled — no Completed event may arrive afterwards.
         assertTrue(received.none { it is EngineEvent.Completed })
