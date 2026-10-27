@@ -30,6 +30,14 @@ data class EngineConfig(
      * BudgetGuard refusal ONCE. Default false = refusal stands.
      */
     val confirmOverBudget: Boolean = false,
+    /** Provider wire format id — selects the ProviderAdapter at engine construction. */
+    val providerId: String = "openai",
+    /** Full endpoint URL for the provider's wire format (adapter shapes the final path). */
+    val baseUrl: String = "https://example.invalid/chat/completions",
+    /** Provider API key — sent via adapter headers, NEVER in the URL. */
+    val apiKey: String = "test-key",
+    /** One reasoning control, mapped per provider (Gemini: thinkingBudget; bounded, never -1/dynamic). */
+    val reasoningBudget: Int = 1024,
 )
 
 /** Events emitted while a send runs. Cold flow: nothing starts until collect. */
