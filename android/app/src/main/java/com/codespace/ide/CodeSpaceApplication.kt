@@ -79,7 +79,8 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         com.codespace.ide.chat.GeminiThinkingBudgetSetting.init(this)
         // R7-PLAN: per-session structured plans (plan tool + ChatPlanCard)
         com.codespace.ide.chat.ChatPlanStore.init(this)
-        com.codespace.ide.chat.ChatImageAttachments.pruneOldImages(this) // R8-VISION: 7-day image hygiene
+        // REMOVAL 4/7 repair: ChatImageAttachments deleted with the engine (its ChatRequest* types
+        // lived in the deleted ChatProvider); pruneOldImages init call removed with the class.
         com.codespace.ide.editor.PerfProbe.markStartupPhase("stores-init")
         // Initialize TextMate engine (loads bundled grammars from assets)
         TextMateEngineHolder.get(this)
