@@ -2206,16 +2206,11 @@ fun ProjectShellScreen(
                         Text(bVerdict.label)
                         // A1 (advisor 2026-10-24): short reason line, code only.
                         Text("Reason: " + bVerdict.kind.name)
-                        Text("This file is not text, so it is not opened in the code editor. Attach it to the chat to use it as context: text is extracted from PDFs and documents, entries are listed for archives.")
+                        Text("This file is not text, so it is not opened in the code editor.")
                     }
                 },
-                confirmButton = {
-                    TextButton(onClick = {
-                        showChatPanel = true
-                        pendingChatAttachMs.value = bPath
-                        binaryOpenRequestMs.value = null
-                    }) { Text("Attach to chat") }
-                },
+                // REMOVAL 2/7: "Attach to chat" removed with the old chat.
+                confirmButton = {},
                 dismissButton = {
                     // A1 (advisor 2026-10-24): VS Code-style escape hatch
                     // (binaryEditor.ts:67 "Open Anyway") — a classifier false
@@ -5274,49 +5269,9 @@ private fun PssEditorColumn(
         Box(Modifier.width(chatWidth).fillMaxHeight()
             .background(PanelBg, WorkspaceShapes.ChatShape)
             .clip(WorkspaceShapes.ChatShape)) {
-            CopilotChatPanelInline(
-                onClose = { showChatPanel = false },
-                onOpenConnectors = onOpenConnectorsHub,
-                onOpenSettings = onOpenSettings,
-                keyInsertDispatcher = keyInsertDispatcher,
-                pendingPrompt = pendingChatPrompt,
-                onPendingPromptConsumed = { pendingChatPrompt = null },
-                // C12-U6-b fix 2b: binary-dialog "Attach to chat" channel (same
-                // pattern as pendingPrompt — Ms state + consumed callback).
-                pendingAttachPath = pendingChatAttach,
-                onPendingAttachConsumed = { pendingChatAttach = null },
-                colors = ChatPanelColors(
-                    background = BgColor,
-                    surface = PanelBg,
-                    text = TabText,
-                    textSecondary = TabTextInactive,
-                    accent = TabActiveIndicator,
-                    userBubble = TabActiveIndicator,
-                    assistantBubble = PanelBg,
-                    inputBg = PanelBg,
-                    divider = DividerColor,
-                    headerBg = PanelBg,
-                    scrim = Color(0x66000000),
-                ),
-                tokenStore = tokenStore,
-                // AI auto-opens files it writes — no manual navigation needed
-                onOpenFile = cgate@{ path ->
-                    // C12-U6-b fix 2b: binaries never dump into the editor — dialog.
-                    val bv = binaryOpenVerdictFor(path)
-                    if (bv != null) { binaryOpenRequest = path to bv; return@cgate }
-                    if (!editorTabs.contains(path)) editorTabs.add(path)
-                    activeEditorTab = path
-                },
-                onSwitchToPreview = { _ ->
-                    showBottomPanel = true
-                    activeBottomTab = BottomTab.PREVIEW
-                    // activeEditorTab drives PreviewPane.activeFilePath — already set in onOpenFile
-                },
-                // P41-X: Workspace-aware AI context
-                projectRootPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: "",
-                currentFilePath = activeEditorTab,
-                openFilePaths = editorTabs.toList(),
-            )
+            // REMOVAL 2/7 (advisor ruling 2026-10-27): the chat panel UI is
+            // archived and removed; placeholder keeps the surface + toggle alive.
+            ChatRebuildPlaceholder()
         }
     }
 
