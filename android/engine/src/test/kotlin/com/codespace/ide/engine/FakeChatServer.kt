@@ -83,7 +83,7 @@ class FakeChatServer {
             for (line in script.sseLines) {
                 if (!running) { disconnectedMidStream++; break }
                 try {
-                    w.write(line)
+                    w.write(line + "\n")  // SSE lines MUST be newline-terminated
                     w.flush()
                 } catch (_: Exception) {
                     disconnectedMidStream++
