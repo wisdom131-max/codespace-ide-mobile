@@ -79,7 +79,9 @@ class EngineContractTest {
         engine.send("second", EngineConfig("m1")).toList()
         assertTrue(server.receivedBody.contains("\"first\""))
         assertTrue(server.receivedBody.contains("\"second\""))
-        assertEquals(2, server.receivedBody.split("\"role\"").size - 1)
+        // Window = user1 + assistant1("ok") + user2 = 3 messages.
+        assertTrue(server.receivedBody.contains("\"ok\""))
+        assertEquals(3, server.receivedBody.split("\"role\"").size - 1)
     }
 
     @Test fun `cancelled mid-stream keeps partial text in the transcript`() = runTest {
