@@ -1267,7 +1267,7 @@ object ProotInstaller {
 - ui/screens/ProjectShellScreen.kt — Main IDE shell (editor/terminal/explorer/preview/git tabs)
 - ui/screens/SettingsScreen.kt — Biometric toggle, theme, backup/restore container
 - ui/screens/ConnectorsHubSheet.kt — OAuth connectors (Google Drive, Gmail, Calendar, Slack, GitHub)
-- ui/screens/CopilotChatPanelOverlay.kt — ⚠️ DEAD CODE. Replaced by CopilotChatPanelInline.
+- ui/screens/ChatRebuildPlaceholder.kt — "Chat is being rebuilt" placeholder while the chat is rebuilt from scratch (old chat archived + removed 2026-10-27).
 - ui/screens/NotificationDrawerOverlay.kt — In-app notification drawer (bell icon)
 
 ## Panes
