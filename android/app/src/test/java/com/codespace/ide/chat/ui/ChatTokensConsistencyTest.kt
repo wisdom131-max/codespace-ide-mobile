@@ -68,7 +68,7 @@ class ChatTokensConsistencyTest {
         for (theme in listOf("dark", "light")) {
             val p = pal.getJSONObject(theme)
             for (k in colorFields) {
-                val expected = "--chat-" + k.lower() + ": " + p.getString(k) + ";"
+                val expected = "--chat-" + k.lowercase() + ": " + p.getString(k) + ";"
                 assertTrue(
                     "theme $theme field $k: '$expected' missing from chat-tokens.css — run scripts/generate_chat_tokens.py",
                     cssText.contains(expected)
