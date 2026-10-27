@@ -107,15 +107,16 @@ jobs:
         working-directory: android
         run: ./gradlew testProdDebugUnitTest --stacktrace
 
-      - name: Verify every suite executed (per-suite counts; missing/zero = FAIL)
-        working-directory: android
-        run: python3 ci-test-report.py
-
       # Pure-JVM ChatEngine (rebuild order step 3): its own test task; results
       # are also picked up by ci-test-report.py (engine glob added).
       - name: JVM ChatEngine contract tests (SSE, taxonomy, budgets, session, fake server)
         working-directory: android
         run: ./gradlew :engine:test --stacktrace
+
+      - name: Verify every suite executed (per-suite counts; missing/zero = FAIL)
+        working-directory: android
+        run: python3 ci-test-report.py
+
 
       # UI SPIKE (advisor order 2026-10-27): separate debug APK (com.codespace.ide.spike,
       # label "VN Spike") that installs BESIDE the main app — own artifact, touches
