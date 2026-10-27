@@ -86,22 +86,31 @@ private fun InlineSegments(seg: String) {
     }
 }
 
-/** `inline code` + **bold** splitting on one line, inline-free. */
+/**
+ * `inline code` + **bold** on one line as a SINGLE wrapping Text. The old
+ * Row-of-pieces layout could not wrap — that was the hanging-indent bug the
+ * owner photographed (pane A). AnnotatedString wraps like normal text.
+ */
 @Composable
 private fun boldAware(line: String) {
-    // Simplest honest pass: render inline-code spans in monospace by splitting.
-    val pieces = line.split("`")
-    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    val styled = remember(line) { buildBoldAware(line) }
+    Text(styled, fontSize = SpikeTokens.fontBody)
+}
+
+private fun buildBoldAware(line: String): androidx.compose.ui.text.AnnotatedString =
+    androidx.compose.ui.text.buildAnnotatedString {
+        val pieces = line.split("`")
         pieces.forEachIndexed { i, p ->
-            Text(
-                p.replace("**", ""),
-                fontFamily = if (i % 2 == 1) androidx.compose.ui.text.font.FontFamily.Monospace else null,
+            withStyle(androidx.compose.ui.text.SpanStyle(
+                fontFamily = if (i % 2 == 1) androidx.compose.ui.text.font.FontFamily.Monospace
+                            else androidx.compose.ui.text.font.FontFamily.SansSerif,
                 color = if (i % 2 == 1) SpikeTokens.accent else SpikeTokens.textPrimary,
                 fontSize = if (i % 2 == 1) SpikeTokens.fontMono else SpikeTokens.fontBody
-            )
+            )) {
+                append(p.replace("**", ""))
+            }
         }
     }
-}
 
 @Composable
 private fun CodeBlock(seg: String) {

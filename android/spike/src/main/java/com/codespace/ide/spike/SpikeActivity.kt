@@ -23,48 +23,67 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * VN Spike — native-vs-WebView chat UI spike (advisor order 2026-10-27).
- * Standalone app: installs beside com.codespace.ide, touches none of its
- * data, safe to uninstall. One screen, two panes, one Run button.
+ * VN Spike — native-vs-WebView chat UI spike, harness v2 (advisor ruling
+ * 2026-10-27): FrameMetrics per-frame durations, refresh rate reported,
+ * TOTAL memory (own + related renderer/GPU pids + device availMem),
+ * real keystroke->frame input latency or NOT MEASURED, A alone then B
+ * alone, honest cold start, NOT ENOUGH DATA verdicts on missing metrics.
  */
 class SpikeActivity : ComponentActivity() {
 
-    private var coldStartMs = 0L
+    private var coldStartMs: Long? = null
     private val tCreate = SystemClock.elapsedRealtime()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                SpikeScreen(bench = remember { Bench(this) },
-                            scope = rememberCoroutineScope(),
-                            coldStart = { coldStartMs })
+                SpikeScreen(benchHolder = remember { BenchHolder(this@SpikeActivity) },
+                            scope = rememberCoroutineScope())
             }
         }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && coldStartMs == 0L) {
+        if (hasFocus && coldStartMs == null) {
             coldStartMs = SystemClock.elapsedRealtime() - tCreate
         }
     }
+
+    fun coldStart(): Long? = coldStartMs
+}
+
+/** Owns the collectors; one instance per activity. */
+class BenchHolder(val activity: android.app.Activity) {
+    val frames = FrameStatsCollector(activity)
+    val mem = MemBench(activity)
+    val input = InputLatencyBench()
 }
 
 @Composable
-fun SpikeScreen(bench: Bench, scope: CoroutineScope, coldStart: () -> Long) {
+fun SpikeScreen(benchHolder: BenchHolder, scope: CoroutineScope) {
     val messages: SnapshotStateList<SpikeMsg> = remember { mutableStateListOf() }
-    var results by remember { mutableStateOf("Tap Run to measure both panes (about 40 s).") }
+    var phase by remember { mutableStateOf("Idle — tap Run") }
+    var results by remember { mutableStateOf(
+        "Tap Run to measure both phases. TYPE in the input box during BOTH\n" +
+        "phases so input latency is measured; then select + paste this block back.") }
     var running by remember { mutableStateOf(false) }
     var input by remember { mutableStateOf("") }
-    val inputLatencies = remember { mutableListOf<Double>() }
-    val lastKeyAt = remember { mutableStateOf(0L) }
 
     Column(Modifier.fillMaxSize().background(SpikeTokens.bg)
             .statusBarsPadding()) {
 
-        SpikeHeader(running = running, onRun = {
-            if (!running) scope.launch(Dispatchers.Main) { runBenchmark(bench, messages, { results = it }, { running = it }) }
+        SpikeHeader(phase = phase, running = running, onRun = {
+            if (!running) {
+                running = true
+                scope.launch(Dispatchers.Main) {
+                    runBenchmark(benchHolder, messages,
+                        setPhase = { phase = it },
+                        setResults = { results = it },
+                        setDone = { running = false })
+                }
+            }
         })
 
         Row(Modifier.fillMaxWidth().weight(1f)) {
@@ -72,56 +91,52 @@ fun SpikeScreen(bench: Bench, scope: CoroutineScope, coldStart: () -> Long) {
             WebViewChatPane(Modifier.weight(1f).fillMaxHeight())
         }
 
-        NativeInputBox(value = input, onValueChange = {
-            input = it
-            lastKeyAt.value = SystemClock.elapsedRealtime()
-            bench.markInput { deltaMs -> inputLatencies.add(deltaMs) }
-        }, onSend = { /* the spike sends nothing; input is for latency only */ })
+        NativeInputBox(value = input, onValueChange = { input = it },
+                       onKey = { benchHolder.input.onKeyDown() })
 
-        ResultsPanel(results, coldStart())
+        ResultsPanel(results)
     }
 }
 
 @Composable
-private fun SpikeHeader(running: Boolean, onRun: () -> Unit) {
+private fun SpikeHeader(phase: String, running: Boolean, onRun: () -> Unit) {
     Row(Modifier.fillMaxWidth()
             .background(SpikeTokens.surface, RoundedCornerShape(SpikeTokens.cornerPanel))
             .padding(horizontal = SpikeTokens.padH, vertical = SpikeTokens.padV),
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("VN Spike — A native · B WebView",
-             fontSize = 13.sp, modifier = Modifier.weight(1f),
+        Text(phase, fontSize = 13.sp, modifier = Modifier.weight(1f),
              color = SpikeTokens.textPrimary)
         Button(onClick = onRun, enabled = !running) { Text(if (running) "Running…" else "Run") }
     }
 }
 
 @Composable
-private fun NativeInputBox(value: String, onValueChange: (String) -> Unit, onSend: () -> Unit) {
+private fun NativeInputBox(value: String, onValueChange: (String) -> Unit, onKey: () -> Unit) {
     Row(Modifier.fillMaxWidth()
             .background(SpikeTokens.surface, RoundedCornerShape(SpikeTokens.cornerPanel))
             .padding(horizontal = SpikeTokens.padH, vertical = SpikeTokens.padV),
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(
-            value = value, onValueChange = onValueChange,
+            value = value,
+            onValueChange = {
+                onKey() // keystroke -> next frame: input latency sample
+                onValueChange(it)
+            },
             modifier = Modifier.weight(1f),
-            placeholder = { Text("Type here — input is native in both panes", fontSize = 12.sp) },
+            placeholder = { Text("Type during both phases (input latency)", fontSize = 12.sp) },
             singleLine = true
         )
-        Button(onClick = onSend) { Text("Send") }
     }
 }
 
 @Composable
-private fun ResultsPanel(text: String, coldStartMs: Long) {
+private fun ResultsPanel(text: String) {
     Column(Modifier.fillMaxWidth()
             .background(SpikeTokens.surface, RoundedCornerShape(SpikeTokens.cornerPanel))
             .padding(horizontal = SpikeTokens.padH, vertical = SpikeTokens.padV)
-            .heightIn(max = 190.dp)
+            .heightIn(max = 210.dp)
             .verticalScroll(rememberScrollState())) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Results (select + copy)", fontSize = 12.sp, color = SpikeTokens.textSecondary)
-            Text("cold start ${coldStartMs}ms", fontSize = 12.sp, color = SpikeTokens.textSecondary)
-        }
+        Text("Results — select + copy, paste back", fontSize = 12.sp, color = SpikeTokens.textSecondary)
         Spacer(Modifier.height(4.dp))
         SelectionContainer {
             Text(text, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
@@ -130,52 +145,77 @@ private fun ResultsPanel(text: String, coldStartMs: Long) {
     }
 }
 
+/** One phase's frame stats, frozen at phase end (the collector resets per phase). */
+private data class FrameSummary(
+    val p50Ms: Double?, val p95Ms: Double?, val jankPct: Double?, val dropped: Long, val frames: Int,
+)
+
 /**
- * The benchmark: same corpus, 30 deltas/s, into A then B. Frame stats and
- * PSS are sampled per pane; input latency is the median keystroke-to-frame
- * delta collected while typing in the shared native input.
+ * Runs A ALONE then B ALONE — FrameMetrics are window-wide, so only one pane
+ * streams at a time and the other stays idle. Memory snapshots wrap each
+ * phase (own + related pids + device availMem).
  */
 private suspend fun runBenchmark(
-    bench: Bench,
+    benchHolder: BenchHolder,
     messages: SnapshotStateList<SpikeMsg>,
+    setPhase: (String) -> Unit,
     setResults: (String) -> Unit,
-    setRunning: (Boolean) -> Unit,
+    setDone: () -> Unit,
 ) {
-    setRunning(true)
-    val stamp = "Build 1 (${BuildConfig.GIT_HASH}) — v${BuildConfig.VERSION_NAME}" +
+    val stamp = "Build 2 (${BuildConfig.GIT_HASH}) — v${BuildConfig.VERSION_NAME}" +
         " — CI run ${BuildConfig.CI_RUN_NUMBER} @ ${BuildConfig.BUILD_TIME}"
 
-    // ── Pane A: native ──────────────────────────────────────────────
-    val pssBeforeA = bench.pssKb()
-    bench.startSampling()
-    messages.clear()
+    // ── Phase A: native pane only ───────────────────────────────────────
+    setPhase("Phase A: native streaming — type in the box…")
+    val memBeforeA = benchHolder.mem.snapshot()
+    benchHolder.frames.start()
     streamNative(messages)
-    val statsA = bench.frameStats()
-    bench.stopSampling()
-    val pssA = (bench.pssKb() - pssBeforeA) / 1024.0
-    delay(1200)
+    benchHolder.frames.stop()
+    val memAfterA = benchHolder.mem.snapshot()
+    val statsA = FrameSummary(
+        benchHolder.frames.p50Ms(), benchHolder.frames.p95Ms(),
+        benchHolder.frames.jankPct(), benchHolder.frames.droppedCount(),
+        benchHolder.frames.frameCount)
+    val inputA = benchHolder.input.medianMs()
 
-    // ── Pane B: WebView ─────────────────────────────────────────────
-    val web = SpikeWeb.bridge ?: run {
-        setResults("WebView not ready yet — tap Run again in a moment.")
-        setRunning(false)
+    delay(1500)
+    setPhase("Phase B: WebView streaming — keep typing…")
+
+    // ── Phase B: WebView pane only (native list stays idle) ────────────
+    val web = SpikeWeb.bridge
+    if (web == null) {
+        setPhase("WebView not ready — tap Run again in a moment.")
         return
     }
-    val pssBeforeB = bench.pssKb()
-    bench.startSampling()
+    val memBeforeB = benchHolder.mem.snapshot()
+    benchHolder.frames.start()
     web.clearAll()
     streamWeb(web)
-    val statsB = bench.frameStats()
-    bench.stopSampling()
-    val pssB = (bench.pssKb() - pssBeforeB) / 1024.0
+    benchHolder.frames.stop()
+    val memAfterB = benchHolder.mem.snapshot()
+    val statsB = FrameSummary(
+        benchHolder.frames.p50Ms(), benchHolder.frames.p95Ms(),
+        benchHolder.frames.jankPct(), benchHolder.frames.droppedCount(),
+        benchHolder.frames.frameCount)
+    val inputB = benchHolder.input.medianMs()
 
-    val a = PaneResult("A", statsA.first, statsA.second, statsA.third, pssA, 0.0)
-    val b = PaneResult("B", statsB.first, statsB.second, statsB.third, pssB, 0.0)
-    setResults(ResultsBlock.build(0L, a, b, bench.apkBytes(), stamp))
-    setRunning(false)
+    val a = PaneMetrics("A", statsA.p50Ms, statsA.p95Ms, statsA.jankPct, statsA.dropped,
+        memAfterA.capturedTotalKb(), memAfterA.hasUncaptured(), memAfterA.capturedNames(),
+        memBeforeA.availMemKb, memAfterA.availMemKb, inputA)
+    val b = PaneMetrics("B", statsB.p50Ms, statsB.p95Ms, statsB.jankPct, statsB.dropped,
+        memAfterB.capturedTotalKb(), memAfterB.hasUncaptured(), memAfterB.capturedNames(),
+        memBeforeB.availMemKb, memAfterB.availMemKb, inputB)
+
+    val block = ResultsBlock.build(
+        (benchHolder.activity as SpikeActivity).coldStart(), a, b,
+        benchHolder.frames.refreshHz, benchHolder.mem.apkInstalledBytes(),
+        stamp, statsA.frames, statsB.frames)
+    setResults(block)
+    setPhase("Done — select + paste the results block back.")
+    setDone()
 }
 
-/** Streams the corpus into the native pane at 30 deltas/s. */
+/** Streams the corpus into the native pane at 30 deltas/s (phase A). */
 private suspend fun streamNative(messages: SnapshotStateList<SpikeMsg>) {
     val corpus = listOf(
         SpikeMsg(1, "assistant", SpikeCorpus.MSG1),
@@ -193,7 +233,7 @@ private suspend fun streamNative(messages: SnapshotStateList<SpikeMsg>) {
     }
 }
 
-/** Streams the same corpus into the WebView through the typed bridge. */
+/** Streams the same corpus into the WebView through the typed bridge (phase B). */
 private suspend fun streamWeb(bridge: SpikeBridge) {
     val corpus = listOf(
         1 to SpikeCorpus.MSG1, 2 to SpikeCorpus.MSG2, 3 to SpikeCorpus.MSG3
