@@ -56,7 +56,10 @@ class HttpTransport : ChatTransport {
                             conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                         } catch (_: Exception) { "" }
                         val hdrs = HashMap<String, String>()
-                        var i = 0
+                        // Header index 0 is the status line (null key) — start at 1
+                        // or the loop breaks immediately and NO headers reach
+                        // the taxonomy (429 Retry-After would be lost).
+                        var i = 1
                         while (true) {
                             val key = conn.getHeaderFieldKey(i) ?: break
                             val h = conn.getHeaderField(i)
