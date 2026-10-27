@@ -46,6 +46,20 @@ class EngineContractTest {
         assertEquals("Hello", engine.transcript().last().text)
     }
 
+    @Test fun `gemini adapter streams deltas then completes without sentinel`() = runTest {
+        val g = ChatEngineImpl("g1", FakeUrlTransport(server.port), GeminiAdapter())
+        server.lastScript = FakeChatServer.Script(200, emptyList(), flat(listOf(
+            """data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hel"}]}}]}""",
+            """data: {"candidates":[{"content":{"parts":[{"text":"lo"},{"text":"!"}]}}]}""",
+            """data: {"candidates":[{"finishReason":"STOP"}]}"""
+        )))
+        val events = g.send("hi", EngineConfig("gemini-2.0-flash", providerId = "gemini")).toList()
+        assertEquals(2, events.filterIsInstance<EngineEvent.Delta>().size)
+        assertEquals("Hello!", events.filterIsInstance<EngineEvent.Delta>().joinToString("") { it.text })
+        assertEquals(6, events.filterIsInstance<EngineEvent.Completed>().single().totalChars)
+        assertEquals("Hello!", g.transcript().last().text)
+    }
+
     @Test fun `402 classifies to out of credits`() = runTest {
         server.lastScript = FakeChatServer.Script(402, emptyList(), flat(listOf(
             """data: {"error":{"message":"insufficient credits"}}"""
