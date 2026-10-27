@@ -23,7 +23,7 @@ class Bench(private val context: Context) {
     private val callback = FrameCallback { frameTimeNs ->
         pendingInput?.let { cb ->
             pendingInput = null
-            cb(((frameTimeNs - inputAtNs).coerceAtLeast(0)) / 1_000_000.0)
+            cb((frameTimeNs - inputAtNs).coerceAtLeast(0).toDouble() / 1_000_000.0)
         }
         if (sampling) {
             if (lastFrameNs != 0L) framesNs.add((frameTimeNs - lastFrameNs).coerceAtLeast(0))
