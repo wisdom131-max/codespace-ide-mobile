@@ -19,7 +19,9 @@ import org.json.JSONObject
  *   - Each endpoint is its own PROVIDER INSTANCE (provider id: "custom" for the
  *     migrated legacy endpoint, "custom_<slug>" for new ones — never colons,
  *     because selections persist as "provider:model").
- *   - Each endpoint owns its OWN key slots via ChatKeyPool/SecureTokenStore
+ *   - Each endpoint owns its OWN key slots in SecureTokenStore (the old ChatKeyPool
+ *     pool class is archived and removed with the old chat; slots/data remain —
+ *     docs/stored-formats.md is the rebuild's read-only contract)
  *     (keys are addressed by provider id, so per-endpoint keys work for free).
  *   - Each endpoint owns its own model registry: manual IDs (user-typed, never
  *     client-side validated — Cline's rule) + a cached live /models list with a
@@ -128,8 +130,6 @@ object CustomEndpointStore {
                 o.put("baseUrl", trimmedUrl)
                 persistEndpoints(arr)
                 // G-C C-1b: a base-URL edit invalidates the window cache — models
-                // cached from the OLD url must never serve ("cache dropped" log).
-                ProviderModelCache.drop(providerIdFor(id))
                 return true
             }
         }
@@ -147,8 +147,6 @@ object CustomEndpointStore {
         if (removed) {
             prefs?.edit()?.remove("manual_" + id)?.remove("live_" + id)?.remove("live_ts_" + id)?.apply()
             persistEndpoints(arr)
-            // G-C C-1b: deleting an endpoint drops its window cache too.
-            ProviderModelCache.drop(providerIdFor(id))
         }
         return removed
     }

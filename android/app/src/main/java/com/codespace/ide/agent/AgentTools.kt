@@ -171,10 +171,10 @@ You can use multiple tools in sequence. When done, give a final summary.
         return try {
             when (name) {
                 "run_command" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
-                "plan" -> {
-                    com.codespace.ide.chat.ChatPlanStore.updateFromArgs(args.getJSONArray("steps"))
-                    "Plan staged — awaiting user review. Stop and wait for approval in the chat panel."
-                }
+                // REMOVAL 7/7 (advisor-approved stub 2026-10-27): ChatPlanStore is
+                // archived and removed with the old chat; the plan tool answers
+                // plainly until the rebuilt chat re-registers it. No chat classes.
+                "plan" -> "Plan staging returns with the new chat."
                 // CH02 (P3b): the four file tools now resolve their path through the
                 // shared guest->host choke point below — the model was systematically
                 // exposed to GUEST paths (terminal output, run_command results) while
