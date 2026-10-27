@@ -260,3 +260,4 @@ object CustomEndpointStore {
         // reads it read-only (docs/stored-formats.md).
     }
 
+}
