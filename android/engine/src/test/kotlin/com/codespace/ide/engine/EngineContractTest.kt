@@ -84,6 +84,33 @@ class EngineContractTest {
         assertEquals(3, server.receivedBody.split("\"role\"").size - 1)
     }
 
+    @Test fun `confirmOverBudget override sends anyway`() = runTest {
+        server.lastScript = FakeChatServer.Script(200, emptyList(), flat(listOf(
+            """data: {"choices":[{"delta":{"content":"sent"}}]}""", "data: [DONE]"
+        )))
+        server.served = 0
+        val events = engine.send(
+            "x".repeat(200_000),
+            EngineConfig("m1", maxPayloadChars = 1_000, confirmOverBudget = true)
+        ).toList()
+        assertEquals(1, server.served)
+        assertEquals("sent", events.filterIsInstance<EngineEvent.Delta>().joinToString("") { it.text })
+        assertTrue(events.last() is EngineEvent.Completed)
+    }
+
+    @Test fun `read timeout classifies as network error`() = runTest {
+        server.stallMs = 5_000 // hold the socket silent; transport must time out
+        val slowEngine = ChatEngineImpl("s2", FakeUrlTransport(server.port, readTimeoutMs = 500))
+        val t0 = System.currentTimeMillis()
+        val events = slowEngine.send("hi", EngineConfig("m1")).toList()
+        val elapsed = System.currentTimeMillis() - t0
+        val failed = events.filterIsInstance<EngineEvent.Failed>().single()
+        assertTrue(failed.error is ChatError.Network)
+        assertTrue(failed.error.retryable)
+        assertTrue("timeout fired in ${(elapsed)}ms", elapsed < 4_000)
+        assertTrue(events.none { it is EngineEvent.Completed })
+    }
+
     @Test fun `cancelled mid-stream keeps partial text in the transcript`() = runTest {
         val lines = (1..400).map { """data: {"choices":[{"delta":{"content":"ab"}}]}""" }
         server.lastScript = FakeChatServer.Script(200, emptyList(), flat(lines))
@@ -100,9 +127,14 @@ class EngineContractTest {
         assertTrue(received.none { it is EngineEvent.Completed })
     }
 
-    /** Transport pointing at the fake server. */
-    private class FakeUrlTransport(private val port: Int) : ChatTransport {
+    /** Transport pointing at the fake server; timeouts injectable for the stall test. */
+    private class FakeUrlTransport(
+        private val port: Int,
+        private val connectTimeoutMs: Int = 20_000,
+        private val readTimeoutMs: Int = 120_000,
+    ) : ChatTransport {
         override fun stream(url: String, headers: Map<String, String>, payloadJson: String) =
-            HttpTransport().stream("http://127.0.0.1:$port/chat/completions", headers, payloadJson)
+            HttpTransport(connectTimeoutMs, readTimeoutMs)
+                .stream("http://127.0.0.1:$port/chat/completions", headers, payloadJson)
     }
 }

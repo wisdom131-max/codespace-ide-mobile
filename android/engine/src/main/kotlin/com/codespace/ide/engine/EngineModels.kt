@@ -24,6 +24,12 @@ data class EngineConfig(
     val maxPayloadChars: Int = 48_000,
     /** History budget mode name: COMPACT / BALANCED / FULL (HistoryBudget). */
     val historyMode: String = "BALANCED",
+    /**
+     * Owner-ruled send-budget UX: the UI shows the estimate and asks
+     * "Send anyway?" — an explicit per-send override that bypasses the
+     * BudgetGuard refusal ONCE. Default false = refusal stands.
+     */
+    val confirmOverBudget: Boolean = false,
 )
 
 /** Events emitted while a send runs. Cold flow: nothing starts until collect. */

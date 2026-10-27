@@ -20,6 +20,8 @@ class FakeChatServer {
     /** Script: full HTTP status line + extra headers + SSE body. */
     data class Script(val status: Int, val headers: List<String>, val sseLines: List<String>)
 
+    /** >0 = accept, read the request, hold the socket silent this long, close without writing (timeout path). */
+    @Volatile var stallMs: Long = 0
     @Volatile var lastScript: Script = Script(200, listOf("Content-Type: text/event-stream"), emptyList())
     @Volatile var served = 0
     @Volatile var disconnectedMidStream = 0
@@ -66,6 +68,11 @@ class FakeChatServer {
             receivedBody = String(body, Charsets.UTF_8)
             served++
             connections.incrementAndGet()
+            if (stallMs > 0) {
+                try { Thread.sleep(stallMs) } catch (_: InterruptedException) { return }
+                socket.close()
+                return
+            }
             val script = lastScript
             val w = OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8)
             w.write("HTTP/1.1 ${script.status} ${reason(script.status)}\r\n")

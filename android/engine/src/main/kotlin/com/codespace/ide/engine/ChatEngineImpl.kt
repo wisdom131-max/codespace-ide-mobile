@@ -27,7 +27,7 @@ class ChatEngineImpl(
         state.append(ChatRole.USER, userText, MessageState.DONE)
         val payload = buildPayload(userText, config)
         val overBudget = BudgetGuard.checkPayload(payload.length, config.maxPayloadChars)
-        if (overBudget != null) {
+        if (overBudget != null && !config.confirmOverBudget) {
             state.append(ChatRole.ASSISTANT, "", MessageState.ERROR)
             emit(EngineEvent.Failed(overBudget))
             return@flow

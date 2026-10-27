@@ -31,8 +31,16 @@ class TransportHttpException(
     val body: String,
 ) : Exception("HTTP $status")
 
-/** Simple JVM transport: HttpURLConnection streaming the response body. */
-class HttpTransport : ChatTransport {
+/**
+ * Simple JVM transport: HttpURLConnection streaming the response body.
+ * Timeouts are constructor-injectable so contract tests can exercise the
+ * timeout path quickly. readTimeout is the MAX IDLE between bytes (each
+ * blocking read uses it), not a total-duration cap.
+ */
+class HttpTransport(
+    private val connectTimeoutMs: Int = 20_000,
+    private val readTimeoutMs: Int = 120_000,
+) : ChatTransport {
 
     override fun stream(url: String, headers: Map<String, String>, payloadJson: String): Flow<String> =
         callbackFlow {
@@ -43,8 +51,8 @@ class HttpTransport : ChatTransport {
                 try {
                     conn.requestMethod = "POST"
                     conn.doOutput = true
-                    conn.connectTimeout = 20_000
-                    conn.readTimeout = 120_000
+                    conn.connectTimeout = connectTimeoutMs
+                    conn.readTimeout = readTimeoutMs
                     for ((k, v) in headers) conn.setRequestProperty(k, v)
                     conn.setRequestProperty("Content-Type", "application/json")
                     val bytes = payloadJson.toByteArray(Charsets.UTF_8)
