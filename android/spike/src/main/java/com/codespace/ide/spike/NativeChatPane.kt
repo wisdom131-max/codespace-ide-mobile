@@ -79,7 +79,7 @@ private fun InlineSegments(seg: String) {
         if (trimmed.startsWith("### ")) {
             Text(trimmed.removePrefix("### "), fontWeight = FontWeight.Bold)
         } else if (trimmed.isNotEmpty()) {
-            Text(boldAware(trimmed), fontSize = SpikeTokens.fontBody)
+            boldAware(trimmed)
         } else if (li < lines.size - 1) {
             Spacer(Modifier.height(4.dp))
         }

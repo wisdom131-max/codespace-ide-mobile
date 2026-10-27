@@ -2,7 +2,7 @@ package com.codespace.ide.spike
 
 import android.app.ActivityManager
 import android.content.Context
-import android.os.Choreographer
+import android.view.Choreographer
 import android.os.Debug
 import android.os.SystemClock
 import android.view.Choreographer.FrameCallback
@@ -42,7 +42,7 @@ class Bench(private val context: Context) {
 
     /** Called by the shared native input on each keystroke. */
     fun markInput(report: (Double) -> Unit) {
-        inputAtNs = android.os.System.nanoTime()
+        inputAtNs = System.nanoTime()
         pendingInput = report
     }
 

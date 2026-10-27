@@ -33,7 +33,7 @@ Retry-After: 30
 Small payloads may retry automatically; large ones always ask first."""
 
     /** Message 3: fling content — many short lines. */
-    const val MSG3 = (1..24).joinToString("\n") { "Line $it — fling me to the bottom and back; both panes must stay smooth." }
+    val MSG3 = (1..24).joinToString("\n") { "Line $it — fling me to the bottom and back; both panes must stay smooth." }
 
     /** Delta chunks for a message: ~4 chars per delta at 30/s ≈ streaming feel. */
     fun deltas(msg: String, chunk: Int = 4): List<String> =
