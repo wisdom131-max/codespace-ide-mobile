@@ -67,8 +67,6 @@ import androidx.compose.ui.unit.dp
 import com.codespace.ide.data.GitHubAuth
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.data.SessionStateStore
-import com.codespace.ide.chat.ChatProvider
-import com.codespace.ide.chat.ChatProviderRegistry
 import com.codespace.ide.terminal.BackupManager
 import com.codespace.ide.terminal.TerminalService
 import com.codespace.ide.terminal.BackupTar
@@ -392,61 +390,10 @@ fun SettingsScreen(
                     )
                 },
             )
-            // P4 (BATCH3): OPT-IN 402 key failover — OFF by default. Credits are
-            // per ACCOUNT (e.g. Hugging Face monthly credits), so switching keys
-            // only helps when the pool holds keys from DIFFERENT accounts; the
-            // toggle says that so nobody expects a same-account second key to work.
-            // One pass through the pool, no loops; never shows key values.
-            var failover402Enabled by remember { mutableStateOf(com.codespace.ide.chat.Chat402FailoverSetting.isEnabled()) }
-            ListItem(
-                headlineContent = { Text("Switch to next key on 402 (out of credits)") },
-                supportingContent = {
-                    Text(
-                        if (failover402Enabled) "On \u2014 when a provider answers 'out of credits' (402), the next key in the pool is tried once, and the chat shows 'Switched to key N'. Credits are per ACCOUNT, so this only helps with keys from different accounts."
-                        else "Off \u2014 a 402 (provider account out of credits) stops the request as-is. Turn on to try the next key once; only helps with keys from different accounts."
-                    )
-                },
-                trailingContent = {
-                    Switch(
-                        checked = failover402Enabled,
-                        onCheckedChange = { checked ->
-                            failover402Enabled = checked
-                            com.codespace.ide.chat.Chat402FailoverSetting.setEnabled(context, checked)
-                        },
-                    )
-                },
-            )
-            HorizontalDivider()
+            // REMOVAL 3/7 (advisor ruling): 402-failover and Gemini-thinking
+            // settings rows removed with the old engine. Stored values in the
+            // copilot_chat prefs file are untouched.
 
-            // 1a (advisor 2026-10-26): bounded Gemini thinking — user-visible.
-            var geminiThinking by remember { mutableStateOf(com.codespace.ide.chat.GeminiThinkingBudgetSetting.current()) }
-            ListItem(
-                headlineContent = { Text("Gemini thinking budget") },
-                supportingContent = {
-                    Text(
-                        "Gemini models think by default, and the default is dynamic (up to 8,192 reasoning tokens) — the main cause of long waits before the first word on big prompts. " +
-                        com.codespace.ide.chat.GeminiThinkingBudgetSetting.label(geminiThinking) + " — " +
-                        "Bounded caps thinking at 1,024 tokens (recommended), Off disables thinking where the model allows, Dynamic restores the vendor default."
-                    )
-                },
-                trailingContent = {
-                    Row {
-                        TextButton(onClick = {
-                            geminiThinking = com.codespace.ide.chat.GeminiThinkingBudgetSetting.OFF
-                            com.codespace.ide.chat.GeminiThinkingBudgetSetting.set(context, geminiThinking)
-                        }) { Text("Off", fontWeight = if (geminiThinking == com.codespace.ide.chat.GeminiThinkingBudgetSetting.OFF) FontWeight.Bold else null) }
-                        TextButton(onClick = {
-                            geminiThinking = com.codespace.ide.chat.GeminiThinkingBudgetSetting.BOUNDED
-                            com.codespace.ide.chat.GeminiThinkingBudgetSetting.set(context, geminiThinking)
-                        }) { Text("1024", fontWeight = if (geminiThinking == com.codespace.ide.chat.GeminiThinkingBudgetSetting.BOUNDED) FontWeight.Bold else null) }
-                        TextButton(onClick = {
-                            geminiThinking = com.codespace.ide.chat.GeminiThinkingBudgetSetting.DYNAMIC
-                            com.codespace.ide.chat.GeminiThinkingBudgetSetting.set(context, geminiThinking)
-                        }) { Text("Dynamic", fontWeight = if (geminiThinking == com.codespace.ide.chat.GeminiThinkingBudgetSetting.DYNAMIC) FontWeight.Bold else null) }
-                    }
-                },
-            )
-            HorizontalDivider()
 
             // ── Accounts ────────────────────────────────────────────────────
             Text("Accounts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
