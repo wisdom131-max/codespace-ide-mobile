@@ -79,7 +79,10 @@ object ErrorTaxonomy {
     }
 
     private fun modelIdHint(body: String): String {
-        val m = Regex("""model[_ ]?["']?\s*[:=]\s*["']?([A-Za-z0-9._\-/]+)""", RegexOption.IGNORE_CASE)
+        // Handles JSON ("model": "gpt-4"), key=value (model=gpt-4) AND prose
+        // error messages like: model 'gemini-x' not found. The separator is
+        // optional so the quoted-prose form also matches.
+        val m = Regex("""model["']?\s*[:=]?\s*["']?([A-Za-z0-9._\-/]+)""", RegexOption.IGNORE_CASE)
             .find(body)?.groupValues?.get(1) ?: return "the selected model"
         return m
     }
