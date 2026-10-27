@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "CodeSpace IDE Mobile"
 include(":app")
+include(":spike")

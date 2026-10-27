@@ -111,6 +111,20 @@ jobs:
         working-directory: android
         run: python3 ci-test-report.py
 
+      # UI SPIKE (advisor order 2026-10-27): separate debug APK (com.codespace.ide.spike,
+      # label "VN Spike") that installs BESIDE the main app — own artifact, touches
+      # none of the main app's data, safe to uninstall afterwards.
+      - name: Build VN Spike APK (native-vs-WebView UI spike)
+        working-directory: android
+        run: ./gradlew :spike:assembleDebug --stacktrace
+
+      - name: Upload VN Spike APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vn-spike-apk
+          path: android/spike/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
       - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v4
         with:

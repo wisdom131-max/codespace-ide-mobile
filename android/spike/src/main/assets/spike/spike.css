@@ -1,0 +1,21 @@
+:root {
+  --bg: #F7F6F3; --surface: #FFFFFF; --text: #1A1A1A; --text2: #717171;
+  --accent: #3B6EA5; --bu: #E3EDF7; --ba: #F2F1EC; --berr: #FBE3E3;
+  --codebg: #1E1E1E; --codefg: #EDEDED; --divider: #E0DFDA;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font: 14px/1.45 sans-serif; -webkit-text-size-adjust: 100%; }
+#header { padding: 8px 12px; color: var(--text2); font-size: 11px;
+          border-bottom: 1px solid var(--divider); position: sticky; top: 0; background: var(--bg); }
+#list { padding: 12px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.msg { border-radius: 10px; padding: 10px 12px; margin: 0 0 8px 0;
+       background: var(--ba); white-space: pre-wrap; word-break: break-word; }
+.msg.user { background: var(--bu); }
+.msg.err { background: var(--berr); }
+.msg h3 { margin: 0 0 6px 0; font-size: 14px; }
+.msg code { font-family: monospace; font-size: 12px; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 4px; }
+.msg pre { margin: 6px 0; background: var(--codebg); color: var(--codefg);
+           border-radius: 10px; padding: 10px 12px; overflow-x: auto; }
+.msg pre code { background: none; padding: 0; color: inherit; }
+.msg b { color: var(--accent); }
