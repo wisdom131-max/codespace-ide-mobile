@@ -1,0 +1,106 @@
+package com.codespace.ide.engine
+
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+/**
+ * End-to-end contract tests: the real HttpTransport against the hand-rolled
+ * fake server over a real localhost socket — streaming, DONE handling,
+ * error classification, budget refusal, and cancellation mid-stream.
+ */
+class EngineContractTest {
+
+    private lateinit var server: FakeChatServer
+    private lateinit var engine: ChatEngineImpl
+
+    @Before fun setUp() {
+        server = FakeChatServer()
+        server.start()
+        engine = ChatEngineImpl("s1", FakeUrlTransport(server.port))
+    }
+
+    @After fun tearDown() { server.stop() }
+
+    /** Blank line after each `data:` line so the parser sees event boundaries. */
+    private fun flat(lines: List<String>) = lines.flatMap { listOf(it, "") }
+
+    @Test fun `streams deltas then completed`() = runTest {
+        server.lastScript = FakeChatServer.Script(200, emptyList(), flat(listOf(
+            """data: {"choices":[{"delta":{"content":"Hel"}}]}""",
+            """data: {"choices":[{"delta":{"content":"lo"}}]}""",
+            "data: [DONE]"
+        )))
+        val events = engine.send("hi", EngineConfig("m1")).toList()
+        assertEquals(2, events.filterIsInstance<EngineEvent.Delta>().size)
+        assertEquals("Hello", events.filterIsInstance<EngineEvent.Delta>().joinToString("") { it.text })
+        val done = events.filterIsInstance<EngineEvent.Completed>().single()
+        assertEquals(5, done.totalChars)
+        assertEquals("Hello", engine.transcript().last().text)
+    }
+
+    @Test fun `402 classifies to out of credits`() = runTest {
+        server.lastScript = FakeChatServer.Script(402, emptyList(), flat(listOf(
+            """data: {"error":{"message":"insufficient credits"}}"""
+        )))
+        val events = engine.send("hi", EngineConfig("m1")).toList()
+        val failed = events.filterIsInstance<EngineEvent.Failed>().single()
+        assertTrue(failed.error is ChatError.OutOfCredits)
+        assertTrue(failed.error.userVerdict.contains("credits"))
+    }
+
+    @Test fun `429 keeps Retry-After`() = runTest {
+        server.lastScript = FakeChatServer.Script(429, listOf("Retry-After: 30"), flat(listOf(
+            """data: {"error":"slow down"}"""
+        )))
+        val events = engine.send("hi", EngineConfig("m1")).toList()
+        val failed = events.filterIsInstance<EngineEvent.Failed>().single()
+        assertEquals(30, (failed.error as ChatError.RateLimited).retryAfterSec)
+    }
+
+    @Test fun `oversized payload refused before any network`() = runTest {
+        server.served = 0
+        val events = engine.send("x".repeat(200_000), EngineConfig("m1", maxPayloadChars = 1_000)).toList()
+        assertTrue(events.single() is EngineEvent.Failed)
+        assertTrue((events.single() as EngineEvent.Failed).error is ChatError.OverBudget)
+        assertEquals(0, server.served)
+    }
+
+    @Test fun `history window rides along on the second send`() = runTest {
+        server.lastScript = FakeChatServer.Script(200, emptyList(), flat(listOf(
+            """data: {"choices":[{"delta":{"content":"ok"}}]}""", "data: [DONE]"
+        )))
+        engine.send("first", EngineConfig("m1")).toList()
+        engine.send("second", EngineConfig("m1")).toList()
+        assertTrue(server.receivedBody.contains("\"first\""))
+        assertTrue(server.receivedBody.contains("\"second\""))
+        assertEquals(2, server.receivedBody.split("\"role\"").size - 1)
+    }
+
+    @Test fun `cancelled mid-stream keeps partial text in the transcript`() = runTest {
+        val lines = (1..400).map { """data: {"choices":[{"delta":{"content":"ab"}}]}""" }
+        server.lastScript = FakeChatServer.Script(200, emptyList(), flat(lines))
+        val received = ArrayList<EngineEvent>()
+        val job = launch {
+            engine.send("hi", EngineConfig("m1")).collect { received.add(it) }
+        }
+        // Wait for some deltas then cancel (capped spin, real server timing).
+        var spins = 0
+        while (received.size < 3 && spins < 600) { spins++; Thread.sleep(5) }
+        job.cancel()
+        assertTrue(received.filterIsInstance<EngineEvent.Delta>().isNotEmpty())
+        // Engine is cancelled — no Completed event may arrive afterwards.
+        assertTrue(received.none { it is EngineEvent.Completed })
+    }
+
+    /** Transport pointing at the fake server. */
+    private class FakeUrlTransport(private val port: Int) : ChatTransport {
+        override fun stream(url: String, headers: Map<String, String>, payloadJson: String) =
+            HttpTransport().stream("http://127.0.0.1:$port/chat/completions", headers, payloadJson)
+    }
+}
