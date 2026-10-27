@@ -5,7 +5,6 @@ import android.content.Context
 import android.view.Choreographer
 import android.os.Debug
 import android.os.SystemClock
-import android.view.Choreographer.FrameCallback
 import java.util.PriorityQueue
 
 /**
@@ -20,18 +19,21 @@ class Bench(private val context: Context) {
     private var sampling = false
     private val choreographer = Choreographer.getInstance()
 
-    private val callback = FrameCallback { frameTimeNs ->
-        pendingInput?.let { cb ->
-            pendingInput = null
-            cb((frameTimeNs - inputAtNs).coerceAtLeast(0).toDouble() / 1_000_000.0)
-        }
-        if (sampling) {
-            if (lastFrameNs != 0L) framesNs.add((frameTimeNs - lastFrameNs).coerceAtLeast(0))
+    // Anonymous object, not a self-referencing lambda val — the lambda form
+    // (val cb = FrameCallback { ... postFrameCallback(cb) }) is the recursive
+    // type-check failure seen in runs 3366-3368. `this` resolves cleanly.
+    private val callback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNs: Long) {
+            pendingInput?.let { cb ->
+                pendingInput = null
+                cb((frameTimeNs - inputAtNs).coerceAtLeast(0).toDouble() / 1_000_000.0)
+            }
+            if (sampling) {
+                if (lastFrameNs != 0L) framesNs.add((frameTimeNs - lastFrameNs).coerceAtLeast(0))
+            }
             lastFrameNs = frameTimeNs
-        } else {
-            lastFrameNs = frameTimeNs
+            choreographer.postFrameCallback(this)
         }
-        choreographer.postFrameCallback(callback)
     }
 
     init { choreographer.postFrameCallback(callback) }
