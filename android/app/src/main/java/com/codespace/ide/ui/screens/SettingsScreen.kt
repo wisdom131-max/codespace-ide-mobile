@@ -1387,6 +1387,22 @@ fun SettingsScreen(
                 color = Color(0xFF717171),
                 modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
             )
+            // A(a) design gallery: dev-only entry row (debug builds only).
+            if (BuildConfig.DEBUG) {
+                val galleryCtx = LocalContext.current
+                Text(
+                    "Open chat design gallery",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(start = 16.dp, top = 4.dp)
+                        .clickable {
+                            galleryCtx.startActivity(
+                                Intent(galleryCtx, com.codespace.ide.chat.ui.ChatDesignGalleryActivity::class.java)
+                            )
+                        },
+                )
+            }
             // BATCH10-P00: the PROTECTED build/lifecycle history — the last lines
             // Output "Clear" can never erase (startup stamp + [LSP-LIFECYCLE]).
             // Shows the tail so a saved screenshot of Settings answers "which

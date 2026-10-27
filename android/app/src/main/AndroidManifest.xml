@@ -61,6 +61,13 @@
             </intent-filter>
         </activity>
 
+        <!-- A(a) dev-only chat design gallery: launched from Settings-About in
+             debug builds only; the entry row is BuildConfig.DEBUG-gated. -->
+        <activity
+            android:name=".chat.ui.ChatDesignGalleryActivity"
+            android:exported="false"
+            android:label="VN Chat Gallery" />
+
         <!-- Foreground service for terminal — NO foregroundServiceType.
              targetSdk=28 (same as Termux): type attribute not required below API 29.
              Android 14 applies full compat mode — all FGS restrictions bypassed.
