@@ -452,22 +452,10 @@ fun SourceControlPane(
             isBusy = operation !is ScmOperation.Idle,
             aiBusy = aiSuggestBusy,
             onAiSuggest = {
-                if (!aiSuggestBusy) scope.launch {
-                    aiSuggestBusy = true
-                    try {
-                        val suggested = com.codespace.ide.chat.ScmCommitMessageService.generate(
-                            context, com.codespace.ide.data.SecureTokenStore(context), hostPath
-                        )
-                        if (suggested.isNotBlank()) {
-                            commitMessage = suggested
-                            snackbarMsg = "AI commit message generated"
-                        }
-                    } catch (e: Exception) {
-                        snackbarMsg = "AI message failed: " + (e.message ?: "unknown error")
-                    } finally {
-                        aiSuggestBusy = false
-                    }
-                }
+                // REMOVAL 2026-10-27 (advisor ruling): the old chat provider layer
+                // is removed; the AI commit-message action is disabled with a plain
+                // message until the rebuilt chat re-registers it. No dead call.
+                if (!aiSuggestBusy) snackbarMsg = "AI commit messages return with the new chat"
             },
             onCommit = {
                 if (commitMessage.isNotBlank()) {

@@ -120,9 +120,9 @@ fun SettingsScreen(
     var githubStatus by remember { mutableStateOf("") } // "", "waiting", "error:<msg>"
     var githubJob by remember { mutableStateOf<Job?>(null) }
 
-    // ── AI provider keys: fully extracted to AiKeysSection.kt (credential UX
-    // redesign phases 1-3) — masked key status, per-provider auto-save, malformed-
-    // token rejection, paste-to-route, live model check, no global Save button.
+    // ── AI provider keys UI: REMOVED 2026-10-27 (advisor ruling; archived to
+    // vn-code-archive). savedMsg/showClearDialog remain — restore-backup and
+    // clear-data dialogs still use them.
     var savedMsg by remember { mutableStateOf("") }
     var showClearDialog by remember { mutableStateOf<String?>(null) }
     // SK10 (2026-09-26): unified settings search — one box that finds every setting
@@ -507,7 +507,9 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── AI Providers (credential UX redesign phases 1-3) ────────────────
-            AiKeysSection(tokenStore = tokenStore)
+            // REMOVAL 2026-10-27 (advisor ruling): AI provider keys/endpoint UI
+            // archived (vn-code-archive) — returns with the new chat. Stored keys
+            // and endpoints_v2 data are untouched.
 
             HorizontalDivider()
 
@@ -1798,7 +1800,6 @@ private val SETTINGS_SEARCH_INDEX = listOf(
     SettingsIndexEntry("Theme picker (Dracula, AMOLED, Nord…)", "Appearance", "Shell gear menu"),
     SettingsIndexEntry("App lock (PIN / biometric)", "Security", "Settings"),
     SettingsIndexEntry("GitHub account", "Accounts", "Settings"),
-    SettingsIndexEntry("AI provider keys", "AI Providers", "Settings"),
     SettingsIndexEntry("Container backup & restore", "Container Backup", "Settings"),
     SettingsIndexEntry("Language servers status", "Language Servers", "Settings"),
     SettingsIndexEntry("Reinstall Ubuntu rootfs", "Ubuntu Container", "Settings"),
