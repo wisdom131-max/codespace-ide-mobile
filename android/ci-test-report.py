@@ -9,10 +9,10 @@ import sys
 import xml.etree.ElementTree as ET
 
 REQUIRED = [
+    # REMOVAL 4/7: chat suites for removed classes were deleted from this
+    # guard list with their test files (AttachmentSheetNotices, ModelCatalog,
+    # StatusStripLabel + earlier rot removals).
     "com.codespace.ide.chat.AttachmentSecretsTest",
-    "com.codespace.ide.chat.AttachmentSheetNoticesTest",
-    "com.codespace.ide.chat.ModelCatalogTest",
-    "com.codespace.ide.chat.StatusStripLabelTest",
     "com.codespace.ide.data.SessionStateStoreTest",
     "com.codespace.ide.debug.DAPClientTest",
     "com.codespace.ide.debug.NodeDAPAdapterTest",
