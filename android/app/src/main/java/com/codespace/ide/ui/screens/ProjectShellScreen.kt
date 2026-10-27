@@ -4628,41 +4628,8 @@ private fun StatusBarContent(
         Icon(Icons.Default.AccountTree, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
         Spacer(Modifier.width(4.dp))
         Text(branchName, fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
-        // I5 — chat status item: active AI model (provider · model), tap opens chat
-        if (onOpenChat != null) {
-            val sbCtx = androidx.compose.ui.platform.LocalContext.current
-            val aiLabel = remember {
-                try {
-                    val m = com.codespace.ide.chat.ChatModelSelection.resolveAuto(
-                        sbCtx,
-                        com.codespace.ide.chat.ChatModelSelection.get(sbCtx) ?: "auto",
-                        com.codespace.ide.data.SecureTokenStore(sbCtx)
-                    )
-                    val pid = m.substringBefore(':', "")
-                    // Advisor item 2 (2026-10-10): provider name ONCE + long model
-                    // ids middle-shortened. Custom endpoints show their ENDPOINT
-                    // LABEL — the registry displayName "Custom · <label>" double-
-                    // printed "Custom" for the legacy endpoint (label literally
-                    // "Custom"): the bar read "AI: Custom · Custom · Qwen/...".
-                    val prov = com.codespace.ide.chat.ChatProviderRegistry.byId(pid)
-                    val providerLabel = if (prov is com.codespace.ide.chat.providers.CustomOpenAiProvider)
-                        prov.endpointLabel else (prov?.displayName ?: pid)
-                    com.codespace.ide.chat.ChatModelSelection.statusStripLabel(providerLabel, m.substringAfter(':'))
-                } catch (_: Exception) { null }
-            }
-            if (aiLabel != null) {
-                Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.AutoAwesome, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    "AI: " + aiLabel,
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.9f),
-                    maxLines = 1,
-                    modifier = Modifier.clickable { onOpenChat() },
-                )
-            }
-        }
+        // REMOVAL 4/7: the AI model status item is gone with the old chat
+        // engine; the status bar keeps branch + language + RAM/MCP items.
         Spacer(Modifier.width(8.dp))
         // P-STATUS-LANG: VS Code-style language indicator — shows a bracket
         // symbol representing the language type + the language name, all white.

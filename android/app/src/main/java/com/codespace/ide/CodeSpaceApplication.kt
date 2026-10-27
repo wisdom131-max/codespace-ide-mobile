@@ -117,8 +117,7 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         // G-E-a capability table (INERT: switch OFF by default; nothing reads
         // it yet — the gate returns the provider constant unchanged until the
         // owner flips it after the device pass; init is poison-safe by design).
-        try { com.codespace.ide.chat.capabilities.ModelCapabilityTable.init(this) } catch (_: Exception) { }
-        try { com.codespace.ide.chat.capabilities.ModelCapabilityOverrides.init(this) } catch (_: Exception) { }
+        // REMOVAL 4/7: model-capability init calls removed with the capabilities package.
         // X7 fix: Start Agent API server on app launch so the MCP status indicator
         // is green from startup, not just when a terminal session is created.
         // start() no-ops if already running, so this is safe to call here.

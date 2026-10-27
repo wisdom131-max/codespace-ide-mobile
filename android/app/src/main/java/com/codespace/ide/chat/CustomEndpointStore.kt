@@ -254,16 +254,9 @@ object CustomEndpointStore {
      * and after init — the registry stays authoritative for enumeration.
      */
     fun syncProviders() {
-        try {
-            val want = list().map { providerIdFor(it.id) }
-            // Drop provider instances for endpoints that no longer exist.
-            com.codespace.ide.chat.ChatProviderRegistry.all()
-                .filter { it.id == "custom" || it.id.startsWith("custom_") }
-                .filter { it.id !in want }
-                .forEach { com.codespace.ide.chat.ChatProviderRegistry.unregister(it.id) }
-            // (Re)register every current endpoint — register() replaces by id, so
-            // label/baseUrl edits are reflected immediately.
-            com.codespace.ide.chat.ProviderBootstrap.registerCustomEndpoints()
-        } catch (_: Exception) { }
+        // REMOVAL 4/7 (advisor ruling 2026-10-27): the provider registry is gone
+        // with the old chat engine; this endpoint-store hook no longer syncs into
+        // it. The stored endpoints_v2 DATA is untouched — the rebuild's migration
+        // reads it read-only (docs/stored-formats.md).
     }
-}
+
