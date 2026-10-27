@@ -34,11 +34,18 @@ REQUIRED = [
     "com.codespace.ide.terminal.TerminalSessionStoreF3Test",
     "com.codespace.ide.terminal.shellintegration.ShellIntegrationParserTest",
     "com.codespace.ide.terminal.shellintegration.ShellIntegrationStateTest",
+    # Pure-JVM ChatEngine suites (rebuild order step 3)
+    "com.codespace.ide.engine.SseParserTest",
+    "com.codespace.ide.engine.ErrorTaxonomyTest",
+    "com.codespace.ide.engine.BudgetGuardTest",
+    "com.codespace.ide.engine.HistoryBudgetTest",
+    "com.codespace.ide.engine.EngineContractTest",
 ]
 
 counts = collections.Counter()
 failed = collections.Counter()
-for path in glob.glob("app/build/test-results/testProdDebugUnitTest/*.xml"):
+for path in glob.glob("app/build/test-results/testProdDebugUnitTest/*.xml") + \
+               glob.glob("engine/build/test-results/test/*.xml"):
     for tc in ET.parse(path).getroot().iter("testcase"):
         counts[tc.get("classname")] += 1
         if tc.find("failure") is not None or tc.find("error") is not None:
