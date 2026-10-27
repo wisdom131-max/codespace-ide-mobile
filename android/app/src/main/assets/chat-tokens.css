@@ -1,0 +1,33 @@
+/* GENERATED from android/chat-tokens.json by scripts/generate_chat_tokens.py - DO NOT EDIT BY HAND */
+:root,
+.chat-dark {
+  --chat-bg: #1E1E1E;
+  --chat-surface: #252526;
+  --chat-surfacealt: #2D2D30;
+  --chat-border: #3E3E42;
+  --chat-text: #D4D4D4;
+  --chat-textsecondary: #9D9D9D;
+  --chat-accent: #3794FF;
+  --chat-success: #4EC9B0;
+  --chat-warning: #CCA700;
+  --chat-error: #F14C4C;
+  --chat-errorbg: #2D1B1E;
+  --chat-warningbg: #2D2A19;
+  --chat-streamcursor: #D4D4D4;
+}
+
+.chat-light {
+  --chat-bg: #FFFFFF;
+  --chat-surface: #F5F5F5;
+  --chat-surfacealt: #ECECEC;
+  --chat-border: #D0D0D0;
+  --chat-text: #1E1E1E;
+  --chat-textsecondary: #6B6B6B;
+  --chat-accent: #005FB8;
+  --chat-success: #0F7B6C;
+  --chat-warning: #8A6100;
+  --chat-error: #C42B1C;
+  --chat-errorbg: #FBE9E7;
+  --chat-warningbg: #FFF6DC;
+  --chat-streamcursor: #1E1E1E;
+}

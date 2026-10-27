@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "name": "vn-chat-tokens",
+    "version": 1,
+    "generator": "scripts/generate_chat_tokens.py",
+    "doc": "Single source for the chat UI tokens. Outputs are GENERATED: ChatTokens.kt (Compose) and app assets chat-tokens.css (CSS custom properties). Regenerate with: python3 scripts/generate_chat_tokens.py"
+  },
+  "radius": {
+    "panel": 12,
+    "chip": 8
+  },
+  "spacing": {
+    "padHorizontal": 12,
+    "padVertical": 10,
+    "gap": 8,
+    "gapTight": 6
+  },
+  "typography": {
+    "fontMicro": 10,
+    "fontSmall": 12,
+    "fontBody": 14,
+    "fontMono": 13
+  },
+  "palette": {
+    "dark": {
+      "bg": "#1E1E1E",
+      "surface": "#252526",
+      "surfaceAlt": "#2D2D30",
+      "border": "#3E3E42",
+      "text": "#D4D4D4",
+      "textSecondary": "#9D9D9D",
+      "accent": "#3794FF",
+      "success": "#4EC9B0",
+      "warning": "#CCA700",
+      "error": "#F14C4C",
+      "errorBg": "#2D1B1E",
+      "warningBg": "#2D2A19",
+      "streamCursor": "#D4D4D4"
+    },
+    "light": {
+      "bg": "#FFFFFF",
+      "surface": "#F5F5F5",
+      "surfaceAlt": "#ECECEC",
+      "border": "#D0D0D0",
+      "text": "#1E1E1E",
+      "textSecondary": "#6B6B6B",
+      "accent": "#005FB8",
+      "success": "#0F7B6C",
+      "warning": "#8A6100",
+      "error": "#C42B1C",
+      "errorBg": "#FBE9E7",
+      "warningBg": "#FFF6DC",
+      "streamCursor": "#1E1E1E"
+    }
+  }
+}
