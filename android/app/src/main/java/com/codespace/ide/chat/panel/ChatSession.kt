@@ -52,12 +52,15 @@ class ChatSession(
     /** Injectable for JVM tests; the real panel uses HttpTransport(). */
     private val transportFactory: () -> com.codespace.ide.engine.ChatTransport = { HttpTransport() },
 ) {
-    private var engine: ChatEngineImpl = buildEngine()
     private val streamBuf = StringBuilder()
     private var sendJob: Job? = null
 
     val ui = MutableStateFlow(ChatPanelUiState())
     val selection = MutableStateFlow(PanelSelection())
+
+    // Init-order (run 3387 NPE): buildEngine's default providerId reads
+    // selection, so the engine initializer MUST come AFTER selection exists.
+    private var engine: ChatEngineImpl = buildEngine()
 
     /** Switching provider rebuilds the engine (fresh wire window); UI rows stay. */
     fun select(sel: PanelSelection) {
