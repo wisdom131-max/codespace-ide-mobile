@@ -45,7 +45,9 @@ class AnthropicAdapterTest {
             "\"stream\":true,\"messages\":[" +
             "{\"role\":\"user\",\"content\":\"hi\"}," +
             "{\"role\":\"assistant\",\"content\":\"hello\"}," +
-            "{\"role\":\"user\",\"content\":\"again\"}]}"
+            "{\"role\":\"user\",\"content\":\"again\"}]," +
+            "\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":1024}}"
+        // Default reasoningBudget = 1024 => bounded thinking rides along.
         assertEquals(expected, a.payload(window, "again", EngineConfig("claude-opus-5-5")))
     }
 
