@@ -180,3 +180,64 @@ class KeyFailoverMappingTest {
         assertNull(chooseNextSlot(emptyList()))
     }
 }
+
+/** WP8: panel-side staging — attach gate, chip row, retry keeps attachments. */
+class PanelAttachmentStagingTest {
+
+    private class CaptureTransport(var payloadRef: String? = null) : ChatTransport {
+        override fun stream(url: String, headers: Map<String, String>, payloadJson: String): Flow<String> = flow {
+            payloadRef = payloadJson
+            emit("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]}]}}\n\n")
+        }
+    }
+
+    private fun sessionWith(t: CaptureTransport, provider: String = "gemini", model: String = "gemini-3.8-flash"): ChatSession {
+        val s = ChatSession("proj",
+            { slot -> if (slot == "ai_gemini") "k" else null },
+            CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            { t },
+            contextOverrideFor = { _, _ -> null },
+        )
+        s.select(PanelSelection(providerId = provider, keySlot = "ai_gemini",
+            modelId = model, baseUrl = "http://127.0.0.1:1"))
+        return s
+    }
+
+    @Test
+    fun oversizedRefusedWithHonestNote() {
+        val s = sessionWith(CaptureTransport())
+        s.addPending("big.png", "image/png", "aGVsbG8=", 11L * 1024 * 1024)
+        assertTrue(s.pending.value.isEmpty())
+        val note = s.ui.value.rows.filterIsInstance<ChatRowModel.InfoNote>().lastOrNull()
+        assertTrue(note != null && note.text.contains("10 MB"))
+    }
+
+    @Test
+    fun wrongKindRefusedAndChipStages() {
+        val s = sessionWith(CaptureTransport())
+        s.addPending("note.txt", "text/plain", "eA==", 4L)
+        assertTrue(s.pending.value.isEmpty())
+        s.addPending("shot.png", "image/png", "aGVsbG8=", 5L)
+        assertEquals(1, s.pending.value.size)
+        assertEquals("shot.png", s.pendingChips().single().name)
+    }
+
+    @Test
+    fun attachmentRidesPayloadAndRetryResendsIt() {
+        val t = CaptureTransport()
+        val s = sessionWith(t)
+        s.addPending("shot.png", "image/png", "aGVsbG8=", 5L)
+        s.send("look")
+        runBlocking { var n = 0; while (s.ui.value.streaming && n < 400) { delay(10); n++ } }
+        assertTrue(t.payloadRef!!.contains("aGVsbG8="))
+        assertTrue(t.payloadRef!!.contains("inline_data"))
+        // chips row shown for the sent message; pending cleared
+        assertTrue(s.ui.value.rows.any { it is ChatRowModel.Attachments })
+        assertTrue(s.pending.value.isEmpty())
+        // retry re-sends the staged attachment rather than dropping it
+        t.payloadRef = null
+        s.retry()
+        runBlocking { var n = 0; while (s.ui.value.streaming && n < 400) { delay(10); n++ } }
+        assertTrue(t.payloadRef!!.contains("aGVsbG8="))
+    }
+}

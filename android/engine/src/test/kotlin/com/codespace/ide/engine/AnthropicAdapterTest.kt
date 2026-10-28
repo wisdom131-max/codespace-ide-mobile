@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 /**
@@ -108,5 +109,42 @@ class AnthropicAdapterTest {
     fun anthropicHasNoDoneSentinel() {
         assertFalse(a.isDoneSentinel("[DONE]"))
         assertFalse(a.isDoneSentinel("{\"type\":\"message_stop\"}"))
+    }
+}
+
+/** WP8: content-block arrays for images and PDF documents on the final user turn. */
+class AnthropicAttachmentPayloadTest {
+
+    private fun cfg() = EngineConfig(modelId = "claude-opus-5-5", providerId = "anthropic",
+        baseUrl = "https://api.anthropic.com/v1/messages")
+
+    @Test
+    fun imageBecomesBase64ImageBlock() {
+        val a = AnthropicAdapter()
+        val payload = a.payload(emptyList(), "read this",
+            listOf(ChatAttachment("1", "x.png", "image/png", "aGVsbG8=")), cfg())
+        assertTrue(payload.contains("\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"aGVsbG8=\"}"))
+        assertTrue(payload.contains("\"type\":\"text\",\"text\":\"read this\""))
+        assertTrue(payload.contains("\"role\":\"user\",\"content\":["))
+    }
+
+    @Test
+    fun pdfBecomesDocumentBlock() {
+        val a = AnthropicAdapter()
+        val payload = a.payload(emptyList(), "", 
+            listOf(ChatAttachment("1", "d.pdf", "application/pdf", "cGRm")), cfg())
+        assertTrue(payload.contains("\"type\":\"document\",\"source\":{\"type\":\"base64\",\"media_type\":\"application/pdf\""))
+    }
+
+    @Test
+    fun unsupportedImageKindRefusedBeforeRequest() {
+        val a = AnthropicAdapter()
+        try {
+            a.payload(emptyList(), "hi",
+                listOf(ChatAttachment("1", "x.bmp", "image/bmp", "aGVsbG8=")), cfg())
+            fail("image/bmp is not in the Anthropic media-type list")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("not supported"))
+        }
     }
 }

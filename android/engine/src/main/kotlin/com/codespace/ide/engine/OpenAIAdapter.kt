@@ -30,6 +30,47 @@ class OpenAIAdapter : ProviderAdapter {
     }
 
     /**
+     * WP8: the final user turn becomes a content ARRAY - text plus image_url
+     * parts carrying data URLs (docs verified 2026-10-28: chat/completions
+     * vision takes image_url with data: URIs). Inline PDF is NOT part of the
+     * chat/completions wire format - refused BEFORE the request.
+     */
+    override fun payload(
+        window: List<ChatMessage>,
+        userText: String,
+        attachments: List<ChatAttachment>,
+        config: EngineConfig,
+    ): String {
+        if (attachments.isEmpty()) return payload(window, userText, config)
+        val msgs = StringBuilder()
+        for (m in window) {
+            if (msgs.isNotEmpty()) msgs.append(',')
+            msgs.append("{\"role\":\"").append(roleJson(m.role)).append("\",\"content\":\"")
+                .append(escapeJson(m.text)).append("\"}")
+        }
+        val parts = StringBuilder()
+        if (userText.isNotEmpty()) parts.append("{\"type\":\"text\",\"text\":\"")
+            .append(escapeJson(userText)).append("\"}")
+        for (a in attachments) {
+            if (!attachmentSupported(a.mimeType)) {
+                throw IllegalArgumentException(
+                    "Attachment '" + a.name + "' (" + a.mimeType + ") is not supported by this provider's wire format (images only; inline PDF is not part of chat/completions)")
+            }
+            if (parts.isNotEmpty()) parts.append(',')
+            parts.append("{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:")
+                .append(a.mimeType).append(";base64,").append(a.base64Data).append("\"}}")
+        }
+        if (msgs.isNotEmpty()) msgs.append(',')
+        msgs.append("{\"role\":\"user\",\"content\":[").append(parts).append("]}")
+        val effort = reasoningEffort(config)
+        return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
+            "\"max_tokens\":" + config.maxResponseTokens + ",\"messages\":[" + msgs + "]" +
+            (if (effort != null) ",\"reasoning_effort\":\"" + effort + "\"" else "") + "}"
+    }
+
+    internal fun attachmentSupported(mimeType: String): Boolean = mimeType.startsWith("image/")
+
+    /**
      * WP3: the ONE reasoning control for effort-kind presets (openai, openrouter,
      * xai). Mapped from EngineConfig.reasoningBudget: omitted when 0/off or when
      * the provider's preset is kind none (deepseek/groq/mistral/ollama) or when

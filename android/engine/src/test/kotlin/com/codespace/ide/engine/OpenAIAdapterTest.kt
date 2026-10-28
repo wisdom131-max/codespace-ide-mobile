@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.fail
 
 /**
  * A(b) commit 1: the extracted OpenAI adapter must be behavior-IDENTICAL to
@@ -100,5 +101,33 @@ class OpenAIAdapterTest {
     fun doneSentinelIsBracketDoneOnly() {
         assertTrue(a.isDoneSentinel("[DONE]"))
         assertFalse(a.isDoneSentinel("{\"done\":true}"))
+    }
+}
+
+/** WP8: image_url data-URL parts; inline PDF refused before the request. */
+class OpenAIAttachmentPayloadTest {
+
+    private fun cfg() = EngineConfig(modelId = "gpt-test", providerId = "openai",
+        baseUrl = "http://127.0.0.1:1/chat/completions", apiKey = "k")
+
+    @Test
+    fun imageBecomesDataUrlPart() {
+        val a = OpenAIAdapter()
+        val payload = a.payload(emptyList(), "look",
+            listOf(ChatAttachment("1", "x.png", "image/png", "aGVsbG8=")), cfg())
+        assertTrue(payload.contains("\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aGVsbG8=\"}"))
+        assertTrue(payload.contains("\"type\":\"text\",\"text\":\"look\""))
+    }
+
+    @Test
+    fun inlinePdfRefusedBeforeRequest() {
+        val a = OpenAIAdapter()
+        try {
+            a.payload(emptyList(), "hi",
+                listOf(ChatAttachment("1", "d.pdf", "application/pdf", "cGRm")), cfg())
+            fail("inline PDF is not part of chat/completions")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("not supported"))
+        }
     }
 }

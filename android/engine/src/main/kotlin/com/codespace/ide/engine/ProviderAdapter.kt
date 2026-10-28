@@ -20,6 +20,14 @@ interface ProviderAdapter {
     /** Request body for the history window + this send. */
     fun payload(window: List<ChatMessage>, userText: String, config: EngineConfig): String
 
+    /** WP8: payload with staged attachments (default: none, identical bytes). */
+    fun payload(
+        window: List<ChatMessage>,
+        userText: String,
+        attachments: List<ChatAttachment>,
+        config: EngineConfig,
+    ): String = payload(window, userText, config)
+
     /** Next visible text delta from one SSE data payload; null if none. */
     fun extractDelta(data: String): String?
 

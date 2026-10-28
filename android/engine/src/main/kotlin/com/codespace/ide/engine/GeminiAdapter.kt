@@ -32,6 +32,44 @@ class GeminiAdapter : ProviderAdapter {
             config.maxResponseTokens + ",\"thinkingConfig\":{\"thinkingBudget\":" + thinkingBudget(config) + "}}}"
     }
 
+    /**
+     * WP8: final user turn carries the text part plus inline_data parts for
+     * every staged attachment (REST accepts snake_case inline_data; images and
+     * PDF both ride the SAME field per docs verified 2026-10-28).
+     */
+    override fun payload(
+        window: List<ChatMessage>,
+        userText: String,
+        attachments: List<ChatAttachment>,
+        config: EngineConfig,
+    ): String {
+        if (attachments.isEmpty()) return payload(window, userText, config)
+        val contents = StringBuilder()
+        for (m in window) {
+            if (contents.isNotEmpty()) contents.append(',')
+            contents.append("{\"role\":\"").append(roleJson(m.role)).append("\",\"parts\":[{\"text\":\"")
+                .append(escapeJson(m.text)).append("\"}]}")
+        }
+        val parts = StringBuilder()
+        if (userText.isNotEmpty()) parts.append("{\"text\":\"").append(escapeJson(userText)).append("\"}")
+        for (a in attachments) {
+            if (!attachmentSupported(a.mimeType)) {
+                throw IllegalArgumentException(
+                    "Attachment '" + a.name + "' (" + a.mimeType + ") is not supported by the Gemini wire format (images and PDF only)")
+            }
+            if (parts.isNotEmpty()) parts.append(',')
+            parts.append("{\"inline_data\":{\"mime_type\":\"").append(a.mimeType)
+                .append("\",\"data\":\"").append(a.base64Data).append("\"}}")
+        }
+        if (contents.isNotEmpty()) contents.append(',')
+        contents.append("{\"role\":\"user\",\"parts\":[").append(parts).append("]}")
+        return "{\"contents\":[" + contents + "],\"generationConfig\":{\"maxOutputTokens\":" +
+            config.maxResponseTokens + ",\"thinkingConfig\":{\"thinkingBudget\":" + thinkingBudget(config) + "}}}"
+    }
+
+    internal fun attachmentSupported(mimeType: String): Boolean =
+        mimeType.startsWith("image/") || mimeType == "application/pdf"
+
     /** One reasoning control, bounded: 0 = off is allowed; -1 (dynamic) never sent. */
     internal fun thinkingBudget(config: EngineConfig): Int =
         if (config.reasoningBudget < 0) 1024 else config.reasoningBudget

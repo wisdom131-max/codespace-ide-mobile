@@ -16,6 +16,19 @@ data class ChatMessage(
     val state: MessageState = MessageState.DONE,
 )
 
+/**
+ * WP8: staged attachment for ONE send. base64 is captured at ATTACH time
+ * (staging) - later file edits never change what is sent. Redaction rule:
+ * the data is never logged and never persisted; it lives in memory for the
+ * send and is then dropped. History keeps TEXT only.
+ */
+data class ChatAttachment(
+    val id: String,
+    val name: String,
+    val mimeType: String,
+    val base64Data: String,
+)
+
 /** Per-send configuration: model id, request caps, budget knobs. */
 data class EngineConfig(
     val modelId: String,
@@ -58,5 +71,9 @@ sealed class EngineEvent {
  */
 interface ChatEngine {
     val sessionId: String
-    fun send(userText: String, config: EngineConfig): kotlinx.coroutines.flow.Flow<EngineEvent>
+    fun send(userText: String, attachments: List<ChatAttachment>, config: EngineConfig): kotlinx.coroutines.flow.Flow<EngineEvent>
+
+    /** WP2-era single-arg convenience: send without attachments. */
+    fun send(userText: String, config: EngineConfig): kotlinx.coroutines.flow.Flow<EngineEvent> =
+        send(userText, emptyList(), config)
 }

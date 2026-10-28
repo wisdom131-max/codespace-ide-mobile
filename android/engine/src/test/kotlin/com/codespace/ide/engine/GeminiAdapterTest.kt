@@ -1,6 +1,7 @@
 package com.codespace.ide.engine
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -83,5 +84,43 @@ class GeminiAdapterTest {
     fun geminiHasNoDoneSentinel() {
         assertFalse(a.isDoneSentinel("[DONE]"))
         assertFalse(a.isDoneSentinel("""{"candidates":[]}"""))
+    }
+}
+
+/** WP8: staged attachments ride the final user turn as inline_data parts. */
+class GeminiAttachmentPayloadTest {
+
+    private fun cfg() = EngineConfig(modelId = "gemini-3.8-flash", providerId = "gemini",
+        baseUrl = "https://generativelanguage.googleapis.com", apiKey = "k")
+
+    @Test
+    fun imageAndPdfRideInlineDataParts() {
+        val a = GeminiAdapter()
+        val payload = a.payload(emptyList(), "what is this?",
+            listOf(
+                ChatAttachment("1", "shot.png", "image/png", "aGVsbG8="),
+                ChatAttachment("2", "doc.pdf", "application/pdf", "cGRm"),
+            ), cfg())
+        assertTrue(payload.contains("\"inline_data\":{\"mime_type\":\"image/png\",\"data\":\"aGVsbG8=\"}"))
+        assertTrue(payload.contains("\"inline_data\":{\"mime_type\":\"application/pdf\",\"data\":\"cGRm\"}"))
+        assertTrue(payload.endsWith("\"user\",\"parts\":[{\"text\":\"what is this?\"},{\"inline_data\""))
+        assertTrue(payload.contains("{\"role\":\"user\",\"parts\":["))
+    }
+
+    @Test
+    fun noAttachmentsKeepsIdenticalBytes() {
+        val a = GeminiAdapter()
+        assertEquals(a.payload(emptyList(), "hi", cfg()), a.payload(emptyList(), "hi", emptyList(), cfg()))
+    }
+
+    @Test
+    fun unsupportedMimeRefusedBeforeRequest() {
+        val a = GeminiAdapter()
+        try {
+            a.payload(emptyList(), "hi", listOf(ChatAttachment("1", "x.txt", "text/plain", "eA==")), cfg())
+            fail("text/plain must be refused")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("not supported"))
+        }
     }
 }

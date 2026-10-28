@@ -35,6 +35,20 @@ data class ChatPanelUiState(
 )
 
 /** Minimal provider/model/key selection (WP7 Settings replaces this UI). */
+/**
+ * WP8: staged attachment held by the PANEL between attach and send.
+ * In-memory only (redaction rule): never persisted, never logged; the
+ * base64 lives until the send consumes it. 10 MB cap enforced at attach.
+ */
+data class PanelAttachment(
+    val name: String,
+    val mimeType: String,
+    val base64: String,
+    val sizeBytes: Long,
+) {
+    companion object { const val MAX_BYTES: Long = 10L * 1024 * 1024 }
+}
+
 data class PanelSelection(
     val providerId: String = "gemini",
     val keySlot: String = "ai_google",
@@ -88,7 +102,68 @@ class ChatSession(
         else if (providerId == "anthropic") AnthropicAdapter()
         else OpenAIAdapter()
 
-    fun send(userText: String, confirmOverBudget: Boolean = false) {
+    private val pendingAttachments = kotlinx.coroutines.flow.MutableStateFlow<List<PanelAttachment>>(emptyList())
+    val pending: StateFlow<List<PanelAttachment>> get() = pendingAttachments
+
+    /**
+     * WP8: stage one attachment. Refuses honestly (>10 MB, unsupported kind
+     * for the SELECTED model when the capability table is known). Base64 is
+     * never logged; the chip shows name + size only.
+     */
+    fun addPending(name: String, mimeType: String, base64: String, sizeBytes: Long) {
+        if (sizeBytes > PanelAttachment.MAX_BYTES) {
+            appendRow(ChatRowModel.InfoNote(
+                "Attachment refused: '" + name + "' is over the 10 MB cap (" +
+                    (sizeBytes / (1024L * 1024L)) + " MB). The on-device payload budget would reject it anyway."))
+            return
+        }
+        val sel = selection.value
+        val cap = resolveCapability(sel)
+        val kindLabel: String? = when {
+            mimeType.startsWith("image/") -> if (cap != null && !cap.supportsImages) "images" else null
+            mimeType == "application/pdf" -> if (cap != null && !cap.supportsPdf) "PDF" else null
+            else -> "this kind"
+        }
+        if (kindLabel != null) {
+            appendRow(ChatRowModel.InfoNote(
+                "Attachment refused: " + sel.modelId + " (capability estimate) does not take " + kindLabel + " attachments."))
+            return
+        }
+        if (mimeType.isBlank()) {
+            appendRow(ChatRowModel.InfoNote(
+                "Attachment refused: could not read this file or determine its type."))
+            return
+        }
+        if (mimeType != "application/pdf" && !mimeType.startsWith("image/")) {
+            appendRow(ChatRowModel.InfoNote(
+                "Attachment refused: only images and PDF can be attached (got " + mimeType + ")."))
+            return
+        }
+        pendingAttachments.value = pendingAttachments.value + PanelAttachment(name, mimeType, base64, sizeBytes)
+    }
+
+    fun removePending(name: String) {
+        pendingAttachments.value = pendingAttachments.value.filterNot { it.name == name }
+    }
+
+    /** WP8: chips for the pending row (name + size; the data itself never leaves memory). */
+    fun pendingChips(): List<com.codespace.ide.chat.ui.AttachmentChipModel> =
+        pendingAttachments.value.map {
+            com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes))
+        }
+
+    internal fun formatSizeBytes(bytes: Long): String =
+        if (bytes >= 1024L * 1024L) String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+        else String.format("%.0f KB", bytes / 1024.0)
+
+    /** Staged attachments of the LAST send - retries (retry / Send anyway)
+     *  re-send them instead of silently dropping the attachments. */
+    private var lastStaged: List<PanelAttachment> = emptyList()
+
+    fun send(userText: String, confirmOverBudget: Boolean = false) =
+        sendCore(userText, confirmOverBudget, reuseStaged = false)
+
+    private fun sendCore(userText: String, confirmOverBudget: Boolean, reuseStaged: Boolean) {
         if (ui.value.streaming || userText.isBlank()) return
         val sel = selection.value
         // WP3: presets like Ollama (local) need no key; everyone else does.
@@ -119,21 +194,42 @@ class ChatSession(
         failoverAttempts = 0
         keySlotsSeen.clear()
         keySlotsSeen.add(effectiveSlot)
+        // WP8: staged attachments ride THIS send (and its failover retries).
+        // Retry / Send anyway REUSE the staged copies; history keeps text
+        // only, so nothing attachment-shaped persists anywhere.
+        val staged = if (reuseStaged) lastStaged else pendingAttachments.value
+        lastStaged = staged
+        val attachments = staged.map {
+            com.codespace.ide.engine.ChatAttachment(
+                id = java.util.UUID.randomUUID().toString(),
+                name = it.name, mimeType = it.mimeType, base64Data = it.base64)
+        }
+        val chips = staged.map { com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes)) }
+        val newRows = ArrayList<ChatRowModel>(2)
+        newRows.add(ChatRowModel.User(userText))
+        if (chips.isNotEmpty()) newRows.add(ChatRowModel.Attachments(chips))
+        if (!reuseStaged) pendingAttachments.value = emptyList()
         ui.value = ui.value.copy(
-            rows = ui.value.rows + listOf(ChatRowModel.User(userText)),
+            rows = ui.value.rows + newRows,
             streaming = true,
             streamStartedMs = System.currentTimeMillis(),
             firstDeltaMs = 0L,
             lastUserText = userText,
         )
-        attemptSend(cfg, effectiveSlot, userText, confirmOverBudget)
+        attemptSend(cfg, effectiveSlot, userText, attachments, confirmOverBudget)
     }
 
     /** One engine attempt; the failover path re-invokes this with the next key. */
-    private fun attemptSend(cfg: EngineConfig, slotName: String, userText: String, confirmOverBudget: Boolean) {
+    private fun attemptSend(
+        cfg: EngineConfig,
+        slotName: String,
+        userText: String,
+        attachments: List<com.codespace.ide.engine.ChatAttachment>,
+        confirmOverBudget: Boolean,
+    ) {
         sendJob = scope.launch {
             try {
-                engine.send(userText, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, confirmOverBudget) }
+                engine.send(userText, attachments, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, confirmOverBudget) }
             } catch (_: CancellationException) {
                 // Cooperative cancel: partial text is already in the rows.
                 ui.value = ui.value.copy(streaming = false)
@@ -148,7 +244,7 @@ class ChatSession(
 
     fun retry() {
         val t = ui.value.lastUserText
-        if (t.isNotBlank() && !ui.value.streaming) send(t)
+        if (t.isNotBlank() && !ui.value.streaming) sendCore(t, confirmOverBudget = false, reuseStaged = true)
     }
 
     /** Over-budget override: the owner-ruled explicit "Send anyway?" per send. */
@@ -166,6 +262,8 @@ class ChatSession(
         streamBuf.setLength(0)
         failoverAttempts = 0
         keySlotsSeen.clear()
+        lastStaged = emptyList()
+        pendingAttachments.value = emptyList()
         ui.value = ui.value.copy(rows = emptyList(), streaming = false, lastUserText = "")
     }
 
@@ -180,7 +278,7 @@ class ChatSession(
 
     fun sendAnyway() {
         val t = ui.value.lastUserText
-        if (t.isNotBlank() && !ui.value.streaming) send(t, confirmOverBudget = true)
+        if (t.isNotBlank() && !ui.value.streaming) sendCore(t, confirmOverBudget = true, reuseStaged = true)
     }
 
     private fun appendRow(row: ChatRowModel) {
@@ -225,7 +323,7 @@ class ChatSession(
                     appendRow(ChatRowModel.InfoNote(
                         "Key rejected - switching to the next stored key (visible, opt-in, not silent)"))
                     val key2 = keyFor(nextSlot)
-                    attemptSend(cfg.copy(apiKey = key2 ?: ""), nextSlot, userText, confirmOverBudget)
+                    attemptSend(cfg.copy(apiKey = key2 ?: ""), nextSlot, userText, attachments, confirmOverBudget)
                     return
                 }
                 if (err is ChatError.OverBudget) {

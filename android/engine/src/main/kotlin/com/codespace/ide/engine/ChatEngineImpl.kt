@@ -24,13 +24,13 @@ class ChatEngineImpl(
 
     fun transcript(): List<ChatMessage> = state.snapshot()
 
-    override fun send(userText: String, config: EngineConfig): Flow<EngineEvent> = flow {
+    override fun send(userText: String, attachments: List<ChatAttachment>, config: EngineConfig): Flow<EngineEvent> = flow {
         state.append(ChatRole.USER, userText, MessageState.DONE)
         val window = HistoryBudget.select(
             state.snapshot().filter { it.state == MessageState.DONE && it.text.isNotEmpty() },
             HistoryMode.parse(config.historyMode)
         )
-        val payload = adapter.payload(window, userText, config)
+        val payload = adapter.payload(window, userText, attachments, config)
         val overBudget = BudgetGuard.checkPayload(payload.length, config.maxPayloadChars)
         if (overBudget != null && !config.confirmOverBudget) {
             state.append(ChatRole.ASSISTANT, "", MessageState.ERROR)

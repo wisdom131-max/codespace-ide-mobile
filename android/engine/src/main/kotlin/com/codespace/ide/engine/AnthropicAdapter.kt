@@ -42,6 +42,55 @@ class AnthropicAdapter : ProviderAdapter {
             (if (thinking != null) ",\"thinking\":" + thinking else "") + "}"
     }
 
+    /**
+     * WP8: the final user turn becomes a content-block ARRAY - image blocks
+     * (base64 source) and PDF document blocks per the Messages API docs
+     * verified 2026-10-28. Supported media types mirror the docs:
+     * image/jpeg|png|gif|webp and application/pdf. Anything else is REFUSED
+     * before the request (never sent, then 400ed).
+     */
+    override fun payload(
+        window: List<ChatMessage>,
+        userText: String,
+        attachments: List<ChatAttachment>,
+        config: EngineConfig,
+    ): String {
+        if (attachments.isEmpty()) return payload(window, userText, config)
+        val msgs = StringBuilder()
+        for (m in window) {
+            if (msgs.isNotEmpty()) msgs.append(',')
+            msgs.append("{\"role\":\"").append(roleJson(m.role)).append("\",\"content\":\"")
+                .append(escapeJson(m.text)).append("\"}")
+        }
+        val blocks = StringBuilder()
+        for (a in attachments) {
+            if (!attachmentSupported(a.mimeType)) {
+                throw IllegalArgumentException(
+                    "Attachment '" + a.name + "' (" + a.mimeType + ") is not supported by the Anthropic wire format (JPEG/PNG/GIF/WEBP images and PDF)")
+            }
+            val blockType = if (a.mimeType == "application/pdf") "document" else "image"
+            if (blocks.isNotEmpty()) blocks.append(',')
+            blocks.append("{\"type\":\"").append(blockType)
+                .append("\",\"source\":{\"type\":\"base64\",\"media_type\":\"").append(a.mimeType)
+                .append("\",\"data\":\"").append(a.base64Data).append("\"}}")
+        }
+        if (userText.isNotEmpty()) {
+            if (blocks.isNotEmpty()) blocks.append(',')
+            blocks.append("{\"type\":\"text\",\"text\":\"").append(escapeJson(userText)).append("\"}")
+        }
+        if (msgs.isNotEmpty()) msgs.append(',')
+        msgs.append("{\"role\":\"user\",\"content\":[").append(blocks).append("]}")
+        val thinking = thinkingJson(config)
+        return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"max_tokens\":" +
+            config.maxResponseTokens + ",\"stream\":true,\"messages\":[" + msgs + "]" +
+            (if (thinking != null) ",\"thinking\":" + thinking else "") + "}"
+    }
+
+    internal fun attachmentSupported(mimeType: String): Boolean =
+        mimeType == "image/jpeg" || mimeType == "image/png" ||
+            mimeType == "image/gif" || mimeType == "image/webp" ||
+            mimeType == "application/pdf"
+
     /** One reasoning control: bounded budget_tokens, floor 1024; 0 = thinking off (field omitted). */
     internal fun thinkingJson(config: EngineConfig): String? {
         if (config.reasoningBudget <= 0) return null
