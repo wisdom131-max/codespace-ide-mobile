@@ -119,18 +119,6 @@ class ChatSession(
                     (sizeBytes / (1024L * 1024L)) + " MB). The on-device payload budget would reject it anyway."))
             return
         }
-        val sel = selection.value
-        val cap = resolveCapability(sel)
-        val kindLabel: String? = when {
-            mimeType.startsWith("image/") -> if (cap != null && !cap.supportsImages) "images" else null
-            mimeType == "application/pdf" -> if (cap != null && !cap.supportsPdf) "PDF" else null
-            else -> "this kind"
-        }
-        if (kindLabel != null) {
-            appendRow(ChatRowModel.InfoNote(
-                "Attachment refused: " + sel.modelId + " (capability estimate) does not take " + kindLabel + " attachments."))
-            return
-        }
         if (mimeType.isBlank()) {
             appendRow(ChatRowModel.InfoNote(
                 "Attachment refused: could not read this file or determine its type."))
@@ -149,6 +137,19 @@ class ChatSession(
             appendRow(ChatRowModel.InfoNote(
                 "Attachment refused: images, PDF and text files can be attached (got " + mimeType + ")."))
             return
+        }
+        // Capability gate applies to IMAGES/PDF only - every text model takes text.
+        if (!isTextKind) {
+            val sel = selection.value
+            val cap = resolveCapability(sel)
+            val unsupported = (mimeType.startsWith("image/") && cap != null && !cap.supportsImages) ||
+                (mimeType == "application/pdf" && cap != null && !cap.supportsPdf)
+            if (unsupported) {
+                appendRow(ChatRowModel.InfoNote(
+                    "Attachment refused: " + sel.modelId + " (capability estimate) does not take " +
+                        (if (mimeType == "application/pdf") "PDF" else "image") + " attachments."))
+                return
+            }
         }
         val stagedText = if (isTextKind) (text ?: "") else null
         pendingAttachments.value = pendingAttachments.value +
