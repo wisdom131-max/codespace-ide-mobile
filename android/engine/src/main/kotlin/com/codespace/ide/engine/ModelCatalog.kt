@@ -66,11 +66,11 @@ object ModelCatalog {
     // Verified 2026-10-28 from the live OpenRouter /models dump (context_length
     // + architecture.input_modalities). No entry here is from memory.
     val BUNDLED = listOf(
-        ModelCapability("gpt-6.1-terra-pro", 1_050_000, supportsImages = true, supportsPdf = true, tools = false, reasoning = true),
-        ModelCapability("gemini-3.8-flash", 1_048_576, supportsImages = true, supportsPdf = true, tools = false, reasoning = true),
-        ModelCapability("claude-sonnet-5.5", 1_000_000, supportsImages = true, supportsPdf = true, tools = false, reasoning = true),
-        ModelCapability("grok-4.7", 500_000, supportsImages = true, supportsPdf = true, tools = false, reasoning = true),
-        ModelCapability("deepseek-v4.1", 1_048_576, supportsImages = true, supportsPdf = false, tools = false, reasoning = false),
-        ModelCapability("llama-3.3-70b", 131_072, supportsImages = false, supportsPdf = false, tools = false, reasoning = false),
+        ModelCapability("gpt-6.1-terra-pro", 1_050_000, supportsImages = true, supportsPdf = true, supportsTools = false, supportsReasoning = true),
+        ModelCapability("gemini-3.8-flash", 1_048_576, supportsImages = true, supportsPdf = true, supportsTools = false, supportsReasoning = true),
+        ModelCapability("claude-sonnet-5.5", 1_000_000, supportsImages = true, supportsPdf = true, supportsTools = false, supportsReasoning = true),
+        ModelCapability("grok-4.7", 500_000, supportsImages = true, supportsPdf = true, supportsTools = false, supportsReasoning = true),
+        ModelCapability("deepseek-v4.1", 1_048_576, supportsImages = true, supportsPdf = false, supportsTools = false, supportsReasoning = false),
+        ModelCapability("llama-3.3-70b", 131_072, supportsImages = false, supportsPdf = false, supportsTools = false, supportsReasoning = false),
     )
 }
