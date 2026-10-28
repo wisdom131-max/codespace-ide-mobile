@@ -76,7 +76,9 @@ object CustomEndpointStore {
         fun removeModelRows(id: String): Boolean = true
         fun readModelRow(key: String): String? = null
         fun writeModelRow(key: String, value: String?): Boolean = true
-        fun readModelStamp(key: String): Long = 0L
+        // The stamp is written as a row; the default reader derives it, so every
+        // backend (prefs or in-memory) agrees without re-implementing it.
+        fun readModelStamp(key: String): Long = readModelRow(key)?.toLongOrNull() ?: 0L
     }
 
     class PrefsEndpointStorage(private val p: SharedPreferences) : EndpointStorage {
