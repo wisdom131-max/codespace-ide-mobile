@@ -97,7 +97,7 @@ class ChatSession(
             modelId = sel.modelId,
             providerId = sel.providerId,
             baseUrl = sel.baseUrl,
-            apiKey = key,
+            apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
         ui.value = ui.value.copy(

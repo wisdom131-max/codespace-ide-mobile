@@ -11,8 +11,10 @@ class OpenAIAdapter : ProviderAdapter {
 
     override fun endpoint(config: EngineConfig): String = config.baseUrl
 
+    /** Blank key = no Authorization header at all (Ollama/local presets). */
     override fun headers(config: EngineConfig): Map<String, String> =
-        mapOf("Authorization" to "Bearer " + config.apiKey)
+        if (config.apiKey.isBlank()) emptyMap()
+        else mapOf("Authorization" to "Bearer " + config.apiKey)
 
     override fun payload(window: List<ChatMessage>, userText: String, config: EngineConfig): String {
         val msgs = StringBuilder()
