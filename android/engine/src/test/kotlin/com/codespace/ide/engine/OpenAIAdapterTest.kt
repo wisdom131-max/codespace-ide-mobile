@@ -17,7 +17,10 @@ class OpenAIAdapterTest {
 
     private fun cfg(vararg pairs: Pair<String, Any?>): EngineConfig {
         val c = EngineConfig("m1")
-        return c.copy(baseUrl = pairs.firstOrNull { it.first == "baseUrl" }?.second as? String ?: c.baseUrl)
+        return c.copy(
+            baseUrl = pairs.firstOrNull { it.first == "baseUrl" }?.second as? String ?: c.baseUrl,
+            apiKey = pairs.firstOrNull { it.first == "apiKey" }?.second as? String ?: c.apiKey,
+        )
     }
 
     @Test
