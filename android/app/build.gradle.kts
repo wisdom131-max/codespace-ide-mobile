@@ -187,6 +187,9 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
     implementation(composeBom)
 
+    // WP2: the rebuilt pure-JVM chat engine (adapters, budget guard, SSE).
+    implementation(project(":engine"))
+
     // Firebase BOM — manages all Firebase lib versions
     implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
     implementation("com.google.firebase:firebase-auth-ktx")

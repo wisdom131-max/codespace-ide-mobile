@@ -5238,7 +5238,7 @@ private fun PssEditorColumn(
             .clip(WorkspaceShapes.ChatShape)) {
             // REMOVAL 2/7 (advisor ruling 2026-10-27): the chat panel UI is
             // archived and removed; placeholder keeps the surface + toggle alive.
-            ChatRebuildPlaceholder()
+            ChatRebuildPlaceholder(projectId, tokenStore)
         }
     }
 
