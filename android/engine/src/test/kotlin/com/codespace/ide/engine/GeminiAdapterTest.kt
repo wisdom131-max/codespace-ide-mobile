@@ -103,7 +103,7 @@ class GeminiAttachmentPayloadTest {
             ), cfg())
         assertTrue(payload.contains("\"inline_data\":{\"mime_type\":\"image/png\",\"data\":\"aGVsbG8=\"}"))
         assertTrue(payload.contains("\"inline_data\":{\"mime_type\":\"application/pdf\",\"data\":\"cGRm\"}"))
-        assertTrue(payload.endsWith("\"user\",\"parts\":[{\"text\":\"what is this?\"},{\"inline_data\""))
+        assertTrue(payload.contains("\"parts\":[{\"text\":\"what is this?\"},{\"inline_data\""))
         assertTrue(payload.contains("{\"role\":\"user\",\"parts\":["))
     }
 
