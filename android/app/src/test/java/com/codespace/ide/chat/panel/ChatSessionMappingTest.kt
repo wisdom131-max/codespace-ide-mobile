@@ -241,3 +241,49 @@ class PanelAttachmentStagingTest {
         assertTrue(t.payloadRef!!.contains("aGVsbG8="))
     }
 }
+
+/** WP9: text/context attachments + the credential-name redaction gate. */
+class TextAndCredentialAttachmentTest {
+
+    private fun session(): ChatSession {
+        val t = object : ChatTransport {
+            override fun stream(url: String, headers: Map<String, String>, payloadJson: String): Flow<String> = flow {
+                emit("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]}]}}\n\n")
+            }
+        }
+        val s = ChatSession("proj", { if (it == "ai_gemini") "k" else null },
+            CoroutineScope(SupervisorJob() + Dispatchers.Unconfined), { t },
+            contextOverrideFor = { _, _ -> null })
+        s.select(PanelSelection(providerId = "gemini", keySlot = "ai_gemini",
+            modelId = "gemini-3.8-flash", baseUrl = "http://127.0.0.1:1"))
+        return s
+    }
+
+    @Test
+    fun credentialShapedNamesRefused() {
+        val s = session()
+        listOf(".env", "id_rsa", "prod.pem", "gcp-credentials.json", "app.keystore").forEach {
+            s.addPending(it, "text/plain", "", 10L, "SECRET=1")
+        }
+        assertTrue(s.pending.value.isEmpty())
+        val notes = s.ui.value.rows.filterIsInstance<ChatRowModel.InfoNote>()
+        assertEquals(5, notes.size)
+        assertTrue(notes.all { it.text.contains("credential file") })
+    }
+
+    @Test
+    fun textFileStagesAsTextNotBase64() {
+        val s = session()
+        s.addPending("Main.kt", "text/plain", "", 20L, "fun main() {}")
+        val staged = s.pending.value.single()
+        assertEquals("fun main() {}", staged.text)
+        assertEquals("", staged.base64)
+    }
+
+    @Test
+    fun textKindWithoutTextStagesEmptyNotCrash() {
+        val s = session()
+        s.addPending("empty.md", "text/markdown", "", 0L)
+        assertEquals("", s.pending.value.single().text)
+    }
+}

@@ -26,8 +26,18 @@ data class ChatAttachment(
     val id: String,
     val name: String,
     val mimeType: String,
-    val base64Data: String,
-)
+    /** Binary payload (images/PDF); empty for text attachments. */
+    val base64Data: String = "",
+    /**
+     * WP9: text/context attachment content - sent as a quoted text block
+     * (file context), never as a binary part. Staged at attach time like the
+     * binary path; the payload budget guard counts it either way.
+     */
+    val textData: String? = null,
+) {
+    /** Text attachments travel as a text block; everything else as binary parts. */
+    val isText: Boolean get() = textData != null
+}
 
 /** Per-send configuration: model id, request caps, budget knobs. */
 data class EngineConfig(

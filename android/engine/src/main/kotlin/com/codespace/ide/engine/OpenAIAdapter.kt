@@ -49,9 +49,10 @@ class OpenAIAdapter : ProviderAdapter {
                 .append(escapeJson(m.text)).append("\"}")
         }
         val parts = StringBuilder()
-        if (userText.isNotEmpty()) parts.append("{\"type\":\"text\",\"text\":\"")
-            .append(escapeJson(userText)).append("\"}")
-        for (a in attachments) {
+        val combined = userText + textBlocks(attachments)
+        if (combined.isNotEmpty()) parts.append("{\"type\":\"text\",\"text\":\"")
+            .append(escapeJson(combined)).append("\"}")
+        for (a in binaryAttachments(attachments)) {
             if (!attachmentSupported(a.mimeType)) {
                 throw IllegalArgumentException(
                     "Attachment '" + a.name + "' (" + a.mimeType + ") is not supported by this provider's wire format (images only; inline PDF is not part of chat/completions)")

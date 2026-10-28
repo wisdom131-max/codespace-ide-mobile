@@ -63,7 +63,7 @@ class AnthropicAdapter : ProviderAdapter {
                 .append(escapeJson(m.text)).append("\"}")
         }
         val blocks = StringBuilder()
-        for (a in attachments) {
+        for (a in binaryAttachments(attachments)) {
             if (!attachmentSupported(a.mimeType)) {
                 throw IllegalArgumentException(
                     "Attachment '" + a.name + "' (" + a.mimeType + ") is not supported by the Anthropic wire format (JPEG/PNG/GIF/WEBP images and PDF)")
@@ -74,9 +74,10 @@ class AnthropicAdapter : ProviderAdapter {
                 .append("\",\"source\":{\"type\":\"base64\",\"media_type\":\"").append(a.mimeType)
                 .append("\",\"data\":\"").append(a.base64Data).append("\"}}")
         }
-        if (userText.isNotEmpty()) {
+        val combined = userText + textBlocks(attachments)
+        if (combined.isNotEmpty()) {
             if (blocks.isNotEmpty()) blocks.append(',')
-            blocks.append("{\"type\":\"text\",\"text\":\"").append(escapeJson(userText)).append("\"}")
+            blocks.append("{\"type\":\"text\",\"text\":\"").append(escapeJson(combined)).append("\"}")
         }
         if (msgs.isNotEmpty()) msgs.append(',')
         msgs.append("{\"role\":\"user\",\"content\":[").append(blocks).append("]}")

@@ -45,6 +45,8 @@ data class PanelAttachment(
     val mimeType: String,
     val base64: String,
     val sizeBytes: Long,
+    /** WP9: text/context attachment content (null for binaries). */
+    val text: String? = null,
 ) {
     companion object { const val MAX_BYTES: Long = 10L * 1024 * 1024 }
 }
@@ -110,7 +112,7 @@ class ChatSession(
      * for the SELECTED model when the capability table is known). Base64 is
      * never logged; the chip shows name + size only.
      */
-    fun addPending(name: String, mimeType: String, base64: String, sizeBytes: Long) {
+    fun addPending(name: String, mimeType: String, base64: String, sizeBytes: Long, text: String? = null) {
         if (sizeBytes > PanelAttachment.MAX_BYTES) {
             appendRow(ChatRowModel.InfoNote(
                 "Attachment refused: '" + name + "' is over the 10 MB cap (" +
@@ -134,12 +136,23 @@ class ChatSession(
                 "Attachment refused: could not read this file or determine its type."))
             return
         }
-        if (mimeType != "application/pdf" && !mimeType.startsWith("image/")) {
+        // WP9 redaction gate: credential-shaped files never leave the device.
+        if (looksLikeCredentialFile(name)) {
             appendRow(ChatRowModel.InfoNote(
-                "Attachment refused: only images and PDF can be attached (got " + mimeType + ")."))
+                "Attachment refused: '" + name + "' looks like a credential file. Keys and secrets are never sent to a provider."))
             return
         }
-        pendingAttachments.value = pendingAttachments.value + PanelAttachment(name, mimeType, base64, sizeBytes)
+        val isTextKind = text != null || mimeType.startsWith("text/") ||
+            mimeType == "application/json" || mimeType == "application/xml" ||
+            mimeType == "application/yaml" || mimeType == "application/x-yaml"
+        if (!isTextKind && mimeType != "application/pdf" && !mimeType.startsWith("image/")) {
+            appendRow(ChatRowModel.InfoNote(
+                "Attachment refused: images, PDF and text files can be attached (got " + mimeType + ")."))
+            return
+        }
+        val stagedText = if (isTextKind) (text ?: "") else null
+        pendingAttachments.value = pendingAttachments.value +
+            PanelAttachment(name, mimeType, if (stagedText != null) "" else base64, sizeBytes, stagedText)
     }
 
     fun removePending(name: String) {
@@ -151,6 +164,16 @@ class ChatSession(
         pendingAttachments.value.map {
             com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes))
         }
+
+    /** Credential-shaped names are refused at attach (redaction rule). */
+    internal fun looksLikeCredentialFile(name: String): Boolean {
+        val n = name.lowercase()
+        val base = n.substringAfterLast('/')
+        return base == ".env" || base.startsWith(".env.") || base == "id_rsa" ||
+            base == "id_ed25519" || base == "id_dsa" || base.endsWith(".pem") ||
+            base.endsWith(".p12") || base.endsWith(".keystore") || base.endsWith(".jks") ||
+            base.contains("credentials") || base.contains("secret") || base.contains("password")
+    }
 
     internal fun formatSizeBytes(bytes: Long): String =
         if (bytes >= 1024L * 1024L) String.format("%.1f MB", bytes / (1024.0 * 1024.0))
@@ -202,7 +225,8 @@ class ChatSession(
         val attachments = staged.map {
             com.codespace.ide.engine.ChatAttachment(
                 id = java.util.UUID.randomUUID().toString(),
-                name = it.name, mimeType = it.mimeType, base64Data = it.base64)
+                name = it.name, mimeType = it.mimeType,
+                base64Data = it.base64, textData = it.text)
         }
         val chips = staged.map { com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes)) }
         val newRows = ArrayList<ChatRowModel>(2)

@@ -399,11 +399,15 @@ private fun readAttachment(
         val bytes = buf.toByteArray()
         val name = uri.lastPathSegment ?: "file"
         val mime = resolver.getType(uri) ?: guessMimeFromName(name)
+        // WP9: text kinds travel as TEXT (no base64 inflation); binaries as base64.
+        val isTextKind = mime.startsWith("text/") || mime == "application/json" ||
+            mime == "application/xml" || mime == "application/yaml" || mime == "application/x-yaml"
         session.addPending(
             name = name,
             mimeType = mime,
-            base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
+            base64 = if (isTextKind) "" else android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
             sizeBytes = bytes.size.toLong(),
+            text = if (isTextKind) String(bytes, Charsets.UTF_8) else null,
         )
     } catch (t: Throwable) {
         session.addPending("unreadable", "", "", 0L) // kind gate prints the honest unreadable note

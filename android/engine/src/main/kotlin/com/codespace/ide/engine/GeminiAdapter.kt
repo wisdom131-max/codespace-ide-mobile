@@ -51,8 +51,9 @@ class GeminiAdapter : ProviderAdapter {
                 .append(escapeJson(m.text)).append("\"}]}")
         }
         val parts = StringBuilder()
-        if (userText.isNotEmpty()) parts.append("{\"text\":\"").append(escapeJson(userText)).append("\"}")
-        for (a in attachments) {
+        val combined = userText + textBlocks(attachments)
+        if (combined.isNotEmpty()) parts.append("{\"text\":\"").append(escapeJson(combined)).append("\"}")
+        for (a in binaryAttachments(attachments)) {
             if (!attachmentSupported(a.mimeType)) {
                 throw IllegalArgumentException(
                     "Attachment '" + a.name + "' (" + a.mimeType + ") is not supported by the Gemini wire format (images and PDF only)")

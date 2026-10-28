@@ -124,3 +124,42 @@ class GeminiAttachmentPayloadTest {
         }
     }
 }
+
+/** WP9: text/context attachments ride the user text part with a file header. */
+class TextAttachmentPayloadTest {
+
+    private fun cfg() = EngineConfig(modelId = "gemini-3.8-flash", providerId = "gemini",
+        baseUrl = "https://generativelanguage.googleapis.com", apiKey = "k")
+
+    private fun fileAtt() = ChatAttachment("1", "Main.kt", "text/plain", "",
+        textData = "fun main() = println(1)")
+
+    @Test
+    fun textAttachmentBecomesQuotedTextNotBinary() {
+        val payload = GeminiAdapter().payload(emptyList(), "review this", listOf(fileAtt()), cfg())
+        assertTrue(payload.contains("review this\\n\\n--- attached file: Main.kt ---\\nfun main()"))
+        assertFalse(payload.contains("inline_data"))
+    }
+
+    @Test
+    fun anthropicAndOpenAiCarryTheSameQuotedBlock() {
+        val a = AnthropicAdapter().payload(emptyList(), "review",
+            listOf(fileAtt()), EngineConfig(modelId = "claude-opus-5-5", providerId = "anthropic",
+                baseUrl = "https://api.anthropic.com/v1/messages"))
+        val o = OpenAIAdapter().payload(emptyList(), "review",
+            listOf(fileAtt()), EngineConfig(modelId = "gpt", providerId = "openai",
+                baseUrl = "http://127.0.0.1:1/chat/completions"))
+        assertTrue(a.contains("--- attached file: Main.kt ---"))
+        assertTrue(o.contains("--- attached file: Main.kt ---"))
+        assertFalse(a.contains("\"type\":\"image\""))
+        assertFalse(o.contains("image_url"))
+    }
+
+    @Test
+    fun mixedTextAndImageKeepsBothChannels() {
+        val payload = GeminiAdapter().payload(emptyList(), "look",
+            listOf(fileAtt(), ChatAttachment("2", "x.png", "image/png", "aGVsbG8=")), cfg())
+        assertTrue(payload.contains("--- attached file: Main.kt ---"))
+        assertTrue(payload.contains("\"inline_data\":{\"mime_type\":\"image/png\""))
+    }
+}
