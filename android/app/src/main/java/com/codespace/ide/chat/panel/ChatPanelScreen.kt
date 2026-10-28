@@ -150,12 +150,17 @@ private fun ProviderModelDialog(
     val c = ChatTokens.LocalChatColors.current
     // Providers with stored keys (WP1 read-only migration), custom endpoints last.
     val keyProviders: List<StoredKeySlot> = snapshot.keySlots.filter { it.hasKey }
+    // WP3: native adapters (Gemini/Anthropic) come from stored keys;
+    // OpenAI-compatible presets carry their own base URLs; Ollama needs no key.
+    val nativeRows: List<StoredKeySlot> = keyProviders.filter {
+        it.providerId == "gemini" || it.providerId == "anthropic"
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Provider and model") },
         text = {
             Column {
-                keyProviders.forEach { slot ->
+                nativeRows.forEach { slot ->
                     Text(
                         slot.providerId + (if (slot.poolIndex != null) " (key " + slot.poolIndex + ")" else ""),
                         color = if (slot.slotName == current.keySlot) c.accent else c.text,
@@ -177,6 +182,27 @@ private fun ProviderModelDialog(
                                         "anthropic" -> PanelSelection.ANTHROPIC_BASE
                                         else -> PanelSelection.OPENAI_BASE
                                     },
+                                ))
+                            }
+                            .padding(vertical = ChatTokens.GAP.dp),
+                    )
+                }
+                com.codespace.ide.engine.ProviderPresets.ALL.forEach { p ->
+                    val hasKey = keyProviders.any { it.slotName == "ai_" + p.providerId }
+                    Text(
+                        p.label + (if (!p.requiresKey) " (no key needed)"
+                                   else if (hasKey) " (key stored)" else " (no key stored)"),
+                        color = if (p.providerId == current.providerId) c.accent else c.text,
+                        fontSize = ChatTokens.FONT_SMALL.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onApply(PanelSelection(
+                                    providerId = p.providerId,
+                                    keySlot = if (p.requiresKey) "ai_" + p.providerId else "",
+                                    modelId = if (p.providerId == current.providerId) model
+                                              else p.defaultModel.ifBlank { model },
+                                    baseUrl = p.baseUrl,
                                 ))
                             }
                             .padding(vertical = ChatTokens.GAP.dp),

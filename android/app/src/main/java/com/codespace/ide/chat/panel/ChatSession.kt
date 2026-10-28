@@ -83,8 +83,10 @@ class ChatSession(
     fun send(userText: String, confirmOverBudget: Boolean = false) {
         if (ui.value.streaming || userText.isBlank()) return
         val sel = selection.value
-        val key = keyFor(sel.keySlot)
-        if (key.isNullOrBlank()) {
+        // WP3: presets like Ollama (local) need no key; everyone else does.
+        val needsKey = com.codespace.ide.engine.ProviderPresets.byId(sel.providerId)?.requiresKey ?: true
+        val key = if (needsKey) keyFor(sel.keySlot) else null
+        if (needsKey && key.isNullOrBlank()) {
             appendRow(ChatRowModel.Failed(
                 "No key stored for this provider",
                 "The rebuilt chat uses your existing stored keys (read-only WP1 migration). " +
