@@ -28,6 +28,15 @@ class OpenAIAdapterTest {
     }
 
     @Test
+    fun blankKeySendsNoAuthorizationHeader() {
+        val a = OpenAIAdapter()
+        val noKey = a.headers(cfg("apiKey" to ""))
+        org.junit.Assert.assertTrue(noKey.isEmpty())
+        val withKey = a.headers(cfg("apiKey" to "sk-1"))
+        org.junit.Assert.assertEquals(mapOf("Authorization" to "Bearer sk-1"), withKey)
+    }
+
+    @Test
     fun payloadMatchesTheOriginalWireFormatExactly() {
         val window = listOf(
             ChatMessage("1", ChatRole.USER, "hi there"),
