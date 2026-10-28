@@ -29,7 +29,7 @@ class GeminiAdapter : ProviderAdapter {
                 .append(escapeJson(m.text)).append("\"}]}")
         }
         return "{\"contents\":[" + contents + "],\"generationConfig\":{\"maxOutputTokens\":" +
-            config.maxResponseTokens + ",\"thinkingConfig\":{\"thinkingBudget\":" + thinkingBudget(config) + "}}"
+            config.maxResponseTokens + ",\"thinkingConfig\":{\"thinkingBudget\":" + thinkingBudget(config) + "}}}"
     }
 
     /** One reasoning control, bounded: 0 = off is allowed; -1 (dynamic) never sent. */
