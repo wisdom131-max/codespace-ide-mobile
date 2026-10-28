@@ -23,8 +23,25 @@ class OpenAIAdapter : ProviderAdapter {
             msgs.append("{\"role\":\"").append(roleJson(m.role)).append("\",\"content\":\"")
                 .append(escapeJson(m.text)).append("\"}")
         }
+        val effort = reasoningEffort(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
-            "\"max_tokens\":" + config.maxResponseTokens + ",\"messages\":[" + msgs + "]}"
+            "\"max_tokens\":" + config.maxResponseTokens + ",\"messages\":[" + msgs + "]" +
+            (if (effort != null) ",\"reasoning_effort\":\"" + effort + "\"" else "") + "}"
+    }
+
+    /**
+     * WP3: the ONE reasoning control for effort-kind presets (openai, openrouter,
+     * xai). Mapped from EngineConfig.reasoningBudget: omitted when 0/off or when
+     * the provider's preset is kind none (deepseek/groq/mistral/ollama) or when
+     * the provider is unknown (custom endpoints). Off by default - sending
+     * reasoning_effort to a non-reasoning model is a 400, so the panel sets 0
+     * unless the owner opts in (WP7 Settings reasoning control).
+     */
+    internal fun reasoningEffort(config: EngineConfig): String? {
+        if (ProviderPresets.byId(config.providerId)?.reasoningKind != "effort") return null
+        val b = config.reasoningBudget
+        if (b <= 0) return null
+        return if (b < 4096) "low" else if (b < 16384) "medium" else "high"
     }
 
     override fun extractDelta(data: String): String? {

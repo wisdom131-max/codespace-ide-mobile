@@ -20,6 +20,7 @@ class OpenAIAdapterTest {
         return c.copy(
             baseUrl = pairs.firstOrNull { it.first == "baseUrl" }?.second as? String ?: c.baseUrl,
             apiKey = pairs.firstOrNull { it.first == "apiKey" }?.second as? String ?: c.apiKey,
+            reasoningBudget = (pairs.firstOrNull { it.first == "reasoningBudget" }?.second as? Int) ?: c.reasoningBudget,
         )
     }
 
@@ -51,6 +52,23 @@ class OpenAIAdapterTest {
             "{\"role\":\"assistant\",\"content\":\"hello\"}," +
             "{\"role\":\"user\",\"content\":\"again\"}]}"
         assertEquals(expected, a.payload(window, "again", EngineConfig("m1")))
+    }
+
+    @Test
+    fun reasoningEffortMapsForEffortKindPresetsOnly() {
+        val a = OpenAIAdapter()
+        // Omitted: off, kind none, unknown provider.
+        org.junit.Assert.assertNull(a.reasoningEffort(cfg("reasoningBudget" to 0)))
+        org.junit.Assert.assertNull(a.reasoningEffort(EngineConfig("m1", providerId = "groq", reasoningBudget = 8000)))
+        org.junit.Assert.assertNull(a.reasoningEffort(EngineConfig("m1", providerId = "custom_abc", reasoningBudget = 8000)))
+        // Mapped for openai-kind presets.
+        org.junit.Assert.assertEquals("low", a.reasoningEffort(cfg("reasoningBudget" to 1024)))
+        org.junit.Assert.assertEquals("medium", a.reasoningEffort(cfg("reasoningBudget" to 4096)))
+        org.junit.Assert.assertEquals("high", a.reasoningEffort(cfg("reasoningBudget" to 20000)))
+        org.junit.Assert.assertEquals(
+            "reasoning_effort", // present in payload when on
+            if (a.payload(emptyList(), "hi", EngineConfig("m1", reasoningBudget = 2048)).contains("reasoning_effort")) "reasoning_effort" else "MISSING"
+        )
     }
 
     @Test
