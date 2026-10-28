@@ -128,15 +128,15 @@ private fun KeyProviderSection(
     )
     if (sorted.isEmpty()) {
         KeySlotRow(
-            slotName = "ai_" + providerId,
+            slotName = com.codespace.ide.chat.keys.SlotNaming.primarySlot(providerId),
             hasKey = false,
-            editing = editingSlot == "ai_" + providerId,
+            editing = editingSlot == com.codespace.ide.chat.keys.SlotNaming.primarySlot(providerId),
             editValue = editValue,
-            onStartEdit = { onEditStart("ai_" + providerId) },
+            onStartEdit = { onEditStart(com.codespace.ide.chat.keys.SlotNaming.primarySlot(providerId)) },
             onCancelEdit = onEditCancel,
             onValueChange = onValueChange,
-            onSave = { onWrite(providerId, editValue.trim()) },
-            onDelete = { onWrite(providerId, null) },
+            onSave = { onWrite(com.codespace.ide.chat.keys.SlotNaming.storeKeyFor(providerId), editValue.trim()) },
+            onDelete = { onWrite(com.codespace.ide.chat.keys.SlotNaming.storeKeyFor(providerId), null) },
         )
         return
     }
@@ -154,7 +154,7 @@ private fun KeyProviderSection(
         )
     }
     val nextPool = (sorted.mapNotNull { it.poolIndex }.maxOrNull() ?: 1) + 1
-    val addSlot = "ai_" + providerId + "_" + nextPool
+    val addSlot = com.codespace.ide.chat.keys.SlotNaming.poolSlot(providerId, nextPool)
     KeySlotRow(
         slotName = addSlot,
         hasKey = false,

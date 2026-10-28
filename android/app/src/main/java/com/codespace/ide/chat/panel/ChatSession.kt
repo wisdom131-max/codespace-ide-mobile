@@ -53,7 +53,7 @@ data class PanelAttachment(
 
 data class PanelSelection(
     val providerId: String = "gemini",
-    val keySlot: String = "ai_google",
+    val keySlot: String = "ai_GEMINI",
     val modelId: String = "gemini-3.8-flash",
     val baseUrl: String = "https://generativelanguage.googleapis.com",
 ) {
@@ -190,6 +190,15 @@ class ChatSession(
     private fun sendCore(userText: String, confirmOverBudget: Boolean, reuseStaged: Boolean) {
         if (ui.value.streaming || userText.isBlank()) return
         val sel = selection.value
+        // U1 (657 finding d): a blank model id is a pair that cannot send - say so
+        // instead of putting a request on the wire that is certain to be rejected.
+        if (sel.modelId.isBlank()) {
+            appendRow(ChatRowModel.Failed(
+                "No model selected",
+                "Pick a model for " + sel.providerId + " (the model picker's Model id field, " +
+                    "or a provider with a bundled default).", false))
+            return
+        }
         // WP3: presets like Ollama (local) need no key; everyone else does.
         val needsKey = com.codespace.ide.engine.ProviderPresets.byId(sel.providerId)?.requiresKey ?: true
         val effectiveSlot = sel.keySlot

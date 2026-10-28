@@ -51,11 +51,13 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
             tokenStore, com.codespace.ide.chat.CustomEndpointStore))
     }
     DisposableEffect(Unit) { onDispose { manager.close() } }
-    // WP7: restore the persisted selection once per session (defaults if none).
-    val session = remember(projectId) {
-        val s = manager.session(projectId)
-        ChatSettingsPrefs.selection()?.let { s.select(it) }
-        s
+    val session = remember(projectId) { manager.session(projectId) }
+    // U1 (build 657 findings a/d): the OPENING selection is RESOLVED from what the
+    // owner actually has a key for - never an unconfigured preset, never a pair whose
+    // provider and model disagree (the 657 "ollama · gemini-3.8-flash" bug).
+    var resolved by remember(projectId) { mutableStateOf(initialResolvedSelection(manager.reader)) }
+    LaunchedEffect(resolved) {
+        (resolved as? ResolvedSelection.Ready)?.let { session.select(it.selection) }
     }
     val state by session.ui.collectAsState()
     val selection by session.selection.collectAsState()
@@ -102,20 +104,24 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
                 .verticalScroll(scroll)
                 .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp)
         ) {
-            var rows = if (state.streaming && state.firstDeltaMs == 0L)
-                state.rows + listOf(ChatRowModel.Thinking(((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt()))
-            else state.rows
-            if (pending.isNotEmpty()) rows = rows + ChatRowModel.Attachments(session.pendingChips())
-            NativeChatListRenderer.MessageList(
-                ChatRenderState(
-                    rows = rows,
-                    onRetry = { session.retry() },
-                    onSendAnyway = { session.sendAnyway() },
-                    onCancel = { session.dismissOverBudget() },
-                    onRemoveChip = { chip -> session.removePending(chip.name) },
-                ),
-                Modifier.fillMaxWidth(),
-            )
+            if (resolved is ResolvedSelection.NeedsSetup) {
+                SetupNeededState(onOpenProviders = { showSelect = true })
+            } else {
+                var rows = if (state.streaming && state.firstDeltaMs == 0L)
+                    state.rows + listOf(ChatRowModel.Thinking(((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt()))
+                else state.rows
+                if (pending.isNotEmpty()) rows = rows + ChatRowModel.Attachments(session.pendingChips())
+                NativeChatListRenderer.MessageList(
+                    ChatRenderState(
+                        rows = rows,
+                        onRetry = { session.retry() },
+                        onSendAnyway = { session.sendAnyway() },
+                        onCancel = { session.dismissOverBudget() },
+                        onRemoveChip = { chip -> session.removePending(chip.name) },
+                    ),
+                    Modifier.fillMaxWidth(),
+                )
+            }
         }
         Row(
             Modifier.fillMaxWidth()
@@ -139,13 +145,18 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
                     .clickable { attachLauncher.launch("*/*") },
             )
             Text(
-                if (state.streaming) "Stop" else "Send",
+                if (state.streaming) "Stop"
+                else if (resolved is ResolvedSelection.NeedsSetup) "Set up"
+                else if (selection.modelId.isBlank()) "Pick model"
+                else "Send",
                 color = if (state.streaming) c.warning else c.accent,
                 fontSize = ChatTokens.FONT_SMALL.sp,
                 modifier = Modifier
                     .padding(start = ChatTokens.GAP.dp)
                     .clickable {
                         if (state.streaming) session.cancel()
+                        else if (resolved is ResolvedSelection.NeedsSetup || selection.modelId.isBlank())
+                            showSelect = true
                         else if (input.isNotBlank()) { session.send(input); input = "" }
                     },
             )
@@ -156,9 +167,12 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
             manager = manager,
             tokenStore = tokenStore,
             current = selection,
-            onApply = {
-                session.select(it)
-                ChatSettingsPrefs.setSelection(it)
+            onApply = { sel ->
+                session.select(sel)
+                // A pair that cannot actually send (no key / foreign model / wrong base
+                // URL) is applied for this view but NEVER persisted (657 regression).
+                persistSelectionIfCoherent(manager.reader, sel)
+                resolved = ResolvedSelection.Ready(sel)
                 showSelect = false
             },
             onClearConversation = { session.clearConversation(); showSelect = false },
@@ -170,6 +184,10 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
         KeysManagerDialog(tokenStore = tokenStore, onDismiss = { showKeys = false })
     }
 }
+
+/** U1: the real stored slot name for a provider (ai_<UPPERCASE>, claude for Anthropic). */
+private fun slotKeyFor(providerId: String): String =
+    com.codespace.ide.chat.keys.SlotNaming.primarySlot(providerId)
 
 /** Minimal provider/model/key picker over the WP1 snapshot (WP7 replaces it). */
 @Composable
@@ -198,6 +216,8 @@ private fun ProviderModelDialog(
     val c = ChatTokens.LocalChatColors.current
     // Providers with stored keys (WP1 read-only migration), custom endpoints last.
     val keyProviders: List<StoredKeySlot> = snapshot.keySlots.filter { it.hasKey }
+    // U1: the coherence rules the dialog obeys (never invent a mixed pair).
+    val cfg = remember(snapshot) { configuredProvidersFrom(snapshot) }
     // WP3: native adapters (Gemini/Anthropic) come from stored keys;
     // OpenAI-compatible presets carry their own base URLs; Ollama needs no key.
     val nativeRows: List<StoredKeySlot> = keyProviders.filter {
@@ -216,27 +236,28 @@ private fun ProviderModelDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                model = when (slot.providerId) {
-                                        "gemini" -> current.modelId
-                                        "anthropic" -> PanelSelection.ANTHROPIC_DEFAULT_MODEL
-                                        else -> model
-                                    }
-                                onApply(PanelSelection(
-                                    providerId = if (slot.providerId.startsWith("custom")) slot.providerId else slot.providerId,
-                                    keySlot = slot.slotName,
-                                    modelId = model,
-                                    baseUrl = when (slot.providerId) {
-                                        "gemini" -> "https://generativelanguage.googleapis.com"
-                                        "anthropic" -> PanelSelection.ANTHROPIC_BASE
-                                        else -> PanelSelection.OPENAI_BASE
-                                    },
-                                ))
+                                // U1: the previous provider's model is NEVER carried across
+                                // (657 bug); a typed model only counts if it fits this family.
+                                val typed = model.takeIf {
+                                    it.isNotBlank() &&
+                                        !com.codespace.ide.chat.panel.SelectionResolver
+                                            .modelBelongsToAnotherFamily(slot.providerId, it)
+                                }
+                                val next = com.codespace.ide.chat.panel.SelectionResolver.applyProvider(
+                                    slot.providerId, current, typed, cfg,
+                                ) { pid -> slotKeyFor(pid) }
+                                if (next != null) {
+                                    model = next.modelId
+                                    onApply(next.copy(keySlot = slot.slotName))
+                                }
                             }
                             .padding(vertical = ChatTokens.GAP.dp),
                     )
                 }
                 com.codespace.ide.engine.ProviderPresets.ALL.forEach { p ->
-                    val hasKey = keyProviders.any { it.slotName == "ai_" + p.providerId }
+                    // U1: real slot shape is ai_<UPPERCASE>; presence is per PROVIDER
+                    // (pool slots included), so a saved key is never shown as missing.
+                    val hasKey = keyProviders.any { it.providerId == p.providerId }
                     Text(
                         p.label + (if (!p.requiresKey) " (no key needed)"
                                    else if (hasKey) " (key stored)" else " (no key stored)"),
@@ -245,13 +266,18 @@ private fun ProviderModelDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                onApply(PanelSelection(
-                                    providerId = p.providerId,
-                                    keySlot = if (p.requiresKey) "ai_" + p.providerId else "",
-                                    modelId = if (p.providerId == current.providerId) model
-                                              else p.defaultModel.ifBlank { model },
-                                    baseUrl = p.baseUrl,
-                                ))
+                                val typed = model.takeIf {
+                                    it.isNotBlank() &&
+                                        !com.codespace.ide.chat.panel.SelectionResolver
+                                            .modelBelongsToAnotherFamily(p.providerId, it)
+                                }
+                                val next = com.codespace.ide.chat.panel.SelectionResolver.applyProvider(
+                                    p.providerId, current, typed, cfg,
+                                ) { pid -> slotKeyFor(pid) }
+                                if (next != null) {
+                                    model = next.modelId
+                                    onApply(next)
+                                }
                             }
                             .padding(vertical = ChatTokens.GAP.dp),
                     )
@@ -321,12 +347,17 @@ private fun ProviderModelDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                onApply(PanelSelection(
-                                    providerId = ep.providerId,
-                                    keySlot = "ai_" + ep.providerId,
-                                    modelId = model,
-                                    baseUrl = ep.baseUrl,
-                                ))
+                                val typed = model.takeIf { it.isNotBlank() }
+                                val next = com.codespace.ide.chat.panel.SelectionResolver.applyProvider(
+                                    ep.providerId,
+                                    current,
+                                    typed,
+                                    configuredProvidersFrom(snapshot),
+                                ) { pid -> slotKeyFor(pid) }
+                                if (next != null) {
+                                    model = next.modelId
+                                    onApply(next.copy(baseUrl = ep.baseUrl))
+                                }
                             }
                             .padding(vertical = ChatTokens.GAP.dp),
                     )
@@ -363,7 +394,14 @@ private fun ProviderModelDialog(
                 // (blank = clear override, bundled row stands).
                 ChatSettingsPrefs.setContextOverride(
                     current.providerId, model, overrideText.trim().toIntOrNull())
-                onApply(current.copy(modelId = model))
+                // U1: a model id from another native family is refused here instead of
+                // being saved as a pair that can only fail on the wire.
+                val applyModel =
+                    if (com.codespace.ide.chat.panel.SelectionResolver
+                            .modelBelongsToAnotherFamily(current.providerId, model)
+                    ) com.codespace.ide.chat.panel.SelectionResolver.defaultModelFor(current.providerId)
+                    else model
+                onApply(current.copy(modelId = applyModel))
             }) { Text("Apply") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },

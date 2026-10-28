@@ -212,7 +212,9 @@ private fun EndpointFormDialog(
                             testing = true
                             scope.launch {
                                 val stored = if (keySlotProvider.isNotBlank())
-                                    tokenStore.aiKey(keySlotProvider) ?: "" else ""
+                                    tokenStore.aiKey(
+                                        com.codespace.ide.chat.keys.SlotNaming.customStoreKey(keySlotProvider)
+                                    ) ?: "" else ""
                                 val effective = if (apiKeyTouched && apiKey.isNotBlank()) apiKey else stored
                                 testResult = ModelListFetcher.fetch(baseUrl, effective)
                                 testing = false
@@ -253,7 +255,9 @@ private fun EndpointFormDialog(
                     if (savedId != null) {
                         val provider = store.providerIdFor(savedId)
                         if (apiKeyTouched) {
-                            tokenStore.setAiKey(provider, apiKey.ifBlank { null })
+                            tokenStore.setAiKey(
+                                com.codespace.ide.chat.keys.SlotNaming.customStoreKey(provider),
+                                apiKey.ifBlank { null })
                         }
                     }
                     onDone()
@@ -294,7 +298,8 @@ private fun DeleteEndpointDialog(
         dismissButton = {
             TextButton(onClick = {
                 store.delete(ep.id)
-                tokenStore.setAiKey(store.providerIdFor(ep.id), null)
+                tokenStore.setAiKey(
+                    com.codespace.ide.chat.keys.SlotNaming.customStoreKey(store.providerIdFor(ep.id)), null)
                 onDone()
             }) { Text("Delete key too") }
         },

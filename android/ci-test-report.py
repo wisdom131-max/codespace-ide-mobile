@@ -40,6 +40,11 @@ REQUIRED = [
     "com.codespace.ide.engine.BudgetGuardTest",
     "com.codespace.ide.engine.HistoryBudgetTest",
     "com.codespace.ide.engine.EngineContractTest",
+    # U1 (build 657 findings): the suites that guard slot naming, default selection
+    # and the real stored shapes. Guarded so a silently-skipped run fails the build.
+    "com.codespace.ide.chat.keys.StoredCredentialsMigrationTest",
+    "com.codespace.ide.chat.panel.SelectionResolverTest",
+    "com.codespace.ide.chat.panel.ConfiguredProvidersTest",
 ]
 
 counts = collections.Counter()
