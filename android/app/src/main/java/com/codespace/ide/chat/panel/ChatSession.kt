@@ -117,8 +117,13 @@ class ChatSession(
     }
 
     /** Over-budget override: the owner-ruled explicit "Send anyway?" per send. */
-    /** Over-budget card dismissed without sending (estimate stays in the row). */
-    fun dismissOverBudget() { ui.value = ui.value.copy(overBudgetActive = false) }
+    /** Over-budget card dismissed without sending: drop the pending card row. */
+    fun dismissOverBudget() {
+        val st = ui.value
+        if (st.rows.lastOrNull() is ChatRowModel.OverBudget) {
+            ui.value = st.copy(rows = st.rows.dropLast(1))
+        }
+    }
 
     fun sendAnyway() {
         val t = ui.value.lastUserText
