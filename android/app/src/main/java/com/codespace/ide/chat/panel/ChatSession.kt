@@ -103,7 +103,7 @@ class ChatSession(
         else OpenAIAdapter()
 
     private val pendingAttachments = kotlinx.coroutines.flow.MutableStateFlow<List<PanelAttachment>>(emptyList())
-    val pending: StateFlow<List<PanelAttachment>> get() = pendingAttachments
+    val pending: kotlinx.coroutines.flow.StateFlow<List<PanelAttachment>> get() = pendingAttachments
 
     /**
      * WP8: stage one attachment. Refuses honestly (>10 MB, unsupported kind
@@ -229,7 +229,7 @@ class ChatSession(
     ) {
         sendJob = scope.launch {
             try {
-                engine.send(userText, attachments, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, confirmOverBudget) }
+                engine.send(userText, attachments, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, attachments, confirmOverBudget) }
             } catch (_: CancellationException) {
                 // Cooperative cancel: partial text is already in the rows.
                 ui.value = ui.value.copy(streaming = false)
@@ -290,6 +290,7 @@ class ChatSession(
         cfg: EngineConfig,
         slotName: String,
         userText: String,
+        attachments: List<com.codespace.ide.engine.ChatAttachment>,
         confirmOverBudget: Boolean,
     ) {
         when (ev) {
