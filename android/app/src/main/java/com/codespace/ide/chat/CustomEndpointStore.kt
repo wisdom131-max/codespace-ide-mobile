@@ -57,6 +57,9 @@ object CustomEndpointStore {
     @Volatile private var versionCounter = 0
     fun version(): Int = versionCounter
 
+    /** WP1 (c) migration: raw endpoints_v2 JSON, read-only (never mutated here). */
+    fun rawJson(): String = endpointsJson().toString()
+
     private fun endpointsJson(): JSONArray = try {
         JSONArray(prefs?.getString("endpoints_v2", "[]") ?: "[]")
     } catch (_: Exception) { JSONArray() }

@@ -216,6 +216,26 @@ class SecureTokenStore @Inject constructor(
     fun aiKey(provider: String): String? = prefs.getString("ai_$provider", null)
 
     /**
+     * WP1 (c) read-only migration accessors. NOTE: these READ only - no
+     * edit(), no remove(), no write of any kind. rawAiSlots returns every
+     * 'ai_*' entry so the migration can enumerate legacy provider keys
+     * WITHOUT values ever being logged (values are checked for presence in
+     * LegacyKeyShapes and fetched individually by StoredCredentialsReader).
+     */
+    fun rawAiSlots(): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        val all = prefs.all ?: emptyMap()
+        for ((k, v) in all) {
+            if (k.startsWith("ai_") && v is String) out[k] = v
+        }
+        return out
+    }
+
+    /** Slot-name in, value out (or null). The only value accessor the migration uses. */
+    fun aiSlotValue(slotName: String): String? =
+        if (slotName.startsWith("ai_")) prefs.getString(slotName, null) else null
+
+    /**
      * Phase 3 (Group C): per-project service credentials (Firebase / Supabase / n8n).
      * Keys are namespaced 'proj_<projectId>_<name>'; values live in the same
      * EncryptedSharedPreferences store (AES-256-GCM at rest). null value deletes.
