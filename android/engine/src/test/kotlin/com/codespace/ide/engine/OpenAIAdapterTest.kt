@@ -51,7 +51,9 @@ class OpenAIAdapterTest {
             "\"messages\":[{\"role\":\"user\",\"content\":\"hi there\"}," +
             "{\"role\":\"assistant\",\"content\":\"hello\"}," +
             "{\"role\":\"user\",\"content\":\"again\"}]}"
-        assertEquals(expected, a.payload(window, "again", EngineConfig("m1")))
+        // Effort pinned OFF: this test locks the PRE-reasoning wire format; the
+        // default reasoningBudget 1024 would otherwise append reasoning_effort low.
+        assertEquals(expected, a.payload(window, "again", EngineConfig("m1").copy(reasoningBudget = 0)))
     }
 
     @Test

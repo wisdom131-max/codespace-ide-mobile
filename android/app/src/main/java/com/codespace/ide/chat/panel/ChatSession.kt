@@ -93,11 +93,15 @@ class ChatSession(
                     "Key management returns to Settings in WP7.", false))
             return
         }
+        // WP3 reasoning control: bounded 1024 for native thinking providers,
+        // OFF for effort-kind (a default reasoning_effort 400s non-reasoning models).
+        val reasoningBudget = if (sel.providerId == "gemini" || sel.providerId == "anthropic") 1024 else 0
         val cfg = EngineConfig(
             modelId = sel.modelId,
             providerId = sel.providerId,
             baseUrl = sel.baseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
+            reasoningBudget = reasoningBudget,
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
         ui.value = ui.value.copy(
