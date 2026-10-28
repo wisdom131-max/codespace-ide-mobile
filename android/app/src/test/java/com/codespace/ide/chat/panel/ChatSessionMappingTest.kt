@@ -47,8 +47,13 @@ class ChatSessionMappingTest {
         "data: {\"candidates\":[{\"finishReason\":\"STOP\"}]}\n\n",
     )
 
+    /**
+     * U1: the helper stubs the REAL slot name (ai_GEMINI). It used the invented
+     * lowercase "ai_google" from WP1, which is why the whole suite silently proved
+     * nothing about the device shape; the panel's default slot is now the real one.
+     */
     private fun session(transport: ChatTransport, key: String? = "k-test") =
-        ChatSession("proj", { if (it == "ai_google") key else null },
+        ChatSession("proj", { if (it == com.codespace.ide.chat.keys.SlotNaming.primarySlot("gemini")) key else null },
             CoroutineScope(SupervisorJob() + Dispatchers.Unconfined), { transport })
 
     private fun awaitIdle(s: ChatSession) = runBlocking {

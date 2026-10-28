@@ -41,7 +41,12 @@ import kotlinx.coroutines.launch
  * (security review pending). Hosted here until WP7 Settings lands.
  */
 @Composable
-fun CustomEndpointEditor(tokenStore: SecureTokenStore, onClose: () -> Unit) {
+fun CustomEndpointEditor(
+    tokenStore: SecureTokenStore,
+    onClose: () -> Unit,
+    /** U1: called after a save that actually landed, so the panel can SELECT it. */
+    onSaved: (providerId: String, baseUrl: String) -> Unit = { _, _ -> },
+) {
     val store = CustomEndpointStore
     var version by remember { mutableStateOf(store.version()) }
     var adding by remember { mutableStateOf(false) }
@@ -57,11 +62,13 @@ fun CustomEndpointEditor(tokenStore: SecureTokenStore, onClose: () -> Unit) {
         adding -> EndpointFormDialog(
             tokenStore = tokenStore,
             existing = null,
+            onSaved = onSaved,
             onDone = { version = store.version(); adding = false },
         )
         editing != null -> EndpointFormDialog(
             tokenStore = tokenStore,
             existing = editing,
+            onSaved = onSaved,
             onDone = { version = store.version(); editing = null },
         )
         else -> EndpointListDialog(
@@ -157,6 +164,7 @@ private fun EndpointRow(
 private fun EndpointFormDialog(
     tokenStore: SecureTokenStore,
     existing: CustomEndpointStore.Endpoint?,
+    onSaved: (providerId: String, baseUrl: String) -> Unit,
     onDone: () -> Unit,
 ) {
     val store = CustomEndpointStore
@@ -168,6 +176,8 @@ private fun EndpointFormDialog(
     var apiKeyTouched by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<ModelListFetcher.FetchResult?>(null) }
     var testing by remember { mutableStateOf(false) }
+    // U1: a write that did not land says so instead of closing on a lie.
+    var saveError by remember { mutableStateOf<String?>(null) }
 
     val keySlotProvider = existing?.let { store.providerIdFor(it.id) } ?: ""
 
@@ -205,6 +215,14 @@ private fun EndpointFormDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 )
+                saveError?.let { msg ->
+                    Text(
+                        msg,
+                        fontSize = ChatTokens.FONT_SMALL.sp,
+                        color = c.warning,
+                        modifier = Modifier.padding(vertical = 6.dp),
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(
                         enabled = baseUrl.isNotBlank() && !testing,
@@ -252,14 +270,19 @@ private fun EndpointFormDialog(
                     } else {
                         if (store.update(existing.id, label, baseUrl)) existing.id else null
                     }
-                    if (savedId != null) {
-                        val provider = store.providerIdFor(savedId)
-                        if (apiKeyTouched) {
-                            tokenStore.setAiKey(
-                                com.codespace.ide.chat.keys.SlotNaming.customStoreKey(provider),
-                                apiKey.ifBlank { null })
-                        }
+                    if (savedId == null) {
+                        saveError = "Could not save this endpoint. The write to local storage failed, " +
+                            "so it was NOT kept. Try again."
+                        return@TextButton
                     }
+                    val provider = store.providerIdFor(savedId)
+                    if (apiKeyTouched) {
+                        tokenStore.setAiKey(
+                            com.codespace.ide.chat.keys.SlotNaming.customStoreKey(provider),
+                            apiKey.ifBlank { null })
+                    }
+                    saveError = null
+                    onSaved(provider, baseUrl.trim())
                     onDone()
                 },
             ) { Text("Save") }

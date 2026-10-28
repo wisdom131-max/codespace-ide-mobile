@@ -204,7 +204,20 @@ private fun ProviderModelDialog(
     val snapshot = remember(refresh) { manager.reader.snapshot() }
     var showEndpoints by remember { mutableStateOf(false) }
     if (showEndpoints) {
-        CustomEndpointEditor(tokenStore) { showEndpoints = false; refresh++ }
+        CustomEndpointEditor(
+            tokenStore = tokenStore,
+            onClose = { showEndpoints = false; refresh++ },
+            onSaved = { providerId, baseUrl ->
+                // U1 (657 finding c): a saved endpoint is SELECTED, not left behind while
+                // the old default stays on screen. Model = its first known id, else blank
+                // ("Pick model" prompts for one) - never another provider's model.
+                val epId = com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(providerId) ?: ""
+                val model = com.codespace.ide.chat.CustomEndpointStore.manualModels(epId).firstOrNull()
+                    ?: com.codespace.ide.chat.CustomEndpointStore.liveModels(epId).firstOrNull()
+                    ?: ""
+                onApply(PanelSelection(providerId, slotKeyFor(providerId), model, baseUrl))
+            },
+        )
         return
     }
     var model by remember { mutableStateOf(current.modelId) }

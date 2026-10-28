@@ -45,6 +45,7 @@ REQUIRED = [
     "com.codespace.ide.chat.keys.StoredCredentialsMigrationTest",
     "com.codespace.ide.chat.panel.SelectionResolverTest",
     "com.codespace.ide.chat.panel.ConfiguredProvidersTest",
+    "com.codespace.ide.chat.EndpointRoundTripTest",
 ]
 
 counts = collections.Counter()

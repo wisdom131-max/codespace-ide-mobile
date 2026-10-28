@@ -37,6 +37,7 @@ object CustomEndpointStore {
 
     fun init(ctx: Context) {
         prefs = ctx.applicationContext.getSharedPreferences("custom_endpoint", Context.MODE_PRIVATE)
+        if (prefs != null) useStorage(PrefsEndpointStorage(prefs!!))
         migrateLegacyOnce()
         // Registry may have bootstrapped BEFORE init (prefs null -> no endpoints);
         // re-register now that the store is live.
@@ -62,16 +63,74 @@ object CustomEndpointStore {
     /** WP1 (c) migration: raw endpoints_v2 JSON, read-only (never mutated here). */
     fun rawJson(): String = endpointsJson().toString()
 
+    /**
+     * U1 (build 657 finding c): the persistence SEAM. Reads/writes went through a
+     * null-safe `prefs?.edit()?.apply()` whose failure was invisible: a failed or
+     * pre-init write silently discarded the endpoint. Storage now reports the
+     * outcome, so the form can say "could not save" instead of closing on a lie.
+     * JVM tests swap in MemoryEndpointStorage and get a real save -> read-back round trip.
+     */
+    interface EndpointStorage {
+        fun read(): String?
+        fun write(json: String): Boolean
+        fun removeModelRows(id: String): Boolean = true
+        fun readModelRow(key: String): String? = null
+        fun writeModelRow(key: String, value: String?): Boolean = true
+        fun readModelStamp(key: String): Long = 0L
+    }
+
+    class PrefsEndpointStorage(private val p: SharedPreferences) : EndpointStorage {
+        override fun read(): String? = p.getString("endpoints_v2", null)
+        // commit(), not apply(): the caller must be able to TELL whether it saved.
+        override fun write(json: String): Boolean =
+            try { p.edit().putString("endpoints_v2", json).commit() } catch (_: Exception) { false }
+        override fun removeModelRows(id: String): Boolean = try {
+            p.edit().remove("manual_" + id).remove("live_" + id).remove("live_ts_" + id).commit()
+        } catch (_: Exception) { false }
+        override fun readModelRow(key: String): String? = try { p.getString(key, null) } catch (_: Exception) { null }
+        override fun writeModelRow(key: String, value: String?): Boolean = try {
+            val e = p.edit()
+            if (value == null) e.remove(key) else e.putString(key, value)
+            e.commit()
+        } catch (_: Exception) { false }
+        override fun readModelStamp(key: String): Long = try {
+            if (p.contains(key)) p.getLong(key, 0L)
+            else p.getString(key, null)?.toLongOrNull() ?: 0L
+        } catch (_: Exception) { 0L }
+    }
+
+    /** Test double: a plain in-memory string, same semantics, no Android needed. */
+    class MemoryEndpointStorage(var json: String? = null) : EndpointStorage {
+        val rows = HashMap<String, String>()
+        override fun read(): String? = json
+        override fun write(json: String): Boolean { this.json = json; return true }
+        override fun removeModelRows(id: String): Boolean {
+            rows.keys.removeAll { it == "manual_" + id || it == "live_" + id || it == "live_ts_" + id }
+            return true
+        }
+        override fun readModelRow(key: String): String? = rows[key]
+        override fun writeModelRow(key: String, value: String?): Boolean {
+            if (value == null) rows.remove(key) else rows[key] = value
+            return true
+        }
+    }
+
+    @Volatile internal var storage: EndpointStorage? = null
+        private set
+
+    /** U1: test/init entry point. Production calls it from init() with the prefs backend. */
+    internal fun useStorage(s: EndpointStorage) { storage = s }
+
     private fun endpointsJson(): JSONArray = try {
-        JSONArray(prefs?.getString("endpoints_v2", "[]") ?: "[]")
+        JSONArray(storage?.read() ?: "[]")
     } catch (_: Exception) { JSONArray() }
 
-    private fun persistEndpoints(arr: JSONArray) {
-        try {
-            prefs?.edit()?.putString("endpoints_v2", arr.toString())?.apply()
-        } catch (_: Exception) { }
+    /** U1: returns whether the write actually landed (no more silent loss). */
+    private fun persistEndpoints(arr: JSONArray): Boolean {
+        val ok = storage?.write(arr.toString()) ?: false
         versionCounter++
         syncProviders()
+        return ok
     }
 
     /** All endpoints, registry order (legacy "custom" first if present). */
@@ -122,8 +181,7 @@ object CustomEndpointStore {
         o.put("id", ep.id); o.put("label", ep.label); o.put("baseUrl", ep.baseUrl)
         o.put("enabled", true)
         arr.put(o)
-        persistEndpoints(arr)
-        return ep
+        return if (persistEndpoints(arr)) ep else null
     }
 
     fun update(id: String, label: String, baseUrl: String): Boolean {
@@ -135,9 +193,8 @@ object CustomEndpointStore {
             if (o.optString("id") == id) {
                 o.put("label", label.trim().ifBlank { id })
                 o.put("baseUrl", trimmedUrl)
-                persistEndpoints(arr)
                 // G-C C-1b: a base-URL edit invalidates the window cache — models
-                return true
+                return persistEndpoints(arr)
             }
         }
         return false
@@ -151,8 +208,7 @@ object CustomEndpointStore {
             val o = arr.optJSONObject(i) ?: continue
             if (o.optString("id") == id) {
                 o.put("enabled", enabled)
-                persistEndpoints(arr)
-                return true
+                return persistEndpoints(arr)
             }
         }
         return false
@@ -171,28 +227,28 @@ object CustomEndpointStore {
             if (o.optString("id") == id) { arr.remove(i); removed = true }
         }
         if (removed) {
-            prefs?.edit()?.remove("manual_" + id)?.remove("live_" + id)?.remove("live_ts_" + id)?.apply()
-            persistEndpoints(arr)
+            storage?.removeModelRows(id)
+            return persistEndpoints(arr)
         }
-        return removed
+        return false
     }
 
     // ── Per-endpoint manual model registry (plan B) ───────────────────────
 
     /** User-typed model IDs — never validated client-side; the server is the judge. */
     fun manualModels(id: String): List<String> = try {
-        (prefs?.getString("manual_" + id, "") ?: "")
+        (storage?.readModelRow("manual_" + id) ?: "")
             .split(',', ';', ' ', '\n')
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .distinct()
     } catch (_: Exception) { emptyList() }
 
-    fun setManualModels(id: String, raw: String) {
-        try {
-            prefs?.edit()?.putString("manual_" + id, raw)?.apply()
-        } catch (_: Exception) { }
+    /** U1: returns whether the row was stored (callers can report a real failure). */
+    fun setManualModels(id: String, raw: String): Boolean {
+        val ok = storage?.writeModelRow("manual_" + id, raw) ?: false
         versionCounter++
+        return ok
     }
 
     fun addManualModel(id: String, model: String) {
@@ -211,29 +267,24 @@ object CustomEndpointStore {
     // ── Per-endpoint live-model cache (plan B) ───────────────────────────
 
     fun liveModels(id: String): List<String> = try {
-        (prefs?.getString("live_" + id, "") ?: "")
+        (storage?.readModelRow("live_" + id) ?: "")
             .split('\n').map { it.trim() }.filter { it.isNotEmpty() }
     } catch (_: Exception) { emptyList() }
 
-    fun liveModelsFetchedAt(id: String): Long = try {
-        prefs?.getLong("live_ts_" + id, 0L) ?: 0L
-    } catch (_: Exception) { 0L }
+    fun liveModelsFetchedAt(id: String): Long = storage?.readModelStamp("live_ts_" + id) ?: 0L
 
     /** G-C C-4(c): a model-not-found/404 response drops the endpoint's live list —
      * the next picker open refetches instead of serving a dead list. fetchedAt
      * resets with it, so the window logic can never resurrect the stale list. */
     fun clearLiveModels(id: String) {
-        try {
-            prefs?.edit()?.remove("live_" + id)?.remove("live_ts_" + id)?.apply()
-        } catch (_: Exception) { }
+        storage?.writeModelRow("live_" + id, null)
+        storage?.writeModelRow("live_ts_" + id, null)
         versionCounter++
     }
 
     fun setLiveModels(id: String, models: List<String>) {
-        try {
-            prefs?.edit()?.putString("live_" + id, models.take(80).joinToString("\n"))
-                ?.putLong("live_ts_" + id, System.currentTimeMillis())?.apply()
-        } catch (_: Exception) { }
+        storage?.writeModelRow("live_" + id, models.take(80).joinToString("\n"))
+        storage?.writeModelRow("live_ts_" + id, System.currentTimeMillis().toString())
         versionCounter++
     }
 
