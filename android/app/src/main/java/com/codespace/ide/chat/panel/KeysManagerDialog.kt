@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.chat.keys.StoredCredentialsReader
 import com.codespace.ide.chat.keys.StoredKeySlot
+import com.codespace.ide.chat.ui.ChatTokens
 import com.codespace.ide.engine.ProviderPresets
 
 /**
@@ -161,6 +162,7 @@ private fun KeyProviderSection(
         editing = editingSlot == addSlot,
         editValue = editValue,
         onStartEdit = { onEditStart(addSlot) },
+        onCancelEdit = onEditCancel,
         onValueChange = onValueChange,
         onSave = { onWrite(addSlot.removePrefix("ai_"), editValue.trim()) },
         onDelete = {},
