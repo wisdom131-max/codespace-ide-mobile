@@ -49,6 +49,8 @@ object CustomEndpointStore {
         val id: String,
         val label: String,
         val baseUrl: String,
+        /** WP4: enable/disable without deleting; disabled endpoints are NOT orphans. */
+        val enabled: Boolean = true,
     )
 
     // ── Registry CRUD ─────────────────────────────────────────────────────
@@ -82,7 +84,8 @@ object CustomEndpointStore {
                 val id = o.optString("id")
                 val label = o.optString("label").ifBlank { id }
                 val baseUrl = o.optString("baseUrl")
-                if (id.isNotBlank() && baseUrl.isNotBlank()) out.add(Endpoint(id, label, baseUrl))
+                if (id.isNotBlank() && baseUrl.isNotBlank())
+                    out.add(Endpoint(id, label, baseUrl, o.optBoolean("enabled", true)))
             } catch (_: Exception) { }
         }
         return out
@@ -117,6 +120,7 @@ object CustomEndpointStore {
         val arr = endpointsJson()
         val o = JSONObject()
         o.put("id", ep.id); o.put("label", ep.label); o.put("baseUrl", ep.baseUrl)
+        o.put("enabled", true)
         arr.put(o)
         persistEndpoints(arr)
         return ep
@@ -140,6 +144,25 @@ object CustomEndpointStore {
     }
 
     /** Delete an endpoint + all its models (manual + live cache). */
+    /** WP4: enable/disable in place; disabled endpoints stay listed (not orphans). */
+    fun setEnabled(id: String, enabled: Boolean): Boolean {
+        val arr = endpointsJson()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            if (o.optString("id") == id) {
+                o.put("enabled", enabled)
+                persistEndpoints(arr)
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * WP4 delete-with-keys rule: delete() removes the ENDPOINT and its model
+     * prefs ONLY. Stored key slots (ai_custom, ai_custom_<id>) are NEVER touched
+     * here - the editor UI asks the owner explicitly before any key deletion.
+     */
     fun delete(id: String): Boolean {
         val arr = endpointsJson()
         var removed = false

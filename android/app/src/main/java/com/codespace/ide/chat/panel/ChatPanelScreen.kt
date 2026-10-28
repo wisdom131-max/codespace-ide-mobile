@@ -130,6 +130,7 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
     if (showSelect) {
         ProviderModelDialog(
             manager = manager,
+            tokenStore = tokenStore,
             current = selection,
             onApply = { session.select(it); showSelect = false },
             onDismiss = { showSelect = false },
@@ -141,11 +142,18 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
 @Composable
 private fun ProviderModelDialog(
     manager: ChatSessionManager,
+    tokenStore: com.codespace.ide.data.SecureTokenStore,
     current: PanelSelection,
     onApply: (PanelSelection) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val snapshot = remember { manager.reader.snapshot() }
+    var refresh by remember { mutableStateOf(0) }
+    val snapshot = remember(refresh) { manager.reader.snapshot() }
+    var showEndpoints by remember { mutableStateOf(false) }
+    if (showEndpoints) {
+        CustomEndpointEditor(tokenStore) { showEndpoints = false; refresh++ }
+        return
+    }
     var model by remember { mutableStateOf(current.modelId) }
     val c = ChatTokens.LocalChatColors.current
     // Providers with stored keys (WP1 read-only migration), custom endpoints last.
@@ -208,6 +216,16 @@ private fun ProviderModelDialog(
                             .padding(vertical = ChatTokens.GAP.dp),
                     )
                 }
+                // WP4: entry into the custom endpoints editor.
+                Text(
+                    "Add / manage custom endpoints",
+                    color = c.accent,
+                    fontSize = ChatTokens.FONT_SMALL.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showEndpoints = true }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                )
                 snapshot.endpoints.forEach { ep: StoredEndpoint ->
                     Text(
                         ep.label + " (custom endpoint)",
