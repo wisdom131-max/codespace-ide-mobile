@@ -13,6 +13,9 @@ sealed interface ChatRowModel {
     object NoCredits : ChatRowModel
     object Offline : ChatRowModel
     data class OverBudget(val estimate: String) : ChatRowModel
+    /** WP6: visible, honest system note (e.g. key switched on opt-in failover). */
+    data class InfoNote(val text: String) : ChatRowModel
+
     data class TrimmedHistory(val droppedCount: Int) : ChatRowModel
     data class Attachments(val chips: List<AttachmentChipModel>) : ChatRowModel
 }

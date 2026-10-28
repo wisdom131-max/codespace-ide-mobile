@@ -55,9 +55,15 @@ class ChatSession(
     private val scope: CoroutineScope,
     /** Injectable for JVM tests; the real panel uses HttpTransport(). */
     private val transportFactory: () -> com.codespace.ide.engine.ChatTransport = { HttpTransport() },
+    /** WP6: ordered key-slot names with stored keys for a provider (primary first). */
+    private val poolSlotsFor: (providerId: String) -> List<String> = { emptyList() },
+    /** WP6: automatic key failover is OPT-IN (silent switching burns credits). */
+    private val failoverOptIn: () -> Boolean = { false },
 ) {
     private val streamBuf = StringBuilder()
     private var sendJob: Job? = null
+    private var failoverAttempts = 0
+    private val keySlotsSeen = HashSet<String>()
 
     val ui = MutableStateFlow(ChatPanelUiState())
     val selection = MutableStateFlow(PanelSelection())
@@ -85,7 +91,8 @@ class ChatSession(
         val sel = selection.value
         // WP3: presets like Ollama (local) need no key; everyone else does.
         val needsKey = com.codespace.ide.engine.ProviderPresets.byId(sel.providerId)?.requiresKey ?: true
-        val key = if (needsKey) keyFor(sel.keySlot) else null
+        val effectiveSlot = sel.keySlot
+        val key = if (needsKey) keyFor(effectiveSlot) else null
         if (needsKey && key.isNullOrBlank()) {
             appendRow(ChatRowModel.Failed(
                 "No key stored for this provider",
@@ -107,6 +114,9 @@ class ChatSession(
                 com.codespace.ide.engine.ModelCatalog.capabilityFor(sel.providerId, sel.modelId)),
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
+        failoverAttempts = 0
+        keySlotsSeen.clear()
+        keySlotsSeen.add(effectiveSlot)
         ui.value = ui.value.copy(
             rows = ui.value.rows + listOf(ChatRowModel.User(userText)),
             streaming = true,
@@ -114,9 +124,14 @@ class ChatSession(
             firstDeltaMs = 0L,
             lastUserText = userText,
         )
+        attemptSend(cfg, effectiveSlot, userText, confirmOverBudget)
+    }
+
+    /** One engine attempt; the failover path re-invokes this with the next key. */
+    private fun attemptSend(cfg: EngineConfig, slotName: String, userText: String, confirmOverBudget: Boolean) {
         sendJob = scope.launch {
             try {
-                engine.send(userText, cfg).collect { ev -> onEvent(ev) }
+                engine.send(userText, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, confirmOverBudget) }
             } catch (_: CancellationException) {
                 // Cooperative cancel: partial text is already in the rows.
                 ui.value = ui.value.copy(streaming = false)
@@ -152,7 +167,13 @@ class ChatSession(
         ui.value = ui.value.copy(rows = ui.value.rows + listOf(row))
     }
 
-    private fun onEvent(ev: EngineEvent) {
+    private fun onEvent(
+        ev: EngineEvent,
+        cfg: EngineConfig,
+        slotName: String,
+        userText: String,
+        confirmOverBudget: Boolean,
+    ) {
         when (ev) {
             is EngineEvent.Delta -> {
                 streamBuf.append(ev.text)
@@ -173,6 +194,20 @@ class ChatSession(
             }
             is EngineEvent.Failed -> {
                 val err = ev.error
+                // WP6: OPT-IN key failover on auth/credits rejection - visible,
+                // never silent, once per stored key, no wraparound.
+                val nextSlot: String? = if (err is ChatError.Auth || err is ChatError.OutOfCredits) {
+                    if (failoverOptIn()) chooseNextSlot(poolSlotsFor(selection.value.providerId).filter { it !in keySlotsSeen }) else null
+                } else null
+                if (nextSlot != null) {
+                    failoverAttempts++
+                    keySlotsSeen.add(nextSlot)
+                    appendRow(ChatRowModel.InfoNote(
+                        "Key rejected - switching to the next stored key (visible, opt-in, not silent)"))
+                    val key2 = keyFor(nextSlot)
+                    attemptSend(cfg.copy(apiKey = key2 ?: ""), nextSlot, userText, confirmOverBudget)
+                    return
+                }
                 if (err is ChatError.OverBudget) {
                     appendRow(ChatRowModel.OverBudget(err.detail))
                 } else {
@@ -184,6 +219,9 @@ class ChatSession(
     }
 }
 
+/** Pure: first unused slot in pool order, or null when exhausted. */
+internal fun chooseNextSlot(remaining: List<String>): String? = remaining.firstOrNull()
+
 /** Per-project session registry. Owns the scope sends live in. */
 class ChatSessionManager(val reader: StoredCredentialsReader) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -191,7 +229,20 @@ class ChatSessionManager(val reader: StoredCredentialsReader) {
 
     @Synchronized
     fun session(projectId: String): ChatSession =
-        sessions.getOrPut(projectId) { ChatSession(projectId, { slot -> reader.keyValue(slot) }, scope) }
+        sessions.getOrPut(projectId) {
+            ChatSession(
+                projectId,
+                { slot -> reader.keyValue(slot) },
+                scope,
+                poolSlotsFor = { pid ->
+                    reader.snapshot().keySlots
+                        .filter { it.hasKey && it.providerId == pid }
+                        .sortedBy { it.poolIndex ?: 0 }
+                        .map { it.slotName }
+                },
+                failoverOptIn = { ChatSettingsPrefs.failoverOptIn() },
+            )
+        }
 
     fun close() = scope.cancel()
 }

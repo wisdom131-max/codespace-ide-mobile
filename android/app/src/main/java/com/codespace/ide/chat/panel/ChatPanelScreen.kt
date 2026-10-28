@@ -44,7 +44,9 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.SecureTokenStore) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val manager = remember {
+        com.codespace.ide.chat.panel.ChatSettingsPrefs.ensure(ctx)
         ChatSessionManager(com.codespace.ide.chat.keys.StoredCredentialsReader(
             tokenStore, com.codespace.ide.chat.CustomEndpointStore))
     }
@@ -216,6 +218,20 @@ private fun ProviderModelDialog(
                             .padding(vertical = ChatTokens.GAP.dp),
                     )
                 }
+                // WP6: automatic key failover is OPT-IN (silent switching burns credits).
+                Text(
+                    "Automatic key switch on key rejection: " +
+                        (if (com.codespace.ide.chat.panel.ChatSettingsPrefs.failoverOptIn()) "ON" else "OFF"),
+                    color = c.textSecondary,
+                    fontSize = ChatTokens.FONT_SMALL.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            com.codespace.ide.chat.panel.ChatSettingsPrefs.setFailoverOptIn(
+                                !com.codespace.ide.chat.panel.ChatSettingsPrefs.failoverOptIn())
+                        }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                )
                 // WP4: entry into the custom endpoints editor.
                 Text(
                     "Add / manage custom endpoints",

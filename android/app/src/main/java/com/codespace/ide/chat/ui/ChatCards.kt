@@ -211,6 +211,19 @@ fun OverBudgetCard(
 
 /** Thin banner row: history was trimmed by the history budget. */
 @Composable
+/** WP6: honest visible system note - muted, same family as the trim row. */
+fun InfoNoteRow(text: String, modifier: Modifier = Modifier) {
+    val c = ChatTokens.LocalChatColors.current
+    Text(
+        text,
+        color = c.textSecondary,
+        fontSize = ChatTokens.FONT_MICRO.sp,
+        modifier = modifier
+            .fillMaxWidth()
+            .background(c.surfaceAlt, ChipShape)
+    )
+}
+
 fun TrimmedHistoryRow(droppedCount: Int, modifier: Modifier = Modifier) {
     val c = ChatTokens.LocalChatColors.current
     Text(

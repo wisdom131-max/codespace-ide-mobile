@@ -51,6 +51,7 @@ object NativeChatListRenderer : ChatListRenderer {
             ChatRowModel.Offline -> OfflineCard(state.onRetry)
             is ChatRowModel.OverBudget -> OverBudgetCard(row.estimate, state.onSendAnyway, state.onCancel)
             is ChatRowModel.TrimmedHistory -> TrimmedHistoryRow(row.droppedCount)
+            is ChatRowModel.InfoNote -> InfoNoteRow(row.text)
             is ChatRowModel.Attachments -> AttachmentChipRow(row.chips, state.onRemoveChip)
         }
     }
