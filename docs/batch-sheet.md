@@ -46,13 +46,13 @@ and what appeared.
 ```
 cd "<your project root>"
 printf 'public class Plain { int x = 1; }\n' > Plain.java
-printf 'PK\x03\x04' > Fake.java && head -c 22 /dev/urandom >> Fake.java
+printf 'PK\003\004' > Fake.java && head -c 22 /dev/urandom >> Fake.java
 yes 'abcdefgh1234 ' | tr -d '\n' | head -c 2048 > Binary.java
 head -c 512 /dev/zero >> Binary.java
 head -c 512 /dev/urandom >> Binary.java
-printf '\xff\xfe' > Utf16.java
+printf '\377\376' > Utf16.java
 s="public class Utf16 { int y = 2; }"
-i=0; while [ $i -lt ${#s} ]; do printf '%s\x00' "${s:$i:1}" >> Utf16.java; i=$((i+1)); done
+i=0; while [ $i -lt ${#s} ]; do printf '%s\000' "${s:$i:1}" >> Utf16.java; i=$((i+1)); done
 printf '\n\x00' >> Utf16.java
 ls -l Plain.java Fake.java Binary.java Utf16.java
 head -c 8 Fake.java | od -An -tx1
@@ -62,13 +62,18 @@ head -c 16 Utf16.java | od -An -tx1
 If the app shell chokes on \x escapes (sizes look wrong), run the same block in the proot
 Ubuntu terminal instead — bash printf handles them.
 
-Verify: Fake.java starts `50 4b 03 04` and is 26 bytes; Utf16.java starts `ff fe 70 00`;
-Binary.java is 3072 bytes; Plain.java ~31 bytes.
+REAL sizes, verified under bash AND dash/sh in the CI sandbox 2026-10-28:
+Plain.java 34 bytes, Fake.java 26 (octal escapes are shell-neutral - the old backslash-x
+form printed literally under dash, making it 32), Binary.java 3072, Utf16.java 68
+(starts `ff fe 70 00`). The Utf16 char loop needs bash or the app's own terminal
+(mksh); under pure dash only that one line fails.
 
 ## Current-build expectations (honest baseline, cited; updated only after the proposal is approved)
 
 | File | Tap today | Long-press today |
 |---|---|---|
+**CURRENT-BUILD expectations: the results below describe the build as shipped TODAY and will CHANGE after Explorer/editor P1-P4 land.**
+
 | Plain.java | Text editor directly, no dialog (ExplorerPane.kt:1357 onOpenFile; not sniff-flagged) | Standard menu only — no "Open as Text"/strings/inspector rows (they require isHexBin/isElf/isArch, ExplorerPane.kt:1685) |
 | Fake.java (zip magic) | Not extension-declared binary, so NOT hex-routed (isHexByExt false, :1305) -> onOpenFile -> shared-verdict gate: binary DIALOG with open-anyway/attach — no silent hex, no mojibake | Binary rows DO appear: Open as Text (:1685), Open as Strings, Binary Inspector — the long-press flag is still the sniff-inclusive isHexBin (:1656) |
 | Binary.java (NULs after 2KB) | Same as Fake.java — NULs are inside the 8192-byte sniff window (AttachmentTypeSniffer.kt:54), so gate dialog on tap | Same as Fake.java (binary rows present) |
