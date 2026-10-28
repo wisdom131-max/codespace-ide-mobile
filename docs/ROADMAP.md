@@ -3,24 +3,35 @@ Updated: 2026-10-28. Status legend: DONE / IN PROGRESS / PENDING / PARKED.
 Each DONE row carries commit + CI run. PASTE CHANGES in later reports.
 
 ## Chat rebuild (A / WP1-WP9)
+Updated 2026-10-28 after WP9(a). Each DONE row carries commit + CI run.
+
 | Package | Status | Commit / Run |
 |---|---|---|
 | A(a) token layer (single source + Compose + CSS) | DONE | 228350e/8df9ed9 GREEN 3377 |
 | A(a) component library + ChatListRenderer interface | DONE | 4e535b7 GREEN 3378 |
 | A(a) design gallery (dev-only, DEBUG-gated) | DONE | f69dc73 GREEN 3379 |
-| A(b) ProviderAdapter seam + OpenAIAdapter (behavior-identical) | DONE | f1ba20c GREEN 3381 |
-| A(b) GeminiAdapter (bounded thinking, thought-part filter) | DONE | 2bd5b92 + fix a7d4c33 GREEN 3383 |
-| WP1 (c) read-only key/endpoint migration | DONE | pending push GREEN 3384 |
-| WP2 (d-min) panel on engine, Gemini first | IN PROGRESS | this push |
-| CHECKPOINT 1 (install target + batch sheet) | AFTER WP2 | - |
-| WP3 providers (OpenAI, Anthropic, OpenRouter, DeepSeek/Groq/Mistral/xAI presets) | PENDING | - |
-| WP4 custom endpoints (HF/Ollama/LM Studio as custom) | PENDING | custom headers PARKED |
-| WP5 model catalog + capability data (feeds budget guard) | PENDING | - |
-| WP6 multi-key, failover OFF by default, manual switch | PENDING | - |
-| WP7 Settings screens + "Chat storage: N KB — Clear" | PENDING | - |
-| CHECKPOINT 2 (install target + batch sheet WP1-WP7) | AFTER WP7 | - |
-| WP8 (e) attachment pipeline (picker, 10 MB cap, staging, redaction) | PENDING | - |
-| WP9 (g) feature-map items by tier after P0 | PENDING | - |
+| A(b) ProviderAdapter seam + OpenAIAdapter | DONE | f1ba20c GREEN 3381 |
+| A(b) GeminiAdapter (bounded thinking, thought-part filter) | DONE | 2bd5b92 + a7d4c33 GREEN 3383 |
+| WP1 (c) read-only key/endpoint migration | DONE | b90fc0e GREEN 3386 (CHECKPOINT 1) |
+| WP2 (d-min) panel on engine, Gemini first | DONE | b90fc0e GREEN 3386 |
+| WP3 providers (Anthropic native + OpenAI-compatible presets, reasoning defaults) | DONE | 8b590ef / 7e1f489 GREEN 3395 |
+| WP4 custom endpoints (per-endpoint keys, live model list, CRUD) | DONE | 3397 series GREEN 3397 |
+| WP5 model catalog + capability data (context-window budget) | DONE | f21a5b1 GREEN 3399 |
+| WP6 multi-key pool + opt-in failover + manual switch | DONE | e653fe5 GREEN 3401 |
+| WP7 Settings + storage cleanup + capability overrides + model persistence | DONE | 4b268d8 + fix 2aa3eca GREEN 3403 |
+| WP8 (e) attachment pipeline (picker, 10 MB cap, staging, redaction) | DONE | a79c8e7 + fixes 46ee083/13244a2 GREEN 3406 |
+| WP9 (a) text/context attachments + credential redaction gate | DONE | 74fe423 GREEN 3408 |
+| CHECKPOINT 2 (install target + batch sheet WP1-WP9a) | READY | docs/checkpoint-2-sheet.md |
+| WP9 (b) P0 residuals: sessions/history roster, modes, tool loop, @participants//slash | PENDING | see docs/chat-p0-gaps.md |
+| Read-only docs: rebuild-plan.md v2, ui-research.md | PENDING | - |
+
+### Chat PENDING list (continuity — every open item)
+- Sessions/history roster + restore (P0 residual; needs storage format + sessions_v2 migration).
+- Ask/Edit/Agent modes + tool loop with confirmations (P0 residual; after Explorer P1-P6).
+- @participants + /slash autocomplete (P1).
+- #selection / #problems / terminal-output attach sub-kinds (P1).
+- rebuild-plan.md v2 and ui-research.md (read-only docs, owner review).
+- Device round: docs/checkpoint-2-sheet.md (ONE round for WP1-WP9a, per batching rule).
 
 ## Explorer/editor (advisor rulings 2026-10-28; P1+ starts AFTER CHECKPOINT 1)
 | Phase | Status |

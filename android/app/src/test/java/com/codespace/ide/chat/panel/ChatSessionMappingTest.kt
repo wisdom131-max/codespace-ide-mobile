@@ -215,7 +215,9 @@ class PanelAttachmentStagingTest {
     @Test
     fun wrongKindRefusedAndChipStages() {
         val s = sessionWith(CaptureTransport())
-        s.addPending("note.txt", "text/plain", "eA==", 4L)
+        // WP9: text is a first-class attachment kind now; a genuinely
+        // unsupported binary kind (zip) is the refusal case.
+        s.addPending("bundle.zip", "application/zip", "UEsDBA==", 4L)
         assertTrue(s.pending.value.isEmpty())
         s.addPending("shot.png", "image/png", "aGVsbG8=", 5L)
         assertEquals(1, s.pending.value.size)
