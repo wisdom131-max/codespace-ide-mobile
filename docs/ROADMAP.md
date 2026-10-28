@@ -12,15 +12,15 @@ Updated 2026-10-28 after WP9(a). Each DONE row carries commit + CI run.
 | A(a) design gallery (dev-only, DEBUG-gated) | DONE | f69dc73 GREEN 3379 |
 | A(b) ProviderAdapter seam + OpenAIAdapter | DONE | f1ba20c GREEN 3381 |
 | A(b) GeminiAdapter (bounded thinking, thought-part filter) | DONE | 2bd5b92 + a7d4c33 GREEN 3383 |
-| WP1 (c) read-only key/endpoint migration | DONE | b90fc0e GREEN 3386 (CHECKPOINT 1) |
-| WP2 (d-min) panel on engine, Gemini first | DONE | b90fc0e GREEN 3386 |
-| WP3 providers (Anthropic native + OpenAI-compatible presets, reasoning defaults) | DONE | 8b590ef / 7e1f489 GREEN 3395 |
+| WP1 (c) read-only key/endpoint migration | DONE | d6bf9e8 GREEN 3386 -> b90fc0e GREEN 3388 (CHECKPOINT 1) |
+| WP2 (d-min) panel on engine, Gemini first | DONE | b90fc0e GREEN 3388 |
+| WP3 providers (Anthropic native + OpenAI-compatible presets, reasoning defaults) | DONE | 8b590ef GREEN 3390 / 7e1f489 GREEN 3394 / dbbdbaa GREEN 3396 |
 | WP4 custom endpoints (per-endpoint keys, live model list, CRUD) | DONE | 3397 series GREEN 3397 |
 | WP5 model catalog + capability data (context-window budget) | DONE | f21a5b1 GREEN 3399 |
 | WP6 multi-key pool + opt-in failover + manual switch | DONE | e653fe5 GREEN 3401 |
 | WP7 Settings + storage cleanup + capability overrides + model persistence | DONE | 4b268d8 + fix 2aa3eca GREEN 3403 |
 | WP8 (e) attachment pipeline (picker, 10 MB cap, staging, redaction) | DONE | a79c8e7 + fixes 46ee083/13244a2 GREEN 3406 |
-| WP9 (a) text/context attachments + credential redaction gate | DONE | 74fe423 GREEN 3408 |
+| WP9 (a) text/context attachments + credential redaction gate | DONE | 74fe423 + fix 5532eb7 GREEN 3409 |
 | CHECKPOINT 2 (install target + batch sheet WP1-WP9a) | READY | docs/checkpoint-2-sheet.md |
 | WP9 (b) P0 residuals: sessions/history roster, modes, tool loop, @participants//slash | PENDING | see docs/chat-p0-gaps.md |
 | Read-only docs: rebuild-plan.md v2, ui-research.md | PENDING | - |
