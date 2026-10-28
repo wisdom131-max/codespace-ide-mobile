@@ -102,6 +102,9 @@ class ChatSession(
             baseUrl = sel.baseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
             reasoningBudget = reasoningBudget,
+            // WP5: the send budget scales with the model's context window (estimate).
+            maxPayloadChars = com.codespace.ide.engine.ModelCatalog.payloadBudgetChars(
+                com.codespace.ide.engine.ModelCatalog.capabilityFor(sel.providerId, sel.modelId)),
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
         ui.value = ui.value.copy(

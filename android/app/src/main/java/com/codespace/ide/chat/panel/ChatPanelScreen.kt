@@ -250,6 +250,17 @@ private fun ProviderModelDialog(
                     label = { Text("Model id") },
                     singleLine = true,
                 )
+                // WP5: capability line — verified bundled table, always an ESTIMATE.
+                val cap = com.codespace.ide.engine.ModelCatalog.capabilityFor(current.providerId, model)
+                if (cap != null) {
+                    Text(
+                        "context ~" + (cap.contextTokens / 1000) + "k tokens (estimate)" +
+                            (if (cap.supportsImages) " — images in" else "") +
+                            (if (cap.supportsPdf) ", PDF in" else ""),
+                        fontSize = ChatTokens.FONT_SMALL.sp,
+                        color = c.textSecondary,
+                    )
+                }
             }
         },
         confirmButton = {
