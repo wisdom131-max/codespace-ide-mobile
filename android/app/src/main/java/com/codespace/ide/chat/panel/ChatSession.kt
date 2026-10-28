@@ -6,6 +6,7 @@ import com.codespace.ide.engine.ChatEngineImpl
 import com.codespace.ide.engine.ChatError
 import com.codespace.ide.engine.EngineConfig
 import com.codespace.ide.engine.EngineEvent
+import com.codespace.ide.engine.AnthropicAdapter
 import com.codespace.ide.engine.GeminiAdapter
 import com.codespace.ide.engine.HttpTransport
 import com.codespace.ide.engine.OpenAIAdapter
@@ -42,6 +43,9 @@ data class PanelSelection(
 ) {
     companion object {
         const val OPENAI_BASE = "https://example.invalid/chat/completions"
+        /** WP3: Anthropic Messages API (verified from official docs 2026-10-28). */
+        const val ANTHROPIC_BASE = "https://api.anthropic.com/v1/messages"
+        const val ANTHROPIC_DEFAULT_MODEL = "claude-opus-5-5"
     }
 }
 
@@ -72,7 +76,9 @@ class ChatSession(
         ChatEngineImpl(projectId, transportFactory(), adapterFor(providerId))
 
     private fun adapterFor(providerId: String): ProviderAdapter =
-        if (providerId == "gemini") GeminiAdapter() else OpenAIAdapter()
+        if (providerId == "gemini") GeminiAdapter()
+        else if (providerId == "anthropic") AnthropicAdapter()
+        else OpenAIAdapter()
 
     fun send(userText: String, confirmOverBudget: Boolean = false) {
         if (ui.value.streaming || userText.isBlank()) return

@@ -46,6 +46,26 @@ class EngineContractTest {
         assertEquals("Hello", engine.transcript().last().text)
     }
 
+    @Test fun `anthropic adapter streams text deltas through event lines`() = runTest {
+        val an = ChatEngineImpl("a1", FakeUrlTransport(server.port), AnthropicAdapter())
+        server.lastScript = FakeChatServer.Script(200, emptyList(), flat(listOf(
+            """data: {"type":"message_start","message":{"role":"assistant","content":[]}}""",
+            """event: content_block_delta""",
+            """data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}""",
+            """data: {"type":"thinking_delta","delta":{"type":"thinking_delta","thinking":"internal"}}""",
+            """data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo!"}}""",
+            """data: {"type":"message_stop"}"""
+        )))
+        val events = an.send("hi", EngineConfig(
+            "claude-opus-5-5", providerId = "anthropic",
+            baseUrl = "http://127.0.0.1:" + server.port + "/v1/messages"
+        )).toList()
+        assertEquals(2, events.filterIsInstance<EngineEvent.Delta>().size)
+        assertEquals("Hello!", events.filterIsInstance<EngineEvent.Delta>().joinToString("") { it.text })
+        assertEquals(6, events.filterIsInstance<EngineEvent.Completed>().single().totalChars)
+        assertEquals("Hello!", an.transcript().last().text)
+    }
+
     @Test fun `gemini adapter streams deltas then completes without sentinel`() = runTest {
         val g = ChatEngineImpl("g1", FakeUrlTransport(server.port), GeminiAdapter())
         server.lastScript = FakeChatServer.Script(200, emptyList(), flat(listOf(

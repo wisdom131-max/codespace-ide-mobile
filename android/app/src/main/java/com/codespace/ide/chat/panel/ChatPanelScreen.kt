@@ -163,12 +163,20 @@ private fun ProviderModelDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                model = if (slot.providerId == "gemini") current.modelId else model
+                                model = when (slot.providerId) {
+                                        "gemini" -> current.modelId
+                                        "anthropic" -> PanelSelection.ANTHROPIC_DEFAULT_MODEL
+                                        else -> model
+                                    }
                                 onApply(PanelSelection(
                                     providerId = if (slot.providerId.startsWith("custom")) slot.providerId else slot.providerId,
                                     keySlot = slot.slotName,
                                     modelId = model,
-                                    baseUrl = if (slot.providerId == "gemini") "https://generativelanguage.googleapis.com" else PanelSelection.OPENAI_BASE,
+                                    baseUrl = when (slot.providerId) {
+                                        "gemini" -> "https://generativelanguage.googleapis.com"
+                                        "anthropic" -> PanelSelection.ANTHROPIC_BASE
+                                        else -> PanelSelection.OPENAI_BASE
+                                    },
                                 ))
                             }
                             .padding(vertical = ChatTokens.GAP.dp),
