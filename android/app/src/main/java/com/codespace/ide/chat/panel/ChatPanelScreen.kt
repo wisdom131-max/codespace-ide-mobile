@@ -51,11 +51,17 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
             tokenStore, com.codespace.ide.chat.CustomEndpointStore))
     }
     DisposableEffect(Unit) { onDispose { manager.close() } }
-    val session = remember(projectId) { manager.session(projectId) }
+    // WP7: restore the persisted selection once per session (defaults if none).
+    val session = remember(projectId) {
+        val s = manager.session(projectId)
+        ChatSettingsPrefs.selection()?.let { s.select(it) }
+        s
+    }
     val state by session.ui.collectAsState()
     val selection by session.selection.collectAsState()
     var input by remember { mutableStateOf("") }
     var showSelect by remember { mutableStateOf(false) }
+    var showKeys by remember { mutableStateOf(false) }
     val c = ChatTokens.LocalChatColors.current
     val scroll = rememberScrollState()
 
@@ -134,9 +140,18 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
             manager = manager,
             tokenStore = tokenStore,
             current = selection,
-            onApply = { session.select(it); showSelect = false },
+            onApply = {
+                session.select(it)
+                ChatSettingsPrefs.setSelection(it)
+                showSelect = false
+            },
+            onClearConversation = { session.clearConversation(); showSelect = false },
+            onManageKeys = { showKeys = true; showSelect = false },
             onDismiss = { showSelect = false },
         )
+    }
+    if (showKeys) {
+        KeysManagerDialog(tokenStore = tokenStore, onDismiss = { showKeys = false })
     }
 }
 
@@ -147,6 +162,8 @@ private fun ProviderModelDialog(
     tokenStore: com.codespace.ide.data.SecureTokenStore,
     current: PanelSelection,
     onApply: (PanelSelection) -> Unit,
+    onClearConversation: () -> Unit,
+    onManageKeys: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var refresh by remember { mutableStateOf(0) }
@@ -157,6 +174,11 @@ private fun ProviderModelDialog(
         return
     }
     var model by remember { mutableStateOf(current.modelId) }
+    // WP7: context-window override state (dialog-body scope; confirmButton reads it).
+    var overrideText by remember(current) {
+        mutableStateOf(
+            ChatSettingsPrefs.contextOverride(current.providerId, model)?.toString() ?: "")
+    }
     val c = ChatTokens.LocalChatColors.current
     // Providers with stored keys (WP1 read-only migration), custom endpoints last.
     val keyProviders: List<StoredKeySlot> = snapshot.keySlots.filter { it.hasKey }
@@ -232,6 +254,39 @@ private fun ProviderModelDialog(
                         }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                 )
+                // WP7: key management returns home (keys never displayed).
+                Text(
+                    "Manage keys",
+                    color = c.accent,
+                    fontSize = ChatTokens.FONT_SMALL.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onManageKeys() }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+                Text(
+                    "Clear conversation",
+                    color = c.text,
+                    fontSize = ChatTokens.FONT_SMALL.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onClearConversation() }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+                // WP7: two-tap confirm - clearing ALL chat settings is destructive.
+                var resetArmed by remember { mutableStateOf(false) }
+                Text(
+                    if (resetArmed) "Tap again to reset chat settings" else "Reset chat settings (selection, failover, overrides)",
+                    color = if (resetArmed) c.warning else c.text,
+                    fontSize = ChatTokens.FONT_SMALL.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (resetArmed) { ChatSettingsPrefs.resetAll(); resetArmed = false; onClearConversation() }
+                            else resetArmed = true
+                        }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                )
                 // WP4: entry into the custom endpoints editor.
                 Text(
                     "Add / manage custom endpoints",
@@ -266,6 +321,13 @@ private fun ProviderModelDialog(
                     label = { Text("Model id") },
                     singleLine = true,
                 )
+                // WP7: user context-window override (WP5 estimate honors it).
+                TextField(
+                    value = overrideText,
+                    onValueChange = { overrideText = it },
+                    label = { Text("Context tokens override (blank = bundled)", fontSize = ChatTokens.FONT_MICRO.sp) },
+                    singleLine = true,
+                )
                 // WP5: capability line — verified bundled table, always an ESTIMATE.
                 val cap = com.codespace.ide.engine.ModelCatalog.capabilityFor(current.providerId, model)
                 if (cap != null) {
@@ -280,7 +342,13 @@ private fun ProviderModelDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onApply(current.copy(modelId = model)) }) { Text("Apply") }
+            TextButton(onClick = {
+                // WP7: persist the user override keyed to the applied provider:model
+                // (blank = clear override, bundled row stands).
+                ChatSettingsPrefs.setContextOverride(
+                    current.providerId, model, overrideText.trim().toIntOrNull())
+                onApply(current.copy(modelId = model))
+            }) { Text("Apply") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

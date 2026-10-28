@@ -59,6 +59,8 @@ class ChatSession(
     private val poolSlotsFor: (providerId: String) -> List<String> = { emptyList() },
     /** WP6: automatic key failover is OPT-IN (silent switching burns credits). */
     private val failoverOptIn: () -> Boolean = { false },
+    /** WP7: user context-window override (tokens) for provider:model, or null. */
+    private val contextOverrideFor: (providerId: String, modelId: String) -> Int? = { _, _ -> null },
 ) {
     private val streamBuf = StringBuilder()
     private var sendJob: Job? = null
@@ -109,9 +111,9 @@ class ChatSession(
             baseUrl = sel.baseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
             reasoningBudget = reasoningBudget,
-            // WP5: the send budget scales with the model's context window (estimate).
-            maxPayloadChars = com.codespace.ide.engine.ModelCatalog.payloadBudgetChars(
-                com.codespace.ide.engine.ModelCatalog.capabilityFor(sel.providerId, sel.modelId)),
+            // WP5: the send budget scales with the model's context window (estimate);
+            // WP7: the user override replaces the bundled row (estimate either way).
+            maxPayloadChars = com.codespace.ide.engine.ModelCatalog.payloadBudgetChars(resolveCapability(sel)),
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
         failoverAttempts = 0
@@ -156,6 +158,24 @@ class ChatSession(
         if (st.rows.lastOrNull() is ChatRowModel.OverBudget) {
             ui.value = st.copy(rows = st.rows.dropLast(1))
         }
+    }
+
+    /** WP7: settings "Clear conversation" - rows gone, keys and settings kept. */
+    fun clearConversation() {
+        sendJob?.cancel()
+        streamBuf.setLength(0)
+        failoverAttempts = 0
+        keySlotsSeen.clear()
+        ui.value = ui.value.copy(rows = emptyList(), streaming = false, lastUserText = "")
+    }
+
+    /** Bundled capability with the WP7 user override applied (unknown model + override works too). */
+    private fun resolveCapability(sel: PanelSelection): com.codespace.ide.engine.ModelCapability? {
+        val bundled = com.codespace.ide.engine.ModelCatalog.capabilityFor(sel.providerId, sel.modelId)
+        val userTok = contextOverrideFor(sel.providerId, sel.modelId) ?: return bundled
+        val base = bundled ?: com.codespace.ide.engine.ModelCapability(
+            sel.modelId, userTok, supportsImages = false, supportsPdf = false)
+        return base.copy(contextTokens = userTok)
     }
 
     fun sendAnyway() {
@@ -241,6 +261,7 @@ class ChatSessionManager(val reader: StoredCredentialsReader) {
                         .map { it.slotName }
                 },
                 failoverOptIn = { ChatSettingsPrefs.failoverOptIn() },
+                contextOverrideFor = { pid, mid -> ChatSettingsPrefs.contextOverride(pid, mid) },
             )
         }
 
