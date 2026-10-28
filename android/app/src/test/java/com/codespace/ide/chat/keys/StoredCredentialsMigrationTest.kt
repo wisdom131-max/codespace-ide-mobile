@@ -20,12 +20,20 @@ import org.junit.Test
  */
 class StoredCredentialsMigrationTest {
 
+    /**
+     * U1: built from the REAL writer (ChatKeyPool.slotSuffix / AiKeysSection):
+     * "ai_" + id.UPPERCASE, pool "_2", Anthropic's legacy id is "claude", the
+     * "ai_active" marker is not a key. The earlier invented lowercase fixtures
+     * ("ai_google") are what let build 657 ship with 560 green tests.
+     */
     private fun realShapedRaw(): Map<String, String> = mapOf(
-        "ai_google" to "k-google-1",
-        "ai_google_2" to "k-google-2",
-        "ai_openai" to "",
-        "ai_custom" to "k-custom",
-        "ai_custom_abc123" to "k-custom-abc",
+        "ai_GEMINI" to "k-gemini-1",
+        "ai_GEMINI_2" to "k-gemini-2",
+        "ai_CLAUDE" to "k-claude",
+        "ai_OPENAI" to "",
+        "ai_CUSTOM" to "k-custom",
+        "ai_CUSTOM_ABC123" to "k-custom-abc",
+        "ai_active" to "GEMINI",
         "proj_default_firebase" to "proj-secret",
         "github_token" to "gh-secret",
         "pin_hash" to "pin",
@@ -44,12 +52,26 @@ class StoredCredentialsMigrationTest {
 
     @Test
     fun parsesPrimaryAndPoolSlotsFromRealShape() {
-        val p = LegacyKeyShapes.parseSlot("ai_google")
-        assertNotNull(p); assertEquals("google", p!!.first); assertNull(p.second)
-        val pool = LegacyKeyShapes.parseSlot("ai_google_2")
-        assertEquals("google", pool!!.first); assertEquals(2, pool.second!!)
-        val custom = LegacyKeyShapes.parseSlot("ai_custom_abc123_2")
+        val p = LegacyKeyShapes.parseSlot("ai_GEMINI")
+        assertNotNull(p); assertEquals("gemini", p!!.first); assertNull(p.second)
+        val pool = LegacyKeyShapes.parseSlot("ai_GEMINI_2")
+        assertEquals("gemini", pool!!.first); assertEquals(2, pool.second!!)
+        val custom = LegacyKeyShapes.parseSlot("ai_CUSTOM_ABC123_2")
         assertEquals("custom_abc123", custom!!.first); assertEquals(2, custom.second!!)
+    }
+
+    @Test
+    fun legacyClaudeIdMapsToTheAnthropicAdapter() {
+        val c = LegacyKeyShapes.parseSlot("ai_CLAUDE")
+        assertEquals("anthropic", c!!.first)
+        assertEquals("ai_CLAUDE", SlotNaming.primarySlot("anthropic"))
+    }
+
+    @Test
+    fun activeMarkerIsNotAKeySlot() {
+        assertNull(LegacyKeyShapes.parseSlot("ai_active"))
+        val slots = LegacyKeyShapes.normalizeKeySlots(realShapedRaw())
+        assertTrue(slots.none { it.slotName.equals("ai_active", true) })
     }
 
     @Test
@@ -63,19 +85,45 @@ class StoredCredentialsMigrationTest {
     @Test
     fun emptyKeySlotIsPreservedNotAnOrphan() {
         val slots = LegacyKeyShapes.normalizeKeySlots(realShapedRaw())
-        assertEquals(5, slots.size)
-        val openai = slots.first { it.slotName == "ai_openai" }
+        // GEMINI, GEMINI_2, CLAUDE, OPENAI(empty), CUSTOM, CUSTOM_ABC123 (active marker excluded)
+        assertEquals(6, slots.size)
+        val openai = slots.first { it.slotName == "ai_OPENAI" }
         assertEquals("openai", openai.providerId)
         assertFalse("an empty key slot stays listed", openai.hasKey)
-        assertTrue(slots.first { it.slotName == "ai_google" }.hasKey)
-        assertTrue(slots.first { it.slotName == "ai_google_2" }.hasKey)
+        assertTrue(slots.first { it.slotName == "ai_GEMINI" }.hasKey)
+        assertTrue(slots.first { it.slotName == "ai_GEMINI_2" }.hasKey)
+    }
+
+    /** The test build 657 lacked: stored uppercase slots must resolve to a USABLE slot per engine provider. */
+    @Test
+    fun everyRealSlotResolvesToAUsableKeyForItsEngineProvider() {
+        val raw = realShapedRaw()
+        val names = raw.keys
+        val has = { n: String -> !raw[n].isNullOrBlank() }
+        assertEquals(listOf("ai_GEMINI", "ai_GEMINI_2"), SlotNaming.resolveSlots("gemini", names, has))
+        assertEquals(listOf("ai_CLAUDE"), SlotNaming.resolveSlots("anthropic", names, has))
+        assertEquals(emptyList<String>(), SlotNaming.resolveSlots("openai", names, has)) // empty value = no usable key
+        assertEquals(listOf("ai_CUSTOM"), SlotNaming.resolveSlots("custom", names, has))
+        assertEquals(listOf("ai_CUSTOM_ABC123"), SlotNaming.resolveSlots("custom_abc123", names, has))
     }
 
     @Test
-    fun keyValuesNeverEnterTheNormalizedModel() {
-        val slots = LegacyKeyShapes.normalizeKeySlots(realShapedRaw())
-        // The model carries names and presence only - nothing to leak.
-        assertTrue(slots.none { it.slotName.startsWith("proj_") || it.slotName.startsWith("github") })
+    fun lowercaseSlotsWrittenByBuild657AreStillFoundNotOrphaned() {
+        val raw = mapOf("ai_openai" to "k-from-657", "ai_openai_2" to "k2-from-657")
+        val has = { n: String -> !raw[n].isNullOrBlank() }
+        assertEquals(listOf("ai_openai", "ai_openai_2"),
+            SlotNaming.resolveSlots("openai", raw.keys, has))
+    }
+
+    @Test
+    fun writerAndReaderAgreeOnTheSlotNameForEveryEngineProvider() {
+        for (pid in listOf("gemini", "anthropic", "openai", "openrouter", "deepseek", "xai", "groq", "mistral", "custom", "custom_hf_router")) {
+            val slot = SlotNaming.primarySlot(pid)
+            val parsed = LegacyKeyShapes.parseSlot(slot)
+            assertEquals("round trip for " + pid, pid, parsed!!.first)
+            assertEquals("pool 3 for " + pid, slot + "_3", SlotNaming.poolSlot(pid, 3))
+            assertEquals(pid, LegacyKeyShapes.parseSlot(SlotNaming.poolSlot(pid, 3))!!.first)
+        }
     }
 
     @Test

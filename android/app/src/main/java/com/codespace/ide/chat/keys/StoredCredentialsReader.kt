@@ -54,22 +54,25 @@ object LegacyKeyShapes {
     const val SLOT_PREFIX = "ai_"
 
     /**
-     * Parse 'ai_<provider>' / 'ai_<provider>_2' into provider + pool index.
-     * Pool indices are >= 1; a trailing non-number is part of the provider id
-     * (custom endpoints are 'custom_<id>' and may contain digits/underscores).
-     * Returns null for non-ai_ entries (proj_*, github, pin are not provider keys).
+     * Parse 'ai_<PROVIDER>' / 'ai_<PROVIDER>_2' into ENGINE provider id + pool index.
+     * U1: the real writer UPPERCASES ('ai_GEMINI', 'ai_CLAUDE', 'ai_CUSTOM_HF_2'); the
+     * provider id is normalized to lowercase and the legacy 'claude' maps to the
+     * 'anthropic' adapter. A trailing _N (N >= 2) is a pool index; _1 or a non-number
+     * suffix is part of the id (custom endpoint ids may contain digits/underscores).
+     * Returns null for non-ai_ entries (proj_*, github, pin are not provider keys)
+     * and for the 'ai_active' marker (not a key).
      */
     fun parseSlot(slotName: String): Pair<String, Int?>? {
         if (!slotName.startsWith(SLOT_PREFIX)) return null
         val rest = slotName.removePrefix(SLOT_PREFIX)
-        if (rest.isBlank()) return null
+        if (rest.isBlank() || rest.equals("active", ignoreCase = true)) return null
         val idx = rest.lastIndexOf('_')
         if (idx > 0) {
             val suffix = rest.substring(idx + 1)
             val n = suffix.toIntOrNull()
-            if (n != null && n >= 1) return Pair(rest.substring(0, idx), n)
+            if (n != null && n >= 2) return Pair(SlotNaming.engineProviderId(rest.substring(0, idx)), n)
         }
-        return Pair(rest, null)
+        return Pair(SlotNaming.engineProviderId(rest), null)
     }
 
     /**
