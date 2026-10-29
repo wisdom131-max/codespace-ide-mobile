@@ -27,11 +27,17 @@ Updated 2026-10-28 after WP9(a). Each DONE row carries commit + CI run.
 | U5 composer polish (plus -> own row, mic removed, blue-on-text border, tighter chips) | DONE | d573aef GREEN 3438 |
 | U6-a tool-wire decision layer (pure: parse, mode rules, round cap, result turn) | DONE | 31259f4 GREEN 3439 |
 | U6-b chat panel ACTS behind the existing approval gate (runTools + approval card) | DONE | ce98d03 + fix ebf8b9a GREEN 3441 |
+| U7 composer proportions + height (Add Context, gear, no approvals row, bounded field) | DONE | 7a9880d + fix b5cc8ec GREEN 3443 |
+| U8 compact composer pass (ring, card top pad, chips hug text, glyph 28, row 40dp, field max) | DONE | 091b192 GREEN 3444 |
 | U6-c agent commands visible in the terminal (badge / transcript record) | PENDING | spec section 6, next |
 | U6-d Explorer refresh + reveal on agent file writes | PENDING | spec section 6, next |
 | Read-only docs: rebuild-plan.md v2, ui-research.md | PENDING | - |
 
 ### Composer PENDING list (continuity — every open item, owner spec 2026-10-29)
+- Composer height is now ~24dp shorter (138 -> ~114); if the owner still wants less, the
+  remaining terms are the 40dp control row and the 22dp field floor - both near the floor
+  of "still tappable / still readable", so the next cut would have to come from the
+  Add Context row being moved INTO the control row rather than sitting above the field.
 - U6-c terminal visibility for agent commands; U6-d Explorer refresh/reveal.
 - Device round for U5+U6 together (batching rule): Add Context proportions, gear, composer
   height, tool row position, multiline growth, approvals row gone.
