@@ -280,6 +280,10 @@ internal object WorkspaceContext {
                     }
                 }
             }
+            // Explicit Unit: the `when` is the last expression of this let, so without
+            // it the compiler reads the branch as a value and demands an else on the
+            // `if`. (CI run 40916125650 caught exactly that.)
+            Unit
         }
 
         val openRels = snap.openFiles

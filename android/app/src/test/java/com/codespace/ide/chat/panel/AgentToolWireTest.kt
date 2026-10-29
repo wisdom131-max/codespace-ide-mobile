@@ -69,6 +69,24 @@ class AgentToolWireTest {
     }
 
     @Test
+    fun editModeStagesWritesInsteadOfTouchingDisk() {
+        // Edit mode's prompt promises review-before-apply. The decision layer must agree.
+        assertTrue(AgentToolWire.isStagedWrite(ChatMode.EDIT, "write_file"))
+        assertFalse("reads are not proposals", AgentToolWire.isStagedWrite(ChatMode.EDIT, "read_file"))
+        assertFalse("agent writes execute (behind the gate)", AgentToolWire.isStagedWrite(ChatMode.AGENT, "write_file"))
+        assertFalse(AgentToolWire.isStagedWrite(ChatMode.ASK, "write_file"))
+    }
+
+    @Test
+    fun aStagedNoteNeverClaimsTheFileWasWritten() {
+        val note = AgentToolWire.stagedNote("src/App.kt", 42)
+        assertTrue(note.contains("src/App.kt"))
+        assertTrue(note.contains("42"))
+        assertTrue(note.contains("Nothing has been written"))
+        assertFalse(note.contains("Done"))
+    }
+
+    @Test
     fun editModeWritesFilesButNeverExecutesAnything() {
         val write = """<tool>{"name":"write_file","arguments":{"path":"a.txt","content":"x"}}</tool>"""
         assertTrue(AgentToolWire.decide(ChatMode.EDIT, write, 1) is ToolDecision.Run)

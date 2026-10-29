@@ -44,7 +44,12 @@ import kotlinx.coroutines.delay
  * same component library when attachments return).
  */
 @Composable
-fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.SecureTokenStore) {
+fun ChatPanelScreen(
+    projectId: String,
+    tokenStore: com.codespace.ide.data.SecureTokenStore,
+    /** Batch 2: opens a staged file in the editor so the review strip is reachable. */
+    onOpenFile: (String) -> Unit = {},
+) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val manager = remember {
         com.codespace.ide.chat.panel.ChatSettingsPrefs.ensure(ctx)
@@ -76,6 +81,19 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
             }
         }
     }
+    // Batch 2: the staged store is scoped to THIS chat session, so proposals from two
+    // projects can never be mixed, and the in-editor strip (which reads the same id)
+    // always describes the same proposals the panel lists.
+    DisposableEffect(projectId) {
+        com.codespace.ide.chat.PendingChangesStore.activeSessionId = projectId
+        onDispose { if (com.codespace.ide.chat.PendingChangesStore.activeSessionId == projectId)
+            com.codespace.ide.chat.PendingChangesStore.activeSessionId = null }
+    }
+    val stagedRevision = com.codespace.ide.chat.PendingChangesStore.revision.value
+    val staged = remember(projectId, stagedRevision) {
+        com.codespace.ide.chat.PendingChangesStore.pendingFor(projectId)
+    }
+    var stagedNote by remember(projectId) { mutableStateOf<String?>(null) }
     var input by remember { mutableStateOf("") }
     // WP8: system picker; bytes are STAGED at attach time (read fully once),
     // then only name + mime + base64 live in memory until the send.
@@ -148,7 +166,20 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
         if (chatMode == ChatMode.AGENT) {
             ChatFilesChangedRow()
         }
-        ChatInputComposer(
+        ChatStagedChangesRow(
+        files = staged,
+        onOpen = { path -> onOpenFile(path) },
+        onApplyAll = {
+            val out = com.codespace.ide.chat.PendingChangesStore.applyAll(projectId)
+            stagedNote = stagedApplyNote(out)
+        },
+        onDiscardAll = {
+            com.codespace.ide.chat.PendingChangesStore.discardAll(projectId)
+            stagedNote = "Discarded " + staged.size + " proposal(s). Nothing was written."
+        },
+        note = stagedNote,
+    )
+    ChatInputComposer(
             value = input,
             onValueChange = { input = it },
             placeholder = if (resolved is ResolvedSelection.NeedsSetup)

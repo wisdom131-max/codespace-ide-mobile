@@ -63,6 +63,25 @@ internal object AgentToolWire {
     /** Every mode now has at least one permitted tool, so the protocol is always sent. */
     fun modeRunsTools(mode: ChatMode): Boolean = true
 
+    /**
+     * Batch 2: a write in EDIT mode is a PROPOSAL, not a write.
+     *
+     * Edit mode's own prompt promises "nothing is applied until the user accepts it", and
+     * the app already has the machinery for exactly that (PendingChangesStore + the
+     * in-editor AiReviewStrip). What was missing was the producer: the staged store had
+     * zero callers, so Edit mode executed write_file straight to disk like Agent mode
+     * while telling the model and the user it had not. This function is the decision that
+     * separates the two: in EDIT the write is STAGED for review; in AGENT it executes
+     * behind the approval gate exactly as before.
+     */
+    fun isStagedWrite(mode: ChatMode, toolName: String): Boolean =
+        mode == ChatMode.EDIT && toolName == "write_file"
+
+    /** Human line for a staged proposal: the file and the size, never "applied". */
+    fun stagedNote(relPath: String, chars: Int): String =
+        "Proposed edit staged: " + relPath + " (" + chars + " chars). Nothing has been written to " +
+            "disk. Review it in the editor strip and Apply or Discard there."
+
     /** Tool calls in [text], in the order they appear. Unparseable blocks are skipped. */
     fun parse(text: String): List<ParsedToolCall> =
         CALL_REGEX.findAll(text).mapNotNull { m ->

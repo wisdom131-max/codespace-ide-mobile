@@ -418,6 +418,29 @@ class ChatSession(
         }
     }
     /**
+     * Batch 2: hand a proposed write to the EXISTING staged-change store.
+     *
+     * Reuse, not a second mechanism: PendingChangesStore already owns the pending model,
+     * the buffer-first base content, the drift check, the in-editor AiReviewStrip, Apply
+     * and Discard. This only supplies the missing producer. Scope is set here so the strip
+     * (which looks up "activeSessionId ?: default") and the chat agree on the same
+     * session, and a project switch cannot leak proposals between projects.
+     */
+    private fun stageProposal(ctx: android.content.Context, call: ParsedToolCall): String {
+        val args = org.json.JSONObject(call.argumentsJson)
+        val rawPath = args.optString("path", "")
+        val content = args.optString("content", "")
+        if (rawPath.isBlank()) return "FAILED: write_file needs a path"
+        com.codespace.ide.chat.PendingChangesStore.activeSessionId = projectId
+        com.codespace.ide.chat.PendingChangesStore.activeProjectRoot =
+            com.codespace.ide.security.TrustState.activeProjectRoot(ctx)
+        val staged = com.codespace.ide.chat.PendingChangesStore.stage(rawPath, content, ctx)
+        val rel = WorkspaceContext.relativeTo(
+            com.codespace.ide.security.TrustState.activeProjectRoot(ctx), rawPath) ?: rawPath
+        return if (staged.startsWith("staged:")) AgentToolWire.stagedNote(rel, content.length) else staged
+    }
+
+    /**
      * Section 6: run the calls in order, each behind the EXISTING approval gate
      * (AgentFlowGate -> ChatPermissionStore), then hand the results back so the model can
      * continue. Nothing here invents success: a refusal is reported as skipped, a throw as
@@ -444,6 +467,25 @@ class ChatSession(
             for (call in calls) {
                 val summary = AgentToolWire.summary(call)
                 appendRow(ChatRowModel.InfoNote(AgentToolWire.stepLabel(call) + ": " + summary))
+                // Batch 2: EDIT-mode writes are PROPOSALS. Staging cannot touch the
+                // user's files (it writes a private pending record), so it needs no
+                // approval prompt - the user's Apply in the editor strip IS the
+                // authorisation, and it runs through PendingChangesStore.apply's existing
+                // drift-safe path. Agent mode keeps the gate and the direct write.
+                if (AgentToolWire.isStagedWrite(mode, call.name)) {
+                    val staged = try {
+                        stageProposal(ctx, call)
+                    } catch (t: Throwable) {
+                        "FAILED: " + (t.message ?: "could not stage the proposal")
+                    }
+                    appendRow(ChatRowModel.InfoNote(
+                        if (staged.startsWith("FAILED")) staged
+                        else AgentToolWire.firstLine(staged)
+                    ))
+                    results.append(AgentToolWire.resultMessage(call, staged))
+                    results.append("\n\n")
+                    continue
+                }
                 val verdict = com.codespace.ide.agent.AgentFlowGate.awaitApproval(ctx, call.name, summary)
                 if (verdict != com.codespace.ide.agent.AgentFlowGate.ApprovalVerdict.APPROVED) {
                     val why =

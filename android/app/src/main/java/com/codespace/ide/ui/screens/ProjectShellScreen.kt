@@ -5238,7 +5238,18 @@ private fun PssEditorColumn(
             .clip(WorkspaceShapes.ChatShape)) {
             // REMOVAL 2/7 (advisor ruling 2026-10-27): the chat panel UI is
             // archived and removed; placeholder keeps the surface + toggle alive.
-            ChatRebuildPlaceholder(projectId, tokenStore)
+            ChatRebuildPlaceholder(
+                projectId = projectId,
+                tokenStore = tokenStore,
+                // Batch 2: a staged proposal for a file that is not open would be
+                // unreachable, because the review strip renders for the ACTIVE tab only.
+                // Opening it here brings the strip (the single Apply/Discard surface)
+                // into view instead of adding a second apply mechanism.
+                onOpenFile = { path ->
+                    if (!editorTabs.contains(path)) editorTabs.add(path)
+                    activeEditorTab = path
+                },
+            )
         }
     }
 

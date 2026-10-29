@@ -9,6 +9,10 @@ import com.codespace.ide.data.SecureTokenStore
  * now a thin forwarder so the shell call site and layout stay untouched.
  */
 @Composable
-fun ChatRebuildPlaceholder(projectId: String, tokenStore: SecureTokenStore) {
-    com.codespace.ide.chat.panel.ChatPanelScreen(projectId, tokenStore)
+fun ChatRebuildPlaceholder(
+    projectId: String,
+    tokenStore: SecureTokenStore,
+    onOpenFile: (String) -> Unit = {},
+) {
+    com.codespace.ide.chat.panel.ChatPanelScreen(projectId, tokenStore, onOpenFile)
 }
