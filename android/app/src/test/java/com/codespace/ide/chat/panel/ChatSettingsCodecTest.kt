@@ -15,7 +15,7 @@ class ChatSettingsCodecTest {
     fun selectionRoundTrips() {
         val sel = PanelSelection(
             providerId = "anthropic",
-            keySlot = "ai_anthropic_2",
+            keySlot = "ai_CLAUDE_2",
             modelId = "claude-sonnet-5.5",
             baseUrl = PanelSelection.ANTHROPIC_BASE,
         )
