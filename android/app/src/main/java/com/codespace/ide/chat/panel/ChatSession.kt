@@ -121,6 +121,16 @@ class ChatSession(
      * the collector below would overwrite the very history it is about to load.
      */
     @Volatile private var restoreFinished = false
+
+    /**
+     * BATCH 6: identifies the CURRENT send. A pending 429 retry only fires while its own
+     * generation is still current, so a new message, a Stop or a cleared conversation can
+     * never be resurrected by a timer that was armed a minute ago (that is the duplicate
+     * submission this guards against).
+     */
+    @Volatile private var sendGeneration = 0
+    /** Automatic 429 re-attempts used for the CURRENT send. */
+    private var autoRetries = 0
     /** A save failure is shown once, not once per delta. */
     private var storageErrorShown = false
 
@@ -334,6 +344,9 @@ class ChatSession(
                 base64Data = it.base64, textData = it.text)
         }
         val chips = staged.map { com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes)) }
+        sendGeneration++
+        val gen = sendGeneration
+        autoRetries = 0
         val newRows = ArrayList<ChatRowModel>(2)
         // BATCH 5: status cards from the PREVIOUS attempt ("provider is rate limiting",
         // "offline") describe a moment that has passed; a new attempt must not inherit
@@ -351,7 +364,7 @@ class ChatSession(
             firstDeltaMs = 0L,
             lastUserText = userText,
         )
-        attemptSend(cfg, effectiveSlot, userText, attachments, confirmOverBudget)
+        attemptSend(cfg, effectiveSlot, userText, attachments, confirmOverBudget, gen)
     }
 
     /** One engine attempt; the failover path re-invokes this with the next key. */
@@ -361,10 +374,11 @@ class ChatSession(
         userText: String,
         attachments: List<com.codespace.ide.engine.ChatAttachment>,
         confirmOverBudget: Boolean,
+        gen: Int = 0,
     ) {
         sendJob = scope.launch {
             try {
-                engine.send(userText, attachments, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, attachments, confirmOverBudget) }
+                engine.send(userText, attachments, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, attachments, confirmOverBudget, gen) }
             } catch (_: CancellationException) {
                 // Cooperative cancel: partial text is already in the rows.
                 ui.value = ui.value.copy(streaming = false)
@@ -375,7 +389,14 @@ class ChatSession(
         }
     }
 
-    fun cancel() { sendJob?.cancel() }
+    /**
+     * BATCH 6: Stop must also kill an ARMED retry, not just an in-flight read. Bumping the
+     * generation is what makes the pending timer inert even if it wakes up afterwards.
+     */
+    fun cancel() {
+        sendGeneration++
+        sendJob?.cancel()
+    }
 
     fun retry() {
         val t = ui.value.lastUserText
@@ -428,12 +449,18 @@ class ChatSession(
         userText: String,
         attachments: List<com.codespace.ide.engine.ChatAttachment>,
         confirmOverBudget: Boolean,
+        gen: Int = 0,
     ) {
         when (ev) {
             is EngineEvent.Delta -> {
                 streamBuf.append(ev.text)
                 val text = streamBuf.toString()
                 val st = ui.value
+                // BATCH 6: an answer arriving means the wait is over - the "rate limited,
+                // retrying in Ns" card must not sit above a reply that is streaming fine.
+                if (st.rows.lastOrNull() is ChatRowModel.RateLimited) {
+                    ui.value = st.copy(rows = st.rows.dropLast(1))
+                }
                 val rows = if (st.rows.lastOrNull() is ChatRowModel.AssistantStream)
                     st.rows.dropLast(1) + listOf(ChatRowModel.AssistantStream(text, true))
                 else st.rows + listOf(ChatRowModel.AssistantStream(text, true))
@@ -480,9 +507,28 @@ class ChatSession(
                     appendRow(ChatRowModel.InfoNote(
                         "Key rejected - switching to the next stored key (visible, opt-in, not silent)"))
                     val key2 = keyFor(nextSlot)
-                    attemptSend(cfg.copy(apiKey = key2 ?: ""), nextSlot, userText, attachments, confirmOverBudget)
+                    attemptSend(cfg.copy(apiKey = key2 ?: ""), nextSlot, userText, attachments, confirmOverBudget, gen)
                     return
                 }
+                // BATCH 6: a 429 gets a BOUNDED automatic retry. Everything else keeps its
+                // own card immediately - retrying an auth failure or an empty account is
+                // not a time problem, and pretending it is would burn the user's credits.
+                val decision = RetryPolicy.decide(err, autoRetries)
+                if (decision.retry && gen == sendGeneration) {
+                    autoRetries++
+                    appendRow(ChatRowModel.RateLimited(
+                        decision.waitSec, decision.attempt, decision.maxAttempts))
+                    // streaming stays TRUE: the request is still in flight (a Stop must be
+                    // able to cancel the wait), and a new send would change the generation.
+                    sendJob = scope.launch {
+                        kotlinx.coroutines.delay(decision.waitSec * 1000L)
+                        if (gen == sendGeneration) {
+                            attemptSend(cfg, slotName, userText, attachments, confirmOverBudget, gen)
+                        }
+                    }
+                    return
+                }
+                decision.refusal?.let { appendRow(ChatRowModel.InfoNote(it)) }
                 // BATCH 5: the engine's taxonomy decides WHICH card, so 429 / 402 /
                 // offline are no longer flattened into one generic red card.
                 appendRow(ChatStatusMapping.rowForError(err))
@@ -590,7 +636,7 @@ class ChatSession(
                 streamStartedMs = System.currentTimeMillis(),
                 firstDeltaMs = 0L,
             )
-            attemptSend(cfg, slotName, results.toString().trim(), emptyList(), confirmOverBudget)
+            attemptSend(cfg, slotName, results.toString().trim(), emptyList(), confirmOverBudget, gen)
         }
     }
 }

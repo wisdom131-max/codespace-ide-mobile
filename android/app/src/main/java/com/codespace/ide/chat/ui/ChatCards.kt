@@ -135,13 +135,28 @@ fun ErrorCard(
  * manual retry once they judge the wait is over.
  */
 @Composable
-fun RateLimitCard(waitSec: Int, onRetry: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+fun RateLimitCard(
+    waitSec: Int,
+    attempt: Int = 0,
+    maxAttempts: Int = 0,
+    onRetry: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
     val c = ChatTokens.LocalChatColors.current
-    val detail = if (waitSec > 0) "Rate limited (429). The provider asked for " + waitSec +
-        "s before another attempt." else "Rate limited (429). Try again in a moment."
+    val autoRetrying = attempt > 0 && maxAttempts > 0
+    val detail = when {
+        autoRetrying -> "Rate limited (429). Retrying automatically in " + waitSec +
+            "s (attempt " + attempt + " of " + maxAttempts + "). Stop cancels."
+        waitSec > 0 -> "Rate limited (429). The provider asked for " + waitSec +
+            "s before another attempt."
+        else -> "Rate limited (429). Try again in a moment."
+    }
     StateCard(
         "Provider asked to wait", detail, c.warning, c.warningBg,
-        if (onRetry != null) "Retry" else null, onRetry, modifier,
+        // An automatic retry needs no button; a manual one does.
+        if (onRetry != null && !autoRetrying) "Retry" else null,
+        if (!autoRetrying) onRetry else null,
+        modifier,
     )
 }
 
