@@ -150,6 +150,13 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
             onTools = { showKeys = true },
             onSend = { if (input.isNotBlank()) { session.send(input); input = "" } },
             onStop = { session.cancel() },
+            // Real approval level, not a decorative label: this is the same store the
+            // flow gate consults before a tool may run.
+            approvalsLabel = when (com.codespace.ide.agent.ChatPermissionStore.level(ctx)) {
+                com.codespace.ide.agent.ChatFlowLevel.MANUAL -> "Manual"
+                com.codespace.ide.agent.ChatFlowLevel.AUTO_SAFE -> "Auto-safe"
+                com.codespace.ide.agent.ChatFlowLevel.AUTO_ALL -> "Auto-all"
+            },
         )
     }
     if (showSelect) {
