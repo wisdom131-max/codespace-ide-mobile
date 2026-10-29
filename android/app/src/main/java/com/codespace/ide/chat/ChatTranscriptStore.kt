@@ -21,7 +21,12 @@ internal data class TranscriptLoad(
  * Where a conversation is persisted. An interface so the session can be driven in JVM
  * tests without a Context, a filesystem or a coroutine clock.
  */
-internal interface TranscriptSink {
+/**
+ * BATCH 4: the persistence seam. PUBLIC because ChatSession's public constructor takes one
+ * (Kotlin forbids a public signature exposing an internal type, which is exactly how this
+ * failed CI on the first push - the implementation stays internal, the contract does not).
+ */
+interface TranscriptSink {
     suspend fun load(projectId: String, conversationId: String): TranscriptLoad
     fun save(projectId: String, conversationId: String, messages: List<StoredMessage>, onError: (String) -> Unit)
 }

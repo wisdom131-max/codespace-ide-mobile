@@ -485,7 +485,7 @@ class ChatSession(
                 when (decision) {
                     is ToolDecision.Answer -> Unit
                     is ToolDecision.Refused -> appendRow(ChatRowModel.InfoNote(decision.reason))
-                    is ToolDecision.Run -> runTools(decision.calls, cfg, slotName, confirmOverBudget)
+                    is ToolDecision.Run -> runTools(decision.calls, cfg, slotName, confirmOverBudget, gen)
                 }
             }
             is EngineEvent.HistoryTrimmed -> {
@@ -570,6 +570,9 @@ class ChatSession(
         cfg: EngineConfig,
         slotName: String,
         confirmOverBudget: Boolean,
+        // BATCH 6: the tool continuation is part of the SAME send, so it keeps that send's
+        // generation - a retry armed for it still belongs to this message.
+        gen: Int,
     ) {
         val ctx = appContext
         if (ctx == null) {
