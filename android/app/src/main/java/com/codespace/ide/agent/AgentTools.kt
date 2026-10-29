@@ -311,6 +311,9 @@ You can use multiple tools in sequence. When done, give a final summary.
         target.writeText(content)
         // REFRESH-FAMILY: AI file writes now reach the Explorer's reactive channel
         com.codespace.ide.util.FsChangeNotifier.notifyChanged()
+        // U6-d: re-scanning is not enough - a write inside CLOSED folders stays invisible.
+        // Reveal expands the ancestors (never opens the file, never collapses anything).
+        com.codespace.ide.util.ExplorerReveal.requestFor(target.absolutePath)
         return "Wrote ${content.length} chars to ${target.absolutePath}"
     }
 

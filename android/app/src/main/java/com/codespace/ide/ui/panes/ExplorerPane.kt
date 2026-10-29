@@ -398,6 +398,15 @@ fun ExplorerSidePanel(
     var showDelete    by remember { mutableStateOf(false) }
     var nameInput     by remember { mutableStateOf("") }
     var refresh       by remember { mutableStateOf(0) }
+
+    // U6-d: expands ancestor folders for files the agent just wrote, then lets the tree
+    // re-scan. Extracted to its own file (the 64KB method limit on this body is real) and
+    // reveal-only: it never selects or opens a file.
+    ExplorerRevealEffect(
+        expanded = expanded,
+        projectRoot = workspacePath,
+        onReveal = { refresh++ },
+    )
     // External refresh (e.g. from terminal file system changes)
     LaunchedEffect(externalRefreshTrigger) {
         if (externalRefreshTrigger > 0) refresh++
