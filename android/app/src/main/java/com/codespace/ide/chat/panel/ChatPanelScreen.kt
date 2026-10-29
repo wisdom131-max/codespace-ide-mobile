@@ -429,6 +429,35 @@ private fun ProviderModelDialog(
                             .padding(vertical = ChatTokens.GAP.dp),
                     )
                 }
+                // BATCH 8: the searchable model picker (ModelPickerSpec) finally has a
+                // caller. It sits ABOVE the free-text id so the common path is a tap, and the
+                // free-text box stays for ids this build has never heard of.
+                val endpointId = com.codespace.ide.chat.CustomEndpointStore
+                    .endpointIdForProvider(current.providerId) ?: ""
+                val pickerModels = remember(current.providerId, cfg) {
+                    ModelPickerData.modelsFor(
+                        providerId = current.providerId,
+                        providerDefault = com.codespace.ide.engine.ProviderPresets
+                            .byId(current.providerId)?.defaultModel,
+                        manual = if (endpointId.isEmpty()) emptyList()
+                                 else com.codespace.ide.chat.CustomEndpointStore.manualModels(endpointId),
+                        live = if (endpointId.isEmpty()) emptyList()
+                               else com.codespace.ide.chat.CustomEndpointStore.liveModels(endpointId),
+                    )
+                }
+                ModelPickerSection(
+                    providerId = current.providerId,
+                    current = current,
+                    models = pickerModels,
+                    effort = ModelPickerData.effortFor(current.providerId),
+                    onPick = { picked ->
+                        // The SAME onApply the dialog already used, so the picked model is the
+                        // model the next request uses - no second selection path.
+                        model = picked.modelId
+                        onApply(ModelPickerData.selectionFor(picked, current, ::slotKeyFor))
+                    },
+                )
+
                 TextField(
                     value = model,
                     onValueChange = { model = it },
