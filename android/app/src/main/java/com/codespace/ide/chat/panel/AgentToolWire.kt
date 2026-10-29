@@ -41,15 +41,27 @@ internal object AgentToolWire {
     private val NAME_REGEX = Regex(""""name"\s*:\s*"([A-Za-z0-9_]+)"""")
     private val ARGS_REGEX = Regex(""""arguments"\s*:\s*(\{.*\})\s*$""", RegexOption.DOT_MATCHES_ALL)
 
-    /** Tools each mode may run. Ask runs none: it is the "explain, don't touch" mode. */
+    /**
+     * Batch 1: READ-ONLY tools. Ask mode gets these and nothing else.
+     *
+     * Why Ask gained tools: the mode's own promise is "answer questions about the open
+     * project", and a workspace block is a LISTING, not file contents. Without read
+     * tools, Ask could only ever answer from filenames and would have to guess at file
+     * bodies, which is precisely the dishonesty the workspace block exists to prevent.
+     * Nothing here can write, execute or reach the network.
+     */
+    private val READ_ONLY_TOOLS = setOf("read_file", "list_files", "search_files")
+
+    /** Tools each mode may run. Ask reads; Edit edits; Agent does everything but secrets. */
     fun allowsTool(mode: ChatMode, toolName: String): Boolean = when (mode) {
-        ChatMode.ASK -> false
+        ChatMode.ASK -> toolName in READ_ONLY_TOOLS
         // Edit may touch files but must not execute anything.
         ChatMode.EDIT -> toolName in setOf("read_file", "write_file", "list_files", "search_files")
         ChatMode.AGENT -> toolName != "save_secret" && toolName != "get_secret"
     }
 
-    fun modeRunsTools(mode: ChatMode): Boolean = mode != ChatMode.ASK
+    /** Every mode now has at least one permitted tool, so the protocol is always sent. */
+    fun modeRunsTools(mode: ChatMode): Boolean = true
 
     /** Tool calls in [text], in the order they appear. Unparseable blocks are skipped. */
     fun parse(text: String): List<ParsedToolCall> =
@@ -88,7 +100,11 @@ internal object AgentToolWire {
         }
         val blocked = calls.firstOrNull { !allowsTool(mode, it.name) }
         if (blocked != null) {
-            return ToolDecision.Refused(visible, "${blocked.name} is not allowed in ${mode.label} mode.")
+            val why = if (mode == ChatMode.ASK)
+                "Ask mode only reads the project (read_file, list_files, search_files). " +
+                    "Switch to Edit to propose changes or Agent to run them."
+            else "${blocked.name} is not allowed in ${mode.label} mode."
+            return ToolDecision.Refused(visible, why)
         }
         return ToolDecision.Run(visible, calls)
     }
@@ -113,7 +129,8 @@ internal object AgentToolWire {
         return "\n\nYou can act on this project. To use a tool, emit exactly one block:\n" +
             "<tool>{\"name\":\"<tool>\",\"arguments\":{...}}</tool>\n" +
             "Available tools: " + names.joinToString(", ") + ".\n" +
-            "Use relative paths inside the open project. After a tool runs you are given its " +
+            "Use relative paths inside the open project (the workspace context names the " +
+            "ACTIVE root). After a tool runs you are given its " +
             "output and must continue until the task is finished. Never claim a command ran " +
             "or a file changed unless the tool result says so. Do not exceed " +
             MAX_ROUNDS + " tool steps for one request."

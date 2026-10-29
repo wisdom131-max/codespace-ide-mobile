@@ -83,6 +83,14 @@ class ChatSession(
      * pretending to run something.
      */
     private val appContext: android.content.Context? = null,
+    /**
+     * MISSION part 1: the ACTIVE workspace block (roots, current file, tree,
+     * instructions). Read at SEND time so a project switch or a new open file is
+     * reflected in the next request without rebuilding the session. Cached upstream
+     * (WorkspaceContextSource), so this call does no IO on the common path and an
+     * empty string (JVM tests, no context) simply means "no workspace block".
+     */
+    private val workspaceBlock: () -> String = { "" },
 ) {
     private val streamBuf = StringBuilder()
     private var sendJob: Job? = null
@@ -224,11 +232,20 @@ class ChatSession(
         // WP3 reasoning control: bounded 1024 for native thinking providers,
         // OFF for effort-kind (a default reasoning_effort 400s non-reasoning models).
         val reasoningBudget = if (sel.providerId == "gemini" || sel.providerId == "anthropic") 1024 else 0
+        // MISSION part 1: the model is told WHERE it is before it is asked anything. The
+        // block is capped to a quarter of the payload budget so a big tree can never
+        // crowd out the conversation, and a cut block says it was cut.
+        val payloadChars = com.codespace.ide.engine.ModelCatalog.payloadBudgetChars(resolveCapability(sel))
+        val wsBlock = WorkspaceContext.fit(
+            workspaceBlock().trim(),
+            (payloadChars / 4).coerceIn(0, WorkspaceContext.MAX_CHARS),
+        )
         val cfg = EngineConfig(
             modelId = sel.modelId,
             // U4-d: the mode rides the provider's own system slot (see ChatModePrompts).
             systemInstruction = ChatModePrompts.instruction(mode) +
-                (if (AgentToolWire.modeRunsTools(mode)) AgentToolWire.protocol(mode) else ""),
+                (if (AgentToolWire.modeRunsTools(mode)) AgentToolWire.protocol(mode) else "") +
+                (if (wsBlock.isEmpty()) "" else "\n\n" + wsBlock),
             providerId = sel.providerId,
             baseUrl = sel.baseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
@@ -491,6 +508,9 @@ class ChatSessionManager(
                 failoverOptIn = { ChatSettingsPrefs.failoverOptIn() },
                 contextOverrideFor = { pid, mid -> ChatSettingsPrefs.contextOverride(pid, mid) },
                 appContext = appContext,
+                // Batch 1: same block for every request path that goes through chat; the
+                // HTTP agent already builds its own from the same providers.
+                workspaceBlock = { WorkspaceContextSource.block(appContext, projectId) },
             )
         }
 

@@ -45,6 +45,30 @@ class AgentToolWireTest {
     }
 
     @Test
+    fun askModeMayReadButMayNotChangeAnything() {
+        val read = "Looking: <tool>{\"name\":\"read_file\",\"arguments\":{\"path\":\"src/App.kt\"}}</tool>"
+        val d = AgentToolWire.decide(ChatMode.ASK, read, 1)
+        assertTrue("Ask must be able to inspect the project it is asked about", d is ToolDecision.Run)
+        assertEquals("read_file", (d as ToolDecision.Run).calls[0].name)
+        assertTrue(AgentToolWire.allowsTool(ChatMode.ASK, "list_files"))
+        assertTrue(AgentToolWire.allowsTool(ChatMode.ASK, "search_files"))
+        assertFalse("Ask must never write", AgentToolWire.allowsTool(ChatMode.ASK, "write_file"))
+        assertFalse("Ask must never execute", AgentToolWire.allowsTool(ChatMode.ASK, "run_command"))
+        assertTrue(AgentToolWire.modeRunsTools(ChatMode.ASK))
+    }
+
+    @Test
+    fun askModeRefusalNamesTheReadOnlyRule() {
+        val d = AgentToolWire.decide(
+            ChatMode.ASK,
+            "<tool>{\"name\":\"write_file\",\"arguments\":{\"path\":\"a.txt\",\"content\":\"x\"}}</tool>",
+            1,
+        )
+        assertTrue(d is ToolDecision.Refused)
+        assertTrue((d as ToolDecision.Refused).reason.contains("only reads the project"))
+    }
+
+    @Test
     fun editModeWritesFilesButNeverExecutesAnything() {
         val write = """<tool>{"name":"write_file","arguments":{"path":"a.txt","content":"x"}}</tool>"""
         assertTrue(AgentToolWire.decide(ChatMode.EDIT, write, 1) is ToolDecision.Run)

@@ -65,6 +65,17 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
     }
     val state by session.ui.collectAsState()
     val selection by session.selection.collectAsState()
+    // Batch 1: warm the workspace block off the UI thread and refresh it on every
+    // streaming->idle transition (turn finished, cancelled or failed). The send path
+    // reads only the cache, so a slow filesystem can never delay a message, while the
+    // block still reflects the file the user has open right now.
+    LaunchedEffect(projectId, state.streaming) {
+        if (!state.streaming) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                WorkspaceContextSource.warm(ctx.applicationContext, projectId)
+            }
+        }
+    }
     var input by remember { mutableStateOf("") }
     // WP8: system picker; bytes are STAGED at attach time (read fully once),
     // then only name + mime + base64 live in memory until the send.
