@@ -137,7 +137,15 @@ class AgentToolWireTest {
         val edit = AgentToolWire.protocol(ChatMode.EDIT)
         assertFalse("offering a command tool to Edit then refusing it is a trap", edit.contains("run_command"))
         assertTrue(edit.contains("write_file"))
-        assertEquals("Ask is offered no tools at all", "", AgentToolWire.protocol(ChatMode.ASK))
+        // Batch 1 changed Ask's rule: it now reads the project it is asked about (a
+        // listing is not file contents), and still may not write or execute. This
+        // assertion is the corrected contract, not a relaxation of it.
+        val ask = AgentToolWire.protocol(ChatMode.ASK)
+        assertTrue(ask.contains("read_file"))
+        assertTrue(ask.contains("list_files"))
+        assertTrue(ask.contains("search_files"))
+        assertFalse("Ask must never be offered a write", ask.contains("write_file"))
+        assertFalse("Ask must never be offered a command", ask.contains("run_command"))
     }
 
     @Test

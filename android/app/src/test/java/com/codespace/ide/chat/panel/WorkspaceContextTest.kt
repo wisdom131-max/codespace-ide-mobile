@@ -165,6 +165,7 @@ class WorkspaceContextTest {
         File(root, "src/main/App.kt").writeText("class App")
         File(root, "node_modules/junk").mkdirs()
         File(root, "node_modules/junk/index.js").writeText("x")
+        File(root, "build").mkdirs()
         File(root, "build/out.bin").writeText("x")
         File(root, ".git/config").mkdirs()
         File(root, ".env").writeText("X=1")
