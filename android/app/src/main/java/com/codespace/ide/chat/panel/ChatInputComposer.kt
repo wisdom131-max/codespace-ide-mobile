@@ -177,6 +177,7 @@ private fun ToolbarCluster(
     modelLabel: String,
     effortLabel: String?,
     onAddContext: () -> Unit,
+    onMic: () -> Unit,
     onOpenModel: () -> Unit,
     onTools: () -> Unit,
     onModeChange: (ChatMode) -> Unit,
