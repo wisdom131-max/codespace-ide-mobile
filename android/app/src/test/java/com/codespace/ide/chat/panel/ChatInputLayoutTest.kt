@@ -9,7 +9,7 @@ import org.junit.Test
  * U1 (build 657 finding e) — the input layout decision, tested at the widths the
  * advisor named (280 / 360 / 480 dp) with the keyboard closed and open.
  *
- * These are the real decisions the UI renders from: ChatInputRow calls
+ * These are the real decisions the UI renders from: ChatInputComposer calls
  * [ChatInputLayout.forWidth] with the measured width and the live IME inset, and
  * renders exactly what comes back. So a regression here is a regression on the
  * device, not a test-only artifact.

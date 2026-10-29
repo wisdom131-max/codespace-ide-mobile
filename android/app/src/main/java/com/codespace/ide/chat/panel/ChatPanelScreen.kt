@@ -69,6 +69,8 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
         androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri -> if (uri != null) readAttachment(ctx, uri, session) }
     val pending by session.pending.collectAsState()
+    // U3: composer mode. Ask is the only mode that works without the tool wire.
+    var chatMode by remember { mutableStateOf(ChatMode.ASK) }
     var showSelect by remember { mutableStateOf(false) }
     var showKeys by remember { mutableStateOf(false) }
     val c = ChatTokens.LocalChatColors.current
@@ -89,15 +91,23 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
                 .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // U3: the model picker moved DOWN into the composer toolbar where the
+            // reference puts it. The header keeps only the surface title and one
+            // reachable management entry point.
             Text(
-                selection.providerId + "  ·  " + selection.modelId,
+                "Chat",
+                color = c.text,
+                fontSize = ChatTokens.FONT_SMALL.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "Keys",
                 color = c.textSecondary,
                 fontSize = ChatTokens.FONT_SMALL.sp,
                 modifier = Modifier
-                    .weight(1f)
                     .background(c.surfaceAlt, RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
-                    .clickable { showSelect = true }
-                    .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.GAP.dp),
+                    .clickable { showKeys = true }
+                    .padding(horizontal = ChatTokens.GAP.dp, vertical = ChatTokens.GAP_TIGHT.dp),
             )
         }
         Column(
@@ -124,22 +134,22 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
                 )
             }
         }
-        ChatInputRow(
+        ChatInputComposer(
             value = input,
             onValueChange = { input = it },
-            placeholder = "Message " + selection.providerId,
-            primaryLabel = if (state.streaming) "Stop"
-                else if (resolved is ResolvedSelection.NeedsSetup) "Set up"
-                else if (selection.modelId.isBlank()) "Pick model"
-                else "Send",
-            primaryColor = if (state.streaming) c.warning else c.accent,
-            onAttach = { attachLauncher.launch("*/*") },
-            onPrimary = {
-                if (state.streaming) session.cancel()
-                else if (resolved is ResolvedSelection.NeedsSetup || selection.modelId.isBlank())
-                    showSelect = true
-                else if (input.isNotBlank()) { session.send(input); input = "" }
-            },
+            placeholder = if (resolved is ResolvedSelection.NeedsSetup)
+                "Set up a provider to start" else "Message " + selection.providerId,
+            streaming = state.streaming,
+            needsSetup = resolved is ResolvedSelection.NeedsSetup,
+            modelLabel = selection.modelId,
+            effortLabel = null,
+            mode = chatMode,
+            onModeChange = { chatMode = it },
+            onAddContext = { attachLauncher.launch("*/*") },
+            onOpenModel = { showSelect = true },
+            onTools = { showKeys = true },
+            onSend = { if (input.isNotBlank()) { session.send(input); input = "" } },
+            onStop = { session.cancel() },
         )
     }
     if (showSelect) {

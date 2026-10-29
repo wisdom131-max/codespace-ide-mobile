@@ -12,7 +12,7 @@ package com.codespace.ide.chat.panel
  *
  * This file holds the DECISION only, as pure data with no Compose imports, so the
  * breakpoints can be tested at 280 / 360 / 480 dp on the JVM instead of by eye on
- * a device. ChatInputRow renders whatever [ChatInputLayout.forWidth] returns; if a
+ * a device. ChatInputComposer renders whatever [ChatInputLayout.forWidth] returns; if a
  * test and the UI ever disagree, the UI is wrong.
  *
  * Breakpoints, and why:
