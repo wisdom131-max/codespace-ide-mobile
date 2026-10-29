@@ -84,8 +84,46 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
     }
 
     Column(Modifier.fillMaxSize().background(c.bg)) {
-        // U1 (657 finding e): extracted so the field can never be squeezed to a sliver -
-        // below 340dp the field takes its own full-width line and the actions sit beneath.
+        Row(
+            Modifier.fillMaxWidth()
+                .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                selection.providerId + "  ·  " + selection.modelId,
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_SMALL.sp,
+                modifier = Modifier
+                    .weight(1f)
+                    .background(c.surfaceAlt, RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
+                    .clickable { showSelect = true }
+                    .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.GAP.dp),
+            )
+        }
+        Column(
+            Modifier.weight(1f)
+                .verticalScroll(scroll)
+                .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp)
+        ) {
+            if (resolved is ResolvedSelection.NeedsSetup) {
+                SetupNeededState(onOpenProviders = { showSelect = true })
+            } else {
+                var rows = if (state.streaming && state.firstDeltaMs == 0L)
+                    state.rows + listOf(ChatRowModel.Thinking(((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt()))
+                else state.rows
+                if (pending.isNotEmpty()) rows = rows + ChatRowModel.Attachments(session.pendingChips())
+                NativeChatListRenderer.MessageList(
+                    ChatRenderState(
+                        rows = rows,
+                        onRetry = { session.retry() },
+                        onSendAnyway = { session.sendAnyway() },
+                        onCancel = { session.dismissOverBudget() },
+                        onRemoveChip = { chip -> session.removePending(chip.name) },
+                    ),
+                    Modifier.fillMaxWidth(),
+                )
+            }
+        }
         ChatInputRow(
             value = input,
             onValueChange = { input = it },
