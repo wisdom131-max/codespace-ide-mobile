@@ -185,7 +185,7 @@ class ChatSession(
     private var lastStaged: List<PanelAttachment> = emptyList()
 
     /** U4-d conversation mode. Ask by default: least directive, no tools assumed. */
-    var mode: ChatMode = ChatMode.ASK
+    internal var mode: ChatMode = ChatMode.ASK
 
     fun send(userText: String, confirmOverBudget: Boolean = false) =
         sendCore(userText, confirmOverBudget, reuseStaged = false)
