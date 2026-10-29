@@ -8,9 +8,8 @@ import org.junit.Test
 /** U3 toolbar collapse rules at the widths the owner named, with and without the keyboard. */
 class ChatToolbarSpecTest {
 
-    private val all = setOf(
-        ToolbarItem.ADD_CONTEXT, ToolbarItem.MODE, ToolbarItem.MODEL, ToolbarItem.TOOLS,
-    )
+    /** Every toolbar item, read from the enum: adding one updates the invariants. */
+    private val all = ToolbarItem.values().toSet()
 
     private fun spec(w: Int, ime: Boolean = false) = ChatToolbarLayout.forWidth(w, ime)
 
@@ -21,7 +20,7 @@ class ChatToolbarSpecTest {
                 val s = spec(w, ime)
                 val combined = s.inline + s.overflow
                 assertEquals("w=$w ime=$ime: every item accounted for once", all, combined.toSet())
-                assertEquals("w=$w ime=$ime: no duplicates", 4, combined.size)
+                assertEquals("w=$w ime=$ime: no duplicates", all.size, combined.size)
             }
         }
     }
@@ -79,7 +78,10 @@ class ChatToolbarSpecTest {
         val s = spec(480)
         assertFalse("no overflow at 480dp", s.hasOverflow)
         assertEquals(
-            listOf(ToolbarItem.ADD_CONTEXT, ToolbarItem.MODE, ToolbarItem.MODEL, ToolbarItem.TOOLS),
+            listOf(
+                ToolbarItem.ADD_CONTEXT, ToolbarItem.MODE, ToolbarItem.MODEL,
+                ToolbarItem.MIC, ToolbarItem.TOOLS,
+            ),
             s.inline,
         )
         // The mic and the send cluster cost width, so "model . effort" moves out to 560dp.
@@ -92,7 +94,8 @@ class ChatToolbarSpecTest {
     @Test
     fun inlineItemsKeepTheVsCodeVisualOrder() {
         val expected = listOf(
-            ToolbarItem.ADD_CONTEXT, ToolbarItem.MODE, ToolbarItem.MODEL, ToolbarItem.TOOLS,
+            ToolbarItem.ADD_CONTEXT, ToolbarItem.MODE, ToolbarItem.MODEL,
+            ToolbarItem.MIC, ToolbarItem.TOOLS,
         )
         for (w in listOf(300, 360, 420, 480, 700)) {
             val s = spec(w)
