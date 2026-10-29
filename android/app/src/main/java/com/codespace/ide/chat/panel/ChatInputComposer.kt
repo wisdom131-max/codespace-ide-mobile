@@ -239,10 +239,12 @@ private fun ToolbarCluster(
         if (modeOpen) {
             DropdownMenu(expanded = true, onDismissRequest = { modeOpen = false }) {
                 for (m in ChatMode.dropdownOrder) {
-                    val usable = m == ChatMode.ASK
+                    // U4-d: all three modes now set the instruction actually sent. Edit and
+                    // Agent still cannot touch files or run commands (no tool wire yet), so
+                    // the hint says what they DO rather than implying a capability.
                     DropdownMenuItem(
-                        text = { Text(if (usable) m.label else m.label + " (needs tool wire)") },
-                        enabled = usable,
+                        text = { Text(m.label + if (m == ChatMode.ASK) "" else " (no file edits yet)") },
+                        enabled = true,
                         onClick = { modeOpen = false; onModeChange(m) },
                     )
                 }

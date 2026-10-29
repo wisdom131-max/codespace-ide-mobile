@@ -184,6 +184,9 @@ class ChatSession(
      *  re-send them instead of silently dropping the attachments. */
     private var lastStaged: List<PanelAttachment> = emptyList()
 
+    /** U4-d conversation mode. Ask by default: least directive, no tools assumed. */
+    var mode: ChatMode = ChatMode.ASK
+
     fun send(userText: String, confirmOverBudget: Boolean = false) =
         sendCore(userText, confirmOverBudget, reuseStaged = false)
 
@@ -215,6 +218,8 @@ class ChatSession(
         val reasoningBudget = if (sel.providerId == "gemini" || sel.providerId == "anthropic") 1024 else 0
         val cfg = EngineConfig(
             modelId = sel.modelId,
+            // U4-d: the mode rides the provider's own system slot (see ChatModePrompts).
+            systemInstruction = ChatModePrompts.instruction(mode),
             providerId = sel.providerId,
             baseUrl = sel.baseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted

@@ -28,7 +28,7 @@ class GeminiAdapter : ProviderAdapter {
             contents.append("{\"role\":\"").append(roleJson(m.role)).append("\",\"parts\":[{\"text\":\"")
                 .append(escapeJson(m.text)).append("\"}]}")
         }
-        return "{\"contents\":[" + contents + "],\"generationConfig\":{\"maxOutputTokens\":" +
+        return "{" + systemField(config) + "\"contents\":[" + contents + "],\"generationConfig\":{\"maxOutputTokens\":" +
             config.maxResponseTokens + ",\"thinkingConfig\":{\"thinkingBudget\":" + thinkingBudget(config) + "}}}"
     }
 
@@ -64,7 +64,7 @@ class GeminiAdapter : ProviderAdapter {
         }
         if (contents.isNotEmpty()) contents.append(',')
         contents.append("{\"role\":\"user\",\"parts\":[").append(parts).append("]}")
-        return "{\"contents\":[" + contents + "],\"generationConfig\":{\"maxOutputTokens\":" +
+        return "{" + systemField(config) + "\"contents\":[" + contents + "],\"generationConfig\":{\"maxOutputTokens\":" +
             config.maxResponseTokens + ",\"thinkingConfig\":{\"thinkingBudget\":" + thinkingBudget(config) + "}}}"
     }
 
@@ -98,6 +98,11 @@ class GeminiAdapter : ProviderAdapter {
 
     internal fun roleJson(role: ChatRole): String =
         if (role == ChatRole.USER) "user" else "model"
+
+    /** Gemini's own system slot, emitted only when a mode set one. */
+    internal fun systemField(config: EngineConfig): String =
+        if (config.systemInstruction.isBlank()) ""
+        else "\"systemInstruction\":{\"parts\":[{\"text\":\"" + escapeJson(config.systemInstruction) + "\"}]},"
 
     internal fun escapeJson(s: String): String {
         val sb = StringBuilder(s.length + 8)

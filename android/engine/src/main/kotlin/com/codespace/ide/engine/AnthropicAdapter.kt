@@ -38,7 +38,7 @@ class AnthropicAdapter : ProviderAdapter {
         }
         val thinking = thinkingJson(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"max_tokens\":" +
-            config.maxResponseTokens + ",\"stream\":true,\"messages\":[" + msgs + "]" +
+            config.maxResponseTokens + ",\"stream\":true,\"messages\":[" + msgs + "]" + systemField(config) +
             (if (thinking != null) ",\"thinking\":" + thinking else "") + "}"
     }
 
@@ -83,7 +83,7 @@ class AnthropicAdapter : ProviderAdapter {
         msgs.append("{\"role\":\"user\",\"content\":[").append(blocks).append("]}")
         val thinking = thinkingJson(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"max_tokens\":" +
-            config.maxResponseTokens + ",\"stream\":true,\"messages\":[" + msgs + "]" +
+            config.maxResponseTokens + ",\"stream\":true,\"messages\":[" + msgs + "]" + systemField(config) +
             (if (thinking != null) ",\"thinking\":" + thinking else "") + "}"
     }
 
@@ -112,6 +112,11 @@ class AnthropicAdapter : ProviderAdapter {
 
     internal fun roleJson(role: ChatRole): String =
         if (role == ChatRole.USER) "user" else "assistant"
+
+    /** Anthropic takes the instruction OUTSIDE the message list; blank adds nothing. */
+    internal fun systemField(config: EngineConfig): String =
+        if (config.systemInstruction.isBlank()) ""
+        else ",\"system\":\"" + escapeJson(config.systemInstruction) + "\""
 
     internal fun escapeJson(s: String): String {
         val sb = StringBuilder(s.length + 8)

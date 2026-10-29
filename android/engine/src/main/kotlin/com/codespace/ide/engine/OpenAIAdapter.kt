@@ -25,7 +25,7 @@ class OpenAIAdapter : ProviderAdapter {
         }
         val effort = reasoningEffort(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
-            "\"max_tokens\":" + config.maxResponseTokens + ",\"messages\":[" + msgs + "]" +
+            "\"max_tokens\":" + config.maxResponseTokens + ",\"messages\":[" + systemMsg(config) + msgs + "]" +
             (if (effort != null) ",\"reasoning_effort\":\"" + effort + "\"" else "") + "}"
     }
 
@@ -65,7 +65,7 @@ class OpenAIAdapter : ProviderAdapter {
         msgs.append("{\"role\":\"user\",\"content\":[").append(parts).append("]}")
         val effort = reasoningEffort(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
-            "\"max_tokens\":" + config.maxResponseTokens + ",\"messages\":[" + msgs + "]" +
+            "\"max_tokens\":" + config.maxResponseTokens + ",\"messages\":[" + systemMsg(config) + msgs + "]" +
             (if (effort != null) ",\"reasoning_effort\":\"" + effort + "\"" else "") + "}"
     }
 
@@ -96,8 +96,18 @@ class OpenAIAdapter : ProviderAdapter {
 
     override fun isDoneSentinel(data: String): Boolean = data == "[DONE]"
 
-    internal fun roleJson(role: ChatRole): String =
-        if (role == ChatRole.USER) "user" else "assistant"
+    internal fun roleJson(role: ChatRole): String = when (role) {
+        ChatRole.USER -> "user"
+        // A system turn must stay a system turn; mapping it to assistant silently
+        // turned instructions into a fake reply the model had supposedly written.
+        ChatRole.SYSTEM -> "system"
+        ChatRole.ASSISTANT -> "assistant"
+    }
+
+    /** The mode instruction as a leading system message; blank adds nothing. */
+    internal fun systemMsg(config: EngineConfig): String =
+        if (config.systemInstruction.isBlank()) ""
+        else "{\"role\":\"system\",\"content\":\"" + escapeJson(config.systemInstruction) + "\"},"
 
     internal fun escapeJson(s: String): String {
         val sb = StringBuilder(s.length + 8)

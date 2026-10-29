@@ -164,7 +164,11 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
             modelLabel = selection.modelId,
             effortLabel = null,
             mode = chatMode,
-            onModeChange = { chatMode = it },
+            onModeChange = {
+                chatMode = it
+                // The chip and the request must never disagree.
+                session.mode = it
+            },
             onAddContext = { attachLauncher.launch("*/*") },
             onMic = onMic,
             onOpenModel = { showSelect = true },
