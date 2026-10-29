@@ -2969,6 +2969,10 @@ internal fun TerminalPane(
         // I2 — TERMINAL BRIDGE: paste→explain chip (VS Code chatTerminalCommandPaste analog)
         TerminalPasteAiChip(onAskAi = onAskAi)
 
+        // U6-c: what the AGENT ran, with its real status, duration and output. Renders
+        // nothing until an agent command has actually run.
+        TerminalAgentRunStrip()
+
         // ── Full laptop-style extra keys bar ───────────────────────────────────
         // Row 1: F1–F12  |  Row 2: Sticky modifiers + nav cluster + symbols + Ctrl combos
         if (showExtraKeys) {

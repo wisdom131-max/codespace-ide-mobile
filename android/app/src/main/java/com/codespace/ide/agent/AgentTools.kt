@@ -255,7 +255,23 @@ You can use multiple tools in sequence. When done, give a final summary.
                 translated
             } else wd
         }
-        val out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, guestWorkdir)
+        // U6-c: announce the run BEFORE it executes, so a long-running command is visible
+        // in the terminal pane while it runs, not only after it returns. execOnce is a
+        // one-shot exec (not the user's interactive shell), so the honest thing to show is
+        // this feed's record of the real command, status and output - typing it into the
+        // live session instead would execute it a second time.
+        val runId = AgentTerminalFeed.begin(command, guestWorkdir)
+        val out: String
+        try {
+            out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, guestWorkdir)
+        } catch (t: Throwable) {
+            // Never leave a row stuck on "running", and never claim success: the run is
+            // marked FAILED with the real message, then the throw continues to the caller.
+            AgentTerminalFeed.finish(runId, t.message ?: t.toString(), failed = true)
+            throw t
+        }
+        // An exec that produced no shell result at all is still finished (not "running").
+        AgentTerminalFeed.finish(runId, out)
         // I2 — TERMINAL BRIDGE: last agent-run command + output are attachable in chat
         com.codespace.ide.terminal.TerminalAiBridge.recordRun(command, out, guestWorkdir)
         // REFRESH-FAMILY: agent shell ops (mkdir/touch/rm/git) also change the tree
