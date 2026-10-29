@@ -48,8 +48,11 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val manager = remember {
         com.codespace.ide.chat.panel.ChatSettingsPrefs.ensure(ctx)
-        ChatSessionManager(com.codespace.ide.chat.keys.StoredCredentialsReader(
-            tokenStore, com.codespace.ide.chat.CustomEndpointStore))
+        ChatSessionManager(
+            com.codespace.ide.chat.keys.StoredCredentialsReader(
+                tokenStore, com.codespace.ide.chat.CustomEndpointStore),
+            appContext = ctx.applicationContext,
+        )
     }
     DisposableEffect(Unit) { onDispose { manager.close() } }
     val session = remember(projectId) { manager.session(projectId) }
@@ -125,6 +128,7 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
                 )
             }
         }
+        ChatApprovalCard()
         ChatInputComposer(
             value = input,
             onValueChange = { input = it },

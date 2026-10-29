@@ -1,6 +1,7 @@
 package com.codespace.ide.chat.panel
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -84,5 +85,35 @@ class AgentToolWireTest {
         assertTrue(msg.contains("run_command"))
         assertTrue(msg.contains("file.txt"))
         assertTrue("must invite continuation", msg.contains("Continue"))
+    }
+
+    @Test
+    fun theProtocolOnlyAdvertisesToolsTheModeMayActuallyRun() {
+        val agent = AgentToolWire.protocol(ChatMode.AGENT)
+        assertTrue(agent.contains("run_command"))
+        assertTrue("the format must be shown", agent.contains("<tool>"))
+        val edit = AgentToolWire.protocol(ChatMode.EDIT)
+        assertFalse("offering a command tool to Edit then refusing it is a trap", edit.contains("run_command"))
+        assertTrue(edit.contains("write_file"))
+        assertEquals("Ask is offered no tools at all", "", AgentToolWire.protocol(ChatMode.ASK))
+    }
+
+    @Test
+    fun theSummaryNamesTheCommandOrPath() {
+        assertTrue(
+            AgentToolWire.summary(ParsedToolCall("run_command", """{"command":"npm test"}"""))
+                .contains("npm test"),
+        )
+        assertTrue(
+            AgentToolWire.summary(ParsedToolCall("write_file", """{"path":"src/a.kt","content":"x"}"""))
+                .contains("src/a.kt"),
+        )
+    }
+
+    @Test
+    fun longOutputIsClippedToOneLine() {
+        val one = AgentToolWire.firstLine("\n\nfirst real line\nsecond line\n")
+        assertEquals("first real line", one)
+        assertTrue(AgentToolWire.firstLine("x".repeat(400)).length <= 120)
     }
 }

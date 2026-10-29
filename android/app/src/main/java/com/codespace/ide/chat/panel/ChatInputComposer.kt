@@ -262,7 +262,7 @@ private fun ToolbarCluster(
                     // Agent still cannot touch files or run commands (no tool wire yet), so
                     // the hint says what they DO rather than implying a capability.
                     DropdownMenuItem(
-                        text = { Text(m.label + if (m == ChatMode.ASK) "" else " (no file edits yet)") },
+                        text = { Text(m.label) },
                         enabled = true,
                         onClick = { modeOpen = false; onModeChange(m) },
                     )

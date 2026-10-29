@@ -77,10 +77,18 @@ class ChatSession(
     private val failoverOptIn: () -> Boolean = { false },
     /** WP7: user context-window override (tokens) for provider:model, or null. */
     private val contextOverrideFor: (providerId: String, modelId: String) -> Int? = { _, _ -> null },
+    /**
+     * Section 6: tool execution and the approval gate both need a Context. Null means
+     * "no tools here" (JVM tests, or a build without it) and says so rather than
+     * pretending to run something.
+     */
+    private val appContext: android.content.Context? = null,
 ) {
     private val streamBuf = StringBuilder()
     private var sendJob: Job? = null
     private var failoverAttempts = 0
+    /** Completed tool exchanges in THIS request; capped by AgentToolWire.MAX_ROUNDS. */
+    private var toolRound = 0
     private val keySlotsSeen = HashSet<String>()
 
     val ui = MutableStateFlow(ChatPanelUiState())
@@ -219,7 +227,8 @@ class ChatSession(
         val cfg = EngineConfig(
             modelId = sel.modelId,
             // U4-d: the mode rides the provider's own system slot (see ChatModePrompts).
-            systemInstruction = ChatModePrompts.instruction(mode),
+            systemInstruction = ChatModePrompts.instruction(mode) +
+                (if (AgentToolWire.modeRunsTools(mode)) AgentToolWire.protocol(mode) else ""),
             providerId = sel.providerId,
             baseUrl = sel.baseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
@@ -230,6 +239,7 @@ class ChatSession(
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
         failoverAttempts = 0
+        toolRound = 0
         keySlotsSeen.clear()
         keySlotsSeen.add(effectiveSlot)
         // WP8: staged attachments ride THIS send (and its failover retries).
@@ -300,6 +310,7 @@ class ChatSession(
         sendJob?.cancel()
         streamBuf.setLength(0)
         failoverAttempts = 0
+        toolRound = 0
         keySlotsSeen.clear()
         lastStaged = emptyList()
         pendingAttachments.value = emptyList()
@@ -345,10 +356,24 @@ class ChatSession(
             }
             is EngineEvent.Completed -> {
                 val st = ui.value
+                // Section 6: a finished reply is either an ANSWER or an ACTION request. The
+                // decision is pure (AgentToolWire); this only carries it out. The raw
+                // <tool> block never reaches the transcript.
+                val decision = AgentToolWire.decide(mode, streamBuf.toString(), toolRound + 1)
+                val shown = when (decision) {
+                    is ToolDecision.Answer -> decision.text
+                    is ToolDecision.Refused -> decision.visibleText
+                    is ToolDecision.Run -> decision.visibleText
+                }
                 val rows = if (st.rows.lastOrNull() is ChatRowModel.AssistantStream)
-                    st.rows.dropLast(1) + listOf(ChatRowModel.AssistantStream(streamBuf.toString(), false))
-                else st.rows + listOf(ChatRowModel.AssistantStream(streamBuf.toString(), false))
+                    st.rows.dropLast(1) + listOf(ChatRowModel.AssistantStream(shown, false))
+                else st.rows + listOf(ChatRowModel.AssistantStream(shown, false))
                 ui.value = st.copy(rows = rows, streaming = false)
+                when (decision) {
+                    is ToolDecision.Answer -> Unit
+                    is ToolDecision.Refused -> appendRow(ChatRowModel.InfoNote(decision.reason))
+                    is ToolDecision.Run -> runTools(decision.calls, cfg, slotName, confirmOverBudget)
+                }
             }
             is EngineEvent.Failed -> {
                 val err = ev.error
@@ -377,11 +402,74 @@ class ChatSession(
     }
 }
 
+    /**
+     * Section 6: run the calls in order, each behind the EXISTING approval gate
+     * (AgentFlowGate -> ChatPermissionStore), then hand the results back so the model can
+     * continue. Nothing here invents success: a refusal is reported as skipped, a throw as
+     * FAILED, and what is displayed is the real output.
+     */
+    private fun runTools(
+        calls: List<ParsedToolCall>,
+        cfg: EngineConfig,
+        slotName: String,
+        confirmOverBudget: Boolean,
+    ) {
+        val ctx = appContext
+        if (ctx == null) {
+            appendRow(ChatRowModel.InfoNote("Tool execution is unavailable in this build."))
+            return
+        }
+        toolRound++
+        ui.value = ui.value.copy(streaming = true)
+        scope.launch {
+            val results = StringBuilder()
+            for (call in calls) {
+                val summary = AgentToolWire.summary(call)
+                appendRow(ChatRowModel.InfoNote(AgentToolWire.stepLabel(call) + ": " + summary))
+                val verdict = com.codespace.ide.agent.AgentFlowGate.awaitApproval(ctx, call.name, summary)
+                if (verdict != com.codespace.ide.agent.AgentFlowGate.ApprovalVerdict.APPROVED) {
+                    val why =
+                        if (verdict == com.codespace.ide.agent.AgentFlowGate.ApprovalVerdict.TIMEOUT)
+                            "no answer in 10 minutes" else "you declined"
+                    appendRow(ChatRowModel.InfoNote("Skipped " + call.name + " - " + why))
+                    results.append(AgentToolWire.resultMessage(call, "NOT RUN (" + why + ")"))
+                    results.append("\n\n")
+                    continue
+                }
+                val out = try {
+                    com.codespace.ide.agent.AgentTools.executeTool(
+                        call.name, org.json.JSONObject(call.argumentsJson), ctx)
+                } catch (t: Throwable) {
+                    "FAILED: " + (t.message ?: "unknown error")
+                }
+                appendRow(ChatRowModel.InfoNote(
+                    (if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
+                        AgentToolWire.firstLine(out)
+                ))
+                results.append(AgentToolWire.resultMessage(call, out))
+                results.append("\n\n")
+            }
+            // Internal continuation: no user bubble, same key and model, no re-sent files.
+            streamBuf.setLength(0)
+            failoverAttempts = 0
+            ui.value = ui.value.copy(
+                streaming = true,
+                streamStartedMs = System.currentTimeMillis(),
+                firstDeltaMs = 0L,
+            )
+            attemptSend(cfg, slotName, results.toString().trim(), emptyList(), confirmOverBudget)
+        }
+    }
+
 /** Pure: first unused slot in pool order, or null when exhausted. */
 internal fun chooseNextSlot(remaining: List<String>): String? = remaining.firstOrNull()
 
 /** Per-project session registry. Owns the scope sends live in. */
-class ChatSessionManager(val reader: StoredCredentialsReader) {
+class ChatSessionManager(
+    val reader: StoredCredentialsReader,
+    /** Section 6: needed by the approval gate and the proot executor; null disables tools. */
+    private val appContext: android.content.Context? = null,
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val sessions = HashMap<String, ChatSession>()
 
@@ -400,6 +488,7 @@ class ChatSessionManager(val reader: StoredCredentialsReader) {
                 },
                 failoverOptIn = { ChatSettingsPrefs.failoverOptIn() },
                 contextOverrideFor = { pid, mid -> ChatSettingsPrefs.contextOverride(pid, mid) },
+                appContext = appContext,
             )
         }
 

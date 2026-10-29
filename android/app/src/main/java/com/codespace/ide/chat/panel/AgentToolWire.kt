@@ -102,6 +102,48 @@ internal object AgentToolWire {
         "[tool result] " + call.name + " returned:\n" + output.trim() +
             "\n\nContinue the task. Use another <tool> block only if you still need to act."
 
+    /**
+     * The tool protocol, appended to the mode instruction so the model knows it may act and
+     * in what format. Only the tools the mode permits are advertised: offering a command
+     * tool to Edit and then refusing it would be a trap, not a boundary.
+     */
+    fun protocol(mode: ChatMode): String {
+        val names = ALL_TOOLS.filter { allowsTool(mode, it) }
+        if (names.isEmpty()) return ""
+        return "\n\nYou can act on this project. To use a tool, emit exactly one block:\n" +
+            "<tool>{\"name\":\"<tool>\",\"arguments\":{...}}</tool>\n" +
+            "Available tools: " + names.joinToString(", ") + ".\n" +
+            "Use relative paths inside the open project. After a tool runs you are given its " +
+            "output and must continue until the task is finished. Never claim a command ran " +
+            "or a file changed unless the tool result says so. Do not exceed " +
+            MAX_ROUNDS + " tool steps for one request."
+    }
+
+    /** One line describing a call, for the approval card and the transcript. */
+    fun summary(call: ParsedToolCall): String {
+        val key = when (call.name) {
+            "run_command" -> "command"
+            "write_file", "read_file", "list_files", "search_files" -> "path"
+            else -> null
+        }
+        val value = key?.let { k ->
+            Regex("\"" + k + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").find(call.argumentsJson)
+                ?.groupValues?.get(1)
+        } ?: ""
+        return if (value.isBlank()) call.name else call.name + ": " + firstLine(value)
+    }
+
+    /** First non-blank line, clipped: transcripts and cards must not carry a whole dump. */
+    fun firstLine(text: String, max: Int = 120): String {
+        val line = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: ""
+        return if (line.length <= max) line else line.take(max - 1) + "\u2026"
+    }
+
+    /** Every tool the chat agent may ask for (mode rules narrow this per call). */
+    val ALL_TOOLS: List<String> = listOf(
+        "run_command", "read_file", "write_file", "list_files", "search_files",
+    )
+
     /** Shown in the transcript for each executed step, so the work is visible, not implied. */
     fun stepLabel(call: ParsedToolCall): String = when (call.name) {
         "run_command" -> "Running a command"
