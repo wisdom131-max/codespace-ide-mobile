@@ -27,6 +27,19 @@ class ChatToolbarSpecTest {
     }
 
     @Test
+    fun theMicIsAlwaysReachableSomewhere() {
+        for (w in -50..2000 step 10) {
+            for (ime in listOf(false, true)) {
+                val x = spec(w, ime)
+                assertTrue(
+                    "w=$w ime=$ime: dictation must be inline or in overflow, never dropped",
+                    ToolbarItem.MIC in x.inline || ToolbarItem.MIC in x.overflow,
+                )
+            }
+        }
+    }
+
+    @Test
     fun theModelChipIsAlwaysInlineAtEveryWidth() {
         // The point of the row. A toolbar that hides the model while keeping a lesser
         // control is the wrong trade, so it is inline from 0dp up.
@@ -42,8 +55,12 @@ class ChatToolbarSpecTest {
         val s = spec(280)
         assertTrue("280dp must use an overflow menu", s.hasOverflow)
         assertTrue("model stays visible at 280dp", ToolbarItem.MODEL in s.inline)
+        // With the send cluster, chevron and mic reserved, 280dp fits model + add.
         assertEquals(listOf(ToolbarItem.ADD_CONTEXT, ToolbarItem.MODEL), s.inline)
-        assertEquals(listOf(ToolbarItem.MODE, ToolbarItem.TOOLS), s.overflow)
+        assertEquals(
+            listOf(ToolbarItem.MODE, ToolbarItem.MIC, ToolbarItem.TOOLS),
+            s.overflow,
+        )
         assertFalse("no effort suffix at 280dp, it would ellipsize", s.modelShowsEffort)
         assertFalse("icon-only mode at 280dp", s.modeShowsLabel)
     }
@@ -65,8 +82,10 @@ class ChatToolbarSpecTest {
             listOf(ToolbarItem.ADD_CONTEXT, ToolbarItem.MODE, ToolbarItem.MODEL, ToolbarItem.TOOLS),
             s.inline,
         )
-        assertTrue(s.modeShowsLabel)
-        assertTrue(s.modelShowsEffort)
+        // The mic and the send cluster cost width, so "model . effort" moves out to 560dp.
+        assertTrue("mode label fits at 480dp", s.modeShowsLabel)
+        assertFalse("effort suffix needs 560dp with a mic present", s.modelShowsEffort)
+        assertTrue("effort appears once the row is wide", spec(560).modelShowsEffort)
         assertTrue(s.statusShowsText)
     }
 

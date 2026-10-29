@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -69,6 +70,7 @@ internal fun ChatInputComposer(
     mode: ChatMode,
     onModeChange: (ChatMode) -> Unit,
     onAddContext: () -> Unit,
+    onMic: () -> Unit,
     onOpenModel: () -> Unit,
     onTools: () -> Unit,
     onSend: () -> Unit,
@@ -107,17 +109,25 @@ internal fun ChatInputComposer(
                 )
                 Spacer(Modifier.height(ChatTokens.GAP_TIGHT.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    // CLIPPING FIX (owner screenshots, 2026-10-29): a Row measures its
+                    // UNWEIGHTED children first, in order, so the toolbar claimed the whole
+                    // width and the send cluster was measured against the nothing that was
+                    // left - the gear and send button fell off the edge at phone width. The
+                    // toolbar is now the WEIGHTED child (measured last, with the remainder)
+                    // and the send cluster keeps its intrinsic width, so send and gear can
+                    // never be pushed out; the model chip shrinks and ellipsizes instead.
                     ToolbarCluster(
+                        modifier = Modifier.weight(1f),
                         spec = spec,
                         mode = mode,
                         modelLabel = modelLabel,
                         effortLabel = effortLabel,
                         onAddContext = onAddContext,
                         onOpenModel = onOpenModel,
+                        onMic = onMic,
                         onTools = onTools,
                         onModeChange = onModeChange,
                     )
-                    Spacer(Modifier.weight(1f))
                     SendCluster(spec = send, onSend = onSend, onStop = onStop)
                 }
             }
@@ -161,6 +171,7 @@ private fun ChatComposerField(
 
 @Composable
 private fun ToolbarCluster(
+    modifier: Modifier = Modifier,
     spec: ChatToolbarSpec,
     mode: ChatMode,
     modelLabel: String,
@@ -173,7 +184,7 @@ private fun ToolbarCluster(
     val c = ChatTokens.LocalChatColors.current
     var modeOpen by remember { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         for (item in spec.inline) {
             when (item) {
                 ToolbarItem.ADD_CONTEXT -> GlyphButton("+", "Add context", spec.touchTargetDp, onAddContext)
@@ -187,7 +198,9 @@ private fun ToolbarCluster(
                     effort = if (spec.modelShowsEffort) effortLabel else null,
                     maxDp = spec.modelChipMaxDp,
                     onClick = onOpenModel,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                ToolbarItem.MIC -> MicButton(spec.touchTargetDp, onMic)
                 ToolbarItem.TOOLS -> GlyphButton("\u2699", "Providers and keys", spec.touchTargetDp, onTools)
             }
         }
@@ -208,6 +221,10 @@ private fun ToolbarCluster(
                             ToolbarItem.MODEL -> DropdownMenuItem(
                                 text = { Text("Model: " + modelLabel.ifBlank { "none" }) },
                                 onClick = { overflowOpen = false; onOpenModel() },
+                            )
+                            ToolbarItem.MIC -> DropdownMenuItem(
+                                text = { Text("Dictate") },
+                                onClick = { overflowOpen = false; onMic() },
                             )
                             ToolbarItem.TOOLS -> DropdownMenuItem(
                                 text = { Text("Providers and keys") },
@@ -233,8 +250,33 @@ private fun ToolbarCluster(
     }
 }
 
+/**
+ * Dictation control. Shares the terminal's recognizer approach (RecognizerIntent with
+ * LANGUAGE_MODEL_FREE_FORM), so "no recognizer on this device" surfaces as a message
+ * rather than a dead button.
+ */
 @Composable
-private fun ModelChip(model: String, effort: String?, maxDp: Int, onClick: () -> Unit) {
+private fun MicButton(touchDp: Int, onMic: () -> Unit) {
+    val c = ChatTokens.LocalChatColors.current
+    Box(
+        modifier = Modifier
+            .size(touchDp.dp)
+            .clip(RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
+            .clickable { onMic() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("\uD83C\uDFA4", fontSize = ChatTokens.FONT_SMALL.sp, color = c.textSecondary)
+    }
+}
+
+@Composable
+private fun ModelChip(
+    model: String,
+    effort: String?,
+    maxDp: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = ChatTokens.LocalChatColors.current
     val label = when {
         model.isBlank() -> "Pick model"
