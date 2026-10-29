@@ -1,0 +1,114 @@
+package com.codespace.ide.chat.panel
+
+/**
+ * Section 6 of the owner spec: the chat panel finally ACTS, and does it visibly.
+ *
+ * The decision layer is pure on purpose. Whether a reply contains a tool call, whether the
+ * current mode is allowed to run it, how many rounds a single request may take, and what
+ * the model is told afterward are all testable without Compose, Android, or a network.
+ * Execution lives in AgentTools (which already runs inside the proot guest and already
+ * announces filesystem changes); this object only decides.
+ *
+ * The wire is TEXT, not native function calling: the model is given the tool protocol in
+ * its system instruction and emits <tool>{"name":...,"arguments":{...}}</tool>. That keeps
+ * one protocol for OpenAI, Anthropic and Gemini instead of three function-calling dialects.
+ */
+internal data class ParsedToolCall(val name: String, val argumentsJson: String)
+
+/** What to do with a finished reply. */
+internal sealed interface ToolDecision {
+    /** Plain answer: nothing to execute. */
+    data class Answer(val text: String) : ToolDecision
+
+    /** Execute these, then continue. [visibleText] is what the user should still see. */
+    data class Run(val visibleText: String, val calls: List<ParsedToolCall>) : ToolDecision
+
+    /** A call was asked for but refused before execution, with the reason shown. */
+    data class Refused(val visibleText: String, val reason: String) : ToolDecision
+}
+
+internal object AgentToolWire {
+
+    /**
+     * Rounds per user message. A runaway agent loop is a real failure mode (each round is a
+     * paid API call and possibly a destructive command), so it is capped and the cap is
+     * announced to the model rather than silently enforced.
+     */
+    const val MAX_ROUNDS = 6
+
+    private val CALL_REGEX =
+        Regex("""<(tool|tool_call)>\s*(\{.*?\})\s*</\1>""", RegexOption.DOT_MATCHES_ALL)
+    private val NAME_REGEX = Regex(""""name"\s*:\s*"([A-Za-z0-9_]+)"""")
+    private val ARGS_REGEX = Regex(""""arguments"\s*:\s*(\{.*\})\s*$""", RegexOption.DOT_MATCHES_ALL)
+
+    /** Tools each mode may run. Ask runs none: it is the "explain, don't touch" mode. */
+    fun allowsTool(mode: ChatMode, toolName: String): Boolean = when (mode) {
+        ChatMode.ASK -> false
+        // Edit may touch files but must not execute anything.
+        ChatMode.EDIT -> toolName in setOf("read_file", "write_file", "list_files", "search_files")
+        ChatMode.AGENT -> toolName != "save_secret" && toolName != "get_secret"
+    }
+
+    fun modeRunsTools(mode: ChatMode): Boolean = mode != ChatMode.ASK
+
+    /** Tool calls in [text], in the order they appear. Unparseable blocks are skipped. */
+    fun parse(text: String): List<ParsedToolCall> =
+        CALL_REGEX.findAll(text).mapNotNull { m ->
+            val body = m.groupValues[2]
+            val name = NAME_REGEX.find(body)?.groupValues?.get(1) ?: return@mapNotNull null
+            val args = ARGS_REGEX.find(body)?.groupValues?.get(1) ?: "{}"
+            ParsedToolCall(name, args)
+        }.toList()
+
+    /** The reply with its tool blocks removed: what a human should actually read. */
+    fun visibleText(text: String): String = CALL_REGEX.replace(text, "").trim()
+
+    /**
+     * Decide what a finished reply means.
+     *
+     * [round] is 1-based and counts completed exchanges in this request. At the cap the
+     * calls are refused instead of executed: the honest stop, not a silent extra round.
+     */
+    fun decide(mode: ChatMode, reply: String, round: Int): ToolDecision {
+        val calls = parse(reply)
+        val visible = visibleText(reply)
+        if (calls.isEmpty()) return ToolDecision.Answer(visible)
+
+        if (!modeRunsTools(mode)) {
+            return ToolDecision.Refused(
+                visible,
+                "Ask mode does not run tools. Switch to Agent to let it act.",
+            )
+        }
+        if (round >= MAX_ROUNDS) {
+            return ToolDecision.Refused(
+                visible,
+                "Stopped after $MAX_ROUNDS steps to avoid a loop. Send again to continue.",
+            )
+        }
+        val blocked = calls.firstOrNull { !allowsTool(mode, it.name) }
+        if (blocked != null) {
+            return ToolDecision.Refused(visible, "${blocked.name} is not allowed in ${mode.label} mode.")
+        }
+        return ToolDecision.Run(visible, calls)
+    }
+
+    /**
+     * The follow-up turn that tells the model what happened. Sent as a USER message because
+     * a tool result is an instruction to continue, and every provider here accepts a user
+     * turn - a native "tool" role would have to be spelled three different ways.
+     */
+    fun resultMessage(call: ParsedToolCall, output: String): String =
+        "[tool result] " + call.name + " returned:\n" + output.trim() +
+            "\n\nContinue the task. Use another <tool> block only if you still need to act."
+
+    /** Shown in the transcript for each executed step, so the work is visible, not implied. */
+    fun stepLabel(call: ParsedToolCall): String = when (call.name) {
+        "run_command" -> "Running a command"
+        "write_file" -> "Writing a file"
+        "read_file" -> "Reading a file"
+        "list_files" -> "Listing files"
+        "search_files" -> "Searching the project"
+        else -> call.name
+    }
+}

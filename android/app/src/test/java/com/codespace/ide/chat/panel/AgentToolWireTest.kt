@@ -1,0 +1,88 @@
+package com.codespace.ide.chat.panel
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** Section 6 decision rules, tested without a device, a network, or a shell. */
+class AgentToolWireTest {
+
+    private val cmd = """Here you go <tool>{"name":"run_command","arguments":{"command":"ls"}}</tool> done"""
+
+    @Test
+    fun aPlainAnswerContainsNoCalls() {
+        val d = AgentToolWire.decide(ChatMode.AGENT, "Just an explanation.", 1)
+        assertTrue(d is ToolDecision.Answer)
+        assertEquals("Just an explanation.", (d as ToolDecision.Answer).text)
+    }
+
+    @Test
+    fun aCallIsParsedWithItsArguments() {
+        val calls = AgentToolWire.parse(cmd)
+        assertEquals(1, calls.size)
+        assertEquals("run_command", calls[0].name)
+        assertTrue(calls[0].argumentsJson.contains("\"command\""))
+    }
+
+    @Test
+    fun theToolBlockIsStrippedFromWhatTheUserReads() {
+        assertEquals("Here you go  done", AgentToolWire.visibleText(cmd))
+    }
+
+    @Test
+    fun agentModeRunsACommand() {
+        val d = AgentToolWire.decide(ChatMode.AGENT, cmd, 1)
+        assertTrue(d is ToolDecision.Run)
+        assertEquals("run_command", (d as ToolDecision.Run).calls[0].name)
+    }
+
+    @Test
+    fun askModeRefusesAndSaysWhy() {
+        val d = AgentToolWire.decide(ChatMode.ASK, cmd, 1)
+        assertTrue(d is ToolDecision.Refused)
+        assertTrue((d as ToolDecision.Refused).reason.contains("Agent"))
+    }
+
+    @Test
+    fun editModeWritesFilesButNeverExecutesAnything() {
+        val write = """<tool>{"name":"write_file","arguments":{"path":"a.txt","content":"x"}}</tool>"""
+        assertTrue(AgentToolWire.decide(ChatMode.EDIT, write, 1) is ToolDecision.Run)
+        assertTrue("Edit must not run commands", AgentToolWire.decide(ChatMode.EDIT, cmd, 1) is ToolDecision.Refused)
+    }
+
+    @Test
+    fun secretsAreNeverReadOrWrittenByTheChatAgent() {
+        for (t in listOf("save_secret", "get_secret")) {
+            val call = """<tool>{"name":"$t","arguments":{}}</tool>"""
+            assertTrue(t, AgentToolWire.decide(ChatMode.AGENT, call, 1) is ToolDecision.Refused)
+        }
+    }
+
+    @Test
+    fun theRoundCapStopsALoop() {
+        assertTrue(AgentToolWire.decide(ChatMode.AGENT, cmd, AgentToolWire.MAX_ROUNDS - 1) is ToolDecision.Run)
+        val atCap = AgentToolWire.decide(ChatMode.AGENT, cmd, AgentToolWire.MAX_ROUNDS)
+        assertTrue(atCap is ToolDecision.Refused)
+        assertTrue((atCap as ToolDecision.Refused).reason.contains("loop"))
+    }
+
+    @Test
+    fun severalCallsInOneReplyAreAllFoundInOrder() {
+        val two = """<tool>{"name":"list_files","arguments":{"path":"."}}</tool>
+            |<tool>{"name":"read_file","arguments":{"path":"a.txt"}}</tool>""".trimMargin()
+        assertEquals(listOf("list_files", "read_file"), AgentToolWire.parse(two).map { it.name })
+    }
+
+    @Test
+    fun aMalformedBlockIsIgnoredRatherThanCrashing() {
+        assertTrue("no name means no call", AgentToolWire.parse("""<tool>{"arguments":{}}</tool>""").isEmpty())
+    }
+
+    @Test
+    fun theResultMessageTellsTheModelWhatHappened() {
+        val msg = AgentToolWire.resultMessage(ParsedToolCall("run_command", "{}"), "file.txt")
+        assertTrue(msg.contains("run_command"))
+        assertTrue(msg.contains("file.txt"))
+        assertTrue("must invite continuation", msg.contains("Continue"))
+    }
+}
