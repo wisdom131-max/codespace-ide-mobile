@@ -4,7 +4,8 @@ package com.codespace.ide.chat.panel
  * U3 - the VS Code chat input toolbar, as pure data (no Compose imports).
  *
  * Reference (owner screenshots + agent-mode video, 2026-10-29), left to right:
- *   [+ Add Context]  |  [Agent v]  [model . effort]  [tools]   ...   [send / stop + chevron]
+ *   [+ Add Context]                                  (own row ABOVE the field, as in the video)
+ *   [Agent v]  [model . effort]  [tools]   ...   [send / stop + chevron]
  * and under the card a status row:
  *   [Local v] | [shield Default Approvals v]                      ...   [context ring 3%]
  *
@@ -16,10 +17,8 @@ package com.codespace.ide.chat.panel
  * decides nothing itself.
  */
 internal enum class ToolbarItem {
-    ADD_CONTEXT,   // "+" opens the attach/context menu
     MODE,          // Agent / Ask / Edit dropdown
     MODEL,         // "model . effort" chip; opens the model picker (selection only)
-    MIC,           // dictation; reserves its slot even on narrow widths
     TOOLS,         // tools / configure icon
 }
 
@@ -58,15 +57,13 @@ internal object ChatToolbarLayout {
     const val TOUCH_TARGET_DP = 48
 
     /** Width the fixed right-hand cluster (send + chevron + overflow) reserves. */
-    private const val RIGHT_CLUSTER_DP = 128
+    private const val RIGHT_CLUSTER_DP = 104
 
-    private const val ADD_DP = 48
     private const val MODE_ICON_DP = 48
     private const val MODE_LABEL_DP = 92
     private const val MODEL_MIN_DP = 96
     private const val MODEL_WITH_EFFORT_DP = 168
     private const val TOOLS_DP = 48
-    private const val MIC_DP = 48
 
     /** Width at or above which the status row keeps its text labels. */
     const val STATUS_TEXT_FROM_DP = 330
@@ -91,14 +88,8 @@ internal object ChatToolbarLayout {
         // width. Below its own floor it simply keeps the floor and ellipsizes.
         inline.add(ToolbarItem.MODEL); left -= MODEL_MIN_DP
 
-        if (fits(ADD_DP)) { inline.add(ToolbarItem.ADD_CONTEXT); left -= ADD_DP }
-        else overflow.add(ToolbarItem.ADD_CONTEXT)
-
         if (fits(MODE_ICON_DP)) { inline.add(ToolbarItem.MODE); left -= MODE_ICON_DP }
         else overflow.add(ToolbarItem.MODE)
-
-        if (fits(MIC_DP)) { inline.add(ToolbarItem.MIC); left -= MIC_DP }
-        else overflow.add(ToolbarItem.MIC)
 
         if (fits(TOOLS_DP)) { inline.add(ToolbarItem.TOOLS); left -= TOOLS_DP }
         else overflow.add(ToolbarItem.TOOLS)
@@ -115,8 +106,7 @@ internal object ChatToolbarLayout {
 
         // Keep inline in the VS Code visual order regardless of priority order above.
         val order = listOf(
-            ToolbarItem.ADD_CONTEXT, ToolbarItem.MODE, ToolbarItem.MODEL,
-            ToolbarItem.MIC, ToolbarItem.TOOLS,
+            ToolbarItem.MODE, ToolbarItem.MODEL, ToolbarItem.TOOLS,
         )
         return ChatToolbarSpec(
             inline = order.filter { it in inline },

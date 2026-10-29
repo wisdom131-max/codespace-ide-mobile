@@ -70,7 +70,6 @@ internal fun ChatInputComposer(
     mode: ChatMode,
     onModeChange: (ChatMode) -> Unit,
     onAddContext: () -> Unit,
-    onMic: () -> Unit,
     onOpenModel: () -> Unit,
     onTools: () -> Unit,
     onSend: () -> Unit,
@@ -95,12 +94,17 @@ internal fun ChatInputComposer(
                 Modifier
                     .fillMaxWidth()
                     .background(c.input, RoundedCornerShape(ChatTokens.RADIUS_PANEL.dp))
-                    .border(1.dp, c.border, RoundedCornerShape(ChatTokens.RADIUS_PANEL.dp))
+                    .border(
+                        ChatComposerBorder.WIDTH_DP.dp,
+                        if (ChatComposerBorder.forText(value) == ComposerBorder.ACTIVE) c.accent else c.border,
+                        RoundedCornerShape(ChatTokens.RADIUS_PANEL.dp),
+                    )
                     .padding(
                         horizontal = ChatTokens.PAD_HORIZONTAL.dp,
                         vertical = ChatTokens.PAD_VERTICAL.dp,
                     ),
             ) {
+                AddContextChip(onClick = onAddContext)
                 ChatComposerField(
                     value = value,
                     onValueChange = onValueChange,
@@ -122,9 +126,7 @@ internal fun ChatInputComposer(
                         mode = mode,
                         modelLabel = modelLabel,
                         effortLabel = effortLabel,
-                        onAddContext = onAddContext,
                         onOpenModel = onOpenModel,
-                        onMic = onMic,
                         onTools = onTools,
                         onModeChange = onModeChange,
                     )
@@ -133,6 +135,35 @@ internal fun ChatInputComposer(
             }
             ChatStatusRow(approvalsLabel = approvalsLabel, streaming = streaming)
         }
+    }
+}
+
+
+/**
+ * The attach control, relocated to the top-left of the card as in the VS Code reference
+ * ("Add Context..." above the field). The VISIBLE chip is compact; the 48dp is the touch
+ * target around it, so it reads small and still taps reliably. Aligned to the card's own
+ * start edge, not an offset, so it holds at any width and when the field grows.
+ */
+@Composable
+private fun AddContextChip(onClick: () -> Unit) {
+    val c = ChatTokens.LocalChatColors.current
+    Box(
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .widthIn(min = 48.dp)
+            .clickable { onClick() },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            "+ Add context",
+            color = c.textSecondary,
+            fontSize = ChatTokens.FONT_SMALL.sp,
+            maxLines = 1,
+            modifier = Modifier
+                .background(c.surfaceAlt, RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
+                .padding(horizontal = ChatTokens.GAP.dp, vertical = 2.dp),
+        )
     }
 }
 
@@ -176,8 +207,6 @@ private fun ToolbarCluster(
     mode: ChatMode,
     modelLabel: String,
     effortLabel: String?,
-    onAddContext: () -> Unit,
-    onMic: () -> Unit,
     onOpenModel: () -> Unit,
     onTools: () -> Unit,
     onModeChange: (ChatMode) -> Unit,
@@ -188,7 +217,6 @@ private fun ToolbarCluster(
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         for (item in spec.inline) {
             when (item) {
-                ToolbarItem.ADD_CONTEXT -> GlyphButton("+", "Add context", spec.touchTargetDp, onAddContext)
                 ToolbarItem.MODE -> ModeChip(
                     label = if (spec.modeShowsLabel) mode.label else null,
                     enabled = true,
@@ -201,7 +229,6 @@ private fun ToolbarCluster(
                     onClick = onOpenModel,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                ToolbarItem.MIC -> MicButton(spec.touchTargetDp, onMic)
                 ToolbarItem.TOOLS -> GlyphButton("\u2699", "Providers and keys", spec.touchTargetDp, onTools)
             }
         }
@@ -211,10 +238,6 @@ private fun ToolbarCluster(
                 DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
                     for (item in spec.overflow) {
                         when (item) {
-                            ToolbarItem.ADD_CONTEXT -> DropdownMenuItem(
-                                text = { Text("Add context") },
-                                onClick = { overflowOpen = false; onAddContext() },
-                            )
                             ToolbarItem.MODE -> DropdownMenuItem(
                                 text = { Text("Mode: " + mode.label) },
                                 onClick = { overflowOpen = false; modeOpen = true },
@@ -222,10 +245,6 @@ private fun ToolbarCluster(
                             ToolbarItem.MODEL -> DropdownMenuItem(
                                 text = { Text("Model: " + modelLabel.ifBlank { "none" }) },
                                 onClick = { overflowOpen = false; onOpenModel() },
-                            )
-                            ToolbarItem.MIC -> DropdownMenuItem(
-                                text = { Text("Dictate") },
-                                onClick = { overflowOpen = false; onMic() },
                             )
                             ToolbarItem.TOOLS -> DropdownMenuItem(
                                 text = { Text("Providers and keys") },
@@ -253,25 +272,6 @@ private fun ToolbarCluster(
     }
 }
 
-/**
- * Dictation control. Shares the terminal's recognizer approach (RecognizerIntent with
- * LANGUAGE_MODEL_FREE_FORM), so "no recognizer on this device" surfaces as a message
- * rather than a dead button.
- */
-@Composable
-private fun MicButton(touchDp: Int, onMic: () -> Unit) {
-    val c = ChatTokens.LocalChatColors.current
-    Box(
-        modifier = Modifier
-            .size(touchDp.dp)
-            .clip(RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
-            .clickable { onMic() },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("\uD83C\uDFA4", fontSize = ChatTokens.FONT_SMALL.sp, color = c.textSecondary)
-    }
-}
-
 @Composable
 private fun ModelChip(
     model: String,
@@ -296,7 +296,7 @@ private fun ModelChip(
             .widthIn(max = maxDp.dp)
             .background(c.surfaceAlt, RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
             .clickable { onClick() }
-            .padding(horizontal = ChatTokens.GAP.dp, vertical = ChatTokens.GAP_TIGHT.dp),
+            .padding(horizontal = ChatTokens.GAP_TIGHT.dp, vertical = 4.dp),
     )
 }
 
@@ -311,7 +311,7 @@ private fun ModeChip(label: String?, enabled: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .background(c.surfaceAlt, RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
             .clickable(enabled = enabled) { onClick() }
-            .padding(horizontal = ChatTokens.GAP.dp, vertical = ChatTokens.GAP_TIGHT.dp),
+            .padding(horizontal = ChatTokens.GAP_TIGHT.dp, vertical = 4.dp),
     )
 }
 

@@ -5,13 +5,23 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** U3 toolbar collapse rules at the widths the owner named, with and without the keyboard. */
+/**
+ * Bottom-row collapse rules at the widths the owner named, with and without the
+ * keyboard. The row now holds MODE, MODEL and TOOLS only: the plus moved to its own
+ * row above the field and the microphone was removed outright (owner spec 2026-10-29),
+ * so neither competes for width here. The item set is read from the enum, so adding or
+ * removing an item updates every invariant instead of leaving a hardcoded count behind.
+ */
 class ChatToolbarSpecTest {
 
-    /** Every toolbar item, read from the enum: adding one updates the invariants. */
     private val all = ToolbarItem.values().toSet()
 
     private fun spec(w: Int, ime: Boolean = false) = ChatToolbarLayout.forWidth(w, ime)
+
+    @Test
+    fun theRowHoldsExactlyModeModelAndTools() {
+        assertEquals(setOf(ToolbarItem.MODE, ToolbarItem.MODEL, ToolbarItem.TOOLS), all)
+    }
 
     @Test
     fun noItemIsEverLostOrDuplicatedAtAnyWidth() {
@@ -26,22 +36,7 @@ class ChatToolbarSpecTest {
     }
 
     @Test
-    fun theMicIsAlwaysReachableSomewhere() {
-        for (w in -50..2000 step 10) {
-            for (ime in listOf(false, true)) {
-                val x = spec(w, ime)
-                assertTrue(
-                    "w=$w ime=$ime: dictation must be inline or in overflow, never dropped",
-                    ToolbarItem.MIC in x.inline || ToolbarItem.MIC in x.overflow,
-                )
-            }
-        }
-    }
-
-    @Test
     fun theModelChipIsAlwaysInlineAtEveryWidth() {
-        // The point of the row. A toolbar that hides the model while keeping a lesser
-        // control is the wrong trade, so it is inline from 0dp up.
         for (w in -50..2000 step 10) {
             for (ime in listOf(false, true)) {
                 assertTrue("w=$w ime=$ime", ToolbarItem.MODEL in spec(w, ime).inline)
@@ -50,54 +45,48 @@ class ChatToolbarSpecTest {
     }
 
     @Test
-    fun at280TheToolbarCollapsesIntoAnOverflowInsteadOfClipping() {
+    fun at240OnlyTheModelStaysInlineAndTheRestOverflowsInsteadOfClipping() {
+        val s = spec(240)
+        assertTrue(s.hasOverflow)
+        assertEquals(listOf(ToolbarItem.MODEL), s.inline)
+        assertEquals(listOf(ToolbarItem.MODE, ToolbarItem.TOOLS), s.overflow)
+    }
+
+    @Test
+    fun at280ModeJoinsTheModelAndOnlyToolsOverflows() {
         val s = spec(280)
-        assertTrue("280dp must use an overflow menu", s.hasOverflow)
-        assertTrue("model stays visible at 280dp", ToolbarItem.MODEL in s.inline)
-        // With the send cluster, chevron and mic reserved, 280dp fits model + add.
-        assertEquals(listOf(ToolbarItem.ADD_CONTEXT, ToolbarItem.MODEL), s.inline)
-        assertEquals(
-            listOf(ToolbarItem.MODE, ToolbarItem.MIC, ToolbarItem.TOOLS),
-            s.overflow,
-        )
+        assertEquals(listOf(ToolbarItem.MODE, ToolbarItem.MODEL), s.inline)
+        assertEquals(listOf(ToolbarItem.TOOLS), s.overflow)
         assertFalse("no effort suffix at 280dp, it would ellipsize", s.modelShowsEffort)
         assertFalse("icon-only mode at 280dp", s.modeShowsLabel)
     }
 
     @Test
-    fun at360EverythingStillFitsWithNoOverflowOrItDegradesGracefully() {
-        val s = spec(360)
-        assertTrue("model inline at 360", ToolbarItem.MODEL in s.inline)
-        assertTrue("add-context inline at 360", ToolbarItem.ADD_CONTEXT in s.inline)
-        // Whatever did not fit is in overflow, never silently absent.
-        assertEquals(all, (s.inline + s.overflow).toSet())
+    fun atAnOrdinaryPhoneWidthNothingOverflows() {
+        // With the plus and mic gone the whole row fits from 300dp: this is the
+        // owner's screenshot width, where it used to clip.
+        for (w in listOf(300, 320, 360, 400)) {
+            assertFalse("w=$w must not overflow", spec(w).hasOverflow)
+            assertEquals(
+                listOf(ToolbarItem.MODE, ToolbarItem.MODEL, ToolbarItem.TOOLS),
+                spec(w).inline,
+            )
+        }
     }
 
     @Test
-    fun at480TheFullVsCodeRowFitsWithLabelsAndEffort() {
-        val s = spec(480)
-        assertFalse("no overflow at 480dp", s.hasOverflow)
-        assertEquals(
-            listOf(
-                ToolbarItem.ADD_CONTEXT, ToolbarItem.MODE, ToolbarItem.MODEL,
-                ToolbarItem.MIC, ToolbarItem.TOOLS,
-            ),
-            s.inline,
-        )
-        // The mic and the send cluster cost width, so "model . effort" moves out to 560dp.
-        assertTrue("mode label fits at 480dp", s.modeShowsLabel)
-        assertFalse("effort suffix needs 560dp with a mic present", s.modelShowsEffort)
-        assertTrue("effort appears once the row is wide", spec(560).modelShowsEffort)
-        assertTrue(s.statusShowsText)
+    fun theModeLabelAppearsAt360AndTheEffortSuffixAt480() {
+        assertFalse(spec(320).modeShowsLabel)
+        assertTrue(spec(360).modeShowsLabel)
+        assertFalse("effort needs more room than 400dp", spec(400).modelShowsEffort)
+        assertTrue(spec(480).modelShowsEffort)
+        assertTrue(spec(480).statusShowsText)
     }
 
     @Test
-    fun inlineItemsKeepTheVsCodeVisualOrder() {
-        val expected = listOf(
-            ToolbarItem.ADD_CONTEXT, ToolbarItem.MODE, ToolbarItem.MODEL,
-            ToolbarItem.MIC, ToolbarItem.TOOLS,
-        )
-        for (w in listOf(300, 360, 420, 480, 700)) {
+    fun inlineItemsKeepTheVisualOrder() {
+        val expected = listOf(ToolbarItem.MODE, ToolbarItem.MODEL, ToolbarItem.TOOLS)
+        for (w in listOf(240, 280, 300, 360, 420, 480, 700)) {
             val s = spec(w)
             assertEquals("w=$w order", expected.filter { it in s.inline }, s.inline)
             assertEquals("w=$w overflow order", expected.filter { it in s.overflow }, s.overflow)
@@ -147,7 +136,6 @@ class ChatToolbarSpecTest {
 
     @Test
     fun dropdownOrderMatchesTheVideo() {
-        // The agent-mode video shows Ask, Edit, Agent top to bottom.
         assertEquals(listOf(ChatMode.ASK, ChatMode.EDIT, ChatMode.AGENT), ChatMode.dropdownOrder)
         assertEquals("Agent", ChatMode.AGENT.label)
     }

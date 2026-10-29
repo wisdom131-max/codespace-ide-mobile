@@ -68,35 +68,6 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
     val attachLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri -> if (uri != null) readAttachment(ctx, uri, session) }
-    // Dictation: the same RecognizerIntent the terminal's STT button uses, so a device
-    // without a recognizer says so instead of silently doing nothing.
-    val micLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val said = result.data
-                ?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull()
-            if (!said.isNullOrBlank()) {
-                input = if (input.isBlank()) said else input.trimEnd() + " " + said
-            }
-        }
-    }
-    val onMic: () -> Unit = {
-        try {
-            micLauncher.launch(
-                android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(
-                        android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                        android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
-                    )
-                    putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Dictate a message")
-                },
-            )
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(ctx, "Dictation not available on this device", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
     val pending by session.pending.collectAsState()
     // U3: composer mode. Ask is the only mode that works without the tool wire.
     var chatMode by remember { mutableStateOf(ChatMode.ASK) }
@@ -170,7 +141,6 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
                 session.mode = it
             },
             onAddContext = { attachLauncher.launch("*/*") },
-            onMic = onMic,
             onOpenModel = { showSelect = true },
             onTools = { showKeys = true },
             onSend = { if (input.isNotBlank()) { session.send(input); input = "" } },
