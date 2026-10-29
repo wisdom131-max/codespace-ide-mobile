@@ -145,6 +145,9 @@ fun ChatPanelScreen(
                     state.rows + listOf(ChatRowModel.Thinking(((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt()))
                 else state.rows
                 if (pending.isNotEmpty()) rows = rows + ChatRowModel.Attachments(session.pendingChips())
+                // Batch 3: follow the newest content while the user is at the bottom, and
+                // never fight them once they scroll up. Emits nothing.
+                TranscriptAutoScroll(scroll, transcriptGrowthKey(rows))
                 NativeChatListRenderer.MessageList(
                     ChatRenderState(
                         rows = rows,

@@ -102,11 +102,23 @@ internal fun ChatStagedChangesRow(
     }
 }
 
-/** Honest one-liner for the outcome of an apply batch (partial failures are reported). */
-internal fun stagedApplyNote(outcomes: List<PendingChangesStore.ApplyOutcome>): String {
-    if (outcomes.isEmpty()) return "Nothing to apply."
-    val applied = outcomes.count { it is PendingChangesStore.ApplyOutcome.Applied }
-    val failed = outcomes.size - applied
-    return if (failed == 0) "Applied " + applied + " file(s)."
-    else "Applied " + applied + ", " + failed + " failed (see the editor strip for the reason)."
+/**
+ * Honest summary for an apply batch: a partial failure is NAMED, never smoothed into
+ * "done". Pure so the wording is unit-tested rather than eyeballed on a device.
+ */
+internal fun stagedApplySummary(total: Int, applied: Int): String {
+    if (total <= 0) return "Nothing to apply."
+    val failed = total - applied
+    return when {
+        failed <= 0 -> "Applied " + applied + " file(s)."
+        applied <= 0 -> "Nothing was applied: " + failed + " failed (see the editor strip for the reason)."
+        else -> "Applied " + applied + ", " + failed + " failed (see the editor strip for the reason)."
+    }
 }
+
+/** Adapter over the store's outcome list. */
+internal fun stagedApplyNote(outcomes: List<PendingChangesStore.ApplyOutcome>): String =
+    stagedApplySummary(
+        total = outcomes.size,
+        applied = outcomes.count { it is PendingChangesStore.ApplyOutcome.Applied },
+    )
