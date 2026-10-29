@@ -307,8 +307,17 @@ You can use multiple tools in sequence. When done, give a final summary.
         com.codespace.ide.diagnostics.AppOutputLog.log(
             "[chat] write_file DIRECT write: raw=" + path + " resolved=" + resolvedPath, "chat")
         val target = File(resolvedPath)
+        // Section 5: capture the BEFORE image so the Files Changed row can show a real diff
+        // and Undo can restore, then record only AFTER the write returned - a failed write
+        // therefore never appears as a change.
+        val before = try {
+            if (target.exists() && target.isFile) target.readText() else null
+        } catch (t: Throwable) {
+            null
+        }
         target.parentFile?.mkdirs()
         target.writeText(content)
+        AgentWriteJournal.record(target.absolutePath, before, content)
         // REFRESH-FAMILY: AI file writes now reach the Explorer's reactive channel
         com.codespace.ide.util.FsChangeNotifier.notifyChanged()
         // U6-d: re-scanning is not enough - a write inside CLOSED folders stays invisible.

@@ -128,7 +128,15 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
                 )
             }
         }
+        // Section 7 — ORDER MATTERS and is deliberate: the approval card (work awaiting
+        // authorization) sits ABOVE the Files Changed row (work already done). They are never
+        // the same operation shown twice, so the eye reads "pending" then "completed".
         ChatApprovalCard()
+        // Section 5: the Files Changed row exists only in Agent mode, and the row itself
+        // renders nothing when the journal holds no real change.
+        if (chatMode == ChatMode.AGENT) {
+            ChatFilesChangedRow()
+        }
         ChatInputComposer(
             value = input,
             onValueChange = { input = it },

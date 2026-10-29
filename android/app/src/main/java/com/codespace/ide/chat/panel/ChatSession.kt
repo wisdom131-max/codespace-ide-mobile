@@ -418,6 +418,9 @@ class ChatSession(
             return
         }
         toolRound++
+        // Section 5: one change set per tool round, so two separate operations can never be
+        // merged into one misleading Files Changed row.
+        com.codespace.ide.agent.AgentWriteJournal.beginOperation()
         ui.value = ui.value.copy(streaming = true)
         scope.launch {
             val results = StringBuilder()
