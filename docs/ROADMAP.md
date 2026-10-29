@@ -29,8 +29,10 @@ Updated 2026-10-28 after WP9(a). Each DONE row carries commit + CI run.
 | U6-b chat panel ACTS behind the existing approval gate (runTools + approval card) | DONE | ce98d03 + fix ebf8b9a GREEN 3441 |
 | U7 composer proportions + height (Add Context, gear, no approvals row, bounded field) | DONE | 7a9880d + fix b5cc8ec GREEN 3443 |
 | U8 compact composer pass (ring, card top pad, chips hug text, glyph 28, row 40dp, field max) | DONE | 091b192 GREEN 3444 |
-| U6-c agent commands visible in the terminal (badge / transcript record) | PENDING | spec section 6, next |
-| U6-d Explorer refresh + reveal on agent file writes | PENDING | spec section 6, next |
+| U6-c agent commands visible in the terminal (real record strip: command, status, duration, output) | DONE | 46d1b61 + fix bc969c8 GREEN 3447 |
+| U6-d Explorer refresh + reveal on agent file writes (ancestor expansion, reveal-only) | DONE | 457a84f GREEN 3448 |
+| U6-e FILES CHANGED row (journal with before/after, real line diff, Keep/Undo, drift-safe revert) | DONE | ca5f811 + fix 95aefe5 GREEN 3450 |
+| U6-f VISIBLE APPROVAL row (existing gate, Allow once/session/always, dual-click + expiry safe) | DONE | 8e4d185 + fix d384d60 GREEN 3452 |
 | Read-only docs: rebuild-plan.md v2, ui-research.md | PENDING | - |
 
 ### Composer PENDING list (continuity — every open item, owner spec 2026-10-29)
@@ -38,16 +40,24 @@ Updated 2026-10-28 after WP9(a). Each DONE row carries commit + CI run.
   remaining terms are the 40dp control row and the 22dp field floor - both near the floor
   of "still tappable / still readable", so the next cut would have to come from the
   Add Context row being moved INTO the control row rather than sitting above the field.
-- U6-c terminal visibility for agent commands; U6-d Explorer refresh/reveal.
-- Device round for U5+U6 together (batching rule): Add Context proportions, gear, composer
-  height, tool row position, multiline growth, approvals row gone.
+- Device round for U5+U6-a..f together (batching rule, ONE round): composer height and Add
+  Context proportions, gear, tool row position, multiline growth, the approvals row now being
+  VISIBLE again (U6-f), the Files Changed row's Keep/Undo on a real multi-file write (U6-e),
+  the terminal agent strip after a run_command (U6-c), and Explorer reveal into a deep closed
+  folder (U6-d).
+- Model picker popup with search (currently reuses the provider dialog).
+- Text glyphs still stand in for vector icons across the composer/approval rows.
+- Edit strip is NOT wired to PendingChangesStore; the chat path uses AgentWriteJournal
+  (direct-to-disk writes) while the staged overlay flow remains a separate, unwired surface.
+- Header history / new-chat controls.
 - Robolectric dependency still missing, so SharedPreferences-backed stores stay untested on JVM.
 
 ### Chat PENDING list (continuity — every open item)
 - Sessions/history roster + restore (P0 residual; needs storage format + sessions_v2 migration).
-- Ask/Edit/Agent modes + tool loop with confirmations: MODES DONE (085e577) and the TOOL LOOP
-  DONE (ce98d03, approval-gated). Agent actions are not yet VISIBLE in the terminal and the
-  Explorer does not yet reveal agent file writes: U6-c / U6-d remain.
+- Ask/Edit/Agent modes + tool loop with confirmations: MODES DONE (085e577), TOOL LOOP DONE
+  (ce98d03), and agent actions are now VISIBLE end to end: terminal record (U6-c 46d1b61),
+  Explorer reveal (U6-d 457a84f), Files Changed with Keep/Undo (U6-e ca5f811), visible
+  approval row (U6-f 8e4d185). What remains in this area is device verification only.
 
 - @participants + /slash autocomplete (P1).
 - #selection / #problems / terminal-output attach sub-kinds (P1).
