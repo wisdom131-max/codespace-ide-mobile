@@ -48,7 +48,7 @@ import com.codespace.ide.chat.ui.ChatTokens
  * device and will call out anything that reads wrong.
  */
 @Composable
-fun ChatInputComposer(
+internal fun ChatInputComposer(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
