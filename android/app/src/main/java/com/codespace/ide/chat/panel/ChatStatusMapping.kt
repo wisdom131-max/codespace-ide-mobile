@@ -59,6 +59,26 @@ internal object ChatStatusMapping {
         else -> false
     }
 
+    /**
+     * The wait is over: remove the trailing "rate limited, retrying in Ns" card.
+     *
+     * Walks back over transient rows (a Thinking row is appended while the retry's answer
+     * has not started) and stops at anything that is conversation. Returns the same
+     * instance when there is no resolved wait, so the delta path stays allocation-free on
+     * the common frame.
+     */
+    fun clearResolvedWait(rows: List<ChatRowModel>): List<ChatRowModel> {
+        var i = rows.lastIndex
+        while (i >= 0) {
+            when (rows[i]) {
+                is ChatRowModel.Thinking -> i--
+                is ChatRowModel.RateLimited -> return rows.filterIndexed { idx, _ -> idx != i }
+                else -> return rows
+            }
+        }
+        return rows
+    }
+
     /** Rows with the stale status cards removed, order otherwise untouched. */
     fun dropStaleStatus(rows: List<ChatRowModel>): List<ChatRowModel> {
         if (rows.none(::isStaleOnNewSend)) return rows

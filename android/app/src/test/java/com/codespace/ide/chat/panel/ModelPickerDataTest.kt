@@ -81,13 +81,27 @@ class ModelPickerDataTest {
     }
 
     @Test
-    fun pickingAcrossProvidersReResolvesTheSlotAndEndpoint() {
+    fun pickingAcrossProvidersIsDelegatedToTheResolversRules() {
         val current = sel("openai", "gpt-6.1-terra-pro")
         val foreign = PickerModel("gemini", "gemini-3.8-flash", "gemini-3.8-flash", true, 1_000_000)
-        val next = ModelPickerData.selectionFor(foreign, current, ::slotKey)
-        assertEquals("ai_GEMINI", next.keySlot)
-        assertEquals("a provider's own preset endpoint, never the previous provider's",
-            com.codespace.ide.engine.ProviderPresets.byId("gemini")!!.baseUrl, next.baseUrl)
+        var asked: Pair<String, String>? = null
+        val resolved = PanelSelection("gemini", "ai_GEMINI", "gemini-3.8-flash", "https://native/gemini")
+        val next = ModelPickerData.selectionFor(foreign, current, ::slotKey) { pid, mid ->
+            asked = pid to mid
+            resolved
+        }
+        assertEquals("gemini" to "gemini-3.8-flash", asked)
+        assertEquals("the resolver owns the endpoint, not the picker", resolved, next)
+    }
+
+    @Test
+    fun withoutAResolverThePickerRefusesToChangeProvider() {
+        // Native providers (gemini, anthropic) are NOT ProviderPresets, so deriving their
+        // endpoint inside the picker was wrong: byId("gemini") is null and the previous
+        // provider's endpoint would have been reused. No resolver -> no provider change.
+        val current = sel("openai", "gpt-6.1-terra-pro")
+        val foreign = PickerModel("gemini", "gemini-3.8-flash", "gemini-3.8-flash", true, 1_000_000)
+        assertEquals(current, ModelPickerData.selectionFor(foreign, current, ::slotKey))
     }
 
     @Test

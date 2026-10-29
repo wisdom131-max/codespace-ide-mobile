@@ -103,21 +103,21 @@ class ChatSessionRetryTest {
         s.cancel()
         assertEquals("the retry timer must not fire after Stop", 1, t.calls)
         assertFalse("Stop must leave the composer idle, not stuck loading", s.ui.value.streaming)
+        // And it stays quiet: give the cancelled timer its full window to (not) fire.
+        runBlocking { delay(1_400) }
+        assertEquals("a cancelled wait cannot come back later", 1, t.calls)
     }
 
     @Test
     fun anArmedRetryFiresExactlyOnce() {
-        val t = RateLimitedThenOk(retryAfter = "1", failTimes = 5)
+        // The provider recovers on the second call, so the budget is never exhausted: a
+        // stray or duplicated timer would show up as a THIRD wire attempt.
+        val t = RateLimitedThenOk(retryAfter = "1", failTimes = 1)
         val s = session(t)
         s.send("first")
-        runBlocking {
-            var spins = 0
-            while (s.ui.value.rows.none { it is ChatRowModel.RateLimited } && spins < 200) { delay(5); spins++ }
-        }
-        runBlocking { delay(1_900) }
-        val callsAfterFirst = t.calls
-        // Everything already settled: a stray timer would add a third call.
-        assertEquals("the armed retry fired exactly once", 2, callsAfterFirst)
+        settle(s)
+        runBlocking { delay(1_500) }
+        assertEquals("exactly one armed retry reached the wire", 2, t.calls)
         assertFalse(s.ui.value.streaming)
     }
 

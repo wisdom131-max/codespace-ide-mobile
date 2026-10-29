@@ -138,18 +138,21 @@ internal object MarkdownParser {
                     i = end + 1
                 }
             } else if (ch == '*' && i + 1 < text.length && text[i + 1] == '*') {
-                val inner = if (canOpen(text, i + 2, 2)) text.substringOrNull(i + 2, findClose(text, i + 2, 2)) else null
-                if (inner == null) { buf.append("**"); i += 2 } else {
+                // The closer must be CONSUMED (i = close + 2). Advancing only to the closer
+                // left the scanner sitting on the closing marker, which then failed the
+                // flanking test and printed a literal "**" after every bold run.
+                val close = if (canOpen(text, i + 2, 2)) findClose(text, i + 2, 2) else -1
+                if (close < 0) { buf.append("**"); i += 2 } else {
                     flush()
-                    for (sp in parseInline(inner)) spans.add(sp.copy(bold = true))
-                    i = findClose(text, i + 2, 2)
+                    for (sp in parseInline(text.substring(i + 2, close))) spans.add(sp.copy(bold = true))
+                    i = close + 2
                 }
             } else if (ch == '*') {
-                val inner = if (canOpen(text, i + 1, 1)) text.substringOrNull(i + 1, findClose(text, i + 1, 1)) else null
-                if (inner == null) { buf.append(ch); i++ } else {
+                val close = if (canOpen(text, i + 1, 1)) findClose(text, i + 1, 1) else -1
+                if (close < 0) { buf.append(ch); i++ } else {
                     flush()
-                    for (sp in parseInline(inner)) spans.add(sp.copy(italic = true))
-                    i = findClose(text, i + 1, 1)
+                    for (sp in parseInline(text.substring(i + 1, close))) spans.add(sp.copy(italic = true))
+                    i = close + 1
                 }
             } else {
                 buf.append(ch); i++
@@ -173,9 +176,6 @@ internal object MarkdownParser {
         }
         return -1
     }
-
-    private fun String.substringOrNull(from: Int, to: Int): String? =
-        if (to > from && to <= length) substring(from, to) else null
 
     /** Plain text of a block list - used for tests and for a Copy of a whole reply. */
     fun flatten(blocks: List<MdBlock>): String = blocks.joinToString("\n") { b ->

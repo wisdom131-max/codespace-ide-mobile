@@ -1,7 +1,6 @@
 package com.codespace.ide.chat.panel
 
 import com.codespace.ide.engine.ModelCatalog
-import com.codespace.ide.engine.ProviderPresets
 
 /**
  * BATCH 8 — the searchable model picker, connected (owner mission part 8).
@@ -68,23 +67,26 @@ internal object ModelPickerData {
     }
 
     /**
-     * The selection a tapped row produces. Provider, endpoint and key slot are carried over
-     * from the CURRENT selection unless the provider itself is changing; the model is the
-     * only thing the picker is allowed to decide.
+     * The selection a tapped row produces.
+     *
+     * SAME PROVIDER (the only case the picker UI produces today): the model changes and the
+     * provider, endpoint and key slot are carried over untouched.
+     *
+     * CROSS PROVIDER: delegated to the caller's resolver - the same SelectionResolver the
+     * provider rows already use, which owns the "never invent a mixed pair" rules. The
+     * earlier version tried to derive the endpoint from ProviderPresets, which was wrong:
+     * the native providers (gemini, anthropic) are NOT presets, so their lookups returned
+     * null and a Gemini model could have been paired with the previous provider's endpoint.
+     * Without a resolver the picker declines to change providers at all rather than guess.
      */
     fun selectionFor(
         model: PickerModel,
         current: PanelSelection,
         slotKey: (providerId: String) -> String,
+        applyProvider: ((providerId: String, modelId: String) -> PanelSelection?)? = null,
     ): PanelSelection {
         if (model.providerId == current.providerId) return current.copy(modelId = model.modelId)
-        val preset = ProviderPresets.byId(model.providerId)
-        return PanelSelection(
-            providerId = model.providerId,
-            keySlot = slotKey(model.providerId),
-            modelId = model.modelId,
-            baseUrl = preset?.baseUrl ?: current.baseUrl,
-        )
+        return applyProvider?.invoke(model.providerId, model.modelId) ?: current
     }
 
     /**

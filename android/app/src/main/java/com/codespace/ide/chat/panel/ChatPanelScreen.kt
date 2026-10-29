@@ -454,7 +454,14 @@ private fun ProviderModelDialog(
                         // The SAME onApply the dialog already used, so the picked model is the
                         // model the next request uses - no second selection path.
                         model = picked.modelId
-                        onApply(ModelPickerData.selectionFor(picked, current, ::slotKeyFor))
+                        onApply(
+                            ModelPickerData.selectionFor(picked, current, ::slotKeyFor) { pid, mid ->
+                                // The dialog's own coherence rules resolve a provider change;
+                                // the picker never invents a provider/model pair itself.
+                                com.codespace.ide.chat.panel.SelectionResolver
+                                    .applyProvider(pid, current, mid, cfg) { slotKeyFor(it) }
+                            },
+                        )
                     },
                 )
 

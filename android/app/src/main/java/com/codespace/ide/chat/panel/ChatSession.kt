@@ -396,6 +396,10 @@ class ChatSession(
     fun cancel() {
         sendGeneration++
         sendJob?.cancel()
+        // Stop means stopped. When a 429 retry is ARMED there is no active collect to notice
+        // the cancellation, so streaming would otherwise stay true and the composer would
+        // look busy forever - the user could never send again.
+        if (ui.value.streaming) ui.value = ui.value.copy(streaming = false)
     }
 
     fun retry() {
@@ -458,12 +462,13 @@ class ChatSession(
                 val st = ui.value
                 // BATCH 6: an answer arriving means the wait is over - the "rate limited,
                 // retrying in Ns" card must not sit above a reply that is streaming fine.
-                if (st.rows.lastOrNull() is ChatRowModel.RateLimited) {
-                    ui.value = st.copy(rows = st.rows.dropLast(1))
-                }
-                val rows = if (st.rows.lastOrNull() is ChatRowModel.AssistantStream)
-                    st.rows.dropLast(1) + listOf(ChatRowModel.AssistantStream(text, true))
-                else st.rows + listOf(ChatRowModel.AssistantStream(text, true))
+                // Walks back over a Thinking row, which sits between the card and the text.
+                // The cleaned list is the BASE for this frame: assigning st.rows afterwards
+                // would put the resolved wait card straight back.
+                val rowsNow = ChatStatusMapping.clearResolvedWait(st.rows)
+                val rows = if (rowsNow.lastOrNull() is ChatRowModel.AssistantStream)
+                    rowsNow.dropLast(1) + listOf(ChatRowModel.AssistantStream(text, true))
+                else rowsNow + listOf(ChatRowModel.AssistantStream(text, true))
                 ui.value = st.copy(rows = rows,
                     firstDeltaMs = if (st.firstDeltaMs == 0L) System.currentTimeMillis() else st.firstDeltaMs)
             }
