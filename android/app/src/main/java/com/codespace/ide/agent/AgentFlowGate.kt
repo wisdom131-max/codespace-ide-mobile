@@ -68,6 +68,9 @@ object AgentFlowGate {
         onTrust: (() -> Unit)? = null,
     ): ApprovalVerdict {
         if (!forceApproval && ChatPermissionStore.isAutoApproved(context, toolName)) return ApprovalVerdict.APPROVED
+        // Section 6: an explicit "allow for this session" answer is honoured WITHOUT
+        // touching the persisted permission level - it dies with the process.
+        if (!forceApproval && isSessionAllowed(toolName)) return ApprovalVerdict.APPROVED
         return approvalSlot.withLock {
             val deferred = CompletableDeferred<Boolean>()
             pending.value = PendingApproval(toolName, argsSummary, deferred, onAlwaysAllow = {
@@ -87,6 +90,53 @@ object AgentFlowGate {
         }
     }
 
-    fun approve() { pending.value?.deferred?.complete(true) }
-    fun reject() { pending.value?.deferred?.complete(false) }
+    /**
+     * Section 6: the scopes the approval row can actually honour. Each maps onto a
+     * mechanism that ALREADY exists - nothing here widens what a tool may do, it only
+     * decides how long the user's answer to this exact question is remembered.
+     *  ONCE    - this call only (default; no memory at all).
+     *  SESSION - remembered in memory until the process dies (cleared on restart).
+     *  ALWAYS  - persisted per tool through ChatPermissionStore (the existing switch).
+     * There is deliberately no "workspace" scope: no per-project permission store exists,
+     * and inventing one here would create a permission surface nothing else enforces.
+     */
+    enum class ApprovalScope { ONCE, SESSION, ALWAYS }
+
+    /** Session-scoped allow list. In memory by design: a restart re-asks. */
+    private val sessionAllowed = LinkedHashSet<String>()
+
+    fun sessionAllowedCount(): Int = synchronized(sessionAllowed) { sessionAllowed.size }
+
+    fun isSessionAllowed(toolName: String): Boolean =
+        synchronized(sessionAllowed) { sessionAllowed.contains(toolName) }
+
+    fun rememberForSession(toolName: String) {
+        synchronized(sessionAllowed) { sessionAllowed.add(toolName) }
+    }
+
+    fun clearSessionApprovals() {
+        synchronized(sessionAllowed) { sessionAllowed.clear() }
+    }
+
+    /**
+     * Resolve the pending request. Clicking twice cannot do anything twice: complete()
+     * returns false the second time, so the "always allow" side effect runs at most once
+     * and a late click after a timeout is a no-op instead of a phantom approval.
+     * Returns true only when this call actually resolved the request.
+     */
+    fun approve(scope: ApprovalScope = ApprovalScope.ONCE): Boolean {
+        val p = pending.value ?: return false
+        if (!p.deferred.complete(true)) return false
+        when (scope) {
+            ApprovalScope.ONCE -> Unit
+            ApprovalScope.SESSION -> rememberForSession(p.toolName)
+            ApprovalScope.ALWAYS -> p.onAlwaysAllow?.invoke()
+        }
+        return true
+    }
+
+    fun reject(): Boolean {
+        val p = pending.value ?: return false
+        return p.deferred.complete(false)
+    }
 }
