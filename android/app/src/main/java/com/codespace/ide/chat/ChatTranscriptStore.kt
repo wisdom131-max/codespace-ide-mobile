@@ -11,7 +11,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** What a load attempt produced, and anything the user deserves to be told about it. */
-internal data class TranscriptLoad(
+/** PUBLIC for the same reason as [TranscriptSink]: it is part of that contract. */
+data class TranscriptLoad(
     val messages: List<StoredMessage> = emptyList(),
     /** Honest note to show in the transcript when something was recovered or lost. */
     val note: String? = null,

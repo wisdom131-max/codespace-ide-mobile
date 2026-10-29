@@ -29,7 +29,11 @@ import com.codespace.ide.chat.ui.ChatRowModel
  * text is real content the user may still want, so it is stored with complete=false and
  * restored with a note that names what happened instead of pretending the reply finished.
  */
-internal data class StoredMessage(
+/**
+ * One persisted message. PUBLIC because the public [com.codespace.ide.chat.TranscriptSink]
+ * contract passes lists of it; the mapping and the store stay internal.
+ */
+data class StoredMessage(
     /** "user" | "assistant" | "note". Unknown roles are skipped on read, never crashed on. */
     val role: String,
     val text: String,
