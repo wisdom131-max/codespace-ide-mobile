@@ -453,12 +453,11 @@ fun SettingsScreen(
             }
             HorizontalDivider()
 
-            // ── AI Providers (credential UX redesign phases 1-3) ────────────────
-            // REMOVAL 2026-10-27 (advisor ruling): AI provider keys/endpoint UI
-            // archived (vn-code-archive) — returns with the new chat. Stored keys
-            // and endpoints_v2 data are untouched.
-
-            HorizontalDivider()
+            // ── Providers and Models (keys now LIVE here) ───────────────────────
+            // RESTORED 2026-10-29 at the owner's instruction: credential management is
+            // configuration, so it belongs in Settings, not in the chat panel header.
+            // Shows slot names and counts only, never key values.
+            ProvidersAndModelsSection(tokenStore)
 
             // ── Language Servers (P1e, read-only status) ─────────────────────
             LspServersStatusSection()

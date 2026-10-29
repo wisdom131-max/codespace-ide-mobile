@@ -100,15 +100,6 @@ fun ChatPanelScreen(projectId: String, tokenStore: com.codespace.ide.data.Secure
                 fontSize = ChatTokens.FONT_SMALL.sp,
                 modifier = Modifier.weight(1f),
             )
-            Text(
-                "Keys",
-                color = c.textSecondary,
-                fontSize = ChatTokens.FONT_SMALL.sp,
-                modifier = Modifier
-                    .background(c.surfaceAlt, RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
-                    .clickable { showKeys = true }
-                    .padding(horizontal = ChatTokens.GAP.dp, vertical = ChatTokens.GAP_TIGHT.dp),
-            )
         }
         Column(
             Modifier.weight(1f)
