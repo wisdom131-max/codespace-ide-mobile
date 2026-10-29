@@ -55,6 +55,11 @@ internal fun EditorViewStateEffects(
     useRegex: Boolean,
     caseSensitive: Boolean,
     wholeWord: Boolean,
+    /**
+     * BATCH 7: apply a whole-buffer text change plus caret, for "Insert into editor" from a
+     * chat code block. Null when the host cannot write text (read-only/binary view).
+     */
+    onApplyText: ((newText: String, caretOffset: Int) -> Unit)? = null,
 ) {
     // ── CAPTURE ────────────────────────────────────────────────────────────
     val liveValue by rememberUpdatedState(value)
@@ -110,6 +115,25 @@ internal fun EditorViewStateEffects(
     // ── FIND: persist query + toggles so the find bar reopens where it was left.
     // G08 (P4b): saved PER FILE (canonical-keyed entry) — file A's find query no
     // longer overwrites file B's; the global slot stays as last-used default.
+    // BATCH 7 (chat insert): the ACTIVE editor registers its own insert path here, so a
+    // code block's Insert lands at the caret of the file the user is actually looking at.
+    // Extracted into this file rather than grown inside the CodeEditor body (JVM 64KB rule).
+    val liveApplyText by rememberUpdatedState(onApplyText)
+    DisposableEffect(liveApplyText) {
+        val apply = liveApplyText
+        val fn: ((String) -> Boolean)? = if (apply == null) null else { code ->
+            val v = liveValue
+            val start = minOf(v.selection.start, v.selection.end).coerceIn(0, v.text.length)
+            val end = maxOf(v.selection.start, v.selection.end).coerceIn(0, v.text.length)
+            // Insert AT the caret and replace ONLY what was selected. Nothing else is touched.
+            val newText = v.text.substring(0, start) + code + v.text.substring(end)
+            apply(newText, start + code.length)
+            true
+        }
+        if (fn != null) com.codespace.ide.editor.EditorInsertBus.register(fn)
+        onDispose { if (fn != null) com.codespace.ide.editor.EditorInsertBus.unregister(fn) }
+    }
+
     val liveFilePath by rememberUpdatedState(filePath)
     LaunchedEffect(findQuery, useRegex, caseSensitive, wholeWord) {
         EditorFindState.saveFor(liveFilePath, EditorFindState.FindSnapshot(

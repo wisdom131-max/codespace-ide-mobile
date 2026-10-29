@@ -1967,6 +1967,9 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         useRegex = useRegex,
         caseSensitive = caseSensitive,
         wholeWord = wholeWord,
+        onApplyText = { newText, caret ->
+            programmaticTextChange(newText, TextRange(caret, caret), "chat-insert")
+        },
     )
     var preserveCase by remember { mutableStateOf(false) }
     var matchIndex by remember { mutableStateOf(0) }

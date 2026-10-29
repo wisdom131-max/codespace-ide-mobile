@@ -13,6 +13,11 @@ data class ChatRenderState(
     val onSendAnyway: () -> Unit = {},
     val onCancel: () -> Unit = {},
     val onRemoveChip: (AttachmentChipModel) -> Unit = {},
+    /**
+     * BATCH 7: insert a code block into the ACTIVE editor at the caret. Returns false when
+     * no editor is open, which the card reports honestly rather than failing silently.
+     */
+    val onInsertCode: ((String) -> Boolean)? = null,
 )
 
 /**
@@ -43,7 +48,10 @@ object NativeChatListRenderer : ChatListRenderer {
     private fun RenderRow(row: ChatRowModel, state: ChatRenderState) {
         when (row) {
             is ChatRowModel.User -> UserBubble(row.text)
-            is ChatRowModel.AssistantStream -> StreamingText(row.text, row.cursorOn)
+            // BATCH 7: assistant replies are Markdown. The streaming cursor still rides the
+            // same row, so a growing reply keeps one identity and never re-lays out twice.
+            is ChatRowModel.AssistantStream ->
+                MarkdownView(row.text, row.cursorOn, state.onInsertCode)
             is ChatRowModel.Thinking -> ThinkingCard(row.seconds)
             is ChatRowModel.Failed -> ErrorCard(row.verdict, row.detail, row.canRetry, state.onRetry)
             is ChatRowModel.RateLimited ->

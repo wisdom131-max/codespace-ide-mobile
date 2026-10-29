@@ -155,6 +155,9 @@ fun ChatPanelScreen(
                         onSendAnyway = { session.sendAnyway() },
                         onCancel = { session.dismissOverBudget() },
                         onRemoveChip = { chip -> session.removePending(chip.name) },
+                        // BATCH 7: Insert goes to whatever editor is on screen right now;
+                        // false (no editor) is reported by the card, not swallowed here.
+                        onInsertCode = { code -> com.codespace.ide.editor.EditorInsertBus.insert(code) },
                     ),
                     Modifier.fillMaxWidth(),
                 )
