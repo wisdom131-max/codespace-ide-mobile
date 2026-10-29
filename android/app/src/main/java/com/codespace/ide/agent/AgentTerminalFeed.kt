@@ -138,7 +138,9 @@ object AgentTerminalFeed {
             else -> {
                 val h = totalSeconds / 3600
                 val m = (totalSeconds % 3600) / 60
-                m == 0L ? h.toString() + "h" : h.toString() + "h " + m + "m"
+                // Kotlin has NO ternary operator - `cond ? a : b` is a parse error, not a
+                // style preference. This is the explicit if/else form.
+                if (m == 0L) h.toString() + "h" else h.toString() + "h " + m + "m"
             }
         }
     }
