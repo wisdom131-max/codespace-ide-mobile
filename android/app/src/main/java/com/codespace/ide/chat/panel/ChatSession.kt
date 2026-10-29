@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
@@ -91,6 +92,14 @@ class ChatSession(
      * empty string (JVM tests, no context) simply means "no workspace block".
      */
     private val workspaceBlock: () -> String = { "" },
+    /**
+     * BATCH 4: conversation identity. The data model is per-conversation from the start
+     * (the panel, the store and the file layout are all keyed by it) so a future session
+     * picker needs no storage migration - but no session-management UI is added here.
+     */
+    private val conversationId: String = "main",
+    /** BATCH 4: persistence hooks; null means "this session keeps nothing" (JVM tests). */
+    private val transcripts: com.codespace.ide.chat.TranscriptSink? = null,
 ) {
     private val streamBuf = StringBuilder()
     private var sendJob: Job? = null
@@ -105,6 +114,60 @@ class ChatSession(
     // Init-order (run 3387 NPE): buildEngine's default providerId reads
     // selection, so the engine initializer MUST come AFTER selection exists.
     private var engine: ChatEngineImpl = buildEngine()
+
+    /**
+     * BATCH 4: true once the restore ATTEMPT has finished (successfully or not). Nothing
+     * is written to disk before that, or a conversation opened and immediately saved by
+     * the collector below would overwrite the very history it is about to load.
+     */
+    @Volatile private var restoreFinished = false
+    /** A save failure is shown once, not once per delta. */
+    private var storageErrorShown = false
+
+    init {
+        if (transcripts == null) {
+            restoreFinished = true
+        } else {
+            scope.launch {
+                val loaded = try {
+                    transcripts.load(projectId, conversationId)
+                } catch (t: Throwable) {
+                    com.codespace.ide.chat.TranscriptLoad(
+                        emptyList(),
+                        "Could not read the saved conversation: " + (t.message ?: t.javaClass.simpleName),
+                    )
+                }
+                val stored = com.codespace.ide.chat.ChatTranscript.messagesToRows(loaded.messages)
+                if (com.codespace.ide.chat.RestorePolicy.shouldApplyRestore(
+                        restoreFinished, ui.value.rows.size, loaded.messages.size)) {
+                    ui.value = ui.value.copy(rows = stored)
+                }
+                loaded.note?.let { appendRow(ChatRowModel.InfoNote(it)) }
+                restoreFinished = true
+                persistTranscript()
+            }
+            // Every row change (send, delta, completion, clear) schedules a save; the
+            // store debounces, and the scope is the store's, not this session's.
+            scope.launch { ui.collect { persistTranscript() } }
+        }
+    }
+
+    /** BATCH 4: hand the current transcript to the store (no-op before the restore ends). */
+    private fun persistTranscript() {
+        val sink = transcripts ?: return
+        if (!com.codespace.ide.chat.RestorePolicy.mayPersist(restoreFinished)) return
+        val st = ui.value
+        sink.save(
+            projectId,
+            conversationId,
+            com.codespace.ide.chat.ChatTranscript.rowsToMessages(st.rows, st.streaming),
+        ) { error ->
+            if (!storageErrorShown) {
+                storageErrorShown = true
+                appendRow(ChatRowModel.InfoNote("Could not save this conversation: " + error))
+            }
+        }
+    }
 
     /** Switching provider rebuilds the engine (fresh wire window); UI rows stay. */
     fun select(sel: PanelSelection) {
@@ -534,6 +597,13 @@ class ChatSessionManager(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val sessions = HashMap<String, ChatSession>()
 
+    /**
+     * BATCH 4: one store per manager. Its writer scope is its own, so the pending save of
+     * the turn the user just finished still lands after the panel is disposed.
+     */
+    private val transcripts: com.codespace.ide.chat.TranscriptSink? =
+        appContext?.let { com.codespace.ide.chat.ChatTranscriptStore(it.applicationContext) }
+
     @Synchronized
     fun session(projectId: String): ChatSession =
         sessions.getOrPut(projectId) {
@@ -553,8 +623,20 @@ class ChatSessionManager(
                 // Batch 1: same block for every request path that goes through chat; the
                 // HTTP agent already builds its own from the same providers.
                 workspaceBlock = { WorkspaceContextSource.block(appContext, projectId) },
+                // BATCH 4: the conversation is per project and survives restarts.
+                conversationId = CONVERSATION_ID,
+                transcripts = transcripts,
             )
         }
 
     fun close() = scope.cancel()
+
+    private companion object {
+        /**
+         * Single conversation per project for now. The storage layer is keyed by
+         * conversation id (files, model, sink), so adding a picker later is a UI change,
+         * not a data migration - which is exactly why no picker is invented here.
+         */
+        const val CONVERSATION_ID = "main"
+    }
 }
