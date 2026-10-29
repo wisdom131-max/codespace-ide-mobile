@@ -335,6 +335,12 @@ class ChatSession(
         }
         val chips = staged.map { com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes)) }
         val newRows = ArrayList<ChatRowModel>(2)
+        // BATCH 5: status cards from the PREVIOUS attempt ("provider is rate limiting",
+        // "offline") describe a moment that has passed; a new attempt must not inherit
+        // them. Conversation content and notes are untouched.
+        ChatStatusMapping.dropStaleStatus(ui.value.rows).let { kept ->
+            if (kept.size != ui.value.rows.size) ui.value = ui.value.copy(rows = kept)
+        }
         newRows.add(ChatRowModel.User(userText))
         if (chips.isNotEmpty()) newRows.add(ChatRowModel.Attachments(chips))
         if (!reuseStaged) pendingAttachments.value = emptyList()
@@ -455,6 +461,12 @@ class ChatSession(
                     is ToolDecision.Run -> runTools(decision.calls, cfg, slotName, confirmOverBudget)
                 }
             }
+            is EngineEvent.HistoryTrimmed -> {
+                // BATCH 5: TrimmedHistory was in the model and the renderer but nothing
+                // ever produced it; a silently narrowed window made the model answer about
+                // a conversation it could not see.
+                if (ev.droppedCount > 0) appendRow(ChatRowModel.TrimmedHistory(ev.droppedCount))
+            }
             is EngineEvent.Failed -> {
                 val err = ev.error
                 // WP6: OPT-IN key failover on auth/credits rejection - visible,
@@ -471,11 +483,9 @@ class ChatSession(
                     attemptSend(cfg.copy(apiKey = key2 ?: ""), nextSlot, userText, attachments, confirmOverBudget)
                     return
                 }
-                if (err is ChatError.OverBudget) {
-                    appendRow(ChatRowModel.OverBudget(err.detail))
-                } else {
-                    appendRow(ChatRowModel.Failed(err.userVerdict, "", err.retryable))
-                }
+                // BATCH 5: the engine's taxonomy decides WHICH card, so 429 / 402 /
+                // offline are no longer flattened into one generic red card.
+                appendRow(ChatStatusMapping.rowForError(err))
                 ui.value = ui.value.copy(streaming = false)
             }
         }

@@ -79,6 +79,12 @@ sealed class EngineEvent {
     data class Completed(val totalChars: Int) : EngineEvent()
     /** Send failed with a classified error from the taxonomy. */
     data class Failed(val error: ChatError) : EngineEvent()
+    /**
+     * BATCH 5: the history window dropped older messages before this send, so the model
+     * did NOT see them. Emitted before anything else; silent trimming is what makes a model
+     * answer about a conversation it can no longer see.
+     */
+    data class HistoryTrimmed(val droppedCount: Int) : EngineEvent()
 }
 
 /**

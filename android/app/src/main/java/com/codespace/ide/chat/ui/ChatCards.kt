@@ -127,14 +127,21 @@ fun ErrorCard(
     )
 }
 
-/** 429: provider asked to wait, countdown shown from Retry-After. */
+/**
+ * 429: the provider asked for a wait.
+ *
+ * BATCH 5: the copy used to promise "Retrying in Ns" while nothing retried. It now states
+ * what the provider actually said, and offers the user the one action that exists - a
+ * manual retry once they judge the wait is over.
+ */
 @Composable
-fun RateLimitCard(waitSec: Int, modifier: Modifier = Modifier) {
+fun RateLimitCard(waitSec: Int, onRetry: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     val c = ChatTokens.LocalChatColors.current
+    val detail = if (waitSec > 0) "Rate limited (429). The provider asked for " + waitSec +
+        "s before another attempt." else "Rate limited (429). Try again in a moment."
     StateCard(
-        "Provider asked to wait",
-        "Rate limited (429). Retrying in " + waitSec + "s.",
-        c.warning, c.warningBg, modifier = modifier,
+        "Provider asked to wait", detail, c.warning, c.warningBg,
+        if (onRetry != null) "Retry" else null, onRetry, modifier,
     )
 }
 
