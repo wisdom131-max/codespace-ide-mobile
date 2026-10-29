@@ -400,8 +400,6 @@ class ChatSession(
             }
         }
     }
-}
-
     /**
      * Section 6: run the calls in order, each behind the EXISTING approval gate
      * (AgentFlowGate -> ChatPermissionStore), then hand the results back so the model can
@@ -460,6 +458,7 @@ class ChatSession(
             attemptSend(cfg, slotName, results.toString().trim(), emptyList(), confirmOverBudget)
         }
     }
+}
 
 /** Pure: first unused slot in pool order, or null when exhausted. */
 internal fun chooseNextSlot(remaining: List<String>): String? = remaining.firstOrNull()
