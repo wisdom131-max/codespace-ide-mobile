@@ -20,6 +20,7 @@ data class ChatColors(
     val errorBg: Color,
     val warningBg: Color,
     val streamCursor: Color,
+    val input: Color
 )
 
 /** A(a) chat design tokens — android/chat-tokens.json is the single source. */

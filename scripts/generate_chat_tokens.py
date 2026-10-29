@@ -20,6 +20,12 @@ COLOR_FIELDS = ["bg", "surface", "surfaceAlt", "border", "text", "textSecondary"
                 "accent", "success", "warning", "error", "errorBg", "warningBg",
                 "streamCursor", "input"]
 
+def class_fields(indent="    "):
+    """The data class is DERIVED from COLOR_FIELDS so adding a token cannot drift:
+    v2 shipped a broken build because the class list was maintained by hand."""
+    return "\n".join(indent + "val " + f + ": Color," for f in COLOR_FIELDS).rstrip(",")
+
+
 def compose_color(hex_str):
     h = hex_str.lstrip("#")
     if len(h) == 8:
@@ -44,19 +50,7 @@ import androidx.compose.ui.graphics.Color
 
 /** Chat surface colors, generated from the single token source (A(a)). */
 data class ChatColors(
-    val bg: Color,
-    val surface: Color,
-    val surfaceAlt: Color,
-    val border: Color,
-    val text: Color,
-    val textSecondary: Color,
-    val accent: Color,
-    val success: Color,
-    val warning: Color,
-    val error: Color,
-    val errorBg: Color,
-    val warningBg: Color,
-    val streamCursor: Color,
+@CLASS_FIELDS@
 )
 
 /** A(a) chat design tokens — android/chat-tokens.json is the single source. */
@@ -91,6 +85,7 @@ def kt_text(t):
     pal = t["palette"]
     r = t["radius"]; sp = t["spacing"]; ty = t["typography"]
     out = KT_TEMPLATE
+    out = out.replace("@CLASS_FIELDS@", class_fields())
     out = out.replace("@DARK_BLOCK@", palette_block("dark", pal["dark"]))
     out = out.replace("@LIGHT_BLOCK@", palette_block("light", pal["light"]))
     out = out.replace("@RADIUS_PANEL@", str(r["panel"]))
