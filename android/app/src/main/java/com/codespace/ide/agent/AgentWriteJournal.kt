@@ -99,8 +99,13 @@ object AgentWriteJournal {
         sets[i] = set.copy(entries = updated)
     }
 
-    /** The newest set that still needs a decision, or null when there is nothing to review. */
-    fun reviewable(): ChangeSet? = sets.lastOrNull { !it.settled }
+    /**
+     * The newest set that still needs a decision, or null when there is nothing to review.
+     * An EMPTY set is not reviewable: beginOperation() opens one before any tool runs, and a
+     * round that changed nothing must not leave an empty "0 files changed" row on screen
+     * (owner spec: no empty or permanent row).
+     */
+    fun reviewable(): ChangeSet? = sets.lastOrNull { !it.settled && it.entries.isNotEmpty() }
 
     /** Keep: mark accepted, touch NO files. */
     @Synchronized

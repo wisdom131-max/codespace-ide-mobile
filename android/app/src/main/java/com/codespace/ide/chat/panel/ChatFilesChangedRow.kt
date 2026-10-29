@@ -52,6 +52,9 @@ internal fun ChatFilesChangedRow() {
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp)) {
         for (set in sets.toList()) {
+            // An operation that changed nothing leaves an EMPTY set behind; it must render
+            // nothing at all rather than an empty "0 files changed" row.
+            if (set.entries.isEmpty()) continue
             key(set.id) {
                 if (set.settled) {
                     // Only a set that needs explaining is kept on screen: a conflict the user
