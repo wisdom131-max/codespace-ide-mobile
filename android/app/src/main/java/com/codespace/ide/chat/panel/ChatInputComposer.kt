@@ -1,6 +1,7 @@
 package com.codespace.ide.chat.panel
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -82,7 +83,14 @@ internal fun ChatInputComposer(
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(c.surface, RoundedCornerShape(ChatTokens.RADIUS_PANEL.dp))
+                // Measured from the VS Code reference: the composer is its own surface (a
+                // clearly lighter box) with a hairline border, not the panel background.
+                .background(c.input, RoundedCornerShape(ChatTokens.RADIUS_PANEL.dp))
+                .border(
+                    width = 1.dp,
+                    color = c.border,
+                    shape = RoundedCornerShape(ChatTokens.RADIUS_PANEL.dp),
+                )
                 .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp)
         ) {
             TextField(
