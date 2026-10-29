@@ -22,12 +22,27 @@ Updated 2026-10-28 after WP9(a). Each DONE row carries commit + CI run.
 | WP8 (e) attachment pipeline (picker, 10 MB cap, staging, redaction) | DONE | a79c8e7 + fixes 46ee083/13244a2 GREEN 3406 |
 | WP9 (a) text/context attachments + credential redaction gate | DONE | 74fe423 + fix 5532eb7 GREEN 3409 |
 | CHECKPOINT 2 (install target + batch sheet WP1-WP9a) | READY | docs/checkpoint-2-sheet.md |
-| WP9 (b) P0 residuals: sessions/history roster, modes, tool loop, @participants//slash | PENDING | see docs/chat-p0-gaps.md |
+| U3 composer rebuilt to the video (single card #3C3C3C, toolbar row, send cluster, keys moved to Settings) | DONE | 4e62781 GREEN 3432 |
+| U4 modes wired Ask/Edit/Agent (provider system slot; per-provider payloads) | DONE | 085e577 + fix 855b371 GREEN 3437 |
+| U5 composer polish (plus -> own row, mic removed, blue-on-text border, tighter chips) | DONE | d573aef GREEN 3438 |
+| U6-a tool-wire decision layer (pure: parse, mode rules, round cap, result turn) | DONE | 31259f4 GREEN 3439 |
+| U6-b chat panel ACTS behind the existing approval gate (runTools + approval card) | DONE | ce98d03 + fix ebf8b9a GREEN 3441 |
+| U6-c agent commands visible in the terminal (badge / transcript record) | PENDING | spec section 6, next |
+| U6-d Explorer refresh + reveal on agent file writes | PENDING | spec section 6, next |
 | Read-only docs: rebuild-plan.md v2, ui-research.md | PENDING | - |
+
+### Composer PENDING list (continuity — every open item, owner spec 2026-10-29)
+- U6-c terminal visibility for agent commands; U6-d Explorer refresh/reveal.
+- Device round for U5+U6 together (batching rule): Add Context proportions, gear, composer
+  height, tool row position, multiline growth, approvals row gone.
+- Robolectric dependency still missing, so SharedPreferences-backed stores stay untested on JVM.
 
 ### Chat PENDING list (continuity — every open item)
 - Sessions/history roster + restore (P0 residual; needs storage format + sessions_v2 migration).
-- Ask/Edit/Agent modes + tool loop with confirmations (P0 residual; after Explorer P1-P6).
+- Ask/Edit/Agent modes + tool loop with confirmations: MODES DONE (085e577) and the TOOL LOOP
+  DONE (ce98d03, approval-gated). Agent actions are not yet VISIBLE in the terminal and the
+  Explorer does not yet reveal agent file writes: U6-c / U6-d remain.
+
 - @participants + /slash autocomplete (P1).
 - #selection / #problems / terminal-output attach sub-kinds (P1).
 - rebuild-plan.md v2 and ui-research.md (read-only docs, owner review).

@@ -73,6 +73,17 @@ object ChatTokens {
     const val GAP = 8
     const val GAP_TIGHT = 6
 
+    // Composer proportions — a control's BOX is its content's size; the touch target is
+    // added by padding inside the clickable edge, so no control floats in empty space.
+    const val GLYPH_BOX_DP = 32
+    const val FONT_GLYPH = 17
+    const val COMPOSER_ROW_GAP = 2
+    const val COMPOSER_PAD_BOTTOM = 4
+    const val CHIP_PAD_HORIZONTAL = 8
+    const val CHIP_PAD_VERTICAL = 3
+    const val TOUCH_HALO_DP = 8
+    const val FIELD_MIN_DP = 24
+
     // Typography (sp)
     const val FONT_MICRO = 10
     const val FONT_SMALL = 12

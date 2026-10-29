@@ -74,7 +74,6 @@ internal fun ChatInputComposer(
     onTools: () -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
-    approvalsLabel: String,
 ) {
     val c = ChatTokens.LocalChatColors.current
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -99,9 +98,14 @@ internal fun ChatInputComposer(
                         if (ChatComposerBorder.forText(value) == ComposerBorder.ACTIVE) c.accent else c.border,
                         RoundedCornerShape(ChatTokens.RADIUS_PANEL.dp),
                     )
+                    // Asymmetric on purpose: a little breathing room at the top, almost
+                    // none at the bottom, so the tool row and send button sit closer to the
+                    // card's lower edge (owner spec 5.4) and the whole composer is shorter.
                     .padding(
-                        horizontal = ChatTokens.PAD_HORIZONTAL.dp,
-                        vertical = ChatTokens.PAD_VERTICAL.dp,
+                        start = ChatTokens.PAD_HORIZONTAL.dp,
+                        end = ChatTokens.PAD_HORIZONTAL.dp,
+                        top = ChatTokens.PAD_VERTICAL.dp,
+                        bottom = ChatTokens.COMPOSER_PAD_BOTTOM.dp,
                     ),
             ) {
                 AddContextChip(onClick = onAddContext)
@@ -111,7 +115,7 @@ internal fun ChatInputComposer(
                     placeholder = placeholder,
                     maxLines = fieldSpec.fieldMaxLines,
                 )
-                Spacer(Modifier.height(ChatTokens.GAP_TIGHT.dp))
+                Spacer(Modifier.height(ChatTokens.COMPOSER_ROW_GAP.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     // CLIPPING FIX (owner screenshots, 2026-10-29): a Row measures its
                     // UNWEIGHTED children first, in order, so the toolbar claimed the whole
@@ -133,7 +137,6 @@ internal fun ChatInputComposer(
                     SendCluster(spec = send, onSend = onSend, onStop = onStop)
                 }
             }
-            ChatStatusRow(approvalsLabel = approvalsLabel, streaming = streaming)
         }
     }
 }
@@ -148,11 +151,16 @@ internal fun ChatInputComposer(
 @Composable
 private fun AddContextChip(onClick: () -> Unit) {
     val c = ChatTokens.LocalChatColors.current
+    // ROOT CAUSE of the "tiny label in a big empty box" look: this used to be a
+    // heightIn(min = 48.dp) / widthIn(min = 48.dp) Box holding a 12sp label, so a ~22dp
+    // chip floated inside a 48dp container and most of what you saw was empty space. The
+    // container is now the CONTENT's own size plus a small padding, and the touch area is
+    // enlarged by the padding INSIDE the clickable modifier, not by a minimum size - the
+    // same target, none of the dead space. No minimum width: nothing to centre badly.
     Box(
         modifier = Modifier
-            .heightIn(min = 48.dp)
-            .widthIn(min = 48.dp)
-            .clickable { onClick() },
+            .clickable { onClick() }
+            .padding(vertical = ChatTokens.TOUCH_HALO_DP.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(
@@ -162,7 +170,7 @@ private fun AddContextChip(onClick: () -> Unit) {
             maxLines = 1,
             modifier = Modifier
                 .background(c.surfaceAlt, RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
-                .padding(horizontal = ChatTokens.GAP.dp, vertical = 2.dp),
+                .padding(horizontal = ChatTokens.CHIP_PAD_HORIZONTAL.dp, vertical = ChatTokens.CHIP_PAD_VERTICAL.dp),
         )
     }
 }
@@ -179,7 +187,10 @@ private fun ChatComposerField(
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
+        // Responsive (owner spec 5.6): one text line when empty or short, growing to the
+        // spec's maxLines and scrolling internally past it. 40dp used to reserve two lines
+        // even for an empty box; the floor is now the single-line height.
+        modifier = Modifier.fillMaxWidth().heightIn(min = ChatTokens.FIELD_MIN_DP.dp),
         textStyle = TextStyle(color = c.text, fontSize = ChatTokens.FONT_BODY.sp),
         cursorBrush = SolidColor(c.accent),
         maxLines = maxLines,
@@ -318,11 +329,20 @@ private fun ModeChip(label: String?, enabled: Boolean, onClick: () -> Unit) {
 @Composable
 private fun GlyphButton(glyph: String, description: String, touchDp: Int, onClick: () -> Unit) {
     val c = ChatTokens.LocalChatColors.current
+    // ROOT CAUSE of the gear looking lost: a 14sp glyph centred in a Box(size = 48dp), so
+    // ~34dp of every 48 was empty. The VISUAL box is now GLYPH_BOX_DP with a bigger glyph;
+    // the 48dp touch target is restored by padding INSIDE the clickable edge, so the finger
+    // still gets 48dp while the icon reads at a sensible size.
+    val visualDp = ChatTokens.GLYPH_BOX_DP
+    val halo = ((touchDp - visualDp) / 2).coerceAtLeast(0)
     Box(
-        Modifier.size(touchDp.dp).clickable { onClick() },
+        Modifier
+            .clickable { onClick() }
+            .padding(halo.dp)
+            .size(visualDp.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(glyph, color = c.textSecondary, fontSize = ChatTokens.FONT_BODY.sp, maxLines = 1)
+        Text(glyph, color = c.textSecondary, fontSize = ChatTokens.FONT_GLYPH.sp, maxLines = 1)
     }
 }
 

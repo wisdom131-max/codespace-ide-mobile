@@ -73,6 +73,17 @@ object ChatTokens {
     const val GAP = @GAP@
     const val GAP_TIGHT = @GAP_TIGHT@
 
+    // Composer proportions — a control's BOX is its content's size; the touch target is
+    // added by padding inside the clickable edge, so no control floats in empty space.
+    const val GLYPH_BOX_DP = @GLYPH_BOX@
+    const val FONT_GLYPH = @FONT_GLYPH@
+    const val COMPOSER_ROW_GAP = @ROW_GAP@
+    const val COMPOSER_PAD_BOTTOM = @PAD_BOTTOM@
+    const val CHIP_PAD_HORIZONTAL = @CHIP_PAD_H@
+    const val CHIP_PAD_VERTICAL = @CHIP_PAD_V@
+    const val TOUCH_HALO_DP = @HALO@
+    const val FIELD_MIN_DP = @FIELD_MIN@
+
     // Typography (sp)
     const val FONT_MICRO = @F_MICRO@
     const val FONT_SMALL = @F_SMALL@
@@ -98,6 +109,15 @@ def kt_text(t):
     out = out.replace("@F_SMALL@", str(ty["fontSmall"]))
     out = out.replace("@F_BODY@", str(ty["fontBody"]))
     out = out.replace("@F_MONO@", str(ty["fontMono"]))
+    co = t["composer"]
+    out = out.replace("@GLYPH_BOX@", str(co["glyphBox"]))
+    out = out.replace("@FONT_GLYPH@", str(co["fontGlyph"]))
+    out = out.replace("@ROW_GAP@", str(co["rowGap"]))
+    out = out.replace("@PAD_BOTTOM@", str(co["padBottom"]))
+    out = out.replace("@CHIP_PAD_H@", str(co["chipPadHorizontal"]))
+    out = out.replace("@CHIP_PAD_V@", str(co["chipPadVertical"]))
+    out = out.replace("@HALO@", str(co["touchHalo"]))
+    out = out.replace("@FIELD_MIN@", str(co["fieldMin"]))
     return out
 
 def css_text(t):

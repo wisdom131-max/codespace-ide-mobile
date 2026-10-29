@@ -47,7 +47,6 @@ internal data class ChatToolbarSpec(
     /** Minimum touch target edge in dp. */
     val touchTargetDp: Int,
     /** Status row: show the text next to the Local/Approvals icons. */
-    val statusShowsText: Boolean,
 ) {
     val hasOverflow: Boolean get() = overflow.isNotEmpty()
 }
@@ -66,7 +65,6 @@ internal object ChatToolbarLayout {
     private const val TOOLS_DP = 48
 
     /** Width at or above which the status row keeps its text labels. */
-    const val STATUS_TEXT_FROM_DP = 330
 
     fun forWidth(widthDp: Int, imeVisible: Boolean): ChatToolbarSpec {
         val w = if (widthDp < 0) 0 else widthDp
@@ -115,7 +113,6 @@ internal object ChatToolbarLayout {
             modeShowsLabel = modeShowsLabel,
             modelChipMaxDp = if (modelShowsEffort) MODEL_WITH_EFFORT_DP else MODEL_MIN_DP + (left.coerceAtLeast(0)),
             touchTargetDp = TOUCH_TARGET_DP,
-            statusShowsText = w >= STATUS_TEXT_FROM_DP,
         )
     }
 }
