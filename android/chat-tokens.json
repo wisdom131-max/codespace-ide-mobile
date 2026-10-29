@@ -1,9 +1,9 @@
 {
   "meta": {
     "name": "vn-chat-tokens",
-    "version": 1,
+    "version": 2,
     "generator": "scripts/generate_chat_tokens.py",
-    "doc": "Single source for the chat UI tokens. Outputs are GENERATED: ChatTokens.kt (Compose) and app assets chat-tokens.css (CSS custom properties). Regenerate with: python3 scripts/generate_chat_tokens.py"
+    "doc": "Single source for the chat UI tokens. Outputs are GENERATED: ChatTokens.kt (Compose) and app assets chat-tokens.css (CSS custom properties). Regenerate with: python3 scripts/generate_chat_tokens.py v2: adds the 'input' surface measured from the VS Code Chat composer (#3C3C3C dark), and corrects dark hover (#2A2D2E) and border (#454545) to the measured values."
   },
   "radius": {
     "panel": 12,
@@ -25,8 +25,8 @@
     "dark": {
       "bg": "#1E1E1E",
       "surface": "#252526",
-      "surfaceAlt": "#2D2D30",
-      "border": "#3E3E42",
+      "surfaceAlt": "#2A2D2E",
+      "border": "#454545",
       "text": "#D4D4D4",
       "textSecondary": "#9D9D9D",
       "accent": "#3794FF",
@@ -35,7 +35,8 @@
       "error": "#F14C4C",
       "errorBg": "#2D1B1E",
       "warningBg": "#2D2A19",
-      "streamCursor": "#D4D4D4"
+      "streamCursor": "#D4D4D4",
+      "input": "#3C3C3C"
     },
     "light": {
       "bg": "#FFFFFF",
@@ -50,7 +51,8 @@
       "error": "#C42B1C",
       "errorBg": "#FBE9E7",
       "warningBg": "#FFF6DC",
-      "streamCursor": "#1E1E1E"
+      "streamCursor": "#1E1E1E",
+      "input": "#FFFFFF"
     }
   }
 }

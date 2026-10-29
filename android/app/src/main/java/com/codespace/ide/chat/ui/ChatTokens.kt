@@ -28,8 +28,8 @@ object ChatTokens {
     val dark = ChatColors(
         bg = Color(0xFF1E1E1E),
         surface = Color(0xFF252526),
-        surfaceAlt = Color(0xFF2D2D30),
-        border = Color(0xFF3E3E42),
+        surfaceAlt = Color(0xFF2A2D2E),
+        border = Color(0xFF454545),
         text = Color(0xFFD4D4D4),
         textSecondary = Color(0xFF9D9D9D),
         accent = Color(0xFF3794FF),
@@ -39,6 +39,7 @@ object ChatTokens {
         errorBg = Color(0xFF2D1B1E),
         warningBg = Color(0xFF2D2A19),
         streamCursor = Color(0xFFD4D4D4),
+        input = Color(0xFF3C3C3C),
     )
 
     val light = ChatColors(
@@ -55,6 +56,7 @@ object ChatTokens {
         errorBg = Color(0xFFFBE9E7),
         warningBg = Color(0xFFFFF6DC),
         streamCursor = Color(0xFF1E1E1E),
+        input = Color(0xFFFFFFFF),
     )
 
     val LocalChatColors = staticCompositionLocalOf { dark }

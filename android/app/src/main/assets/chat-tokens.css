@@ -3,8 +3,8 @@
 .chat-dark {
   --chat-bg: #1E1E1E;
   --chat-surface: #252526;
-  --chat-surfacealt: #2D2D30;
-  --chat-border: #3E3E42;
+  --chat-surfacealt: #2A2D2E;
+  --chat-border: #454545;
   --chat-text: #D4D4D4;
   --chat-textsecondary: #9D9D9D;
   --chat-accent: #3794FF;
@@ -14,6 +14,7 @@
   --chat-errorbg: #2D1B1E;
   --chat-warningbg: #2D2A19;
   --chat-streamcursor: #D4D4D4;
+  --chat-input: #3C3C3C;
 }
 
 .chat-light {
@@ -30,4 +31,5 @@
   --chat-errorbg: #FBE9E7;
   --chat-warningbg: #FFF6DC;
   --chat-streamcursor: #1E1E1E;
+  --chat-input: #FFFFFF;
 }

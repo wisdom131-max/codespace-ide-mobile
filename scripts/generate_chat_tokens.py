@@ -18,7 +18,7 @@ CSS_OUT = os.path.join(ROOT, "android", "app", "src", "main", "assets", "chat-to
 # Field order is FIXED so the outputs are byte-stable.
 COLOR_FIELDS = ["bg", "surface", "surfaceAlt", "border", "text", "textSecondary",
                 "accent", "success", "warning", "error", "errorBg", "warningBg",
-                "streamCursor"]
+                "streamCursor", "input"]
 
 def compose_color(hex_str):
     h = hex_str.lstrip("#")

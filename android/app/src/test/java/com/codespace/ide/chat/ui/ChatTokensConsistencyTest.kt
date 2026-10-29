@@ -16,7 +16,9 @@ class ChatTokensConsistencyTest {
 
     private val colorFields = listOf(
         "bg", "surface", "surfaceAlt", "border", "text", "textSecondary",
-        "accent", "success", "warning", "error", "errorBg", "warningBg", "streamCursor"
+        "accent", "success", "warning", "error", "errorBg", "warningBg", "streamCursor",
+        "input"   // v2: composer surface, measured from the VS Code reference
+
     )
 
     /** Gradle runs unit tests with the module dir as CWD; cover repo-root too. */
