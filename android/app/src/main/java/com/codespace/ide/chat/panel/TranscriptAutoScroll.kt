@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
+import com.codespace.ide.chat.ui.ChatRowModel
 
 /**
  * Batch 3 — TRANSCRIPT AUTO-SCROLL (owner mission part 3).

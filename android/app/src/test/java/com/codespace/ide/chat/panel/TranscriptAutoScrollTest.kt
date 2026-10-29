@@ -1,5 +1,6 @@
 package com.codespace.ide.chat.panel
 
+import com.codespace.ide.chat.ui.ChatRowModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
