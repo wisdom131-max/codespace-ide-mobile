@@ -39,11 +39,14 @@ class ApprovalPresentationTest {
     }
 
     @Test
-    fun aLongShellCommandIsNotShownAsAPill() {
-        // A pill showing a 40-character pipeline is noise, not a target.
+    fun aShellCommandNeverGetsAPill() {
+        // Run 3451 caught this: the pill took the FIRST token, so a build showed a pill
+        // reading "npm" - a target that describes nothing, inviting approval on the wrong
+        // fact. A command is not a target at all, short or long.
         assertNull(ApprovalPresentation.targetOf("run_command", "npm run build -- --watch --debug"))
-        // A short one still reads fine.
-        assertEquals("ls", ApprovalPresentation.targetOf("run_command", "ls -la"))
+        assertNull("even a short command must not become a pill", ApprovalPresentation.targetOf("run_command", "ls -la"))
+        // Other tools keep their pills, so this is not a blanket removal.
+        assertEquals("src/Main.kt", ApprovalPresentation.targetOf("write_file", "src/Main.kt"))
     }
 
     @Test

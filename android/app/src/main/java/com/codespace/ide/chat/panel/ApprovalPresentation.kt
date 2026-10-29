@@ -84,13 +84,15 @@ internal object ApprovalPresentation {
      */
     fun targetOf(toolName: String, summary: String): String? {
         if (summary.isBlank()) return null
+        // A shell command must NEVER get a pill. Its first token ("npm", "git", "cd") is not
+        // a target: the pill would read "npm" for a build, which describes nothing and invites
+        // approval based on the wrong fact. The full command is already the description line.
+        if (toolName == "run_command") return null
         val quoted = Regex("\"([^\"]{1,80})\"").find(summary)?.groupValues?.get(1)
         if (quoted != null) return quoted
         val token = summary.split(' ', '\n').firstOrNull { it.isNotBlank() } ?: return null
         val cleaned = token.trim().trimEnd(',', ';', ':')
         if (cleaned.isEmpty()) return null
-        // A shell command is not a "target"; showing the whole command in a pill is noise.
-        if (toolName == "run_command" && cleaned.length > 24) return null
         return if (cleaned.length > 60) cleaned.take(57) + "\u2026" else cleaned
     }
 
