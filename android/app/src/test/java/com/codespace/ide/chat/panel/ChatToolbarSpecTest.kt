@@ -80,7 +80,6 @@ class ChatToolbarSpecTest {
         assertTrue(spec(360).modeShowsLabel)
         assertFalse("effort needs more room than 400dp", spec(400).modelShowsEffort)
         assertTrue(spec(480).modelShowsEffort)
-        assertTrue(spec(480).statusShowsText)
     }
 
     @Test
@@ -120,11 +119,8 @@ class ChatToolbarSpecTest {
         }
     }
 
-    @Test
-    fun statusRowDropsItsTextBeforeItClips() {
-        assertFalse(spec(280).statusShowsText)
-        assertTrue(spec(360).statusShowsText)
-    }
+    // The status row is gone (owner spec section 4 removed the visible approvals label),
+    // so there is no "drop its text when narrow" rule to assert any more.
 
     @Test
     fun degenerateWidthsDoNotCrashAndKeepEverythingReachable() {
