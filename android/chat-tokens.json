@@ -57,13 +57,17 @@
   },
   "composer": {
     "_doc": "Composer proportions, owner spec 2026-10-29: a glyph or chip sits in a box the size of its content, and the 48dp touch target comes from padding inside the clickable edge, never from a minimum size - a minimum size is what made the gear and Add Context look lost in empty space.",
-    "glyphBox": 32,
-    "fontGlyph": 17,
+    "glyphBox": 28,
+    "fontGlyph": 16,
     "rowGap": 2,
     "padBottom": 4,
-    "chipPadHorizontal": 8,
-    "chipPadVertical": 3,
-    "touchHalo": 8,
-    "fieldMin": 24
+    "chipPadHorizontal": 6,
+    "chipPadVertical": 2,
+    "touchHalo": 6,
+    "fieldMin": 22,
+    "fieldMax": 96,
+    "padTop": 6,
+    "wrapPadHorizontal": 6,
+    "wrapPadVertical": 3
   }
 }

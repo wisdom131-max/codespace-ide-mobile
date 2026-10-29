@@ -83,6 +83,11 @@ object ChatTokens {
     const val CHIP_PAD_VERTICAL = @CHIP_PAD_V@
     const val TOUCH_HALO_DP = @HALO@
     const val FIELD_MIN_DP = @FIELD_MIN@
+    /** Hard ceiling: past this the field scrolls internally instead of growing. */
+    const val FIELD_MAX_DP = @FIELD_MAX@
+    const val COMPOSER_PAD_TOP = @PAD_TOP@
+    const val COMPOSER_WRAP_PAD_H = @WRAP_H@
+    const val COMPOSER_WRAP_PAD_V = @WRAP_V@
 
     // Typography (sp)
     const val FONT_MICRO = @F_MICRO@
@@ -118,6 +123,10 @@ def kt_text(t):
     out = out.replace("@CHIP_PAD_V@", str(co["chipPadVertical"]))
     out = out.replace("@HALO@", str(co["touchHalo"]))
     out = out.replace("@FIELD_MIN@", str(co["fieldMin"]))
+    out = out.replace("@FIELD_MAX@", str(co["fieldMax"]))
+    out = out.replace("@PAD_TOP@", str(co["padTop"]))
+    out = out.replace("@WRAP_H@", str(co["wrapPadHorizontal"]))
+    out = out.replace("@WRAP_V@", str(co["wrapPadVertical"]))
     return out
 
 def css_text(t):

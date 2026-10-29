@@ -103,9 +103,13 @@ class ChatToolbarSpecTest {
     }
 
     @Test
-    fun everyTouchTargetIsAtLeast48dp() {
+    fun everyTouchTargetIsAtLeast40dp() {
+        // Deliberately lowered from 48dp (2026-10-29) at the owner's request to shorten the
+        // composer: the target is still larger than the 28dp visual box, so the extra area
+        // is finger, and 40dp clears the platform floor. This test exists so the number can
+        // never drift DOWN unnoticed - if someone shrinks it again, it fails here first.
         for (w in listOf(0, 280, 360, 480, 2000)) {
-            assertTrue("w=$w", spec(w).touchTargetDp >= 48)
+            assertTrue("w=$w", spec(w).touchTargetDp >= 40)
         }
     }
 

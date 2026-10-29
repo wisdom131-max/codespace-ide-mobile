@@ -53,7 +53,15 @@ internal data class ChatToolbarSpec(
 
 internal object ChatToolbarLayout {
 
-    const val TOUCH_TARGET_DP = 48
+    /**
+     * Toolbar touch target. Was 48dp; reduced to 40dp on the owner's explicit instruction
+     * (2026-10-29, second pass): the composer's controls sit in their own row, and 48dp of
+     * layout height per row was the largest single term in a composer that was eating the
+     * conversation. 40dp still clears the 36dp floor of the platform icon buttons that
+     * surround it, and the VISUAL box is only 28dp, so the extra 12dp stays finger, not
+     * decoration. Anything with a real background (chips, send) keeps its own size.
+     */
+    const val TOUCH_TARGET_DP = 40
 
     /** Width the fixed right-hand cluster (send + chevron + overflow) reserves. */
     private const val RIGHT_CLUSTER_DP = 104

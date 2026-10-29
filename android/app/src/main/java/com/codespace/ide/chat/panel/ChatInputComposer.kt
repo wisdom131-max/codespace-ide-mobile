@@ -88,7 +88,14 @@ internal fun ChatInputComposer(
             modelBlank = modelLabel.isBlank(),
             hasText = value.isNotBlank(),
         )
-        Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) {
+        // The panel-level ring around the card (was 8/6): the card is the visual object,
+        // so this only needs to separate it from the message list, not frame it.
+        Column(
+            Modifier.fillMaxWidth().padding(
+                horizontal = ChatTokens.COMPOSER_WRAP_PAD_H.dp,
+                vertical = ChatTokens.COMPOSER_WRAP_PAD_V.dp,
+            ),
+        ) {
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -104,7 +111,7 @@ internal fun ChatInputComposer(
                     .padding(
                         start = ChatTokens.PAD_HORIZONTAL.dp,
                         end = ChatTokens.PAD_HORIZONTAL.dp,
-                        top = ChatTokens.PAD_VERTICAL.dp,
+                        top = ChatTokens.COMPOSER_PAD_TOP.dp,
                         bottom = ChatTokens.COMPOSER_PAD_BOTTOM.dp,
                     ),
             ) {
@@ -190,7 +197,13 @@ private fun ChatComposerField(
         // Responsive (owner spec 5.6): one text line when empty or short, growing to the
         // spec's maxLines and scrolling internally past it. 40dp used to reserve two lines
         // even for an empty box; the floor is now the single-line height.
-        modifier = Modifier.fillMaxWidth().heightIn(min = ChatTokens.FIELD_MIN_DP.dp),
+        // Bounded both ways: one line when short, and a hard ceiling so a long paste can
+        // never push the conversation off screen - past FIELD_MAX_DP the field scrolls
+        // inside itself (owner spec: "prevent the composer from growing indefinitely").
+        modifier = Modifier.fillMaxWidth().heightIn(
+            min = ChatTokens.FIELD_MIN_DP.dp,
+            max = ChatTokens.FIELD_MAX_DP.dp,
+        ),
         textStyle = TextStyle(color = c.text, fontSize = ChatTokens.FONT_BODY.sp),
         cursorBrush = SolidColor(c.accent),
         maxLines = maxLines,
@@ -307,7 +320,7 @@ private fun ModelChip(
             .widthIn(max = maxDp.dp)
             .background(c.surfaceAlt, RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
             .clickable { onClick() }
-            .padding(horizontal = ChatTokens.GAP_TIGHT.dp, vertical = 4.dp),
+            .padding(horizontal = ChatTokens.CHIP_PAD_HORIZONTAL.dp, vertical = ChatTokens.CHIP_PAD_VERTICAL.dp),
     )
 }
 
@@ -322,7 +335,7 @@ private fun ModeChip(label: String?, enabled: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .background(c.surfaceAlt, RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
             .clickable(enabled = enabled) { onClick() }
-            .padding(horizontal = ChatTokens.GAP_TIGHT.dp, vertical = 4.dp),
+            .padding(horizontal = ChatTokens.CHIP_PAD_HORIZONTAL.dp, vertical = ChatTokens.CHIP_PAD_VERTICAL.dp),
     )
 }
 
