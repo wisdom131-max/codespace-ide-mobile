@@ -71,6 +71,10 @@ object AgentConnectorManager {
      * right after the agent loop returns. */
     @Volatile private var pendingConnectCard: String? = null
 
+    /** The label the chat card shows. Falls back to the raw id, capitalised, never to blank. */
+    fun displayNameFor(service: String): String =
+        DISPLAY_NAMES[service] ?: service.replaceFirstChar { it.uppercase() }
+
     fun consumePendingConnectCard(): String? {
         val s = pendingConnectCard
         pendingConnectCard = null

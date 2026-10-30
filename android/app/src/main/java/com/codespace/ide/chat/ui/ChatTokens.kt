@@ -65,6 +65,7 @@ object ChatTokens {
     // Radius (dp) — MANDATORY UI RULE: panels/chips 8-12dp rounded.
     const val RADIUS_PANEL = 12
     const val RADIUS_CHIP = 8
+    const val RADIUS_CARD = 12
 
     // Padding (dp) — MANDATORY UI RULE: 12dp horizontal, 10dp vertical.
     const val PAD_HORIZONTAL = 12

@@ -77,3 +77,17 @@ Still open by owner ruling: 4/13/14 (waiting for the picker reference), 7/8 (wai
 Index format note: v2 appends a mode column. A v1 file reads unchanged (mode defaults to ASK); a
 v2 record missing its last column is STILL treated as a torn write, and an unknown mode token
 falls back to ASK rather than discarding the conversation.
+
+## Phase 2c — attachment picker + connector card + icon refinement (2026-10-31)
+
+Owner supplied the picker reference and the icon reference; both are now implemented.
+
+| # | Requirement | Now | Evidence |
+|---|---|---|---|
+| 4 | Attachment picker redesign | COMPLETE | `chat/panel/attachments/AttachmentPickerDialog.kt` (dark modal, three-across tiles, type badges, folder drill-down, "＋ Add from Phone", ↑ Up + ✕), driven by `AttachmentPickerModel.kt` |
+| 13 | Picker functionality | COMPLETE (code) | Files stage through the same `ChatSession.addPending` gate as the system sheet: 10 MB cap, credential-name refusal, model-capability gate. Refusals are returned to the sheet and shown, never swallowed |
+| 14 | File-manager navigation | COMPLETE | `AttachmentPicker.parentOf`/`isInsideRoot`: back stops at the project root, unrelated paths are refused, unreadable folders report a reason instead of looking empty |
+| 7 | Chat logo | COMPLETE | `res/drawable/ic_chat_panel.xml`: transparent, stroke-only, tinted at the call site, 1.2 stroke, 1.9 corner radius |
+| 9 / connector | Connector card | DEFECTIVE → COMPLETE | `AgentConnectorManager.requestConnectorCard` set a side channel consumed only by the DEAD `CopilotChatPanelInline`; the live panel now consumes it and draws `ConnectorConnectCard`, whose Connect opens `ConnectorsHubSheet(focusServiceId)` and whose Reject dismisses |
+
+Tests added: `AttachmentPickerTest` (9) — kind mapping, sort order, cap+truncation, missing folder vs empty folder, file-as-folder refusal, back-root clamp, sibling-prefix escape, badges, size labels.

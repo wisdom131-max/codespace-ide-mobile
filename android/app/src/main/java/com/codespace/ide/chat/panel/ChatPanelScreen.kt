@@ -185,6 +185,11 @@ private fun ChatBody(
         androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri -> if (uri != null) readAttachment(ctx, uri, session) }
     val pending by session.pending.collectAsState()
+    // Pick: the in-app file manager (owner reference 2026-10-31) replaces the bare system sheet
+    // as the primary path; the sheet stays as "Add from Phone" inside it.
+    var showPicker by remember(projectId) { mutableStateOf(false) }
+    var showHub by remember(projectId) { mutableStateOf(false) }
+    var connectCard by remember(projectId) { mutableStateOf<String?>(null) }
     // U3: composer mode. Item 18: it is now restored from THIS session's metadata, keyed on
     // (project, session), so Agent/Edit survive an app restart and switching sessions restores
     // each session's own mode. Ask stays the default only for a session that never chose one.
@@ -275,6 +280,25 @@ private fun ChatBody(
         // Section 7 — ORDER MATTERS and is deliberate: the approval card (work awaiting
         // authorization) sits ABOVE the Files Changed row (work already done). They are never
         // the same operation shown twice, so the eye reads "pending" then "completed".
+        // A tool asked to show a Connect card: this is the surface it promised.
+        LaunchedEffect(state.streaming) {
+            if (!state.streaming) {
+                com.codespace.ide.agent.AgentConnectorManager.consumePendingConnectCard()?.let { connectCard = it }
+            }
+        }
+        connectCard?.let { svc ->
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.GAP_TIGHT.dp)) {
+                ConnectorConnectCard(
+                    displayName = com.codespace.ide.agent.AgentConnectorManager.displayNameFor(svc),
+                    colors = c,
+                    onConnect = { showHub = true },
+                    onReject = {
+                        connectCard = null
+                        notice = "Connector request dismissed. The assistant is told on your next message."
+                    },
+                )
+            }
+        }
         ChatApprovalCard()
         // Section 5: the Files Changed row exists only in Agent mode, and the row itself
         // renders nothing when the journal holds no real change.
@@ -314,7 +338,7 @@ private fun ChatBody(
                     notice = "Could not remember the " + it.label + " mode for this session."
                 }
             },
-            onAddContext = { attachLauncher.launch("*/*") },
+            onAddContext = { showPicker = true },
             onOpenModel = { showSelect = true },
             onTools = { showKeys = true },
             onSend = { if (input.isNotBlank()) { session.send(input); input = "" } },
@@ -383,6 +407,30 @@ private fun ChatBody(
                 transcriptRead = voiceStore.read(projectId, activeId)
             },
             onDismiss = { showTranscripts = false },
+        )
+    }
+    if (showPicker) {
+        val root = com.codespace.ide.security.TrustState.activeProjectRoot(ctx)
+        if (root.isNullOrBlank()) {
+            showPicker = false
+            notice = "Open a project before attaching files from it."
+        } else {
+            com.codespace.ide.chat.panel.attachments.AttachmentPickerDialog(
+                root = root,
+                colors = c,
+                onDismiss = { showPicker = false },
+                onStage = { file -> stageLocalFile(session, file) },
+                onAddFromPhone = {
+                    showPicker = false
+                    attachLauncher.launch("*/*")
+                },
+            )
+        }
+    }
+    if (showHub) {
+        com.codespace.ide.ui.screens.ConnectorsHubSheet(
+            onDismiss = { showHub = false; connectCard = null },
+            focusServiceId = connectCard,
         )
     }
     if (showSelect) {
@@ -756,4 +804,41 @@ private fun readAttachment(
 private fun guessMimeFromName(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
     "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "gif" -> "image/gif"
     "webp" -> "image/webp"; "pdf" -> "application/pdf"; else -> ""
+}
+
+/**
+ * Pick C1: stage a file chosen from the in-app picker.
+ *
+ * Same gates as the system picker - 10 MB cap, credential-name refusal, honest refusal notes -
+ * but read from a real path inside the project instead of a content:// uri. Refusals come back as
+ * a message so the picker shows the reason on the tile sheet rather than silently doing nothing.
+ */
+private fun stageLocalFile(session: ChatSession, file: java.io.File): String? {
+    if (!file.isFile) return "That entry is not a file any more."
+    if (!file.canRead()) return "Cannot read '" + file.name + "' (permission denied)."
+    if (session.looksLikeCredentialFile(file.name)) {
+        return "'" + file.name + "' looks like a credential file, so it is not attached."
+    }
+    val size = try { file.length() } catch (t: Throwable) { -1L }
+    if (size < 0L) return "Cannot size '" + file.name + "'."
+    if (size > PanelAttachment.MAX_BYTES) {
+        return "'" + file.name + "' is " + (size / (1024L * 1024L)) + " MB, over the 10 MB attachment cap."
+    }
+    val bytes = try { file.readBytes() } catch (t: Throwable) {
+        return "Cannot read '" + file.name + "' (" + (t.message ?: "error") + ")."
+    }
+    val name = file.name
+    val mime = guessMimeFromName(name)
+    val ext = name.substringAfterLast('.', "").lowercase()
+    val textKind = mime.startsWith("text/") || mime == "application/json" || mime == "application/xml" ||
+        ext in setOf("py", "kt", "kts", "java", "js", "ts", "tsx", "jsx", "json", "md", "txt", "log",
+            "sh", "yml", "yaml", "toml", "gradle", "css", "html", "xml", "c", "h", "cpp", "go", "rs", "rb", "sql")
+    session.addPending(
+        name = name,
+        mimeType = mime,
+        base64 = if (textKind) "" else android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
+        sizeBytes = bytes.size.toLong(),
+        text = if (textKind) String(bytes, Charsets.UTF_8) else null,
+    )
+    return null
 }
