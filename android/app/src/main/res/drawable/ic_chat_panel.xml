@@ -1,40 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  VN Code chat panel mark (owner-supplied reference, 2026-10-30).
+  VN Code chat panel mark (owner reference 2026-10-30, refined 2026-10-31).
 
-  Two overlapping rounded speech bubbles, offset on the diagonal, each with a tail: the front
-  bubble's tail hangs from its bottom-right, the back bubble's from its bottom-left. Uniform
-  stroke, round caps and joins, no fill.
-
-  Two deliberate engineering choices:
-  * STROKE ONLY, no fill. The reference occludes the back bubble with the front one's fill; a
-    fill here would have to be the surface colour, which the drawable cannot know, so the back
-    bubble is drawn as the visible part of its own outline instead (it stops where the front
-    bubble begins). Same picture, on any background.
-  * Colour comes from the caller (Compose Icon tint), so the mark follows the panel theme
-    instead of shipping a hardcoded black that disappears in dark mode.
+  Two overlapping rounded speech bubbles. Deliberate choices:
+   * STROKE ONLY (fill is fully transparent): the back bubble is drawn as the OPEN part of its
+     outline that the front bubble does not cover, so the overlap reads correctly without an
+     opaque fill. That is what lets the mark sit on any surface and follow the theme.
+   * No hardcoded ink: the caller tints it (Icon -> LocalContentColor / chat text colour), so a
+     light or dark theme needs no separate asset.
+   * 1.2 stroke and 1.9 radius: lighter than the first cut and a little sharper at the corners,
+     per the owner's note.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-
-    <!-- back bubble: top and left edges, bottom-left tail, ending behind the front bubble -->
+    <!-- back bubble: visible outline only, ending where the front bubble begins -->
     <path
+        android:pathData="M15.4,8.6 L15.4,5.5 A1.9,1.9 0 0 0 13.5,3.6 L5.1,3.6 A1.9,1.9 0 0 0 3.2,5.5 L3.2,9.9 A1.9,1.9 0 0 0 5.1,11.8 L7.2,11.8 L6.1,14.5 L8.5,11.8"
         android:fillColor="#00000000"
-        android:pathData="M15.4,8.6 L15.4,6.2 A2.6,2.6 0 0 0 12.8,3.6 L5.8,3.6 A2.6,2.6 0 0 0 3.2,6.2 L3.2,9.2 A2.6,2.6 0 0 0 5.8,11.8 L7.2,11.8 L6.1,14.5 L8.5,11.8"
         android:strokeColor="#FF000000"
+        android:strokeWidth="1.2"
         android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:strokeWidth="1.5" />
-
-    <!-- front bubble, complete, with its bottom-right tail -->
+        android:strokeLineJoin="round" />
+    <!-- front bubble -->
     <path
+        android:pathData="M8.6,10.5 A1.9,1.9 0 0 1 10.5,8.6 L18.9,8.6 A1.9,1.9 0 0 1 20.8,10.5 L20.8,14.9 A1.9,1.9 0 0 1 18.9,16.8 L17.1,16.8 L18.3,19.5 L14.5,16.8 L10.5,16.8 A1.9,1.9 0 0 1 8.6,14.9 Z"
         android:fillColor="#00000000"
-        android:pathData="M8.6,11.2 A2.6,2.6 0 0 1 11.2,8.6 L18.2,8.6 A2.6,2.6 0 0 1 20.8,11.2 L20.8,14.2 A2.6,2.6 0 0 1 18.2,16.8 L17.1,16.8 L18.3,19.5 L14.5,16.8 L11.2,16.8 A2.6,2.6 0 0 1 8.6,14.2 Z"
         android:strokeColor="#FF000000"
+        android:strokeWidth="1.2"
         android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:strokeWidth="1.5" />
+        android:strokeLineJoin="round" />
 </vector>
