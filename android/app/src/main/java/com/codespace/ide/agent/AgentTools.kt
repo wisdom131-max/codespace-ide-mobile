@@ -186,8 +186,14 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "git_commit_push" -> gitCommitPush(args.getString("message"), args.optString("repo_dir").ifBlank { null }, context)
                 "git_pull_rebase" -> gitPullRebase(args.optString("repo_dir").ifBlank { null }, context)
                 "git_branch" -> gitBranch(args.getString("action"), args.optString("name", ""), args.optString("repo_dir").ifBlank { null }, context)
-                "git_status" -> gitStatus(args.optString("repo_dir").ifBlank { null }, context)
-                "git_diff" -> gitDiff(args.optBoolean("staged", false), args.optString("repo_dir").ifBlank { null }, context)
+                // PHASE 1: inspected output is capped, so a giant diff/status can never
+                // eat the context window. The marker states how much was dropped.
+                "git_status" -> com.codespace.ide.util.ToolOutputBounds.bound(
+                    gitStatus(args.optString("repo_dir").ifBlank { null }, context)
+                )
+                "git_diff" -> com.codespace.ide.util.ToolOutputBounds.bound(
+                    gitDiff(args.optBoolean("staged", false), args.optString("repo_dir").ifBlank { null }, context)
+                )
                 "save_secret" -> saveSecret(args.getString("key"), args.getString("value"), context)
                 "get_secret" -> getSecret(args.getString("key"), context)
                 "detect_secrets" -> detectSecrets(args.optString("text").ifBlank { null }, args.optString("path").ifBlank { null })

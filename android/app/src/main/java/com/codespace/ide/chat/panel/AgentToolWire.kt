@@ -50,15 +50,13 @@ internal object AgentToolWire {
      * bodies, which is precisely the dishonesty the workspace block exists to prevent.
      * Nothing here can write, execute or reach the network.
      */
-    private val READ_ONLY_TOOLS = setOf("read_file", "list_files", "search_files")
-
-    /** Tools each mode may run. Ask reads; Edit edits; Agent does everything but secrets. */
-    fun allowsTool(mode: ChatMode, toolName: String): Boolean = when (mode) {
-        ChatMode.ASK -> toolName in READ_ONLY_TOOLS
-        // Edit may touch files but must not execute anything.
-        ChatMode.EDIT -> toolName in setOf("read_file", "write_file", "list_files", "search_files")
-        ChatMode.AGENT -> toolName != "save_secret" && toolName != "get_secret"
-    }
+    // PHASE 1 (2026-10-30): the hand-maintained sets that used to live here are gone.
+    // ToolRegistry is now the single source of truth for which name a mode may run, so
+    // the advertised list and the accepted list can never drift apart again.
+    // Ask reads (the whole read-only set, not just three names); Edit adds writes but
+    // still never executes; Agent adds execution and still never touches secrets.
+    fun allowsTool(mode: ChatMode, toolName: String): Boolean =
+        ToolRegistry.allows(mode, toolName)
 
     /** Every mode now has at least one permitted tool, so the protocol is always sent. */
     fun modeRunsTools(mode: ChatMode): Boolean = true
@@ -143,11 +141,9 @@ internal object AgentToolWire {
      * tool to Edit and then refusing it would be a trap, not a boundary.
      */
     fun protocol(mode: ChatMode): String {
-        val names = ALL_TOOLS.filter { allowsTool(mode, it) }
-        if (names.isEmpty()) return ""
-        return "\n\nYou can act on this project. To use a tool, emit exactly one block:\n" +
-            "<tool>{\"name\":\"<tool>\",\"arguments\":{...}}</tool>\n" +
-            "Available tools: " + names.joinToString(", ") + ".\n" +
+        val block = ToolRegistry.promptBlock(mode)
+        if (block.isEmpty()) return ""
+        return block +
             "Use relative paths inside the open project (the workspace context names the " +
             "ACTIVE root). After a tool runs you are given its " +
             "output and must continue until the task is finished. Never claim a command ran " +
@@ -175,10 +171,8 @@ internal object AgentToolWire {
         return if (line.length <= max) line else line.take(max - 1) + "\u2026"
     }
 
-    /** Every tool the chat agent may ask for (mode rules narrow this per call). */
-    val ALL_TOOLS: List<String> = listOf(
-        "run_command", "read_file", "write_file", "list_files", "search_files",
-    )
+    /** Every tool the chat agent may ask for. Exposure per mode lives in ToolRegistry. */
+    val ALL_TOOLS: List<String> get() = ToolRegistry.names()
 
     /** Shown in the transcript for each executed step, so the work is visible, not implied. */
     fun stepLabel(call: ParsedToolCall): String = when (call.name) {
@@ -187,6 +181,6 @@ internal object AgentToolWire {
         "read_file" -> "Reading a file"
         "list_files" -> "Listing files"
         "search_files" -> "Searching the project"
-        else -> call.name
+        else -> ToolRegistry.spec(call.name)?.displayName ?: call.name
     }
 }

@@ -45,9 +45,22 @@ object AgentEntityManager {
 
     fun read(entity: String, filter: String?, context: Context): String {
         val dir = entityDir(entity, context)
-            ?: return "Invalid entity name: '$entity' (must be a single name — no paths)"
-        val files = dir.listFiles()?.sortedBy { it.name } ?: return "No $entity records found."
-        if (files.isEmpty()) return "No $entity records found."
+            ?: return "Invalid entity name: '$entity' (must be a single name, no paths)"
+        // PHASE 1: an unavailable store is reported as a configuration problem, not as
+        // "no records". A read that silently looks empty is worse than an honest refusal:
+        // the model would conclude the entity has no data and act on that false premise.
+        if (!dir.isDirectory) {
+            return "Entity storage is unavailable: the '$entity' store could not be created " +
+                "on this device (internal storage unreadable). Nothing was read."
+        }
+        if (!dir.canRead()) {
+            return "Entity storage is unavailable: the '$entity' store is not readable by the " +
+                "app (permission denied). Nothing was read."
+        }
+        val files = dir.listFiles()?.sortedBy { it.name }
+            ?: return "Entity storage is unavailable: the '$entity' store could not be listed " +
+                "(storage error). Nothing was read."
+        if (files.isEmpty()) return "No $entity records found (the '$entity' store is empty)."
 
         val filterJson = filter?.let { JSONObject(it) }
         val results = mutableListOf<JSONObject>()
