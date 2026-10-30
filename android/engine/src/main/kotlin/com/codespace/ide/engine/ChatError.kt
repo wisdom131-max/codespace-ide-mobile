@@ -20,8 +20,21 @@ sealed class ChatError(val userVerdict: String, val retryable: Boolean) {
     class Auth :
         ChatError("AI key rejected. Check the key in Settings.", false)
 
-    class ModelNotFound(val modelId: String) :
-        ChatError("Model not found: $modelId. Pick another model.", false)
+    /**
+     * 404. Two very different causes share this status: the model id is not served by this
+     * endpoint, or the endpoint path itself is wrong (a base URL missing /v1 was the
+     * classic one). The verdict names the requested PATH so the user can tell which -
+     * path only, never the query string, because a key can live there.
+     */
+    class ModelNotFound(val modelId: String, val endpointPath: String? = null) :
+        ChatError(
+            if (endpointPath.isNullOrBlank())
+                "Model not found: $modelId. Pick another model."
+            else
+                "Model not found: $modelId - or that path is wrong. The request went to " +
+                    "$endpointPath. Check the model id and the endpoint's base URL.",
+            false,
+        )
 
     class BadRequest(val detail: String) :
         ChatError("The request was rejected: $detail", false)
@@ -58,12 +71,17 @@ object ErrorTaxonomy {
      * Body is only skimmed for the provider hint on 402 and detail on 400;
      * raw body text never reaches the verdict as-is.
      */
-    fun classify(status: Int, headers: Map<String, String> = emptyMap(), body: String = ""): ChatError {
+    fun classify(
+        status: Int,
+        headers: Map<String, String> = emptyMap(),
+        body: String = "",
+        endpointPath: String? = null,
+    ): ChatError {
         return when {
             status == 429 -> ChatError.RateLimited(retryAfterSec(headers))
             status == 402 -> ChatError.OutOfCredits(providerHint(body))
             status == 401 || status == 403 -> ChatError.Auth()
-            status == 404 -> ChatError.ModelNotFound(modelIdHint(body))
+            status == 404 -> ChatError.ModelNotFound(modelIdHint(body), endpointPath)
             status in 400..499 -> ChatError.BadRequest(brief(body))
             else -> ChatError.Server(status)
         }

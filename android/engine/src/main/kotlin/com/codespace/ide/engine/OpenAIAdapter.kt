@@ -9,7 +9,9 @@ package com.codespace.ide.engine
 class OpenAIAdapter : ProviderAdapter {
     override val providerId = "openai"
 
-    override fun endpoint(config: EngineConfig): String = config.baseUrl
+    /** Base OR full path: EndpointUrls accepts both and never duplicates a segment. */
+    override fun endpoint(config: EngineConfig): String =
+        EndpointUrls.chatCompletions(config.baseUrl)
 
     /** Blank key = no Authorization header at all (Ollama/local presets). */
     override fun headers(config: EngineConfig): Map<String, String> =

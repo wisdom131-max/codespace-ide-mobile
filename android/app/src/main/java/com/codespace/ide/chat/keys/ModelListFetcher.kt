@@ -51,7 +51,10 @@ object ModelListFetcher {
     }
 
     suspend fun fetch(baseUrl: String, apiKey: String): FetchResult = withContext(Dispatchers.IO) {
-        val url = baseUrl.trimEnd('/') + "/models"
+        // Same normalizer the completion request uses, so a pasted full
+        // ".../chat/completions" URL still discovers instead of 404ing on
+        // ".../chat/completions/models".
+        val url = com.codespace.ide.engine.EndpointUrls.models(baseUrl)
         try {
             val conn = URL(url).openConnection() as HttpURLConnection
             conn.connectTimeout = 15_000

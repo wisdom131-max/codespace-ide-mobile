@@ -24,7 +24,9 @@ package com.codespace.ide.engine
 class AnthropicAdapter : ProviderAdapter {
     override val providerId = "anthropic"
 
-    override fun endpoint(config: EngineConfig): String = config.baseUrl
+    /** Base OR full path; the Messages path is appended exactly once. */
+    override fun endpoint(config: EngineConfig): String =
+        EndpointUrls.messages(config.baseUrl)
 
     override fun headers(config: EngineConfig): Map<String, String> =
         mapOf("x-api-key" to config.apiKey, "anthropic-version" to "2026-10-21")

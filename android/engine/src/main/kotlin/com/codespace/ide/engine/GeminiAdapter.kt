@@ -13,10 +13,8 @@ package com.codespace.ide.engine
 class GeminiAdapter : ProviderAdapter {
     override val providerId = "gemini"
 
-    override fun endpoint(config: EngineConfig): String {
-        val base = config.baseUrl.trimEnd('/')
-        return base + "/v1beta/models/" + config.modelId + ":streamGenerateContent?alt=sse"
-    }
+    override fun endpoint(config: EngineConfig): String =
+        EndpointUrls.geminiStream(config.baseUrl, config.modelId)
 
     override fun headers(config: EngineConfig): Map<String, String> =
         mapOf("x-goog-api-key" to config.apiKey)

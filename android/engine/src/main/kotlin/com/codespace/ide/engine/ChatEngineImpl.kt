@@ -42,9 +42,11 @@ class ChatEngineImpl(
         val builder = StringBuilder()
         val parser = SseParser()
         var done = false
+        // Resolved ONCE: the same URL is requested and, on failure, named in the verdict.
+        val requestUrl = adapter.endpoint(config)
         try {
             transport.stream(
-                adapter.endpoint(config),
+                requestUrl,
                 adapter.headers(config),
                 payload
             ).collect { chunk ->
@@ -82,7 +84,10 @@ class ChatEngineImpl(
             // transport ending the chunk flow.
         } catch (t: TransportHttpException) {
             state.update(responseMsg.id) { it.copy(state = MessageState.ERROR) }
-            emit(EngineEvent.Failed(ErrorTaxonomy.classify(t.status, t.headers, t.body)))
+            // The requested path rides the 404 verdict so "wrong model" and "wrong base
+            // URL" stop sharing one misleading sentence. Path only: never the query.
+            emit(EngineEvent.Failed(ErrorTaxonomy.classify(
+                t.status, t.headers, t.body, EndpointUrls.redactedPath(requestUrl))))
         } catch (t: kotlinx.coroutines.CancellationException) {
             state.update(responseMsg.id) {
                 it.copy(text = builder.toString(), state = MessageState.DONE)
