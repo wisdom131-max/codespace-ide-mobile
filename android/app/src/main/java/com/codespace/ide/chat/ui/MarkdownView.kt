@@ -167,29 +167,31 @@ fun CodeBlockCard(
                     modifier = Modifier.padding(end = 8.dp),
                 )
             }
+            // Item 11: the code block carried two full-size word buttons ("Copy", "Insert")
+            // that dominated a block of monocode on a phone. They are now small glyphs with the
+            // same two actions and the same result feedback; nothing else about the block
+            // changed, and the code text is still selectable.
             Text(
-                "Copy",
+                "\u29C9",
                 color = c.accent,
                 fontSize = ChatTokens.FONT_SMALL.sp,
-                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
-                    .clickable {
+                    .clickable(onClickLabel = "Copy code") {
                         clipboard.setText(androidx.compose.ui.text.AnnotatedString(code))
                         outcome = "Copied"
                     }
-                    .padding(horizontal = 6.dp),
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
             )
             Text(
-                "Insert",
+                "\u21B5",
                 color = c.accent,
                 fontSize = ChatTokens.FONT_SMALL.sp,
-                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
-                    .clickable {
+                    .clickable(onClickLabel = "Insert code at cursor") {
                         val ok = onInsertCode?.invoke(code) ?: false
                         outcome = if (ok) "Inserted" else "No editor open"
                     }
-                    .padding(start = 6.dp),
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
             )
         }
         Text(

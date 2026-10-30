@@ -22,6 +22,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -190,6 +191,9 @@ private fun ChatBody(
     var showKeys by remember { mutableStateOf(false) }
     val c = ChatTokens.LocalChatColors.current
     val scroll = rememberScrollState()
+    // Item 3: shared follow flag + a scope for the one-tap jump back to the newest message.
+    val follow = remember { FollowFlag() }
+    val jumpScope = androidx.compose.runtime.rememberCoroutineScope()
 
     // "Thinking Ns" ticker: recompute while streaming with no visible delta yet.
     var thinkTickMs by remember { mutableStateOf(0L) }
@@ -244,7 +248,7 @@ private fun ChatBody(
                 if (pending.isNotEmpty()) rows = rows + ChatRowModel.Attachments(session.pendingChips())
                 // Batch 3: follow the newest content while the user is at the bottom, and
                 // never fight them once they scroll up. Emits nothing.
-                TranscriptAutoScroll(scroll, transcriptGrowthKey(rows))
+                TranscriptAutoScroll(scroll, transcriptGrowthKey(rows), follow)
                 NativeChatListRenderer.MessageList(
                     ChatRenderState(
                         rows = rows,
@@ -259,6 +263,10 @@ private fun ChatBody(
                     Modifier.fillMaxWidth(),
                 )
             }
+        }
+        // Item 3: the way back, only while the user is scrolled away from the newest message.
+        if (!follow.following) {
+            JumpToLatestButton(c) { jumpScope.launch { follow.jumpToLatest(scroll) } }
         }
         // Section 7 — ORDER MATTERS and is deliberate: the approval card (work awaiting
         // authorization) sits ABOVE the Files Changed row (work already done). They are never

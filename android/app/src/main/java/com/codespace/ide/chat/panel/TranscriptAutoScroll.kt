@@ -1,6 +1,16 @@
 package com.codespace.ide.chat.panel
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -9,7 +19,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.codespace.ide.chat.ui.ChatColors
 import com.codespace.ide.chat.ui.ChatRowModel
+import com.codespace.ide.chat.ui.ChatTokens
 
 /**
  * Batch 3 — TRANSCRIPT AUTO-SCROLL (owner mission part 3).
@@ -32,6 +46,30 @@ import com.codespace.ide.chat.ui.ChatRowModel
  * The decision is a pure function ([AutoScrollPolicy]) so the behaviour is unit-tested
  * without a device; the composable only feeds it real state.
  */
+/**
+ * Item 3: the follow flag, lifted out of the composable so the CHAT can see it.
+ *
+ * "Never yank the user back" is only half a feature: once following stops, nothing on screen
+ * says so and the only way back is to drag to the bottom by hand. This holder is the single
+ * source of truth for "am I pinned to the bottom", so the screen can offer one obvious way
+ * back and reset it exactly when the user takes it.
+ */
+internal class FollowFlag {
+
+    var following by mutableStateOf(true)
+        private set
+
+    fun recordUserFollow(value: Boolean) {
+        if (following != value) following = value
+    }
+
+    /** Back to the newest message, and following again. */
+    suspend fun jumpToLatest(scroll: ScrollState) {
+        scroll.scrollTo(scroll.maxValue)
+        following = true
+    }
+}
+
 internal object AutoScrollPolicy {
 
     /** Distance from the bottom still treated as "at the bottom" (a finger is not exact). */
@@ -74,14 +112,13 @@ internal fun transcriptGrowthKey(rows: List<ChatRowModel>): Int {
  * parent.
  */
 @Composable
-internal fun TranscriptAutoScroll(scroll: ScrollState, growthKey: Int) {
-    var following by remember(scroll) { mutableStateOf(true) }
+internal fun TranscriptAutoScroll(scroll: ScrollState, growthKey: Int, follow: FollowFlag) {
 
     // Only USER-driven movement (drag/fling) may change the follow flag.
-    LaunchedEffect(scroll) {
+    LaunchedEffect(scroll, follow) {
         snapshotFlow { scroll.isScrollInProgress to (scroll.maxValue - scroll.value) }
             .collect { (moving, remaining) ->
-                AutoScrollPolicy.followAfterUserScroll(moving, remaining)?.let { following = it }
+                AutoScrollPolicy.followAfterUserScroll(moving, remaining)?.let { follow.recordUserFollow(it) }
             }
     }
 
@@ -90,8 +127,30 @@ internal fun TranscriptAutoScroll(scroll: ScrollState, growthKey: Int) {
         // the same frame as the append would aim at the OLD maxValue.
         withFrameNanos { }
         val remaining = scroll.maxValue - scroll.value
-        if (AutoScrollPolicy.shouldAutoScroll(following, remaining)) {
+        if (AutoScrollPolicy.shouldAutoScroll(follow.following, remaining)) {
             scroll.scrollTo(scroll.maxValue)
+        }
+    }
+}
+
+/**
+ * Item 3: the visible way back. Shown only while the user is reading older messages, so it
+ * never covers content they are actually following, and it disappears the moment it is used.
+ */
+@Composable
+internal fun JumpToLatestButton(colors: ChatColors, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().padding(vertical = ChatTokens.NAV_ROW_PAD_VERTICAL.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .clip(RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
+                .background(colors.surfaceAlt)
+                .clickable(onClickLabel = "Jump to latest message", onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 3.dp),
+        ) {
+            Text("\u2193 Latest", color = colors.accent, fontSize = ChatTokens.FONT_MICRO.sp)
         }
     }
 }
