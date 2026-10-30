@@ -63,3 +63,17 @@ Two findings worth flagging now, because they change how items 10 and 12 should 
 | 12 | Collapsible AI activity | PARTIAL | strip side done (per-run chevron + X); the chat-side activity section is next, per the owner's "both surfaces" ruling |
 
 Still open by owner ruling: 4/13/14 (waiting for the picker reference), 7/8 (waiting for the icon).
+
+## Phase 2b — landed (2026-10-30, owner rulings applied)
+
+| # | Requirement | Now | Evidence |
+|---|---|---|---|
+| 1 | AI terminal activity dismissal | WITHDRAWN by owner | The X was removed at the owner's ruling: activity rows carry the chevron only, because a close glyph beside a running command reads as "cancel". `AgentTerminalFeed.dismiss()` and its 5 tests are kept, so the capability can be re-exposed in one line if asked. |
+| 12 | Collapsible AI activity | COMPLETE (chevron only) | `TerminalAgentRunStrip.kt`: per-run chevron, no close control |
+| 7 | Replace chat logo | COMPLETE | New `res/drawable/ic_chat_panel.xml` from the owner's reference: two overlapping rounded bubbles, uniform stroke, round caps/joins, front tail bottom-right, back tail bottom-left. Stroke-only (no fill) so it tints to the panel theme; used at `ChatEmptyState.kt` |
+| 8 | Obsolete logo references | COMPLETE | Chat no longer draws `ic_splash_logo`; that asset stays for launch branding only, which is not a chat reference |
+| 18 | Per-session mode persistence | COMPLETE | `SessionMeta.mode` + `SessionMode` tokens; index format v2 (v1 still reads, record width tied to header); `SessionIndexStore.setMode`; `ChatSessionManager.sessionMode/setSessionMode`; panel restores per (project, session). 8 tests |
+
+Index format note: v2 appends a mode column. A v1 file reads unchanged (mode defaults to ASK); a
+v2 record missing its last column is STILL treated as a torn write, and an unknown mode token
+falls back to ASK rather than discarding the conversation.
