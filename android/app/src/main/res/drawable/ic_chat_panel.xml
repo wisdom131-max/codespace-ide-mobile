@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  VN Code chat panel mark (owner-supplied reference, 2026-10-30).
+
+  Two overlapping rounded speech bubbles, offset on the diagonal, each with a tail: the front
+  bubble's tail hangs from its bottom-right, the back bubble's from its bottom-left. Uniform
+  stroke, round caps and joins, no fill.
+
+  Two deliberate engineering choices:
+  * STROKE ONLY, no fill. The reference occludes the back bubble with the front one's fill; a
+    fill here would have to be the surface colour, which the drawable cannot know, so the back
+    bubble is drawn as the visible part of its own outline instead (it stops where the front
+    bubble begins). Same picture, on any background.
+  * Colour comes from the caller (Compose Icon tint), so the mark follows the panel theme
+    instead of shipping a hardcoded black that disappears in dark mode.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- back bubble: top and left edges, bottom-left tail, ending behind the front bubble -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M15.4,8.6 L15.4,6.2 A2.6,2.6 0 0 0 12.8,3.6 L5.8,3.6 A2.6,2.6 0 0 0 3.2,6.2 L3.2,9.2 A2.6,2.6 0 0 0 5.8,11.8 L7.2,11.8 L6.1,14.5 L8.5,11.8"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.5" />
+
+    <!-- front bubble, complete, with its bottom-right tail -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M8.6,11.2 A2.6,2.6 0 0 1 11.2,8.6 L18.2,8.6 A2.6,2.6 0 0 1 20.8,11.2 L20.8,14.2 A2.6,2.6 0 0 1 18.2,16.8 L17.1,16.8 L18.3,19.5 L14.5,16.8 L11.2,16.8 A2.6,2.6 0 0 1 8.6,14.2 Z"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.5" />
+</vector>

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -39,9 +40,13 @@ internal fun ChatEmptyWelcome(colors: ChatColors) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Image(
-            painter = painterResource(id = com.codespace.ide.R.drawable.ic_splash_logo),
+        // Item 7 (owner reference 2026-10-30): the chat mark is the two-bubble panel icon,
+        // drawn as a vector and tinted by the panel, so it reads at every size and in both
+        // themes. The app's own launcher/splash mark is untouched - this is the CHAT mark.
+        Icon(
+            painter = painterResource(id = com.codespace.ide.R.drawable.ic_chat_panel),
             contentDescription = null,
+            tint = colors.text,
             modifier = Modifier.size(56.dp),
         )
         Spacer(Modifier.height(16.dp))
