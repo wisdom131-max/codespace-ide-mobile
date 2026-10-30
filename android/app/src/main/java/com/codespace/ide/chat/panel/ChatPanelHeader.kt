@@ -40,8 +40,14 @@ internal fun ChatPanelHeaderRow(
     onClose: (() -> Unit)?,
 ) {
     Row(
+        // Item 6: the row was 10 dp of padding above and below a 40 dp chip, so it stood ~60 dp
+        // tall for one line of text. The chips keep their full touch target; only the empty
+        // space around them shrinks. The header design itself is unchanged.
         Modifier.fillMaxWidth()
-            .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
+            .padding(
+                horizontal = ChatTokens.PAD_HORIZONTAL.dp,
+                vertical = ChatTokens.NAV_ROW_PAD_VERTICAL.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,
     ) {

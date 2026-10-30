@@ -89,6 +89,12 @@ object ChatTokens {
     const val COMPOSER_WRAP_PAD_H = 6
     const val COMPOSER_WRAP_PAD_V = 3
 
+    // Compact navigation rows (owner items 2 and 6, 2026-10-30). The visible pill is meant to
+    // be SMALLER than the touch target: shrinking the target to get a compact look would trade
+    // accessibility for density, so the box shrinks and the 40 dp target stays.
+    const val NAV_ROW_PAD_VERTICAL = 2
+    const val NEW_SESSION_VISUAL_HEIGHT = 34
+
     // Typography (sp)
     const val FONT_MICRO = 10
     const val FONT_SMALL = 12

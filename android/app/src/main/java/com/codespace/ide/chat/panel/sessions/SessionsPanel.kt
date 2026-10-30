@@ -359,20 +359,29 @@ private fun Modifier.combinedClickableSafe(onClick: () -> Unit): Modifier =
 
 @Composable
 private fun NewSessionButton(colors: ChatColors, onClick: () -> Unit) {
+    // Item 2: the button used to paint a full FONT_BODY label inside 10 dp of vertical padding
+    // inside a 40 dp box, which read as a slab next to the model picker and the header chips.
+    // Now the OUTER box keeps the 40 dp touch target and the accent pill inside it is compact,
+    // so density improves without giving up the tap area.
     Box(
         Modifier.fillMaxWidth()
             .heightIn(min = SessionsPanelSpec.TOUCH_TARGET_DP.dp)
-            .clip(RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
-            .background(colors.accent)
-            .clickableBox(onClick)
-            .padding(vertical = ChatTokens.PAD_VERTICAL.dp),
+            .clickableBox(onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            SessionsPanelSpec.NEW_SESSION,
-            color = colors.bg,
-            fontSize = ChatTokens.FONT_BODY.sp,
-        )
+        Box(
+            Modifier.fillMaxWidth()
+                .heightIn(min = ChatTokens.NEW_SESSION_VISUAL_HEIGHT.dp)
+                .clip(RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
+                .background(colors.accent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                SessionsPanelSpec.NEW_SESSION,
+                color = colors.bg,
+                fontSize = ChatTokens.FONT_SMALL.sp,
+            )
+        }
     }
 }
 
