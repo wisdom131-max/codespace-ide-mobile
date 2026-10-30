@@ -61,6 +61,20 @@
             </intent-filter>
         </activity>
 
+        <!-- M3: "Move Chat into New Window" as a REAL second task. documentLaunchMode=always
+             gives each launch its own Recents entry; resizeableActivity lets freeform/split
+             capable devices actually float and resize it. -->
+        <activity
+            android:name=".chat.window.ChatWindowActivity"
+            android:exported="false"
+            android:label="VN Chat"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|density|smallestScreenSize|uiMode|fontScale"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.CodeSpace"
+            android:documentLaunchMode="always"
+            android:resizeableActivity="true"
+            android:launchMode="standard" />
+
         <!-- A(a) dev-only chat design gallery: launched from Settings-About in
              debug builds only; the entry row is BuildConfig.DEBUG-gated. -->
         <activity

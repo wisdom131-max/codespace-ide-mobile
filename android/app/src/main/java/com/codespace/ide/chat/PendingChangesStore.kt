@@ -352,6 +352,14 @@ object PendingChangesStore {
         return bak.absolutePath
     }
 
+    // ---------------------------------------------------------------- M3 accessors
+
+    /** Is there an applied batch that the unified "Undo Last Edit" can restore? */
+    fun hasAppliedBatch(): Boolean = lastApplied.value.isNotEmpty()
+
+    /** The applied batch as (path, checkpoint path) pairs, newest first, for the redo snapshot. */
+    fun appliedBatch(): List<Pair<String, String?>> = lastApplied.value.toList()
+
     /**
      * One-tap restore of the most recent apply batch (disk-level undo, decision #2).
      * Copies each checkpoint back over the file and bumps appliedTick so open

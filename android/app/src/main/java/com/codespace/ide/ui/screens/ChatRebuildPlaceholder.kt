@@ -13,6 +13,16 @@ fun ChatRebuildPlaceholder(
     projectId: String,
     tokenStore: SecureTokenStore,
     onOpenFile: (String) -> Unit = {},
+    /** M2: the header's close control acts on the shell's own panel flag. */
+    onClosePanel: (() -> Unit)? = null,
+    /** M3: "Move Chat into Editor Area"; the shell opens the chat tab. */
+    onMoveToEditor: (() -> Unit)? = null,
 ) {
-    com.codespace.ide.chat.panel.ChatPanelScreen(projectId, tokenStore, onOpenFile)
+    com.codespace.ide.chat.panel.ChatPanelScreen(
+        projectId = projectId,
+        tokenStore = tokenStore,
+        onOpenFile = onOpenFile,
+        onClosePanel = onClosePanel,
+        onMoveToEditor = onMoveToEditor,
+    )
 }

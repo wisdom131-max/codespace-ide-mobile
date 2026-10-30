@@ -821,7 +821,13 @@ fun ProjectShellScreen(
     } }
     var totalHeight        by remember { mutableFloatStateOf(1920f) }
     var sidePanelWidth     by remember { mutableFloatStateOf(280f) }
-    val showChatPanelMs = remember { mutableStateOf(false) }; var showChatPanel by showChatPanelMs
+    // M3 "Show View by Default": the preference decides the OPENING state of the panel, not a
+    // live switch - the header and the sidebar toggle still control the current window.
+    val showChatPanelMs = remember {
+        mutableStateOf(
+            runCatching { com.codespace.ide.chat.panel.ChatSettingsPrefs.showChatByDefault() }.getOrDefault(false),
+        )
+    }; var showChatPanel by showChatPanelMs
     // P39: AI code actions from the editor lightbulb menu deliver their prompt here
     val pendingChatPromptMs = remember { mutableStateOf<String?>(null) }
     // C12-U6-b fix 2b (2026-10-23): binary-open gate states. A non-text file hit
@@ -921,6 +927,15 @@ fun ProjectShellScreen(
     }
     val editorFontSizeMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.editorFontSize ?: 13) }; var editorFontSize by editorFontSizeMs
     val editorTabs         = remember(projectId) { mutableStateListOf<String>() }
+    // M3: a staged file opened from the chat's "new window" task arrives here and is brought up
+    // in THIS task's editor, so the tap is never a silent no-op in a detached window.
+    val pendingChatFile by com.codespace.ide.chat.panel.ChatFileOpenRequest.pending.collectAsState()
+    LaunchedEffect(pendingChatFile) {
+        val path = pendingChatFile ?: return@LaunchedEffect
+        if (!editorTabs.contains(path)) editorTabs.add(path)
+        activeEditorTab = path
+        com.codespace.ide.chat.panel.ChatFileOpenRequest.consume(path)
+    }
     // MULTI-ROOT (Part B): pending root-removal handoff to EditorPane.
     // closeRootRequest = root path EditorPane should close tabs for (it reuses the
     // shared closeEditorTabInternal path: didClose first). pendingRemovedRoot = the
@@ -4970,7 +4985,23 @@ private fun PssEditorColumn(
 
         // Editor area
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (activeEditorTab != null) {
+            if (com.codespace.ide.chat.panel.ChatTabSupport.isChatTab(activeEditorTab)) {
+                // M3: the chat as an editor tab. Same ChatPanelScreen, same runtime, so the
+                // conversation is the one the sidebar was showing.
+                com.codespace.ide.chat.panel.ChatTabHost(
+                    projectId = projectId,
+                    tokenStore = tokenStore,
+                    onOpenFile = { path ->
+                        if (!editorTabs.contains(path)) editorTabs.add(path)
+                        activeEditorTab = path
+                    },
+                    onReturnToSidebar = {
+                        editorTabs.remove(com.codespace.ide.chat.panel.ChatTabSupport.TAB_ID)
+                        activeEditorTab = editorTabs.lastOrNull()
+                        showChatPanel = true
+                    },
+                )
+            } else if (activeEditorTab != null) {
                 EditorPane(
                     renameFileRequest = renameFileRequest,
                     onRenameFileHandled = onRenameFileHandled,
@@ -5248,6 +5279,17 @@ private fun PssEditorColumn(
                 onOpenFile = { path ->
                     if (!editorTabs.contains(path)) editorTabs.add(path)
                     activeEditorTab = path
+                },
+                // M2: the chat header's X closes the panel through the shell's own flag, so
+                // the header control and the drag-to-close threshold share one behaviour.
+                onClosePanel = { showChatPanel = false },
+                // M3: the chat becomes a TAB in the editor area - one chat surface at a time,
+                // so opening the tab closes the sidebar rather than duplicating the panel.
+                onMoveToEditor = {
+                    val tab = com.codespace.ide.chat.panel.ChatTabSupport.TAB_ID
+                    if (!editorTabs.contains(tab)) editorTabs.add(tab)
+                    activeEditorTab = tab
+                    showChatPanel = false
                 },
             )
         }

@@ -162,6 +162,76 @@ object AgentWriteJournal {
     /** Shown when a caller reaches for a set that belongs to a different conversation. */
     const val OTHER_SESSION: String = "That change belongs to a different session."
 
+    // ---------------------------------------------------------------- M3: redo + lookups
+
+    /** The newest set of THIS conversation that has not been settled yet, or null. */
+    @Synchronized
+    fun latestUnsettled(sessionId: String): ChangeSet? =
+        sets.lastOrNull { it.sessionId == sessionId && !it.settled }
+
+    /** The newest set of THIS conversation whose outcome was "undone", or null. */
+    @Synchronized
+    fun latestUndone(sessionId: String): ChangeSet? =
+        sets.lastOrNull { it.sessionId == sessionId && it.settled && it.outcome == "undone" }
+
+    /**
+     * Redo: re-apply a set the user undid, under the SAME safety rule as undo, mirrored.
+     *
+     * Undo refuses when the disk no longer holds what the agent wrote. Redo refuses when the
+     * disk no longer holds what the UNDO left behind, so a file edited by hand (or by another
+     * tool) after the undo is never silently overwritten. Nothing is written speculatively: each
+     * entry is verified before and after.
+     */
+    @Synchronized
+    fun redo(setId: Long, requesterSessionId: String = activeSessionId): String {
+        if (findForSession(setId, requesterSessionId) == null && sets.any { it.id == setId }) {
+            return OTHER_SESSION
+        }
+        val i = sets.indexOfFirst { it.id == setId }
+        if (i < 0) return "That change set is no longer available."
+        val set = sets[i]
+        if (!set.settled) return "That change was not undone."
+        if (set.outcome != "undone") return "Only an undone change can be redone."
+
+        var applied = 0
+        val problems = ArrayList<String>()
+        for (entry in set.entries) {
+            val result = redoEntry(entry)
+            if (result == null) applied++ else problems.add(entry.path.substringAfterLast('/') + ": " + result)
+        }
+        val note = when {
+            problems.isEmpty() -> "Re-applied " + applied + " file" + (if (applied == 1) "" else "s")
+            applied == 0 -> "Could not re-apply: " + problems.joinToString("; ")
+            else -> "Re-applied " + applied + "; left alone: " + problems.joinToString("; ")
+        }
+        settle(setId, if (applied > 0) "redone" else "redo failed", note)
+        return note
+    }
+
+    /** Returns null on success, or a short reason on refusal/failure. */
+    private fun redoEntry(entry: Entry): String? {
+        val file = File(entry.path)
+        val current = try {
+            if (file.exists()) file.readText() else null
+        } catch (t: Throwable) {
+            return "cannot read (" + (t.message ?: "unknown") + ")"
+        }
+        // What undo left behind: for CREATED, undo deleted the file; for MODIFIED, undo put
+        // `before` back. Anything else means somebody else has touched it since.
+        val expected: String? = when (entry.kind) {
+            Kind.CREATED -> null
+            Kind.MODIFIED -> entry.before
+        }
+        if (current != expected) return "changed since the undo"
+        return try {
+            file.parentFile?.mkdirs()
+            file.writeText(entry.after)
+            if (file.readText() != entry.after) "re-apply did not stick" else null
+        } catch (t: Throwable) {
+            t.message ?: "re-apply failed"
+        }
+    }
+
     /**
      * Undo: revert everything still safely revertible, verify each one, and settle the set
      * with an honest note describing partial success or conflicts.

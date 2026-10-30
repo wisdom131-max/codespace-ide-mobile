@@ -199,9 +199,19 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "detect_secrets" -> detectSecrets(args.optString("text").ifBlank { null }, args.optString("path").ifBlank { null })
                 "web_fetch" -> webFetch(args.getString("url"), args.optString("headers").ifBlank { null })
                 "web_search" -> webSearch(args.getString("query"))
-                "save_memory" -> AgentMemory.save(args.getString("key"), args.getString("value"), context)
-                "read_memory" -> AgentMemory.readAll(context)
-                "delete_memory" -> AgentMemory.delete(args.getString("key"), context)
+                // M5: every memory access carries the owner's scope and the calling session,
+                // so a "current session only" setting is enforced in the tool, not just in the UI.
+                "save_memory" -> AgentMemory.save(
+                    args.getString("key"), args.getString("value"), context,
+                    currentMemoryScope(), MemoryScopeState.activeSessionId,
+                )
+                "read_memory" -> AgentMemory.readAll(
+                    context, currentMemoryScope(), MemoryScopeState.activeSessionId,
+                )
+                "delete_memory" -> AgentMemory.delete(
+                    args.getString("key"), context,
+                    currentMemoryScope(), MemoryScopeState.activeSessionId,
+                )
                 "list_connectors" -> AgentConnectorManager.listConnectors(context)
                 "connect_service" -> AgentConnectorManager.connectService(args.getString("service"), args.optJSONArray("scopes"), context)
                 "use_connector" -> AgentConnectorManager.useConnector(args.getString("service"), args.getString("method"), args.getString("endpoint"), args.optString("body", "{}"), context)

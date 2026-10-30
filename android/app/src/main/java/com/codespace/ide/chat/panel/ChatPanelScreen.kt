@@ -49,18 +49,80 @@ fun ChatPanelScreen(
     tokenStore: com.codespace.ide.data.SecureTokenStore,
     /** Batch 2: opens a staged file in the editor so the review strip is reachable. */
     onOpenFile: (String) -> Unit = {},
+    /** M2: the header's close control. Null when the host cannot close the panel. */
+    onClosePanel: (() -> Unit)? = null,
+    /** M3: "Move Chat into Editor Area". Null when this host has no editor area. */
+    onMoveToEditor: (() -> Unit)? = null,
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    val manager = remember {
-        com.codespace.ide.chat.panel.ChatSettingsPrefs.ensure(ctx)
-        ChatSessionManager(
-            com.codespace.ide.chat.keys.StoredCredentialsReader(
-                tokenStore, com.codespace.ide.chat.CustomEndpointStore),
-            appContext = ctx.applicationContext,
+    // M3: ONE runtime per process, reference counted. A second window must share the same
+    // manager (and therefore the same ChatSession per conversation = a single writer), and
+    // closing one window must not cancel a stream running in the other.
+    val manager = remember { ChatRuntime.acquire(ctx, tokenStore) }
+    DisposableEffect(Unit) { onDispose { ChatRuntime.release() } }
+    var showSessions by remember(projectId) { mutableStateOf(false) }
+    val activeId by manager.activeSessionFlow(projectId).collectAsState()
+    if (showSessions) {
+        com.codespace.ide.chat.panel.sessions.SessionsPanel(
+            projectId = projectId,
+            manager = manager,
+            activeId = activeId,
+            onSwitched = { showSessions = false },
+            onBackToChat = { showSessions = false },
+        )
+    } else {
+        ChatBody(
+            projectId = projectId,
+            tokenStore = tokenStore,
+            onOpenFile = onOpenFile,
+            manager = manager,
+            activeId = activeId,
+            onOpenSessions = { showSessions = true },
+            // A new session that could not be created opens the Sessions surface, which is the
+            // one place that reports a session-table problem. Failures are never swallowed.
+            onNewSession = {
+                val created = manager.createSession(projectId)
+                if (created is com.codespace.ide.chat.session.SessionCreate.Failed) showSessions = true
+            },
+            onClosePanel = onClosePanel,
+            onMoveToEditor = onMoveToEditor,
         )
     }
-    DisposableEffect(Unit) { onDispose { manager.close() } }
-    val session = remember(projectId) { manager.session(projectId) }
+}
+
+/** The conversation surface: transcript, staged rows, composer. Unchanged apart from the header. */
+@Composable
+private fun ChatBody(
+    projectId: String,
+    tokenStore: com.codespace.ide.data.SecureTokenStore,
+    onOpenFile: (String) -> Unit,
+    manager: ChatSessionManager,
+    activeId: String,
+    onOpenSessions: () -> Unit,
+    onNewSession: () -> Unit,
+    onClosePanel: (() -> Unit)?,
+    onMoveToEditor: (() -> Unit)?,
+) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val session = remember(projectId, activeId) { manager.session(projectId, activeId) }
+    // M3: voice transcripts live beside the transcripts, keyed by the SAME conversation, so a
+    // dictation can never be shown under another session's name.
+    val voiceStore = remember(projectId) {
+        com.codespace.ide.chat.voice.VoiceTranscriptStore(java.io.File(ctx.applicationContext.filesDir, "chat/voice"))
+    }
+    var notice by remember(projectId) { mutableStateOf<String?>(null) }
+    var showOverflow by remember(projectId) { mutableStateOf(false) }
+    var showTranscripts by remember(projectId) { mutableStateOf(false) }
+    var transcriptRead by remember(projectId) { mutableStateOf(com.codespace.ide.chat.voice.VoiceTranscriptRead(emptyList())) }
+    var viewByDefault by remember { mutableStateOf(ChatSettingsPrefs.showChatByDefault()) }
+    // Attribution: the journal is process-wide, so the session that owns this screen claims it.
+    DisposableEffect(projectId, activeId) {
+        com.codespace.ide.agent.AgentWriteJournal.activeSessionId = activeId
+        // M5: memory reads/writes are attributed to this conversation, so "current session only"
+        // has a session to be scoped to.
+        com.codespace.ide.agent.MemoryScopeState.activeSessionId = activeId
+        onDispose { }
+    }
     // U1 (build 657 findings a/d): the OPENING selection is RESOLVED from what the
     // owner actually has a key for - never an unconfigured preset, never a pair whose
     // provider and model disagree (the 657 "ollama · gemini-3.8-flash" bug).
@@ -100,6 +162,22 @@ fun ChatPanelScreen(
     }
     var stagedNote by remember(projectId) { mutableStateOf<String?>(null) }
     var input by remember { mutableStateOf("") }
+    val dictate = rememberDictation { outcome ->
+        when (outcome) {
+            is DictationOutcome.Heard -> {
+                val failure = voiceStore.append(projectId, activeId, outcome.text, System.currentTimeMillis())
+                if (failure != null) {
+                    notice = failure
+                } else {
+                    input = if (input.isBlank()) outcome.text else input.trimEnd() + " " + outcome.text
+                    notice = "Dictated into the composer. Review it, then send."
+                }
+            }
+            is DictationOutcome.Unavailable -> notice = outcome.reason
+            is DictationOutcome.Failed -> notice = outcome.reason
+            DictationOutcome.Cancelled -> Unit
+        }
+    }
     // WP8: system picker; bytes are STAGED at attach time (read fully once),
     // then only name + mime + base64 live in memory until the send.
     val attachLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -123,21 +201,29 @@ fun ChatPanelScreen(
     }
 
     Column(Modifier.fillMaxSize().background(c.bg)) {
-        Row(
-            Modifier.fillMaxWidth()
-                .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // U3: the model picker moved DOWN into the composer toolbar where the
-            // reference puts it. The header keeps only the surface title and one
-            // reachable management entry point.
-            Text(
-                "Chat",
-                color = c.text,
-                fontSize = ChatTokens.FONT_SMALL.sp,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        // U3: the model picker lives in the composer toolbar where the reference puts it.
+        // M2: the header carries the surface title and the session controls.
+        ChatPanelHeaderRow(
+            title = "Chat",
+            colors = c,
+            onSessions = onOpenSessions,
+            onMic = dictate,
+            onNewSession = onNewSession,
+            onOverflow = { showOverflow = true },
+            onClose = onClosePanel,
+        )
+        // A result the user must see (undo outcome, dictation problem, transcript state).
+        // Cleared when they open another surface; never a silent failure.
+        notice?.let { ChatNoticeLine(it, c) { notice = null } }
+        // M4: an empty conversation shows the welcome composition instead of an empty list.
+        // Only when NOTHING is happening: a stream, a staged attachment or a setup problem all
+        // deserve their own surface, never a welcome screen on top of live state.
+        if (resolved is ResolvedSelection.Ready && state.rows.isEmpty() && !state.streaming && pending.isEmpty()) {
+            androidx.compose.foundation.layout.Box(
+                Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = androidx.compose.ui.Alignment.Center,
+            ) { ChatEmptyWelcome(c) }
+        } else
         Column(
             Modifier.weight(1f)
                 .verticalScroll(scroll)
@@ -220,6 +306,66 @@ fun ChatPanelScreen(
             // (spec section 4). Only the LABEL went: ChatPermissionStore is untouched and
             // AgentFlowGate still consults it before every tool call, and ChatApprovalCard
             // still asks when the level requires it.
+        )
+    }
+    if (showOverflow) {
+        ChatOverflowMenu(
+            items = ChatOverflowSpec.items(
+                canUndo = com.codespace.ide.chat.panel.edits.LastEditActions.canUndo(activeId),
+                canRedo = com.codespace.ide.chat.panel.edits.LastEditActions.canRedo(activeId),
+                viewByDefault = viewByDefault,
+                canMoveToEditor = onMoveToEditor != null,
+            ),
+            colors = c,
+            onPick = { action ->
+                showOverflow = false
+                when (action) {
+                    ChatOverflowAction.UNDO_LAST_EDIT -> {
+                        notice = com.codespace.ide.chat.panel.edits.LastEditActions.undo(activeId)
+                    }
+                    ChatOverflowAction.REDO_LAST_EDIT -> {
+                        notice = com.codespace.ide.chat.panel.edits.LastEditActions.redo(activeId)
+                    }
+                    ChatOverflowAction.MOVE_TO_EDITOR_AREA -> onMoveToEditor?.invoke()
+                    ChatOverflowAction.MOVE_TO_NEW_WINDOW -> {
+                        val launched = runCatching {
+                            ctx.startActivity(
+                                com.codespace.ide.chat.window.ChatWindowActivity.intentFor(ctx, projectId),
+                            )
+                        }
+                        notice = launched.exceptionOrNull()?.let {
+                            "Could not open a chat window (" + (it.message ?: "unknown") + ")."
+                        }
+                    }
+                    ChatOverflowAction.SHOW_VOICE_TRANSCRIPTS -> {
+                        transcriptRead = voiceStore.read(projectId, activeId)
+                        showTranscripts = true
+                    }
+                    ChatOverflowAction.SHOW_VIEW_BY_DEFAULT -> {
+                        viewByDefault = !viewByDefault
+                        ChatSettingsPrefs.setShowChatByDefault(viewByDefault)
+                        notice = if (viewByDefault) {
+                            "Chat will open by default when a project opens."
+                        } else {
+                            "Chat will stay closed until you open it."
+                        }
+                    }
+                }
+            },
+            onDismiss = { showOverflow = false },
+        )
+    }
+    if (showTranscripts) {
+        VoiceTranscriptsDialog(
+            transcripts = transcriptRead.items,
+            skipped = transcriptRead.skipped,
+            problem = transcriptRead.reason,
+            colors = c,
+            onClear = {
+                notice = voiceStore.clear(projectId, activeId) ?: "Voice transcripts cleared."
+                transcriptRead = voiceStore.read(projectId, activeId)
+            },
+            onDismiss = { showTranscripts = false },
         )
     }
     if (showSelect) {

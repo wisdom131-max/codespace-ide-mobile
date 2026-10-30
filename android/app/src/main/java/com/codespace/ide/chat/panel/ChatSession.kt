@@ -769,6 +769,14 @@ class ChatSessionManager internal constructor(
     /** Active session id per project, cached: the index is read once per project per process. */
     private val activeIds = HashMap<String, String>()
 
+    /**
+     * M2: the active id as an OBSERVABLE value, so the panel can re-key its ChatSession when
+     * the user picks another session. Kept beside [activeIds] rather than replacing it: the
+     * map stays the source of truth for the (non-Compose) callers that already read it, and
+     * this only mirrors it for composition.
+     */
+    private val activeFlows = HashMap<String, MutableStateFlow<String>>()
+
     /** Anything the user deserves to be told about the session table (adoption, recovery). */
     private val notes = HashMap<String, String?>()
 
@@ -805,6 +813,35 @@ class ChatSessionManager internal constructor(
         }
         return id
     }
+
+    /**
+     * The active conversation of a project as a flow. Collected by the panel so a switch, a new
+     * session or a delete re-keys the chat instead of leaving it pointed at the old id.
+     */
+    fun activeSessionFlow(projectId: String): MutableStateFlow<String> = synchronized(activeFlows) {
+        activeFlows.getOrPut(projectId) { MutableStateFlow(activeSessionId(projectId)) }
+    }
+
+    private fun publishActive(projectId: String, conversationId: String) {
+        synchronized(activeIds) { activeIds[projectId] = conversationId }
+        synchronized(activeFlows) {
+            activeFlows.getOrPut(projectId) { MutableStateFlow(conversationId) }.value = conversationId
+        }
+    }
+
+    /**
+     * The last stored message of a conversation, or null when it has none.
+     *
+     * M2 needs it for two honest signals per row: whether the session has any content at all,
+     * and whether its last reply finished. Callers must treat this as I/O and keep it off the
+     * main thread; a failed read is reported as "no tail", never as an error the row shows.
+     */
+    internal fun transcriptTail(projectId: String, conversationId: String): com.codespace.ide.chat.StoredMessage? =
+        try {
+            transcriptStore?.readNow(projectId, conversationId)?.messages?.lastOrNull()
+        } catch (_: Throwable) {
+            null
+        }
 
     /** The last thing worth saying about this project's session table, or null. */
     fun sessionNote(projectId: String): String? = synchronized(notes) { notes[projectId] }
@@ -880,7 +917,7 @@ class ChatSessionManager internal constructor(
         return when (val created = store.create(projectId, title)) {
             is com.codespace.ide.chat.session.SessionCreate.Failed -> created
             is com.codespace.ide.chat.session.SessionCreate.Created -> {
-                synchronized(activeIds) { activeIds[projectId] = created.meta.id }
+                publishActive(projectId, created.meta.id)
                 created
             }
         }
@@ -913,7 +950,7 @@ class ChatSessionManager internal constructor(
         // 3. Then stop the outgoing stream, keeping what it produced.
         synchronized(this) { sessions[key(projectId, currentId)] }?.stopForSwitch()
 
-        synchronized(activeIds) { activeIds[projectId] = conversationId }
+        publishActive(projectId, conversationId)
         // The new session owns the edit journal from now on, so an undo cannot reach across.
         com.codespace.ide.agent.AgentWriteJournal.activeSessionId = conversationId
         return null
@@ -958,7 +995,7 @@ class ChatSessionManager internal constructor(
         if (activeSessionIdIfCached(projectId) == conversationId) {
             val nextActive = (sessionIndex(projectId) as? com.codespace.ide.chat.session.SessionIndexRead.Ok)
                 ?.index?.resolvedActiveId ?: LEGACY_CONVERSATION_ID
-            synchronized(activeIds) { activeIds[projectId] = nextActive }
+            publishActive(projectId, nextActive)
         }
         return result
     }

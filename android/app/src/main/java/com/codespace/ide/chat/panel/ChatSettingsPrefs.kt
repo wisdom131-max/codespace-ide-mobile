@@ -74,6 +74,16 @@ object ChatSettingsPrefs {
     private const val KEY_SELECTION = "last_selection"
     private const val KEY_OVERRIDES = "context_overrides"
 
+    /**
+     * M3 "Show View by Default": whether the chat panel is open when a project is opened.
+     * A preference about the NEXT open, not a live visibility switch - the header's own
+     * toggle still controls the current window.
+     */
+    private const val KEY_SHOW_BY_DEFAULT = "show_chat_by_default"
+
+    /** M5: "current_session" | "all_sessions". Read at every memory access, not cached. */
+    private const val KEY_MEMORY_SCOPE = "memory_scope"
+
     @Volatile private var prefs: SharedPreferences? = null
 
     fun ensure(ctx: Context) {
@@ -87,6 +97,20 @@ object ChatSettingsPrefs {
     }
 
     fun failoverOptIn(): Boolean = prefs?.getBoolean(KEY_FAILOVER, false) ?: false
+
+    fun memoryScopeId(): String =
+        prefs?.getString(KEY_MEMORY_SCOPE, com.codespace.ide.agent.MemoryScope.DEFAULT.id)
+            ?: com.codespace.ide.agent.MemoryScope.DEFAULT.id
+
+    fun setMemoryScopeId(id: String) {
+        prefs?.edit()?.putString(KEY_MEMORY_SCOPE, id)?.apply()
+    }
+
+    fun showChatByDefault(): Boolean = prefs?.getBoolean(KEY_SHOW_BY_DEFAULT, false) ?: false
+
+    fun setShowChatByDefault(enabled: Boolean) {
+        prefs?.edit()?.putBoolean(KEY_SHOW_BY_DEFAULT, enabled)?.apply()
+    }
 
     fun setFailoverOptIn(enabled: Boolean) {
         prefs?.edit()?.putBoolean(KEY_FAILOVER, enabled)?.apply()
