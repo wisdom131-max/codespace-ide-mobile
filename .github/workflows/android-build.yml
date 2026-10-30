@@ -13,6 +13,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # versionCode = `git rev-list --count HEAD` (app/build.gradle.kts). A shallow
+          # checkout has one commit, so every CI build shipped versionCode 1 and the
+          # "auto-increment" was silently inert. Full history makes the count real, so a
+          # new APK always has a HIGHER versionCode than the installed one.
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
