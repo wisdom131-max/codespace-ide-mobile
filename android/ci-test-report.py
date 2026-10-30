@@ -46,6 +46,13 @@ REQUIRED = [
     "com.codespace.ide.chat.panel.SelectionResolverTest",
     "com.codespace.ide.chat.panel.ConfiguredProvidersTest",
     "com.codespace.ide.chat.EndpointRoundTripTest",
+    # U9 P0/B1/B2 + write-safety (2026-10-30): the provider/model pipeline suites. These
+    # carry the endpoint model-storage, unreadable-settings and recovery guarantees, so a
+    # run that silently stopped executing them must fail here rather than look green.
+    "com.codespace.ide.chat.EndpointModelSafetyTest",
+    "com.codespace.ide.chat.EndpointWriteSafetyTest",
+    "com.codespace.ide.chat.panel.StorageUnreadableSelectionTest",
+    "com.codespace.ide.chat.panel.UnavailableRecoveryTest",
 ]
 
 counts = collections.Counter()
