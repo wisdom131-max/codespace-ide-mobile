@@ -129,4 +129,54 @@ class AgentTerminalFeedTest {
         assertEquals(AgentTerminalFeed.Status.DONE, run.status)
         assertEquals("exit 2", AgentTerminalFeed.statusLabel(run))
     }
+
+    // ---------------------------------------------------------------------------------
+    // Item 1 (owner spec 2026-10-30): the X dismisses a FINISHED activity row and nothing
+    // else. The dangerous failure would be an X that can act on a live run, so that is
+    // asserted directly rather than assumed.
+    // ---------------------------------------------------------------------------------
+
+    @Test
+    fun aFinishedRunCanBeDismissedFromTheView() {
+        val id = AgentTerminalFeed.begin("npm install", "/root/proj")
+        AgentTerminalFeed.finish(id, "added 120 packages")
+        assertTrue(AgentTerminalFeed.dismiss(id))
+        assertTrue("the row is gone from the view", AgentTerminalFeed.runs.isEmpty())
+    }
+
+    @Test
+    fun aRunningRunCannotBeDismissedSoTheXCanNeverCancel() {
+        val id = AgentTerminalFeed.begin("npm install", "/root/proj")
+        assertFalse(AgentTerminalFeed.dismiss(id))
+        assertEquals("the run is still there and still running", 1, AgentTerminalFeed.runs.size)
+        assertEquals(AgentTerminalFeed.Status.RUNNING, AgentTerminalFeed.runs.single().status)
+    }
+
+    @Test
+    fun dismissingOneRunLeavesTheOthersExactlyAsTheyWere() {
+        val first = AgentTerminalFeed.begin("ls", null)
+        AgentTerminalFeed.finish(first, "a\nb")
+        val second = AgentTerminalFeed.begin("pwd", null)
+        AgentTerminalFeed.finish(second, "/root")
+        assertTrue(AgentTerminalFeed.dismiss(first))
+        val left = AgentTerminalFeed.runs.single()
+        assertEquals(second, left.id)
+        assertEquals("/root", left.output)
+    }
+
+    @Test
+    fun dismissingAnUnknownRunReportsFalseInsteadOfPretending() {
+        assertFalse(AgentTerminalFeed.dismiss(999_999L))
+    }
+
+    @Test
+    fun aDismissedRunIsNotResurrectedByTheNextRun() {
+        val first = AgentTerminalFeed.begin("ls", null)
+        AgentTerminalFeed.finish(first, "ok")
+        AgentTerminalFeed.dismiss(first)
+        val second = AgentTerminalFeed.begin("pwd", null)
+        AgentTerminalFeed.finish(second, "/root")
+        assertEquals(1, AgentTerminalFeed.runs.size)
+        assertEquals(second, AgentTerminalFeed.runs.single().id)
+    }
 }

@@ -109,6 +109,24 @@ object AgentTerminalFeed {
         )
     }
 
+    /**
+     * Item 1 (owner spec 2026-10-30): dismiss a FINISHED run's row from the activity view.
+     *
+     * This is a view operation and nothing more. It never touches a process: the run it
+     * removes has already ended (a RUNNING run is refused), so there is nothing to cancel and
+     * no way to make it look cancelled. The user may expand and read the output first; the X
+     * only removes the record once they are done with it. Returns false when there is nothing
+     * to dismiss, so the caller can say so instead of pretending.
+     */
+    @Synchronized
+    fun dismiss(id: Long): Boolean {
+        val i = runs.indexOfFirst { it.id == id }
+        if (i < 0) return false
+        if (!runs[i].isFinished) return false
+        runs.removeAt(i)
+        return true
+    }
+
     fun clear() {
         synchronized(this) { runs.clear() }
     }
