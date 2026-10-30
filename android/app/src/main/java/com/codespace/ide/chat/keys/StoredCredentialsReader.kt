@@ -111,25 +111,76 @@ object LegacyKeyShapes {
         }
         return out
     }
+
+    /**
+     * B1: the same mapping from an ALREADY-READ endpoint list. The selection path uses this so
+     * the document is read exactly once, with its outcome, instead of parsing a swallowed copy.
+     */
+    fun normalizeEndpoints(
+        endpoints: List<CustomEndpointStore.Endpoint>,
+        hasKeyFor: (String) -> Boolean,
+    ): List<StoredEndpoint> {
+        val out = ArrayList<StoredEndpoint>(endpoints.size)
+        for (e in endpoints) {
+            if (e.id.isBlank() || e.baseUrl.isBlank()) continue
+            val providerId = if (e.id == "default") "custom" else "custom_" + e.id
+            out.add(StoredEndpoint(e.id, e.label, e.baseUrl, e.enabled, hasKeyFor(providerId), providerId))
+        }
+        return out
+    }
 }
+
+/**
+ * B1 (U9 P1, 2026-10-30): the snapshot PLUS whether the stores actually answered.
+ * `readable = false` means "unknown", never "empty" - callers must not turn it into
+ * an unconfigured state.
+ */
+data class SnapshotRead(
+    val snapshot: StoredCredentialsSnapshot,
+    val readable: Boolean,
+)
 
 /** Android glue: enumerates the REAL stores once. Read-only. */
 class StoredCredentialsReader(
-    private val store: SecureTokenStore,
+    private val rawSlots: () -> Map<String, String>,
+    private val slotValue: (String) -> String?,
     private val endpoints: CustomEndpointStore,
 ) {
-    fun snapshot(): StoredCredentialsSnapshot {
-        val slots = LegacyKeyShapes.normalizeKeySlots(store.rawAiSlots())
+    /** Production wiring: the encrypted token store plus the endpoint registry. */
+    constructor(store: SecureTokenStore, endpoints: CustomEndpointStore) : this(
+        { store.rawAiSlots() },
+        { slot -> store.aiSlotValue(slot) },
+        endpoints,
+    )
+
+    /**
+     * B1: the read the SELECTION path must use. Keys and endpoints are read separately, and a
+     * failure in either reports `readable = false` instead of degrading to an empty config.
+     */
+    fun readSnapshot(): SnapshotRead {
+        val slotsRaw = try { rawSlots() } catch (_: Exception) { null }
+        val endpointsRead = endpoints.readEndpoints()
+        val slots = LegacyKeyShapes.normalizeKeySlots(slotsRaw ?: emptyMap())
         val providersWithKeys = slots.filter { it.hasKey }.map { it.providerId }.toSet()
-        val eps = LegacyKeyShapes.normalizeEndpoints(endpoints.rawJson()) { pid -> pid in providersWithKeys }
+        val eps = when (endpointsRead) {
+            is CustomEndpointStore.EndpointsRead.Loaded ->
+                LegacyKeyShapes.normalizeEndpoints(endpointsRead.endpoints) { pid -> pid in providersWithKeys }
+            // Unreadable: the list is EMPTY but `readable` is false, so nobody may conclude
+            // "no endpoints configured" from it.
+            CustomEndpointStore.EndpointsRead.Unreadable -> emptyList()
+        }
+        val readable = slotsRaw != null && endpointsRead is CustomEndpointStore.EndpointsRead.Loaded
         Log.i(TAG, "WP1 read: " + slots.size + " key slots (" +
             slots.count { it.hasKey } + " with keys), " + eps.size +
-            " endpoints (" + eps.count { it.enabled } + " enabled)")
-        return StoredCredentialsSnapshot(slots, eps)
+            " endpoints (" + eps.count { it.enabled } + " enabled), readable=" + readable)
+        return SnapshotRead(StoredCredentialsSnapshot(slots, eps), readable)
     }
 
+    /** Lenient snapshot for surfaces that only render lists (docs/status/settings). */
+    fun snapshot(): StoredCredentialsSnapshot = readSnapshot().snapshot
+
     /** The ONLY place a key value surfaces: straight to the engine. Never logged. */
-    fun keyValue(slotName: String): String? = store.aiSlotValue(slotName)
+    fun keyValue(slotName: String): String? = slotValue(slotName)
 
     companion object { private const val TAG = "StoredCreds" }
 }

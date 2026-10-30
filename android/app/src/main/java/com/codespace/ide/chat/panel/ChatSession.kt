@@ -72,6 +72,13 @@ class ChatSession(
     private val scope: CoroutineScope,
     /** Injectable for JVM tests; the real panel uses HttpTransport(). */
     private val transportFactory: () -> com.codespace.ide.engine.ChatTransport = { HttpTransport() },
+    /**
+     * AUDIT DEFECT D: the base URL a request must use RIGHT NOW, resolved from the endpoint
+     * store. A selection carries a CACHE of the URL, and after an endpoint edit that cache is
+     * stale, so the send path must not trust it. Default keeps the stored value (JVM tests).
+     */
+    private val baseUrlForProvider: (providerId: String, fallback: String) -> String =
+        { _, fallback -> fallback },
     /** WP6: ordered key-slot names with stored keys for a provider (primary first). */
     private val poolSlotsFor: (providerId: String) -> List<String> = { emptyList() },
     /** WP6: automatic key failover is OPT-IN (silent switching burns credits). */
@@ -287,8 +294,9 @@ class ChatSession(
         if (sel.modelId.isBlank()) {
             appendRow(ChatRowModel.Failed(
                 "No model selected",
-                "Pick a model for " + sel.providerId + " (the model picker's Model id field, " +
-                    "or a provider with a bundled default).", false))
+                "Pick a model for " + sel.providerId + ". For a custom endpoint, open Settings -> " +
+                    "AI providers, edit the endpoint and add the model ids it serves (or fetch them " +
+                    "with Test connection); the picker lists them here.", false))
             return
         }
         // WP3: presets like Ollama (local) need no key; everyone else does.
@@ -313,6 +321,9 @@ class ChatSession(
             workspaceBlock().trim(),
             (payloadChars / 4).coerceIn(0, WorkspaceContext.MAX_CHARS),
         )
+        // AUDIT DEFECT D: resolve the endpoint the way it is configured NOW. The selection holds
+        // a cache of the URL, and a stale cache must never decide where the request goes.
+        val liveBaseUrl = baseUrlForProvider(sel.providerId, sel.baseUrl)
         val cfg = EngineConfig(
             modelId = sel.modelId,
             // U4-d: the mode rides the provider's own system slot (see ChatModePrompts).
@@ -320,7 +331,7 @@ class ChatSession(
                 (if (AgentToolWire.modeRunsTools(mode)) AgentToolWire.protocol(mode) else "") +
                 (if (wsBlock.isEmpty()) "" else "\n\n" + wsBlock),
             providerId = sel.providerId,
-            baseUrl = sel.baseUrl,
+            baseUrl = liveBaseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
             reasoningBudget = reasoningBudget,
             // WP5: the send budget scales with the model's context window (estimate);
@@ -675,6 +686,12 @@ class ChatSessionManager(
                 projectId,
                 { slot -> reader.keyValue(slot) },
                 scope,
+                baseUrlForProvider = { pid, fallback ->
+                    SelectionResolver.currentBaseUrl(
+                        pid, fallback,
+                        configuredProvidersFrom(reader.snapshot()),
+                    )
+                },
                 poolSlotsFor = { pid ->
                     reader.snapshot().keySlots
                         .filter { it.hasKey && it.providerId == pid }

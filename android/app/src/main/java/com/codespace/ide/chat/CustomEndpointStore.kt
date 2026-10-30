@@ -75,6 +75,13 @@ object CustomEndpointStore {
         fun write(json: String): Boolean
         fun removeModelRows(id: String): Boolean = true
         fun readModelRow(key: String): String? = null
+        /**
+         * P0-B: is the row PRESENT? null means "the backend could not say" (a failed or
+         * incomplete read), false means genuinely absent. Without this the store cannot tell
+         * "this endpoint has no model ids yet" from "the read failed", and a Save then writes
+         * an assumed-empty list over ids it never managed to read.
+         */
+        fun hasModelRow(key: String): Boolean? = if (readModelRow(key) != null) true else null
         fun writeModelRow(key: String, value: String?): Boolean = true
         // The stamp is written as a row; the default reader derives it, so every
         // backend (prefs or in-memory) agrees without re-implementing it.
@@ -90,6 +97,7 @@ object CustomEndpointStore {
             p.edit().remove("manual_" + id).remove("live_" + id).remove("live_ts_" + id).commit()
         } catch (_: Exception) { false }
         override fun readModelRow(key: String): String? = try { p.getString(key, null) } catch (_: Exception) { null }
+        override fun hasModelRow(key: String): Boolean? = try { p.contains(key) } catch (_: Exception) { null }
         override fun writeModelRow(key: String, value: String?): Boolean = try {
             val e = p.edit()
             if (value == null) e.remove(key) else e.putString(key, value)
@@ -111,6 +119,7 @@ object CustomEndpointStore {
             return true
         }
         override fun readModelRow(key: String): String? = rows[key]
+        override fun hasModelRow(key: String): Boolean? = rows.containsKey(key)
         override fun writeModelRow(key: String, value: String?): Boolean {
             if (value == null) rows.remove(key) else rows[key] = value
             return true
@@ -136,9 +145,43 @@ object CustomEndpointStore {
     }
 
     /** All endpoints, registry order (legacy "custom" first if present). */
-    fun list(): List<Endpoint> {
-        val out = ArrayList<Endpoint>()
-        val arr = endpointsJson()
+    /**
+     * B1 (U9 P1, 2026-10-30): the endpoint DOCUMENT read, with its outcome.
+     *
+     * `endpointsJson()` below deliberately degrades a broken read to `[]` so the registry keeps
+     * working; that is fine for a list view but catastrophic for selection, because "no endpoints
+     * stored" and "storage would not answer" then look identical and a valid persisted selection
+     * resolves to NeedsSetup. This is the read callers that care about that distinction must use.
+     */
+    sealed class EndpointsRead {
+        /** The document was read. An EMPTY list here means genuinely no endpoints. */
+        data class Loaded(val endpoints: List<Endpoint>) : EndpointsRead()
+        /** The document could not be read (or is corrupt). Never treat as "empty". */
+        object Unreadable : EndpointsRead()
+    }
+
+    fun readEndpoints(): EndpointsRead {
+        val s = storage ?: return EndpointsRead.Unreadable
+        val raw = try { s.read() } catch (_: Exception) { return EndpointsRead.Unreadable }
+        // null = no document written yet: a real, successful empty state.
+        val arr = try { JSONArray(raw ?: "[]") } catch (_: Exception) { return EndpointsRead.Unreadable }
+        return EndpointsRead.Loaded(parseEndpoints(arr))
+    }
+
+    /**
+     * WRITE-SIDE SAFETY (2026-10-30): every mutation must start from a document that was READ
+     * successfully. `endpointsJson()` degrades a failed read to `[]`, so a mutation built on it
+     * would rewrite the whole document from an empty array and destroy every other endpoint.
+     * `null` here means "cannot read" and every caller aborts without writing.
+     */
+    private fun readDocument(): JSONArray? {
+        val s = storage ?: return null
+        val raw = try { s.read() } catch (_: Exception) { return null }
+        return try { JSONArray(raw ?: "[]") } catch (_: Exception) { null }
+    }
+
+    private fun parseEndpoints(arr: JSONArray): List<Endpoint> {
+        val out = ArrayList<Endpoint>(arr.length())
         for (i in 0 until arr.length()) {
             try {
                 val o = arr.optJSONObject(i) ?: continue
@@ -151,6 +194,10 @@ object CustomEndpointStore {
         }
         return out
     }
+
+    /** Lenient list view (UI lists). Selection must use [readEndpoints] so failures stay visible. */
+    fun list(): List<Endpoint> =
+        (readEndpoints() as? EndpointsRead.Loaded)?.endpoints ?: emptyList()
 
     fun byId(id: String): Endpoint? = list().firstOrNull { it.id == id }
 
@@ -173,12 +220,13 @@ object CustomEndpointStore {
         val trimmedUrl = baseUrl.trim()
         val trimmedLabel = label.trim().ifBlank { "Custom" }
         if (!trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://")) return null
+        // Refuse rather than rewrite an unreadable document (would drop every endpoint).
+        val arr = readDocument() ?: return null
         var slug = slugOf(trimmedLabel)
-        val existing = list().map { it.id }.toHashSet()
+        val existing = parseEndpoints(arr).map { it.id }.toHashSet()
         var n = 2
         while (slug in existing) { slug = slugOf(trimmedLabel) + "_" + n; n++ }
         val ep = Endpoint(slug, trimmedLabel, trimmedUrl)
-        val arr = endpointsJson()
         val o = JSONObject()
         o.put("id", ep.id); o.put("label", ep.label); o.put("baseUrl", ep.baseUrl)
         o.put("enabled", true)
@@ -189,7 +237,7 @@ object CustomEndpointStore {
     fun update(id: String, label: String, baseUrl: String): Boolean {
         val trimmedUrl = baseUrl.trim()
         if (!trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://")) return false
-        val arr = endpointsJson()
+        val arr = readDocument() ?: return false
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             if (o.optString("id") == id) {
@@ -205,7 +253,7 @@ object CustomEndpointStore {
     /** Delete an endpoint + all its models (manual + live cache). */
     /** WP4: enable/disable in place; disabled endpoints stay listed (not orphans). */
     fun setEnabled(id: String, enabled: Boolean): Boolean {
-        val arr = endpointsJson()
+        val arr = readDocument() ?: return false
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             if (o.optString("id") == id) {
@@ -222,7 +270,7 @@ object CustomEndpointStore {
      * here - the editor UI asks the owner explicitly before any key deletion.
      */
     fun delete(id: String): Boolean {
-        val arr = endpointsJson()
+        val arr = readDocument() ?: return false
         var removed = false
         for (i in arr.length() - 1 downTo 0) {
             val o = arr.optJSONObject(i) ?: continue
@@ -237,14 +285,44 @@ object CustomEndpointStore {
 
     // ── Per-endpoint manual model registry (plan B) ───────────────────────
 
-    /** User-typed model IDs — never validated client-side; the server is the judge. */
-    fun manualModels(id: String): List<String> = try {
-        (storage?.readModelRow("manual_" + id) ?: "")
-            .split(',', ';', ' ', '\n')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-    } catch (_: Exception) { emptyList() }
+    /**
+     * P0-B: the outcome of reading one model list. `Loaded` means the read SUCCEEDED (an empty
+     * list is then a real, saved empty list). `Unreadable` means storage could not answer, and
+     * the editor must not treat that as "no models" - writing that back would erase ids it
+     * never saw.
+     */
+    sealed class ModelRead {
+        data class Loaded(val ids: List<String>) : ModelRead()
+        object Unreadable : ModelRead()
+    }
+
+    /** User-typed model IDs with the read outcome. Never validated client-side. */
+    fun readManualModels(id: String): ModelRead =
+        readModelRow("manual_" + id, ',', ';', ' ', '\n')
+
+    /** Discovered ids with the read outcome (the offline cache the picker can still use). */
+    fun readLiveModels(id: String): ModelRead =
+        readModelRow("live_" + id, '\n')
+
+    private fun readModelRow(key: String, vararg separators: Char): ModelRead {
+        val s = storage ?: return ModelRead.Unreadable
+        val present = try { s.hasModelRow(key) } catch (_: Exception) { null }
+            ?: return ModelRead.Unreadable
+        if (!present) return ModelRead.Loaded(emptyList())
+        val raw = try { s.readModelRow(key) } catch (_: Exception) { null }
+            ?: return ModelRead.Unreadable
+        return ModelRead.Loaded(
+            raw.split(*separators).map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
+        )
+    }
+
+    /**
+     * Compatibility accessor for read-only callers (the picker, tests): an unreadable row reads
+     * as empty. Anything that WRITES must use [readManualModels] instead, so a failed read can
+     * never become a destructive save.
+     */
+    fun manualModels(id: String): List<String> =
+        (readManualModels(id) as? ModelRead.Loaded)?.ids ?: emptyList()
 
     /** U1: returns whether the row was stored (callers can report a real failure). */
     fun setManualModels(id: String, raw: String): Boolean {
@@ -268,10 +346,8 @@ object CustomEndpointStore {
 
     // ── Per-endpoint live-model cache (plan B) ───────────────────────────
 
-    fun liveModels(id: String): List<String> = try {
-        (storage?.readModelRow("live_" + id) ?: "")
-            .split('\n').map { it.trim() }.filter { it.isNotEmpty() }
-    } catch (_: Exception) { emptyList() }
+    fun liveModels(id: String): List<String> =
+        (readLiveModels(id) as? ModelRead.Loaded)?.ids ?: emptyList()
 
     fun liveModelsFetchedAt(id: String): Long = storage?.readModelStamp("live_ts_" + id) ?: 0L
 
@@ -284,10 +360,15 @@ object CustomEndpointStore {
         versionCounter++
     }
 
-    fun setLiveModels(id: String, models: List<String>) {
-        storage?.writeModelRow("live_" + id, models.take(80).joinToString("\n"))
+    /**
+     * P0-A: reports whether the cache row actually landed, so a caller that commits on Save can
+     * tell the user the truth instead of assuming the write worked.
+     */
+    fun setLiveModels(id: String, models: List<String>): Boolean {
+        val ok = storage?.writeModelRow("live_" + id, models.take(80).joinToString("\n")) ?: false
         storage?.writeModelRow("live_ts_" + id, System.currentTimeMillis().toString())
         versionCounter++
+        return ok
     }
 
     // ── Legacy v1 migration (runs once at init) ───────────────────────────
@@ -299,25 +380,66 @@ object CustomEndpointStore {
      * id "default" (provider id "custom" — existing ai_CUSTOM keys and saved
      * "custom:model" selections keep working untouched).
      */
+    /**
+     * WRITE-SIDE SAFETY: what a legacy migration is allowed to do, decided from a READ result.
+     * Separated from the prefs plumbing so it is unit-testable and so "document unreadable"
+     * can never be confused with "document empty" (which used to seed over real data AND mark
+     * the migration complete, permanently skipping it).
+     */
+    internal sealed class LegacyMigrationAction {
+        /** Nothing may be written and the migration must NOT be marked complete. */
+        object Skip : LegacyMigrationAction()
+        /** Document readable and nothing to seed: just record completion. */
+        data class MarkComplete(val manualDefault: String?) : LegacyMigrationAction()
+        /** Document readable and empty with a legacy URL: seed it, then mark complete. */
+        data class Seed(val baseUrl: String, val manualDefault: String?) : LegacyMigrationAction()
+    }
+
+    internal fun planLegacyMigration(
+        read: EndpointsRead,
+        alreadyMigrated: Boolean,
+        legacyUrl: String?,
+        legacyManual: String?,
+    ): LegacyMigrationAction {
+        if (alreadyMigrated) return LegacyMigrationAction.Skip
+        val ends = when (read) {
+            is EndpointsRead.Loaded -> read.endpoints
+            // Cannot tell empty from lost: never write, never mark, retry on a later launch.
+            EndpointsRead.Unreadable -> return LegacyMigrationAction.Skip
+        }
+        if (legacyUrl != null && ends.isEmpty()) {
+            return LegacyMigrationAction.Seed(legacyUrl, legacyManual)
+        }
+        return LegacyMigrationAction.MarkComplete(legacyManual)
+    }
+
     private fun migrateLegacyOnce() {
         if (migrated) return
-        migrated = true
         try {
             val p = prefs ?: return
-            if (p.contains("legacy_migrated_v2")) return
+            if (p.contains("legacy_migrated_v2")) { migrated = true; return }
             val legacyUrl = p.getString("base_url", null)?.trim()?.takeIf { it.isNotEmpty() }
             val legacyManual = p.getString("manual_models", null)
-            val arr = endpointsJson()
-            if (legacyUrl != null && arr.length() == 0) {
-                val o = JSONObject()
-                o.put("id", "default"); o.put("label", "Custom"); o.put("baseUrl", legacyUrl)
-                arr.put(o)
-                p.edit().putString("endpoints_v2", arr.toString())
-                    .putString("manual_default", legacyManual ?: "")
-                    .putBoolean("legacy_migrated_v2", true).apply()
-                versionCounter++
-            } else {
-                p.edit().putBoolean("legacy_migrated_v2", true).apply()
+            when (val action = planLegacyMigration(readEndpoints(), alreadyMigrated = false,
+                legacyUrl = legacyUrl, legacyManual = legacyManual)) {
+                LegacyMigrationAction.Skip -> { /* unreadable: leave flag + in-memory guard unset */ }
+                is LegacyMigrationAction.MarkComplete -> {
+                    p.edit().putBoolean("legacy_migrated_v2", true).apply()
+                    migrated = true
+                }
+                is LegacyMigrationAction.Seed -> {
+                    val arr = JSONArray()
+                    val o = JSONObject()
+                    o.put("id", "default"); o.put("label", "Custom"); o.put("baseUrl", action.baseUrl)
+                    arr.put(o)
+                    // Write through the storage seam: it reports success, prefs.edit() did not.
+                    if (storage?.write(arr.toString()) == true) {
+                        p.edit().putString("manual_default", action.manualDefault ?: "")
+                            .putBoolean("legacy_migrated_v2", true).apply()
+                        migrated = true
+                        versionCounter++
+                    }
+                }
             }
         } catch (_: Exception) { }
     }

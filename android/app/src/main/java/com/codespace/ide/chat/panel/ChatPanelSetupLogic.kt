@@ -23,12 +23,20 @@ fun configuredProvidersFrom(snap: StoredCredentialsSnapshot): ConfiguredProvider
     return ConfiguredProviders(ordered, custom)
 }
 
-/** The selection the panel opens with (Ready) or the setup empty state. */
-fun initialResolvedSelection(reader: StoredCredentialsReader): ResolvedSelection =
-    SelectionResolver.resolve(
+/**
+ * The selection the panel opens with: Ready, Unavailable (stores unreadable) or NeedsSetup.
+ * B1: the READ OUTCOME travels with the snapshot, so a failed read can no longer masquerade
+ * as "nothing configured".
+ */
+fun initialResolvedSelection(reader: StoredCredentialsReader): ResolvedSelection {
+    val read = reader.readSnapshot()
+    return SelectionResolver.resolve(
         ChatSettingsPrefs.selection(),
-        configuredProvidersFrom(reader.snapshot()),
-    ) { pid -> SlotNaming.primarySlot(pid) }
+        configuredProvidersFrom(read.snapshot),
+        { pid -> SlotNaming.primarySlot(pid) },
+        settingsReadable = read.readable,
+    )
+}
 
 /**
  * Persist a selection ONLY when it is coherent for the CURRENT stores. This is the
@@ -36,7 +44,19 @@ fun initialResolvedSelection(reader: StoredCredentialsReader): ResolvedSelection
  * and restored across restarts. Returns whether it was persisted.
  */
 fun persistSelectionIfCoherent(reader: StoredCredentialsReader, sel: PanelSelection): Boolean {
-    val ok = SelectionResolver.isCoherent(sel, configuredProvidersFrom(reader.snapshot()))
-    if (ok) ChatSettingsPrefs.setSelection(sel)
+    val read = reader.readSnapshot()
+    val cfg = configuredProvidersFrom(read.snapshot)
+    // B1: an unreadable store must never be able to WRITE a conclusion it could not verify.
+    val ok = persistDecision(sel, cfg, read.readable)
+    // Persist the CURRENT endpoint URL: the row is a cache for the next cold start, never the
+    // identity of the selection (that is providerId + modelId + keySlot).
+    if (ok) ChatSettingsPrefs.setSelection(sel.copy(baseUrl = SelectionResolver.currentBaseUrl(sel, cfg)))
     return ok
 }
+
+/**
+ * B1: the persist decision as a pure function, so the JVM suite proves the rule without Android
+ * prefs: never persist while the configuration could not be read.
+ */
+fun persistDecision(sel: PanelSelection, cfg: ConfiguredProviders, settingsReadable: Boolean): Boolean =
+    settingsReadable && SelectionResolver.isCoherent(sel, cfg)

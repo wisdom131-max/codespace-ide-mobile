@@ -64,7 +64,12 @@ fun ChatPanelScreen(
     // U1 (build 657 findings a/d): the OPENING selection is RESOLVED from what the
     // owner actually has a key for - never an unconfigured preset, never a pair whose
     // provider and model disagree (the 657 "ollama · gemini-3.8-flash" bug).
-    var resolved by remember(projectId) { mutableStateOf(initialResolvedSelection(manager.reader)) }
+    // B1: a failed settings read is retryable. The nonce re-runs resolution in place; the
+    // session keeps its current selection, so a storage hiccup never blanks the chat.
+    var settingsRetry by remember(projectId) { mutableStateOf(0) }
+    var resolved by remember(projectId, settingsRetry) {
+        mutableStateOf(initialResolvedSelection(manager.reader))
+    }
     LaunchedEffect(resolved) {
         (resolved as? ResolvedSelection.Ready)?.let { session.select(it.selection) }
     }
@@ -140,6 +145,12 @@ fun ChatPanelScreen(
         ) {
             if (resolved is ResolvedSelection.NeedsSetup) {
                 SetupNeededState(onOpenProviders = { showSelect = true })
+            } else if (resolved is ResolvedSelection.Unavailable) {
+                // B1: the pair is intact and still selected; only the read failed.
+                SettingsUnreadableState(
+                    detail = (resolved as ResolvedSelection.Unavailable).reason,
+                    onRetry = { settingsRetry++ },
+                )
             } else {
                 var rows = if (state.streaming && state.firstDeltaMs == 0L)
                     state.rows + listOf(ChatRowModel.Thinking(((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt()))
@@ -261,8 +272,14 @@ private fun ProviderModelDialog(
                 // the old default stays on screen. Model = its first known id, else blank
                 // ("Pick model" prompts for one) - never another provider's model.
                 val epId = com.codespace.ide.chat.CustomEndpointStore.endpointIdForProvider(providerId) ?: ""
-                val model = com.codespace.ide.chat.CustomEndpointStore.manualModels(epId).firstOrNull()
-                    ?: com.codespace.ide.chat.CustomEndpointStore.liveModels(epId).firstOrNull()
+                // B2: strict reads. An UNREADABLE list yields no model (blank = "pick one")
+                // instead of pretending the endpoint has none.
+                val manualRead = com.codespace.ide.chat.CustomEndpointStore.readManualModels(epId)
+                val liveRead = com.codespace.ide.chat.CustomEndpointStore.readLiveModels(epId)
+                val model = (manualRead as? com.codespace.ide.chat.CustomEndpointStore.ModelRead.Loaded)
+                    ?.ids?.firstOrNull()
+                    ?: (liveRead as? com.codespace.ide.chat.CustomEndpointStore.ModelRead.Loaded)
+                        ?.ids?.firstOrNull()
                     ?: ""
                 onApply(PanelSelection(providerId, slotKeyFor(providerId), model, baseUrl))
             },
@@ -270,6 +287,8 @@ private fun ProviderModelDialog(
         return
     }
     var model by remember { mutableStateOf(current.modelId) }
+    // B2: bump to re-read the endpoint's model lists after a failed read.
+    var pickerRetry by remember { mutableStateOf(0) }
     // WP7: context-window override state (dialog-body scope; confirmButton reads it).
     var overrideText by remember(current) {
         mutableStateOf(
@@ -434,15 +453,31 @@ private fun ProviderModelDialog(
                 // free-text box stays for ids this build has never heard of.
                 val endpointId = com.codespace.ide.chat.CustomEndpointStore
                     .endpointIdForProvider(current.providerId) ?: ""
-                val pickerModels = remember(current.providerId, cfg) {
+                // B2: strict reads. A failed read is shown as a retryable notice and the
+                // bundled catalog still renders, so the picker is never a silent empty list.
+                val manualRead = remember(current.providerId, cfg, pickerRetry) {
+                    if (endpointId.isEmpty()) com.codespace.ide.chat.CustomEndpointStore.ModelRead.Loaded(emptyList())
+                    else com.codespace.ide.chat.CustomEndpointStore.readManualModels(endpointId)
+                }
+                val liveRead = remember(current.providerId, cfg, pickerRetry) {
+                    if (endpointId.isEmpty()) com.codespace.ide.chat.CustomEndpointStore.ModelRead.Loaded(emptyList())
+                    else com.codespace.ide.chat.CustomEndpointStore.readLiveModels(endpointId)
+                }
+                val modelListsUnreadable =
+                    manualRead is com.codespace.ide.chat.CustomEndpointStore.ModelRead.Unreadable ||
+                        liveRead is com.codespace.ide.chat.CustomEndpointStore.ModelRead.Unreadable
+                if (modelListsUnreadable) {
+                    ModelListUnreadableNotice(onRetry = { pickerRetry++ })
+                }
+                val pickerModels = remember(current.providerId, cfg, manualRead, liveRead) {
                     ModelPickerData.modelsFor(
                         providerId = current.providerId,
                         providerDefault = com.codespace.ide.engine.ProviderPresets
                             .byId(current.providerId)?.defaultModel,
-                        manual = if (endpointId.isEmpty()) emptyList()
-                                 else com.codespace.ide.chat.CustomEndpointStore.manualModels(endpointId),
-                        live = if (endpointId.isEmpty()) emptyList()
-                               else com.codespace.ide.chat.CustomEndpointStore.liveModels(endpointId),
+                        manual = (manualRead as? com.codespace.ide.chat.CustomEndpointStore.ModelRead.Loaded)
+                            ?.ids ?: emptyList(),
+                        live = (liveRead as? com.codespace.ide.chat.CustomEndpointStore.ModelRead.Loaded)
+                            ?.ids ?: emptyList(),
                     )
                 }
                 ModelPickerSection(

@@ -18,6 +18,14 @@ import com.codespace.ide.engine.ProviderPresets
 sealed class ResolvedSelection {
     /** A configured, coherent selection the panel can send with. */
     data class Ready(val selection: PanelSelection) : ResolvedSelection()
+
+    /**
+     * B1 (U9 P1, 2026-10-30): the settings stores could not be read, so the selection cannot be
+     * validated OR disproved. The pair is CARRIED unchanged: this is never persisted and never
+     * clears the session's selection, which is what keeps "storage hiccup" from looking like
+     * "you were never configured".
+     */
+    data class Unavailable(val selection: PanelSelection, val reason: String) : ResolvedSelection()
     /** Nothing usable is configured: show the "Set up a provider" empty state. */
     object NeedsSetup : ResolvedSelection()
 }
@@ -77,8 +85,10 @@ object SelectionResolver {
      */
     fun isCoherent(sel: PanelSelection, cfg: ConfiguredProviders): Boolean {
         if (sel.providerId.isBlank() || sel.modelId.isBlank()) return false
-        val expected = baseUrlFor(sel.providerId, cfg.customEndpoints) ?: return false
-        if (sel.baseUrl != expected) return false
+        // The provider must still exist, but its URL is NOT part of coherence any more: the
+        // stored copy is a cache, and `currentBaseUrl` refreshes it. Model/provider identity is
+        // what must hold, and the family check below is what stops a model crossing providers.
+        baseUrlFor(sel.providerId, cfg.customEndpoints) ?: return false
         if (modelBelongsToAnotherFamily(sel.providerId, sel.modelId)) return false
         val preset = ProviderPresets.byId(sel.providerId)
         val keyless = preset != null && !preset.requiresKey
@@ -100,8 +110,29 @@ object SelectionResolver {
         persisted: PanelSelection?,
         cfg: ConfiguredProviders,
         keySlotFor: (providerId: String) -> String,
+        /** B1: false when the settings stores refused the read; see [Unavailable]. */
+        settingsReadable: Boolean = true,
     ): ResolvedSelection {
-        if (persisted != null && isCoherent(persisted, cfg)) return ResolvedSelection.Ready(persisted)
+        // A read failure cannot prove the pair invalid, so it must not be downgraded to
+        // NeedsSetup. Identity is preserved verbatim; only the family rule still applies,
+        // because that check needs no store.
+        if (persisted != null && !settingsReadable) {
+            val identityHolds = persisted.providerId.isNotBlank() &&
+                persisted.modelId.isNotBlank() &&
+                !modelBelongsToAnotherFamily(persisted.providerId, persisted.modelId)
+            if (identityHolds) {
+                return ResolvedSelection.Unavailable(
+                    persisted,
+                    "Your provider settings could not be read right now.",
+                )
+            }
+        }
+        // AUDIT DEFECT D FIX: a persisted selection carries a COPY of the endpoint URL, so an
+        // endpoint edit used to make the pair "incoherent" and throw the chosen model away. The
+        // base is re-read from the stores here, which makes the edit a no-op for the selection.
+        if (persisted != null && isCoherent(persisted, cfg)) {
+            return ResolvedSelection.Ready(persisted.copy(baseUrl = currentBaseUrl(persisted, cfg)))
+        }
         for (pid in cfg.withKey) {
             val model = defaultModelFor(pid)
             val base = baseUrlFor(pid, cfg.customEndpoints) ?: continue
@@ -110,6 +141,17 @@ object SelectionResolver {
         }
         return ResolvedSelection.NeedsSetup
     }
+
+    /**
+     * The base a request must use RIGHT NOW: the endpoint's current URL when there is one,
+     * otherwise the selection's own value (presets never change). Never a mutation.
+     */
+    fun currentBaseUrl(sel: PanelSelection, cfg: ConfiguredProviders): String =
+        currentBaseUrl(sel.providerId, sel.baseUrl, cfg)
+
+    /** Provider-id form, for callers that resolve at send time without a PanelSelection. */
+    fun currentBaseUrl(providerId: String, fallback: String, cfg: ConfiguredProviders): String =
+        baseUrlFor(providerId, cfg.customEndpoints) ?: fallback
 
     /**
      * Applying a provider the owner clicked. The model id of the PREVIOUS provider

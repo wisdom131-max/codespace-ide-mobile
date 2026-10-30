@@ -105,9 +105,17 @@ class SelectionResolverTest {
     }
 
     @Test
-    fun persistedPairWithWrongBaseUrlIsDiscarded() {
+    fun aStaleBaseUrlIsRepairedInsteadOfDiscardingThePair() {
+        // CHANGED 2026-10-29 (audit defect D): the URL in a stored selection is a CACHE. It used
+        // to make the pair incoherent, so an endpoint edit silently threw the model away. The
+        // provider + model are what must hold; the base is refreshed from the store.
         val persisted = PanelSelection("gemini", "ai_GEMINI", "gemini-3.8-flash", "https://example.invalid/chat/completions")
-        assertFalse(SelectionResolver.isCoherent(persisted, cfg(withKey = listOf("gemini"))))
+        assertTrue(SelectionResolver.isCoherent(persisted, cfg(withKey = listOf("gemini"))))
+        val sel = (SelectionResolver.resolve(persisted, cfg(withKey = listOf("gemini")), slot)
+            as ResolvedSelection.Ready).selection
+        assertEquals("gemini-3.8-flash", sel.modelId)
+        assertEquals("the preset's own URL replaces the stale one",
+            "https://generativelanguage.googleapis.com", sel.baseUrl)
     }
 
     @Test
