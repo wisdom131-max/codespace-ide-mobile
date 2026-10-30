@@ -100,11 +100,11 @@ class ChatSession(
      */
     private val workspaceBlock: () -> String = { "" },
     /**
-     * BATCH 4: conversation identity. The data model is per-conversation from the start
-     * (the panel, the store and the file layout are all keyed by it) so a future session
-     * picker needs no storage migration - but no session-management UI is added here.
+     * MULTI-SESSION (M1): conversation identity. Public because the manager keys sessions by
+     * (projectId, conversationId) and the edit journal attributes its change sets to it.
+     * Defaults to the legacy id so every existing caller and test keeps working unchanged.
      */
-    private val conversationId: String = "main",
+    val conversationId: String = "main",
     /** BATCH 4: persistence hooks; null means "this session keeps nothing" (JVM tests). */
     private val transcripts: com.codespace.ide.chat.TranscriptSink? = null,
 ) {
@@ -141,6 +141,24 @@ class ChatSession(
     /** A save failure is shown once, not once per delta. */
     private var storageErrorShown = false
 
+    /**
+     * MULTI-SESSION (M1): true when this session's reply was STOPPED by a session switch.
+     *
+     * Sticky on purpose. [cancel] clears `streaming`, and the row collector saves immediately
+     * afterwards; a save that recomputed `complete` from `streaming` would therefore rewrite
+     * the half-finished reply as if it had finished. Holding the flag until the next send is
+     * what keeps the "that reply was cut off" note truthful across every later save.
+     */
+    @Volatile private var interruptedReplyPending = false
+
+    /**
+     * MULTI-SESSION (M1): set when this conversation has been DELETED. A deleted session must
+     * not be able to write its transcript back from under the delete, so every save after this
+     * point is a no-op. (The store already removed the record and the bytes; a straggling
+     * collector would recreate the file and resurrect the conversation.)
+     */
+    @Volatile private var disposed = false
+
     init {
         if (transcripts == null) {
             restoreFinished = true
@@ -171,13 +189,16 @@ class ChatSession(
 
     /** BATCH 4: hand the current transcript to the store (no-op before the restore ends). */
     private fun persistTranscript() {
+        if (disposed) return
         val sink = transcripts ?: return
         if (!com.codespace.ide.chat.RestorePolicy.mayPersist(restoreFinished)) return
         val st = ui.value
+        // M1: an interruption stays "incomplete" until the next send rewrites the transcript.
+        val streaming = st.streaming || interruptedReplyPending
         sink.save(
             projectId,
             conversationId,
-            com.codespace.ide.chat.ChatTranscript.rowsToMessages(st.rows, st.streaming),
+            com.codespace.ide.chat.ChatTranscript.rowsToMessages(st.rows, streaming),
         ) { error ->
             if (!storageErrorShown) {
                 storageErrorShown = true
@@ -288,6 +309,9 @@ class ChatSession(
 
     private fun sendCore(userText: String, confirmOverBudget: Boolean, reuseStaged: Boolean) {
         if (ui.value.streaming || userText.isBlank()) return
+        // A new turn supersedes a previous interruption: from here on the transcript is live
+        // again and must not keep carrying the "cut off" marker.
+        interruptedReplyPending = false
         val sel = selection.value
         // U1 (657 finding d): a blank model id is a pair that cannot send - say so
         // instead of putting a request on the wire that is certain to be rejected.
@@ -413,6 +437,27 @@ class ChatSession(
         if (ui.value.streaming) ui.value = ui.value.copy(streaming = false)
     }
 
+    /**
+     * MULTI-SESSION (M1) — SWITCHING AWAY FROM A STREAMING SESSION.
+     *
+     * Owner rule: do not run sessions in parallel yet, and do not lose what the model already
+     * produced. So the stream is stopped and the partial reply is kept, marked incomplete by
+     * the same rule that already handles "the app closed mid-stream" — on the next open the
+     * user sees their text plus the honest note instead of a reply that pretends to have
+     * finished.
+     *
+     * Returns true when a stream was actually stopped, so the caller can say so.
+     */
+    fun stopForSwitch(): Boolean {
+        if (!ui.value.streaming) return false
+        interruptedReplyPending = true
+        cancel()
+        // Save now rather than waiting for the debounce: the user is leaving this session and
+        // the partial reply must already be on disk when the next one is shown.
+        persistTranscript()
+        return true
+    }
+
     fun retry() {
         val t = ui.value.lastUserText
         if (t.isNotBlank() && !ui.value.streaming) sendCore(t, confirmOverBudget = false, reuseStaged = true)
@@ -427,9 +472,19 @@ class ChatSession(
         }
     }
 
+    /**
+     * MULTI-SESSION (M1): this conversation is gone. Stop the stream and refuse further saves.
+     * Called by the manager after a successful delete, never by the UI.
+     */
+    fun dispose() {
+        disposed = true
+        sendJob?.cancel()
+    }
+
     /** WP7: settings "Clear conversation" - rows gone, keys and settings kept. */
     fun clearConversation() {
         sendJob?.cancel()
+        interruptedReplyPending = false
         streamBuf.setLength(0)
         failoverAttempts = 0
         toolRound = 0
@@ -598,7 +653,7 @@ class ChatSession(
         toolRound++
         // Section 5: one change set per tool round, so two separate operations can never be
         // merged into one misleading Files Changed row.
-        com.codespace.ide.agent.AgentWriteJournal.beginOperation()
+        com.codespace.ide.agent.AgentWriteJournal.beginOperation(conversationId)
         ui.value = ui.value.copy(streaming = true)
         scope.launch {
             val results = StringBuilder()
@@ -663,11 +718,30 @@ class ChatSession(
 /** Pure: first unused slot in pool order, or null when exhausted. */
 internal fun chooseNextSlot(remaining: List<String>): String? = remaining.firstOrNull()
 
-/** Per-project session registry. Owns the scope sends live in. */
-class ChatSessionManager(
+/**
+ * MULTI-SESSION (M1) — the session registry.
+ *
+ * Keyed by (projectId, conversationId) now, not by project alone: two conversations in one
+ * project are two independent [ChatSession]s, each with its own rows, its own stream and its
+ * own transcript file. Switching between them cannot merge messages, because nothing is
+ * copied: you get a different object backed by a different file.
+ *
+ * WHAT IS DELIBERATELY NOT HERE: any UI. The active session is persisted and restored, the
+ * operations exist and are tested, but nothing on screen chooses a session yet (that is M2).
+ * The panel keeps calling `session(projectId)`, which resolves to the ACTIVE session - so the
+ * single-conversation app behaves exactly as before while the multi-session machinery is in
+ * place underneath it.
+ */
+class ChatSessionManager internal constructor(
     val reader: StoredCredentialsReader,
     /** Section 6: needed by the approval gate and the proot executor; null disables tools. */
     private val appContext: android.content.Context? = null,
+    /**
+     * M1: injected by tests so session behaviour can be proven without a Context. In the app
+     * it is derived from [appContext], sharing one transcript store with the sink below so the
+     * index and the transcripts always describe the same directory.
+     */
+    private val sessionStore: com.codespace.ide.chat.session.SessionIndexStore? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val sessions = HashMap<String, ChatSession>()
@@ -676,48 +750,238 @@ class ChatSessionManager(
      * BATCH 4: one store per manager. Its writer scope is its own, so the pending save of
      * the turn the user just finished still lands after the panel is disposed.
      */
-    private val transcripts: com.codespace.ide.chat.TranscriptSink? =
+    private val transcriptStore: com.codespace.ide.chat.ChatTranscriptStore? =
         appContext?.let { com.codespace.ide.chat.ChatTranscriptStore(it.applicationContext) }
 
-    @Synchronized
-    fun session(projectId: String): ChatSession =
-        sessions.getOrPut(projectId) {
-            ChatSession(
-                projectId,
-                { slot -> reader.keyValue(slot) },
-                scope,
-                baseUrlForProvider = { pid, fallback ->
-                    SelectionResolver.currentBaseUrl(
-                        pid, fallback,
-                        configuredProvidersFrom(reader.snapshot()),
-                    )
-                },
-                poolSlotsFor = { pid ->
-                    reader.snapshot().keySlots
-                        .filter { it.hasKey && it.providerId == pid }
-                        .sortedBy { it.poolIndex ?: 0 }
-                        .map { it.slotName }
-                },
-                failoverOptIn = { ChatSettingsPrefs.failoverOptIn() },
-                contextOverrideFor = { pid, mid -> ChatSettingsPrefs.contextOverride(pid, mid) },
-                appContext = appContext,
-                // Batch 1: same block for every request path that goes through chat; the
-                // HTTP agent already builds its own from the same providers.
-                workspaceBlock = { WorkspaceContextSource.block(appContext, projectId) },
-                // BATCH 4: the conversation is per project and survives restarts.
-                conversationId = CONVERSATION_ID,
-                transcripts = transcripts,
+    private val transcripts: com.codespace.ide.chat.TranscriptSink? = transcriptStore
+
+    /** The session table. Same directory as the transcripts (see ChatTranscriptStore.ROOT_DIR). */
+    private val index: com.codespace.ide.chat.session.SessionIndexStore? =
+        sessionStore ?: transcriptStore?.let { store ->
+            val ctx = appContext
+            if (ctx == null) null
+            else com.codespace.ide.chat.session.SessionIndexStore(
+                java.io.File(ctx.applicationContext.filesDir, com.codespace.ide.chat.ChatTranscriptStore.ROOT_DIR),
+                transcripts = store,
             )
         }
 
-    fun close() = scope.cancel()
+    /** Active session id per project, cached: the index is read once per project per process. */
+    private val activeIds = HashMap<String, String>()
+
+    /** Anything the user deserves to be told about the session table (adoption, recovery). */
+    private val notes = HashMap<String, String?>()
+
+    // ---------------------------------------------------------------- identity
+
+    private fun key(projectId: String, conversationId: String): String =
+        projectId + "\u0000" + conversationId
+
+    /**
+     * The id of the conversation this project is currently on.
+     *
+     * Resolved once per project per process and then cached, because this is called from
+     * composition. A project that has never opened before is adopted here: the legacy "main"
+     * conversation gets one metadata record and nothing else happens to it.
+     */
+    fun activeSessionId(projectId: String): String {
+        val cached = synchronized(activeIds) { activeIds[projectId] }
+        if (cached != null) return cached
+        val store = index ?: return LEGACY_CONVERSATION_ID
+        // ONE ensure: it may write the adoption record, so calling it twice would be a second
+        // write for no reason (and a second chance to fail).
+        val read = store.ensure(projectId)
+        val resolved = when (read) {
+            is com.codespace.ide.chat.session.SessionIndexRead.Ok -> read.index.resolvedActiveId
+            is com.codespace.ide.chat.session.SessionIndexRead.Unreadable -> null
+        }
+        val id = resolved ?: LEGACY_CONVERSATION_ID
+        synchronized(activeIds) { activeIds[projectId] = id }
+        synchronized(notes) {
+            notes[projectId] = when (read) {
+                is com.codespace.ide.chat.session.SessionIndexRead.Ok -> read.note
+                is com.codespace.ide.chat.session.SessionIndexRead.Unreadable -> read.reason
+            }
+        }
+        return id
+    }
+
+    /** The last thing worth saying about this project's session table, or null. */
+    fun sessionNote(projectId: String): String? = synchronized(notes) { notes[projectId] }
+
+    /**
+     * The session table for a project, for the (not yet built) picker and for tests. Read is
+     * strict: an unreadable table is reported, never presented as "no sessions".
+     */
+    internal fun sessionIndex(projectId: String): com.codespace.ide.chat.session.SessionIndexRead =
+        index?.read(projectId) ?: com.codespace.ide.chat.session.SessionIndexRead.Ok(
+            com.codespace.ide.chat.session.SessionIndex(),
+        )
+
+    fun containsSession(projectId: String, conversationId: String): Boolean {
+        val r = sessionIndex(projectId)
+        return r is com.codespace.ide.chat.session.SessionIndexRead.Ok && r.index.contains(conversationId)
+    }
+
+    // ---------------------------------------------------------------- sessions
+
+    /** The active session for a project (unchanged signature: existing callers keep working). */
+    fun session(projectId: String): ChatSession = session(projectId, activeSessionId(projectId))
+
+    @Synchronized
+    fun session(projectId: String, conversationId: String): ChatSession {
+        val sessionKey = key(projectId, conversationId)
+        // Attribution: whichever session is being handed out is the one the panel is showing,
+        // so it is the one the edit journal must attribute new change sets to.
+        com.codespace.ide.agent.AgentWriteJournal.activeSessionId = conversationId
+        val existing = sessions[sessionKey]
+        if (existing != null) return existing
+        val created = ChatSession(
+            projectId,
+            { slot -> reader.keyValue(slot) },
+            scope,
+            baseUrlForProvider = { pid, fallback ->
+                SelectionResolver.currentBaseUrl(
+                    pid, fallback,
+                    configuredProvidersFrom(reader.snapshot()),
+                )
+            },
+            poolSlotsFor = { pid ->
+                reader.snapshot().keySlots
+                    .filter { it.hasKey && it.providerId == pid }
+                    .sortedBy { it.poolIndex ?: 0 }
+                    .map { it.slotName }
+            },
+            failoverOptIn = { ChatSettingsPrefs.failoverOptIn() },
+            contextOverrideFor = { pid, mid -> ChatSettingsPrefs.contextOverride(pid, mid) },
+            appContext = appContext,
+            // Batch 1: same block for every request path that goes through chat; the
+            // HTTP agent already builds its own from the same providers.
+            workspaceBlock = { WorkspaceContextSource.block(appContext, projectId) },
+            conversationId = conversationId,
+            transcripts = transcripts,
+        )
+        sessions[sessionKey] = created
+        return created
+    }
+
+    /** True while the given conversation is streaming (used by the switch rule below). */
+    fun isStreaming(projectId: String, conversationId: String): Boolean =
+        synchronized(this) { sessions[key(projectId, conversationId)] }?.ui?.value?.streaming == true
+
+    /**
+     * Creates an independent conversation and makes it active. Returns the new session, or a
+     * reason. No messages are copied from the current one; a new session starts empty.
+     */
+    internal fun createSession(projectId: String, title: String? = null): com.codespace.ide.chat.session.SessionCreate {
+        val store = index ?: return com.codespace.ide.chat.session.SessionCreate.Failed(
+            "Session storage is unavailable in this build.",
+        )
+        return when (val created = store.create(projectId, title)) {
+            is com.codespace.ide.chat.session.SessionCreate.Failed -> created
+            is com.codespace.ide.chat.session.SessionCreate.Created -> {
+                synchronized(activeIds) { activeIds[projectId] = created.meta.id }
+                created
+            }
+        }
+    }
+
+    /**
+     * Switches the active conversation, honouring the owner's streaming rule.
+     *
+     * The outgoing session's stream is STOPPED and its partial reply KEPT (see
+     * [ChatSession.stopForSwitch]); nothing is run in parallel. Returns null on success, or a
+     * reason the switch could not happen - in which case the old session stays active, so the
+     * UI can never end up pointing at nothing.
+     */
+    fun switchTo(projectId: String, conversationId: String): String? {
+        val store = index ?: return "Session storage is unavailable in this build."
+        val currentId = activeSessionId(projectId)
+        if (currentId == conversationId) return null
+
+        // 1. The conversation must really exist; switching to a phantom would show an empty
+        //    chat that saves over nothing.
+        if (!containsSession(projectId, conversationId)) return "That session no longer exists."
+
+        // 2. Persist the choice FIRST. If this fails, stop here with the old session still
+        //    active: a switch that only happened in memory would silently revert on restart.
+        when (val w = store.setActive(projectId, conversationId)) {
+            is com.codespace.ide.chat.session.SessionWrite.Failed -> return w.reason
+            is com.codespace.ide.chat.session.SessionWrite.Ok -> Unit
+        }
+
+        // 3. Then stop the outgoing stream, keeping what it produced.
+        synchronized(this) { sessions[key(projectId, currentId)] }?.stopForSwitch()
+
+        synchronized(activeIds) { activeIds[projectId] = conversationId }
+        // The new session owns the edit journal from now on, so an undo cannot reach across.
+        com.codespace.ide.agent.AgentWriteJournal.activeSessionId = conversationId
+        return null
+    }
+
+    fun renameSession(projectId: String, conversationId: String, title: String): String? =
+        when (val w = requireStore().rename(projectId, conversationId, title)) {
+            is com.codespace.ide.chat.session.SessionWrite.Ok -> null
+            is com.codespace.ide.chat.session.SessionWrite.Failed -> w.reason
+        }
+
+    fun archiveSession(projectId: String, conversationId: String, archived: Boolean): String? =
+        when (val w = requireStore().setArchived(projectId, conversationId, archived)) {
+            is com.codespace.ide.chat.session.SessionWrite.Ok -> null
+            is com.codespace.ide.chat.session.SessionWrite.Failed -> w.reason
+        }
+
+    /** Marks a conversation as looked at, which is what "Read" is derived from. */
+    fun markRead(projectId: String, conversationId: String): String? =
+        when (val w = requireStore().markRead(projectId, conversationId)) {
+            is com.codespace.ide.chat.session.SessionWrite.Ok -> null
+            is com.codespace.ide.chat.session.SessionWrite.Failed -> w.reason
+        }
+
+    /**
+     * Deletes a conversation.
+     *
+     * Order matters and is enforced by the store: metadata first, bytes second, so a failed
+     * index write leaves the transcript recoverable. Only after that is the session's edit
+     * journal dropped, and finally the in-memory session is closed - otherwise a deleted
+     * conversation would keep a live ChatSession that could still write its transcript back.
+     */
+    internal fun deleteSession(projectId: String, conversationId: String): com.codespace.ide.chat.session.SessionDelete {
+        val store = requireStore()
+        val result = store.delete(projectId, conversationId)
+        if (result is com.codespace.ide.chat.session.SessionDelete.Failed) return result
+        com.codespace.ide.agent.AgentWriteJournal.forgetSession(conversationId)
+        val removed = synchronized(this) { sessions.remove(key(projectId, conversationId)) }
+        // Refuse further saves BEFORE dropping the reference: the record and the transcript are
+        // already gone, and a pending write would recreate the file.
+        removed?.dispose()
+        if (activeSessionIdIfCached(projectId) == conversationId) {
+            val nextActive = (sessionIndex(projectId) as? com.codespace.ide.chat.session.SessionIndexRead.Ok)
+                ?.index?.resolvedActiveId ?: LEGACY_CONVERSATION_ID
+            synchronized(activeIds) { activeIds[projectId] = nextActive }
+        }
+        return result
+    }
+
+    private fun activeSessionIdIfCached(projectId: String): String? =
+        synchronized(activeIds) { activeIds[projectId] }
+
+    private fun requireStore(): com.codespace.ide.chat.session.SessionIndexStore = index
+        ?: throw IllegalStateException("Session storage is unavailable in this build.")
+
+    fun close() {
+        scope.cancel()
+        synchronized(this) { sessions.clear() }
+        synchronized(activeIds) { activeIds.clear() }
+        synchronized(notes) { notes.clear() }
+    }
 
     private companion object {
         /**
-         * Single conversation per project for now. The storage layer is keyed by
-         * conversation id (files, model, sink), so adding a picker later is a UI change,
-         * not a data migration - which is exactly why no picker is invented here.
+         * The conversation id used by every project before multi-session existed. Kept as the
+         * fallback so a build without session storage - and the pre-upgrade conversation -
+         * still resolve to the transcript that is already on disk (main.txt).
          */
-        const val CONVERSATION_ID = "main"
+        const val LEGACY_CONVERSATION_ID = com.codespace.ide.chat.session.SessionMeta.LEGACY_ID
     }
 }

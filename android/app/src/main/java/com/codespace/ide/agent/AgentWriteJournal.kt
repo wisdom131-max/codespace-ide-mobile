@@ -43,6 +43,14 @@ object AgentWriteJournal {
         /** "kept" | "undone" | null - what the user did with it. */
         val outcome: String? = null,
         val note: String? = null,
+        /**
+         * MULTI-SESSION (M1, 2026-10-30): the conversation this change belongs to.
+         *
+         * Without it this list is PROCESS-GLOBAL, so undoing "the last edit" while looking at
+         * session B could revert a file the agent changed in session A. Attribution is the
+         * fix: a set is created by, visible to, and reversible from its own session only.
+         */
+        val sessionId: String = "",
     )
 
     /** Never keep more than this many reviewed sets around. */
@@ -54,22 +62,57 @@ object AgentWriteJournal {
     val sets = mutableStateListOf<ChangeSet>()
 
     /**
+     * The conversation the UI is currently showing. Set by the chat session that owns the
+     * screen, so a write, a row and an undo all agree on which session they belong to even
+     * though this object is a process-wide singleton.
+     *
+     * Empty string means "no session known" (JVM tests and any pre-multi-session caller), and
+     * empty matches empty, so the single-session behaviour is unchanged.
+     */
+    @Volatile
+    var activeSessionId: String = ""
+
+    /**
      * Opens a new change set for one agent operation. Called once per tool round so two
      * separate operations never merge into one misleading row.
      */
     @Synchronized
-    fun beginOperation(): Long {
+    fun beginOperation(sessionId: String = activeSessionId): Long {
+        // The operation's session becomes the CURRENT session: every record() that follows in
+        // this flow must land in the set that was just opened, not in a fresh one filed under
+        // some other session that happened to be active a moment ago.
+        activeSessionId = sessionId
         val id = nextId++
-        sets.add(ChangeSet(id = id, entries = emptyList()))
+        sets.add(ChangeSet(id = id, entries = emptyList(), sessionId = sessionId))
         while (sets.size > MAX_SETS) sets.removeAt(0)
         return id
     }
 
     /** Creates a set lazily when a writer did not announce an operation (defensive). */
     private fun activeSetId(): Long {
-        val last = sets.lastOrNull()
-        if (last != null && !last.settled) return last.id
+        val last = sets.lastOrNull { !it.settled && it.sessionId == activeSessionId }
+        if (last != null) return last.id
         return beginOperation()
+    }
+
+    /** The sets that belong to one session, newest last. This is what a session may show. */
+    fun setsFor(sessionId: String): List<ChangeSet> = sets.filter { it.sessionId == sessionId }
+
+    fun setsForActive(): List<ChangeSet> = setsFor(activeSessionId)
+
+    /**
+     * Session-scoped lookup. A set is only reachable through its OWN session, which is what
+     * makes "never undo session A from session B" a property of the data rather than a habit
+     * of the caller.
+     */
+    @Synchronized
+    fun findForSession(setId: Long, sessionId: String): ChangeSet? =
+        sets.firstOrNull { it.id == setId && it.sessionId == sessionId }
+
+    /** Drops everything a deleted session owned, so its files can never be reverted later. */
+    @Synchronized
+    fun forgetSession(sessionId: String) {
+        sets.removeAll { it.sessionId == sessionId }
     }
 
     /**
@@ -105,20 +148,33 @@ object AgentWriteJournal {
      * round that changed nothing must not leave an empty "0 files changed" row on screen
      * (owner spec: no empty or permanent row).
      */
-    fun reviewable(): ChangeSet? = sets.lastOrNull { !it.settled && it.entries.isNotEmpty() }
+    fun reviewable(sessionId: String = activeSessionId): ChangeSet? =
+        sets.lastOrNull { !it.settled && it.entries.isNotEmpty() && it.sessionId == sessionId }
 
     /** Keep: mark accepted, touch NO files. */
     @Synchronized
-    fun keep(setId: Long) {
+    fun keep(setId: Long, requesterSessionId: String = activeSessionId): String? {
+        if (findForSession(setId, requesterSessionId) == null) return OTHER_SESSION
         settle(setId, "kept", null)
+        return null
     }
+
+    /** Shown when a caller reaches for a set that belongs to a different conversation. */
+    const val OTHER_SESSION: String = "That change belongs to a different session."
 
     /**
      * Undo: revert everything still safely revertible, verify each one, and settle the set
      * with an honest note describing partial success or conflicts.
      */
     @Synchronized
-    fun undo(setId: Long): String {
+    fun undo(setId: Long, requesterSessionId: String = activeSessionId): String {
+        // Attribution first: a set that is not this session's is not "gone", it is somebody
+        // else's, and saying so is more honest than pretending it expired.
+        if (findForSession(setId, requesterSessionId) == null &&
+            sets.any { it.id == setId }
+        ) {
+            return OTHER_SESSION
+        }
         val i = sets.indexOfFirst { it.id == setId }
         if (i < 0) return "That change set is no longer available."
         val set = sets[i]

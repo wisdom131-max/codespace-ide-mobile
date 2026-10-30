@@ -47,7 +47,9 @@ import com.codespace.ide.chat.ui.ChatTokens
  */
 @Composable
 internal fun ChatFilesChangedRow() {
-    val sets = AgentWriteJournal.sets
+    // MULTI-SESSION (M1): only THIS session's changes. The journal is process-wide, so an
+    // unfiltered read here would show - and let you undo - another conversation's files.
+    val sets = AgentWriteJournal.setsForActive()
     if (sets.isEmpty()) return
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp)) {
