@@ -56,9 +56,6 @@ internal fun TerminalAgentRunStrip() {
                     run = run,
                     expanded = expanded[run.id] == true,
                     onToggle = { expanded[run.id] = expanded[run.id] != true },
-                    // Item 1: dismiss the finished record only. AgentTerminalFeed.dismiss
-                    // refuses a running run, so this can never act as a cancel button.
-                    onDismiss = { AgentTerminalFeed.dismiss(run.id) },
                 )
                 Spacer(Modifier.width(2.dp))
             }
@@ -71,7 +68,6 @@ private fun AgentRunRow(
     run: AgentTerminalFeed.Run,
     expanded: Boolean,
     onToggle: () -> Unit,
-    onDismiss: () -> Unit,
 ) {
     val statusColor = when (run.status) {
         AgentTerminalFeed.Status.RUNNING -> Color(0xFF3794FF)
@@ -120,19 +116,10 @@ private fun AgentRunRow(
                 fontSize = 9.sp,
                 maxLines = 1,
             )
-            // Item 1: a FINISHED run can be dismissed from the view. A running one cannot
-            // even offer it, because dismissing must never read as cancelling.
-            if (run.isFinished) {
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    "\u2715",
-                    color = Color(0xFF858585),
-                    fontSize = 11.sp,
-                    modifier = Modifier
-                        .clickable(onClickLabel = "Dismiss completed run", onClick = onDismiss)
-                        .padding(horizontal = 5.dp, vertical = 1.dp),
-                )
-            }
+            // Owner ruling 2026-10-30: the rows carry the chevron ONLY. No X here, because a
+            // close glyph next to a running command reads as "cancel", which this strip must
+            // never do. AgentTerminalFeed.dismiss() is kept (and tested) so the capability is
+            // still there if it is ever asked for again.
         }
         if (run.workdir != null && expanded) {
             Text(
