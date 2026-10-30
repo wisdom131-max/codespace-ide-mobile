@@ -550,6 +550,18 @@ internal class SessionIndexStore(
         return save(projectId, index.upsert(meta.copy(archived = archived)))
     }
 
+    /**
+     * Item 18: persist the mode THIS session was last used in. Deliberately silent when the index
+     * cannot be read - the caller reports it - and a no-op when the mode is unchanged, so tapping
+     * the mode you already have does not rewrite the file.
+     */
+    fun setMode(projectId: String, sessionId: String, mode: SessionMode): SessionWrite {
+        val index = readOk(projectId) ?: return SessionWrite.Failed(UNREADABLE_WRITE)
+        val meta = index.find(sessionId) ?: return SessionWrite.Failed("No such session: " + sessionId)
+        if (meta.mode == mode) return SessionWrite.Ok
+        return save(projectId, index.upsert(meta.copy(mode = mode, updatedAtMs = meta.updatedAtMs)))
+    }
+
     fun setActive(projectId: String, sessionId: String): SessionWrite {
         val index = readOk(projectId) ?: return SessionWrite.Failed(UNREADABLE_WRITE)
         if (!index.contains(sessionId)) return SessionWrite.Failed("No such session: " + sessionId)

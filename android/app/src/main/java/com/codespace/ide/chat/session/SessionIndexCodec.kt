@@ -73,7 +73,13 @@ internal data class SessionIndex(
 
 internal object SessionIndexCodec {
 
-    const val FORMAT_VERSION = "vsessions 1"
+    /**
+     * v2 adds an eighth column: the session's mode (item 18). A v1 file MUST still read: bumping
+     * the header without accepting the old one would make every existing conversation
+     * Unreadable, which is the one failure this format is built to prevent.
+     */
+    const val FORMAT_VERSION = "vsessions 2"
+    const val FORMAT_VERSION_V1 = "vsessions 1"
 
     private const val TAG_SESSION = "s"
 
@@ -102,7 +108,8 @@ internal object SessionIndexCodec {
                 .append(m.createdAtMs).append('\t')
                 .append(m.updatedAtMs).append('\t')
                 .append(if (m.archived) '1' else '0').append('\t')
-                .append(m.lastReadAtMs).append('\n')
+                .append(m.lastReadAtMs).append('\t')
+                .append(m.mode.token).append('\n')
         }
         return sb.toString()
     }
@@ -118,9 +125,14 @@ internal object SessionIndexCodec {
         if (raw.isBlank()) return SessionIndexRead.Unreadable("the session index file is empty")
 
         val lines = raw.split('\n')
-        if (lines.firstOrNull()?.trim() != FORMAT_VERSION) {
+        val header = lines.firstOrNull()?.trim()
+        if (header != FORMAT_VERSION && header != FORMAT_VERSION_V1) {
             return SessionIndexRead.Unreadable("unrecognised session index format")
         }
+        // The record width is fixed BY THE HEADER, not guessed per line. Accepting "7 or 8
+        // columns" for a v2 file would quietly accept a torn v2 record with its mode column
+        // missing, which is exactly the corruption this reader exists to refuse.
+        val fieldsPerRecord = if (header == FORMAT_VERSION) 8 else 7
 
         var activeId: String? = null
         var sawActive = false
@@ -140,7 +152,7 @@ internal object SessionIndexCodec {
                     activeId = if (id.isBlank()) null else id
                 }
                 parts[0] == TAG_SESSION -> {
-                    val meta = parseSession(parts)
+                    val meta = parseSession(parts, fieldsPerRecord)
                         ?: return SessionIndexRead.Unreadable("malformed session record on line " + (i + 1))
                     val problems = SessionMetaRules.problems(meta)
                     if (problems.isNotEmpty()) {
@@ -160,9 +172,12 @@ internal object SessionIndexCodec {
         return SessionIndexRead.Ok(SessionIndex(out, activeId))
     }
 
-    /** Exactly seven tab-separated fields; a title may contain anything once escaped. */
-    private fun parseSession(parts: List<String>): SessionMeta? {
-        if (parts.size != 7) return null
+    /**
+     * Seven tab-separated fields (v1) or eight (v2, mode last); a title may contain anything once
+     * escaped. A v1 record simply has no mode and takes the ASK default.
+     */
+    private fun parseSession(parts: List<String>, fieldsPerRecord: Int): SessionMeta? {
+        if (parts.size != fieldsPerRecord) return null
         val id = parts[1]
         val title = unescape(parts[2])
         val created = parts[3].toLongOrNull() ?: return null
@@ -173,6 +188,10 @@ internal object SessionIndexCodec {
             else -> return null
         }
         val lastRead = parts[6].toLongOrNull() ?: return null
+        // An unknown mode token is not a corrupt record: it is a record written by a version that
+        // knew a mode this build does not, and dropping the whole index over it would lose every
+        // session. Fall back to ASK and keep the conversation.
+        val mode = if (fieldsPerRecord == 8) SessionMode.fromToken(parts[7]) ?: SessionMode.ASK else SessionMode.ASK
         return SessionMeta(
             id = id,
             title = title,
@@ -180,6 +199,7 @@ internal object SessionIndexCodec {
             updatedAtMs = updated,
             archived = archived,
             lastReadAtMs = lastRead,
+            mode = mode,
         )
     }
 

@@ -32,6 +32,15 @@ internal data class SessionMeta(
      * timestamps it is derived from.
      */
     val lastReadAtMs: Long = 0L,
+    /**
+     * Item 18 (owner report 2026-10-30): the mode this session was last used in.
+     *
+     * It lives here, not in a global preference, because the mode is a property of the
+     * conversation: an agent task you closed on purpose must reopen as Agent, while the session
+     * you only ever asked questions in must not silently become an executing one. The default
+     * is ASK, which is the only mode that cannot change a file if something goes wrong.
+     */
+    val mode: SessionMode = SessionMode.ASK,
 ) {
     val isRead: Boolean get() = lastReadAtMs >= updatedAtMs
 
@@ -54,6 +63,23 @@ internal data class SessionMeta(
 
         /** "About 40 characters" — the list row shows one line and ellipsizes. */
         const val DERIVED_TITLE_CHARS: Int = 40
+    }
+}
+
+/**
+ * The three chat modes, as STORED. The panel's ChatMode enum is a UI type and must not leak into
+ * the on-disk format, so the two are joined by these stable tokens: a rename in the UI can never
+ * corrupt a session file, and an unknown token decodes to ASK instead of failing the whole index.
+ */
+internal enum class SessionMode(val token: String) {
+    ASK("ask"),
+    EDIT("edit"),
+    AGENT("agent"),
+    ;
+
+    companion object {
+        /** null for anything unrecognised: callers decide the fallback, never a crash. */
+        fun fromToken(token: String?): SessionMode? = values().firstOrNull { it.token == token }
     }
 }
 

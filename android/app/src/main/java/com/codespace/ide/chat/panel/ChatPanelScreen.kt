@@ -185,8 +185,12 @@ private fun ChatBody(
         androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri -> if (uri != null) readAttachment(ctx, uri, session) }
     val pending by session.pending.collectAsState()
-    // U3: composer mode. Ask is the only mode that works without the tool wire.
-    var chatMode by remember { mutableStateOf(ChatMode.ASK) }
+    // U3: composer mode. Item 18: it is now restored from THIS session's metadata, keyed on
+    // (project, session), so Agent/Edit survive an app restart and switching sessions restores
+    // each session's own mode. Ask stays the default only for a session that never chose one.
+    var chatMode by remember(projectId, activeId) {
+        mutableStateOf(ChatModePersistence.load(manager, projectId, activeId))
+    }
     var showSelect by remember { mutableStateOf(false) }
     var showKeys by remember { mutableStateOf(false) }
     val c = ChatTokens.LocalChatColors.current
@@ -304,6 +308,11 @@ private fun ChatBody(
                 chatMode = it
                 // The chip and the request must never disagree.
                 session.mode = it
+                // Item 18: remembered per session. A failed write is reported, never swallowed:
+                // the user chose a mode and must not be told nothing.
+                if (!ChatModePersistence.save(manager, projectId, activeId, it)) {
+                    notice = "Could not remember the " + it.label + " mode for this session."
+                }
             },
             onAddContext = { attachLauncher.launch("*/*") },
             onOpenModel = { showSelect = true },

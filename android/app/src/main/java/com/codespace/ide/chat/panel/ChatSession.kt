@@ -968,6 +968,32 @@ class ChatSessionManager internal constructor(
             is com.codespace.ide.chat.session.SessionWrite.Failed -> w.reason
         }
 
+    /**
+     * Item 18: the mode this session was last used in. Read through the same store every other
+     * session operation uses, so the mode cannot drift into a second source of truth. Any
+     * unreadable state answers ASK, the mode that cannot write a file.
+     */
+    internal fun sessionMode(projectId: String, conversationId: String): com.codespace.ide.chat.session.SessionMode {
+        val store = index ?: return com.codespace.ide.chat.session.SessionMode.ASK
+        val read = store.read(projectId)
+        if (read !is com.codespace.ide.chat.session.SessionIndexRead.Ok) {
+            return com.codespace.ide.chat.session.SessionMode.ASK
+        }
+        return read.index.find(conversationId)?.mode
+            ?: com.codespace.ide.chat.session.SessionMode.ASK
+    }
+
+    /** null on success, the reason otherwise: the caller reports it rather than swallowing it. */
+    internal fun setSessionMode(
+        projectId: String,
+        conversationId: String,
+        mode: com.codespace.ide.chat.session.SessionMode,
+    ): String? =
+        when (val w = requireStore().setMode(projectId, conversationId, mode)) {
+            is com.codespace.ide.chat.session.SessionWrite.Ok -> null
+            is com.codespace.ide.chat.session.SessionWrite.Failed -> w.reason
+        }
+
     /** Marks a conversation as looked at, which is what "Read" is derived from. */
     fun markRead(projectId: String, conversationId: String): String? =
         when (val w = requireStore().markRead(projectId, conversationId)) {

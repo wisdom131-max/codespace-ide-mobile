@@ -91,21 +91,21 @@ class SessionIndexCodecTest {
     @Test
     fun `duplicate ids are damage because they would alias one transcript`() {
         val raw = SessionIndexCodec.FORMAT_VERSION + "\nactive\ts_a\n" +
-            "s\ts_a\tOne\t1\t2\t0\t0\n" +
-            "s\ts_a\tTwo\t3\t4\t0\t0\n"
+            "s\ts_a\tOne\t1\t2\t0\t0\task\n" +
+            "s\ts_a\tTwo\t3\t4\t0\t0\tagent\n"
         assertTrue(unreadable(raw).contains("duplicate"))
     }
 
     @Test
     fun `a record that fails validation is damage`() {
         val raw = SessionIndexCodec.FORMAT_VERSION + "\nactive\t\n" +
-            "s\tbad id\tTitle\t1\t2\t0\t0\n"
+            "s\tbad id\tTitle\t1\t2\t0\t0\task\n"
         assertTrue(unreadable(raw).contains("invalid"))
     }
 
     @Test
     fun `a missing active line is damage`() {
-        unreadable(SessionIndexCodec.FORMAT_VERSION + "\ns\ts_a\tT\t1\t2\t0\t0\n")
+        unreadable(SessionIndexCodec.FORMAT_VERSION + "\ns\ts_a\tT\t1\t2\t0\t0\task\n")
     }
 
     @Test
