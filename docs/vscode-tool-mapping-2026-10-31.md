@@ -2,8 +2,9 @@
 
 Source of truth: `microsoft/vscode-copilot-chat/src/extension/tools/common/toolNames.ts`, read
 directly, not from secondary write-ups. Counts below are from the live registry in
-`chat/panel/ToolRegistry.kt`: **79 entries, 66 executable, 13 registered-but-not-offered with a
-written reason.**
+`chat/panel/ToolRegistry.kt`: **77 entries, 70 executable, 7 registered-but-not-offered with a
+written reason.** Two entries were removed outright at the owner's request: `create_new_workspace`
+and `switch_agent`.
 
 Mode legend: **A** = Ask (read-only), **E** = Edit, **G** = Agent. A tool's modes decide whether
 the model is even shown its schema; `ToolRegistry.allows(mode, name)` is the single gate, and
@@ -51,8 +52,6 @@ hidden tool carries a non-blank reason.
 | `runSubagent` | No subagent runtime (and the owner forbids delegating their own work) |
 | `search_subagent` | Same |
 | `execution_subagent` | Same |
-| `vscode_get_confirmation` | Superseded by `AgentFlowGate`, which gates the call itself rather than trusting the model to ask |
-| `vscode_get_confirmation_with_options` | Same reason |
 | `vscode_get_terminal_confirmation` | `run_in_terminal` already passes the same gate |
 
 ## Tests that keep this honest
@@ -78,3 +77,14 @@ VN Code equivalent: the executor returns a String, so the bytes go to `ToolImage
 next send turns them into `ChatAttachment`s, which `OpenAIAdapter` (WP8) already emits as
 `image_url` parts on the final user turn. Downscale to 1568px before queueing, cap at 4 pending
 images, and say so when the queue is full instead of dropping silently.
+
+
+## The blocking gate (vscode_get_confirmation, vscode_askQuestions)
+
+In VS Code these tools SUSPEND: the model receives the user's answer as the tool result. A tool
+here returns a String as soon as it returns, so without a gate the model would be handed
+"question asked" and could write the answer itself.
+
+`AgentQuestionGate` mirrors `AgentFlowGate`: one card at a time on a Mutex, a 10-minute ceiling,
+and a typed outcome (ANSWERED / TIMED_OUT / DISMISSED) so a non-answer can never be reported as
+a yes. `ChatQuestionCard` renders it above the composer.

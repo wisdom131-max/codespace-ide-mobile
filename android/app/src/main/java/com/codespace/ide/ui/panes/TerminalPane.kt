@@ -3162,6 +3162,9 @@ internal fun TerminalPane(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
                         TerminalView(ctx, null).apply {
+                            // terminal_selection: the selection lives in this view only, so it
+                            // publishes a reader instead of copying state on every touch.
+                            com.codespace.ide.agent.TerminalSelectionState.register { getSelectedText() }
                             val viewClient = SimpleTerminalViewClient()
                             viewClient.terminalView  = this
                             viewClient.currentTextSize = terminalFontSize
@@ -3380,6 +3383,9 @@ internal fun SplitTerminalPanel(sharedState: TerminalState, onFileSystemChanged:
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
                         TerminalView(ctx, null).apply {
+                            // terminal_selection: the selection lives in this view only, so it
+                            // publishes a reader instead of copying state on every touch.
+                            com.codespace.ide.agent.TerminalSelectionState.register { getSelectedText() }
                             val viewClient = SimpleTerminalViewClient()
                             viewClient.terminalView  = this
                             viewClient.currentTextSize = terminalFontSize

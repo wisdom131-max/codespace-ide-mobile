@@ -300,6 +300,7 @@ private fun ChatBody(
             }
         }
         ChatApprovalCard()
+        ChatQuestionCard()
         // Section 5: the Files Changed row exists only in Agent mode, and the row itself
         // renders nothing when the journal holds no real change.
         if (chatMode == ChatMode.AGENT) {

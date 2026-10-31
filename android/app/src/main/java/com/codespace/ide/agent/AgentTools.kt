@@ -163,6 +163,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         "runTests", "test_search", "test_failure", "create_and_run_task", "run_task",
         "get_task_output", "get_project_setup_info",
         "get_search_view_results", "github_repo", "view_image", "tool_search",
+        "terminal_selection", "vscode_askQuestions", "vscode_get_confirmation",
+        "vscode_get_confirmation_with_options",
         "replace_string_in_file", "get_errors", "create_directory", "get_changed_files",
         "list_files", "search_files",
         "git_commit_push", "git_pull_rebase", "git_branch", "git_status", "git_diff",
@@ -237,6 +239,15 @@ You can use multiple tools in sequence. When done, give a final summary.
                     args.optString("path"), args.optString("state"), context)
                 "view_image" -> viewImage(args.getString("path"), context)
                 "tool_search" -> toolSearch(args.getString("query"))
+                "terminal_selection" -> terminalSelection()
+                "vscode_askQuestions" -> askQuestions(args)
+                "vscode_get_confirmation" -> getConfirmation(args.optString("message"), emptyList())
+                "vscode_get_confirmation_with_options" -> getConfirmation(
+                    args.optString("message"),
+                    args.optJSONArray("options")?.let { arr ->
+                        (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
+                    } ?: emptyList(),
+                )
                 // VS Code parity (2026-10-31): ToolName.ReplaceString, GetErrors,
                 // CreateDirectory, GetScmChanges. The two that read are bounded like the
                 // existing git tools so they cannot crowd the context window.
@@ -466,6 +477,62 @@ You can use multiple tools in sequence. When done, give a final summary.
         if (!ok) return "Could not create " + dir.absolutePath
         com.codespace.ide.util.FsChangeNotifier.notifyChanged()
         return "Created " + dir.absolutePath
+    }
+
+    /** terminal_selection: what the user actually has selected in the terminal, if anything. */
+    private fun terminalSelection(): String {
+        val text = TerminalSelectionState.current()
+            ?: return "No terminal view is attached, so there is no selection to read."
+        if (text.isBlank()) return "Nothing is selected in the terminal."
+        val lines = text.count { it == '\n' } + 1
+        return "Terminal selection (" + lines + " line(s), " + text.length + " chars):\n" + text.take(6000)
+    }
+
+    /**
+     * vscode_askQuestions. SUSPENDS until the user answers, because that is the only way the
+     * model gets a real answer instead of being handed the word "asked" and inventing the rest.
+     */
+    private suspend fun askQuestions(args: JSONObject): String {
+        val question = args.optString("question").trim()
+        if (question.isEmpty()) return "vscode_askQuestions needs a question."
+        val options = args.optJSONArray("options")?.let { arr ->
+            (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
+        } ?: emptyList()
+        val answer = AgentQuestionGate.ask(
+            question = question,
+            options = options,
+            allowFreeText = args.optBoolean("allowFreeText", true),
+        )
+        return when {
+            answer.answered -> {
+                val parts = listOfNotNull(
+                    answer.choice?.let { "choice: " + it },
+                    answer.text?.let { "text: " + it },
+                )
+                "The user answered - " + parts.joinToString("; ")
+            }
+            answer.outcome == AgentQuestionGate.Outcome.DISMISSED ->
+                "The user dismissed the question without answering. Do not assume an answer."
+            else -> "The question timed out with no answer. Do not assume an answer."
+        }
+    }
+
+    /**
+     * vscode_get_confirmation. The same suspend-until-answered gate, phrased as a yes/no, so a
+     * risky action waits for a human instead of relying on the model's judgement.
+     */
+    private suspend fun getConfirmation(message: String, options: List<String>): String {
+        val text = message.trim().ifEmpty { "Proceed with this action?" }
+        val choices = if (options.isEmpty()) listOf("Proceed", "Cancel") else options
+        val answer = AgentQuestionGate.ask(text, choices, allowFreeText = false)
+        return when {
+            answer.answered && answer.choice != null ->
+                "The user chose '" + answer.choice + "'" +
+                    if (answer.choice.equals("Proceed", true) || answer.choice.equals("Yes", true)) " - proceed." else "."
+            answer.answered -> "The user replied: " + (answer.text ?: "(empty)")
+            answer.outcome == AgentQuestionGate.Outcome.DISMISSED -> "The user dismissed the confirmation. Treat this as NO."
+            else -> "The confirmation timed out. Treat this as NO."
+        }
     }
 
     /** get_search_view_results: exactly what the search panel is showing, or that it is idle. */

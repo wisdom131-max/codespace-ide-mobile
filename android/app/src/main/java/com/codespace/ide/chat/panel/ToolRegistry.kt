@@ -587,6 +587,36 @@ internal object ToolRegistry {
             modes = EXEC_MODES,
         ),
 
+        // --- Terminal selection and the blocking question gate ---
+        ToolSpec(
+            name = "terminal_selection",
+            displayName = "Reading the terminal selection",
+            description = "What the user has selected in the terminal. Says so plainly when nothing is selected.",
+            schema = OBJ + ",\"properties\":{}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "vscode_askQuestions",
+            displayName = "Asking the user a question",
+            description = "Ask and WAIT. The user's real answer comes back as this tool's result; no answer means no answer, never a guess.",
+            schema = OBJ + ",\"required\":[\"question\"],\"properties\":{\"question\":{\"type\":\"string\"}, \"options\":{\"type\":\"string\"}, \"allowFreeText\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "vscode_get_confirmation",
+            displayName = "Asking for confirmation",
+            description = "Ask the user to proceed or cancel and wait for the answer. Treat any non-answer as NO.",
+            schema = OBJ + ",\"required\":[\"message\"],\"properties\":{\"message\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
+        ),
+        ToolSpec(
+            name = "vscode_get_confirmation_with_options",
+            displayName = "Asking for confirmation with choices",
+            description = "Same gate, with your own option labels instead of Proceed/Cancel.",
+            schema = OBJ + ",\"required\":[\"message\"],\"properties\":{\"message\":{\"type\":\"string\"}, \"options\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
+        ),
+
         // --- Hidden: present in VS Code, and why each is not offered here ---
         ToolSpec(
             name = "run_vscode_command",
@@ -595,14 +625,6 @@ internal object ToolRegistry {
             schema = "",
             modes = NONE,
             hiddenReason = "VS Code internal command ids have no mobile equivalent. The real actions here are separate tools, not string ids.",
-        ),
-        ToolSpec(
-            name = "terminal_selection",
-            displayName = "Reading the terminal selection",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Verified 2026-10-31 against the vendored terminal: TerminalView.java tracks selection (isSelectingText) but exposes no selected-text accessor, so a tool would have to guess. Needs a small patch in the vendored view first; after that this tool is straightforward.",
         ),
         ToolSpec(
             name = "runSubagent",
@@ -629,44 +651,12 @@ internal object ToolRegistry {
             hiddenReason = "Owner instruction 2026-10-31: subagents stay out.",
         ),
         ToolSpec(
-            name = "vscode_get_confirmation",
-            displayName = "Asking for confirmation",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Superseded by AgentFlowGate, which gates the CALL rather than trusting the model to remember to ask.",
-        ),
-        ToolSpec(
-            name = "vscode_get_confirmation_with_options",
-            displayName = "Asking for a choice",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Same as vscode_get_confirmation: the gate is outside the model, so it cannot be skipped.",
-        ),
-        ToolSpec(
             name = "vscode_get_terminal_confirmation",
             displayName = "Asking before a terminal command",
             description = "",
             schema = "",
             modes = NONE,
             hiddenReason = "run_in_terminal already passes the same gate as every other command.",
-        ),
-        ToolSpec(
-            name = "vscode_askQuestions",
-            displayName = "Asking the user a question",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Needs a blocking question card. The agent loop continues as soon as a tool returns a string, so 'question asked' would let the model invent the answer. Needs a suspend-until-answered mechanism in ChatSession first.",
-        ),
-        ToolSpec(
-            name = "switch_agent",
-            displayName = "Switching the active agent",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Mode changing is a user control and a permission boundary. A model that can switch its own mode can grant itself Agent powers from Edit.",
         ),
         ToolSpec(
             name = "resolve_memory_file_uri",
@@ -683,14 +673,6 @@ internal object ToolRegistry {
             schema = "",
             modes = NONE,
             hiddenReason = "No extension host exists to introspect, so there is no API surface to describe.",
-        ),
-        ToolSpec(
-            name = "create_new_workspace",
-            displayName = "Creating a workspace",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Project creation is a UI flow (folder picker plus a project record). A model call must not conjure projects; needs a projects-model API with its own consent card.",
         ),
 
         // --- Hidden: stub ---

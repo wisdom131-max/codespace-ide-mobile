@@ -26,6 +26,7 @@ class ToolRegistryTest {
         "copilot_getNotebookSummary", "read_notebook_cell_output",
         "test_search", "test_failure", "get_task_output", "get_project_setup_info",
         "get_search_view_results", "view_image", "tool_search",
+        "terminal_selection", "vscode_askQuestions",
     )
 
     // --- registration parity -------------------------------------------------------
@@ -39,8 +40,8 @@ class ToolRegistryTest {
         // registry would be invisible to the mode gate, which is the real defect to catch.
         val missing = executable.toSet() - ToolRegistry.names().toSet()
         assertTrue("executor tool missing from the registry: " + missing, missing.isEmpty())
-        assertEquals("every registered tool is listed exactly once", 79, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 79, ToolRegistry.names().toSet().size)
+        assertEquals("every registered tool is listed exactly once", 77, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 77, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -93,7 +94,8 @@ class ToolRegistryTest {
         val edit = ToolRegistry.exposedNames(ChatMode.EDIT).toSet()
         // Agent is Edit plus the side-effecting tools, and secrets stay out of every mode.
         assertTrue("Agent must contain everything Edit offers", agent.containsAll(edit))
-        assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package", "run_notebook_cell", "get_terminal_output", "terminal_last_command", "runTests", "run_task", "create_and_run_task", "github_repo")))
+        assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package", "run_notebook_cell", "get_terminal_output", "terminal_last_command", "runTests", "run_task", "create_and_run_task", "github_repo",
+            "vscode_get_confirmation", "vscode_get_confirmation_with_options")))
         assertFalse(agent.contains("save_secret"))
         assertFalse(agent.contains("get_secret"))
     }
@@ -182,6 +184,10 @@ class ToolRegistryTest {
             "view_image" to (listOf("path") to emptyList<String>()),
             "tool_search" to (listOf("query") to emptyList<String>()),
             "github_repo" to (emptyList<String>() to listOf("repo", "what", "path", "state")),
+            "terminal_selection" to (emptyList<String>() to emptyList<String>()),
+            "vscode_askQuestions" to (listOf("question") to listOf("options", "allowFreeText")),
+            "vscode_get_confirmation" to (listOf("message") to emptyList<String>()),
+            "vscode_get_confirmation_with_options" to (listOf("message") to listOf("options")),
             "replace_string_in_file" to (listOf("path", "old_string", "new_string") to listOf("replace_all")),
             "get_errors" to (emptyList<String>() to listOf("path")),
             "create_directory" to (listOf("path") to emptyList<String>()),
