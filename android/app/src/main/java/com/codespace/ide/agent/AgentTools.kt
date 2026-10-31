@@ -148,7 +148,9 @@ You can use multiple tools in sequence. When done, give a final summary.
     // /tools chat listing, never execution). MCP tools (mcp_<server>_<tool>)
     // are dynamic and NOT listed here — they surface via McpClientManager.
     private val BUILTIN_TOOL_NAMES: List<String> = listOf(
-        "run_command", "read_file", "write_file", "list_files", "search_files",
+        "run_command", "read_file", "write_file",
+        "replace_string_in_file", "get_errors", "create_directory", "get_changed_files",
+        "list_files", "search_files",
         "git_commit_push", "git_pull_rebase", "git_branch", "git_status", "git_diff",
         "save_secret", "get_secret", "detect_secrets", "web_fetch", "web_search",
         "save_memory", "read_memory", "delete_memory",
@@ -181,6 +183,23 @@ You can use multiple tools in sequence. When done, give a final summary.
                 // these tools read the raw string as a HOST File.
                 "read_file" -> readFile(args.getString("path"), context)
                 "write_file" -> writeFile(args.getString("path"), args.getString("content"), context)
+                // VS Code parity (2026-10-31): ToolName.ReplaceString, GetErrors,
+                // CreateDirectory, GetScmChanges. The two that read are bounded like the
+                // existing git tools so they cannot crowd the context window.
+                "replace_string_in_file" -> replaceStringInFile(
+                    args.getString("path"),
+                    args.getString("old_string"),
+                    args.getString("new_string"),
+                    args.optBoolean("replace_all", false),
+                    context,
+                )
+                "get_errors" -> com.codespace.ide.util.ToolOutputBounds.bound(
+                    getErrors(args.optString("path").ifBlank { null })
+                )
+                "create_directory" -> createDirectory(args.getString("path"), context)
+                "get_changed_files" -> com.codespace.ide.util.ToolOutputBounds.bound(
+                    gitStatus(args.optString("repo_dir").ifBlank { null }, context)
+                )
                 "list_files" -> listFiles(args.getString("path"), context)
                 "search_files" -> searchFiles(args.getString("path"), args.getString("pattern"), context)
                 "git_commit_push" -> gitCommitPush(args.getString("message"), args.optString("repo_dir").ifBlank { null }, context)
@@ -340,6 +359,59 @@ You can use multiple tools in sequence. When done, give a final summary.
         // Reveal expands the ancestors (never opens the file, never collapses anything).
         com.codespace.ide.util.ExplorerReveal.requestFor(target.absolutePath)
         return "Wrote ${content.length} chars to ${target.absolutePath}"
+    }
+
+    /**
+     * VS Code parity: replace_string_in_file. Reads the CURRENT file, so the match is checked
+     * against what is on disk now rather than against something the model remembers, and hands
+     * the write to writeFile so the before-image, the journal entry, Undo and the Explorer
+     * refresh all behave exactly as they do for a full write.
+     */
+    private fun replaceStringInFile(
+        path: String,
+        oldText: String,
+        newText: String,
+        replaceAll: Boolean,
+        context: android.content.Context,
+    ): String {
+        val target = File(resolveToolPath(context, path))
+        if (!target.exists()) return "File not found: " + path
+        if (!target.isFile) return "Not a file: " + path
+        val current = try {
+            target.readText()
+        } catch (t: Throwable) {
+            return "Could not read " + path + ": " + (t.message ?: t.javaClass.simpleName)
+        }
+        return when (val outcome = ReplaceText.apply(current, oldText, newText, replaceAll)) {
+            is ReplaceOutcome.Refused -> outcome.reason
+            is ReplaceOutcome.Ok -> {
+                writeFile(target.absolutePath, outcome.updated, context)
+                "Replaced " + outcome.count + " occurrence(s) in " + target.name +
+                    " (" + outcome.updated.length + " chars now)"
+            }
+        }
+    }
+
+    /** VS Code parity: get_errors. Reads the live diagnostics the app already collects. */
+    private fun getErrors(pathFilter: String?): String =
+        DiagnosticReport.format(
+            com.codespace.ide.diagnostics.DiagnosticManager.getAllDiagnostics(),
+            pathFilter,
+        )
+
+    /** VS Code parity: create_directory. Idempotent, and never creates over a file. */
+    private fun createDirectory(path: String, context: android.content.Context): String {
+        val dir = File(resolveToolPath(context, path))
+        if (dir.isFile) return "A file already exists at " + dir.absolutePath
+        if (dir.isDirectory) return "Directory already exists: " + dir.absolutePath
+        val ok = try {
+            dir.mkdirs()
+        } catch (t: Throwable) {
+            false
+        }
+        if (!ok) return "Could not create " + dir.absolutePath
+        com.codespace.ide.util.FsChangeNotifier.notifyChanged()
+        return "Created " + dir.absolutePath
     }
 
     private fun listFiles(path: String, context: android.content.Context): String {

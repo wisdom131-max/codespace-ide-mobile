@@ -72,6 +72,47 @@ internal object ToolRegistry {
                 "\"content\":{\"type\":\"string\"}}}",
             modes = WRITE_MODES,
         ),
+        // VS Code parity (verified against microsoft/vscode-copilot-chat
+        // src/extension/tools/common/toolNames.ts, 2026-10-31):
+        //   replace_string_in_file  <- ToolName.ReplaceString / MultiReplaceString
+        //   get_errors              <- ToolName.GetErrors
+        //   create_directory        <- ToolName.CreateDirectory
+        //   get_changed_files       <- ToolName.GetScmChanges
+        ToolSpec(
+            name = "replace_string_in_file",
+            displayName = "Replacing text in a file",
+            description = "Replace ONE exact string in an existing file. old_string must match " +
+                "exactly one place, or set replace_all. Cheaper and safer than rewriting a whole file.",
+            schema = OBJ + ",\"required\":[\"path\",\"old_string\",\"new_string\"],\"properties\":{" +
+                "\"path\":{\"type\":\"string\"},\"old_string\":{\"type\":\"string\"}," +
+                "\"new_string\":{\"type\":\"string\"},\"replace_all\":{\"type\":\"boolean\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "get_errors",
+            displayName = "Reading diagnostics",
+            description = "Report the errors and warnings the language servers and compilers are " +
+                "currently producing, optionally filtered to one file. States when the data is stale.",
+            schema = OBJ + ",\"properties\":{\"path\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "create_directory",
+            displayName = "Creating a directory",
+            description = "Create a directory, including missing parents. Refuses when a file " +
+                "already exists at that path.",
+            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{\"path\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "get_changed_files",
+            displayName = "Listing changed files",
+            description = "List the files changed in the repository (git status), without their " +
+                "full diffs.",
+            schema = OBJ + ",\"properties\":{\"repo_dir\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+
         ToolSpec(
             name = "list_files",
             displayName = "Listing files",
@@ -167,11 +208,11 @@ internal object ToolRegistry {
         ToolSpec(
             name = "web_fetch",
             displayName = "Fetching a URL",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Network egress with untrusted response content. Needs a host policy and " +
-                "untrusted-content marking first; wave 2.",
+            description = "Fetch one http(s) page and return its text, bounded. It is network " +
+                "egress that leaves the device, and the response is untrusted content.",
+            schema = OBJ + ",\"required\":[\"url\"],\"properties\":{\"url\":{\"type\":\"string\"}," +
+                "\"headers\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "web_search",
@@ -186,11 +227,11 @@ internal object ToolRegistry {
         ToolSpec(
             name = "save_memory",
             displayName = "Saving a memory",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "State-changing durable write. Not exposed in Phase 1 (owner instruction); needs " +
-                "project namespacing, an approval gate and an audit surface first. See decision review Appendix A.",
+            description = "Save one durable note for this project that later conversations can read " +
+                "with read_memory. Agent mode only; every call passes the approval gate.",
+            schema = OBJ + ",\"required\":[\"key\",\"value\"],\"properties\":{" +
+                "\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "read_memory",
@@ -240,10 +281,12 @@ internal object ToolRegistry {
         ToolSpec(
             name = "request_connector",
             displayName = "Requesting a connection",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Emits a connection card, an external side effect. Phase 6.",
+            description = "Show a Connect card for a service in the chat. Nothing external " +
+                "happens until the user taps Connect on that card.",
+            schema = OBJ + ",\"required\":[\"service\"],\"properties\":{\"service\":{\"type\":\"string\"}}}",
+            // Owner ruling 2026-10-31: the card is consent, not an action, so it is offered in
+            // every mode. Hiding it left the card unreachable, which the owner reported.
+            modes = READ_ALL,
         ),
 
         // --- Hidden: data writes; read is exposed ---
@@ -318,10 +361,12 @@ internal object ToolRegistry {
         ToolSpec(
             name = "install_package",
             displayName = "Installing a package",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Installs software via apt, pip or npm inside the session. High blast radius; Phase 2+.",
+            description = "Install a package with apt, pip or npm inside the session rootfs. High " +
+                "blast radius, so Agent mode only and behind the approval gate.",
+            schema = OBJ + ",\"required\":[\"manager\",\"package\"],\"properties\":{" +
+                "\"manager\":{\"type\":\"string\"},\"package\":{\"type\":\"string\"}," +
+                "\"project_dir\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
 
         // --- Hidden: stub ---
