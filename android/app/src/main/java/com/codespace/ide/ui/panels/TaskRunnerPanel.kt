@@ -43,6 +43,19 @@ fun TaskRunnerPanel(
     var activeTask by remember { mutableStateOf<TaskRunner.TaskId?>(null) }
     val logScroll = rememberLazyListState()
 
+    // Project tasks: .vscode/tasks.json, the file VS Code actually reads. Reloaded when the
+    // project changes and on demand, because a repository can gain tasks while the app is open.
+    var refreshTick by remember { mutableStateOf(0) }
+    val projectRead = remember(projectPath, refreshTick) {
+        com.codespace.ide.agent.ProjectTaskRunner.load(projectPath)
+    }
+    val projectTasks = remember(projectRead) {
+        (projectRead as? com.codespace.ide.agent.ProjectTasksSpec.ReadOk)
+            ?.let { com.codespace.ide.agent.ProjectTasksSpec.ordered(it.tasks) }
+            ?: emptyList()
+    }
+    val projectRunning by com.codespace.ide.agent.ProjectTaskRunner.state.collectAsState()
+
     Column(modifier = modifier.fillMaxSize()) {
 
         // ── Header ─────────────────────────────────────────────────────────
@@ -79,6 +92,97 @@ fun TaskRunnerPanel(
                 .fillMaxWidth()
                 .padding(8.dp),
         ) {
+            // ── Project tasks (.vscode/tasks.json) ─────────────────────────────
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "PROJECT",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF9EA3B0),
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "reload",
+                    fontSize = 10.sp,
+                    color = Color(0xFF569CD6),
+                    modifier = Modifier
+                        .clickable { refreshTick++ }
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+            when (val read = projectRead) {
+                is com.codespace.ide.agent.ProjectTasksSpec.ReadFailed -> Text(
+                    read.reason,
+                    fontSize = 10.sp,
+                    color = Color(0xFFEF5350),
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+                is com.codespace.ide.agent.ProjectTasksSpec.ReadOk -> if (read.tasks.isEmpty()) {
+                    // VS Code shows an empty task list for a repo with no tasks.json. Same here,
+                    // with one line saying where the file would go.
+                    Text(
+                        "No tasks: add .vscode/tasks.json to this project.",
+                        fontSize = 10.sp,
+                        color = Color(0xFF6A6A6A),
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                } else {
+                    projectTasks.forEach { task ->
+                        val supported = com.codespace.ide.agent.ProjectTasksSpec.isSupported(task)
+                        val busy = projectRunning.runningLabel != null
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (projectRunning.lastLabel == task.label && projectRunning.ok == true)
+                                Color(0xFF1A3A1A)
+                            else if (projectRunning.lastLabel == task.label && projectRunning.ok == false)
+                                Color(0xFF3A1A1A)
+                            else Color(0xFF252535),
+                        ) {
+                            Column(
+                                Modifier
+                                    .clickable(enabled = supported && !busy) {
+                                        activeTask = null
+                                        logOutput = ""
+                                        scope.launch {
+                                            logOutput = com.codespace.ide.agent.ProjectTaskRunner
+                                                .run(context, projectPath, task.label)
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                            ) {
+                                Text(
+                                    task.label,
+                                    fontSize = 11.sp,
+                                    color = if (supported) Color(0xFFD4D4D4) else Color(0xFF6A6A6A),
+                                )
+                                val sub = if (supported) task.command + (if (task.args.isEmpty()) "" else " " + task.args.joinToString(" "))
+                                          else com.codespace.ide.agent.ProjectTasksSpec.unsupportedReason(task)
+                                Text(
+                                    sub,
+                                    fontSize = 9.sp,
+                                    color = Color(0xFF7A7A8C),
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "BUILT IN",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF9EA3B0),
+                letterSpacing = 1.sp,
+            )
+            Spacer(Modifier.height(2.dp))
+
             val tasks = TaskRunner.CATALOGUE
             val rows = tasks.chunked(2)
             rows.forEach { rowTasks ->
