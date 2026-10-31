@@ -330,6 +330,8 @@ fun EditorPane(
                             tabs[idx2] = activeTab.copy(content = result.formattedContent, isDirty = false)
                             FileCache.invalidate(activeTab.path)
                             if (activeTab.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= activeTab.path
+                // P-C: the preview pane reloads itself on a verified save (was manual-only).
+                com.codespace.ide.preview.PreviewReloadBus.notifySaved(activeTab.path)
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 NotificationStore.add("Formatted", "Formatted & saved ✓ (${activeTab.language.displayName} formatter)", NotificationStore.Severity.SUCCESS, NotificationStore.Source.WORKSPACE, priority = NotificationStore.Priority.LOW)
                             }

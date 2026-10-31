@@ -3917,6 +3917,8 @@ private fun PssBottomPanelContent(
                 externalState = sharedPreviewState,
                 projectId = projectId,
                 onClosePreview = { onHideBottomPanel() },  // P45-4: close the preview tab
+                // P-D: a double tap in the rendered markdown jumps to that source line.
+                onOpenLine = { path, line -> onJumpToSourceWithPath(path, line, 0) },
             )
             BottomTab.LOGCAT   -> if (heavyPanesReady) {
                 LogcatPanel(modifier = Modifier.fillMaxSize())

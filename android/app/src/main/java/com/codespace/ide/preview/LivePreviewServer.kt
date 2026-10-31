@@ -375,6 +375,8 @@ object LivePreviewServer {
             val header = StringBuilder()
             header.append("HTTP/1.1 200 OK\r\n")
             header.append("Content-Type: $mimeType\r\n")
+            // P-C: see writeResponse — a cached file defeats reload-after-save.
+            header.append("Cache-Control: no-store, must-revalidate\r\n")
             header.append("Content-Length: ${responseBytes.size}\r\n")
             header.append("Cache-Control: no-cache\r\n")
             header.append("Access-Control-Allow-Origin: *\r\n")
@@ -396,6 +398,9 @@ object LivePreviewServer {
             val response = StringBuilder()
             response.append("HTTP/1.1 $code ${statusText(code)}\r\n")
             response.append("Content-Type: $contentType\r\n")
+            // P-C: without this the WebView serves the pre-save copy from cache and a
+            // reload after saving looks like it did nothing.
+            response.append("Cache-Control: no-store, must-revalidate\r\n")
             response.append("Content-Length: ${body.toByteArray(Charsets.UTF_8).size}\r\n")
             response.append("Connection: close\r\n")
             response.append("\r\n")

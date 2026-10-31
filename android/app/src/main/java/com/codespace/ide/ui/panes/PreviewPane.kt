@@ -96,6 +96,7 @@ fun PreviewPane(
     externalState: PreviewState? = null,
     projectId: String? = null,
     onClosePreview: () -> Unit = {},
+    onOpenLine: (String, Int) -> Unit = { _, _ -> },
 ) {
     // Rotation fix (#8): key the fullscreen Dialog on orientation so it gets a fresh,
     // correctly-sized window on rotation instead of being stuck at the pre-rotation size.
@@ -456,6 +457,7 @@ fun PreviewPane(
         if (!isFullscreen) {
             Box(Modifier.fillMaxSize()) {
                 PreviewBody(
+                onOpenLine = onOpenLine,
                     activeMode = sharedState.activeMode,
                     content = content,
                     language = language,
@@ -469,6 +471,15 @@ fun PreviewPane(
                     sharedWebView = sharedWebView,
                 )
             }
+        }
+    }
+
+    // P-C: a verified save reloads the preview. The SSE channel existed since PhaseX with
+    // zero callers, so "live preview" only refreshed when the user tapped reload.
+    val previewReloadRevision by com.codespace.ide.preview.PreviewReloadBus.revision.collectAsState()
+    LaunchedEffect(previewReloadRevision) {
+        if (previewReloadRevision > 0L) {
+            webViewRef?.reload()
         }
     }
 
@@ -574,6 +585,7 @@ fun PreviewPane(
                 }
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     PreviewBody(
+                onOpenLine = onOpenLine,
                         activeMode = sharedState.activeMode,
                         content = content,
                         language = language,
@@ -610,7 +622,10 @@ private fun PreviewBody(
     onLoading: (Boolean) -> Unit,
     onCanGoBack: (Boolean) -> Unit = {},
     sharedWebView: MutableState<WebView?>? = null,
+    onOpenLine: (String, Int) -> Unit = { _, _ -> },
 ) {
+    val consoleEntries by com.codespace.ide.preview.PreviewConsole.entries.collectAsState()
+    Box(Modifier.fillMaxSize()) {
     when (activeMode) {
         PreviewMode.HTML      -> {
                 // PhaseX: Use LivePreviewServer for project web files, inline for standalone
@@ -629,9 +644,26 @@ private fun PreviewBody(
                 } else null
                 HtmlPreview(content, language, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, liveUrl = liveUrl)
             }
-        PreviewMode.MARKDOWN  -> MarkdownPreview(content, activeFilePath, onWebView = onWebView, onLoading = onLoading)
-        PreviewMode.SVG       -> SvgPreview(content, onWebView = onWebView)
+        PreviewMode.MARKDOWN  -> MarkdownPreview(content, activeFilePath, onWebView = onWebView, onLoading = onLoading, onOpenLine = onOpenLine)
+        PreviewMode.SVG       -> {
+            // P-A: SVG gets a real origin too, so external refs and @import inside the
+            // document resolve instead of silently failing under about:blank.
+            val svgServedUrl = if (projectRootPath != null && activeFilePath.endsWith(".svg") &&
+                com.codespace.ide.preview.LivePreviewServer.isRunning()
+            ) com.codespace.ide.preview.LivePreviewServer.getPreviewUrl(activeFilePath) else null
+            SvgPreview(content, onWebView = onWebView, servedUrl = svgServedUrl)
+        }
         PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack, sharedWebView = sharedWebView)
+    }
+        // P-B: the console only appears where it means something — a page preview.
+        // Browser mode has its own surface and its own story, and is dealt with last.
+        if (activeMode != PreviewMode.BROWSER) {
+            PreviewConsoleButton(
+                entries = consoleEntries,
+                onClear = { com.codespace.ide.preview.PreviewConsole.clear() },
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+            )
+        }
     }
 }
 
@@ -789,6 +821,16 @@ private fun HtmlPreview(
                         view: WebView?, filePathCallback: ValueCallback<Array<Uri>>?,
                         fileChooserParams: WebChromeClient.FileChooserParams?,
                     ): Boolean = fileChooserHandler(filePathCallback, fileChooserParams)
+                    // P-B: a blank preview is usually an exception in the page. Capture it.
+                    override fun onConsoleMessage(msg: android.webkit.ConsoleMessage?): Boolean {
+                        com.codespace.ide.preview.PreviewConsole.add(
+                            level = consoleLevel(msg),
+                            message = msg?.message() ?: "",
+                            source = msg?.sourceId() ?: "",
+                            line = msg?.lineNumber() ?: 0,
+                        )
+                        return true
+                    }
                 }
                 onWebView(this)
             }
@@ -824,6 +866,7 @@ private fun MarkdownPreview(
     activeFilePath: String,
     onWebView: (WebView) -> Unit,
     onLoading: (Boolean) -> Unit,
+    onOpenLine: (String, Int) -> Unit = { _, _ -> },
 ) {
     // P-RENDER: Use local MarkdownRenderer instead of CDN marked.js — works offline.
     val html = remember(content) {
@@ -833,7 +876,11 @@ private fun MarkdownPreview(
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
-                settings.javaScriptEnabled = false  // No JS needed — pure HTML output
+                // P-D: JS is required for the copy button, the double-tap-to-editor
+                // mapping and for window.onerror to reach onConsoleMessage. The renderer
+                // escapes user text before adding tags, so the document has no injectable
+                // script surface of its own.
+                settings.javaScriptEnabled = true
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
                 // P-ZOOM: Enable pinch-to-zoom
@@ -845,6 +892,42 @@ private fun MarkdownPreview(
                         onLoading(true)
                     }
                     override fun onPageFinished(view: WebView?, url: String?) { onLoading(false) }
+                    // P-D: the rendered document posts to a private scheme for the two
+                    // gestures a preview cannot express on its own — "take me to the
+                    // source line" and "this link is not a document".
+                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                        val target = url ?: return false
+                        if (target.startsWith(PREVIEW_LINE_SCHEME)) {
+                            val line = target.removePrefix(PREVIEW_LINE_SCHEME).toIntOrNull() ?: 0
+                            if (line > 0) onOpenLine(activeFilePath, line)
+                            return true
+                        }
+                        if (target.startsWith("http://") || target.startsWith("https://")) {
+                            // Navigating the pane away from the document loses the render;
+                            // hand the link to the platform browser instead.
+                            try {
+                                view?.context?.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(target),
+                                    ),
+                                )
+                            } catch (_: Exception) {}
+                            return true
+                        }
+                        return false
+                    }
+                }
+                webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(msg: android.webkit.ConsoleMessage?): Boolean {
+                        com.codespace.ide.preview.PreviewConsole.add(
+                            level = consoleLevel(msg),
+                            message = msg?.message() ?: "",
+                            source = msg?.sourceId() ?: "",
+                            line = msg?.lineNumber() ?: 0,
+                        )
+                        return true
+                    }
                 }
                 onWebView(this)
             }
@@ -856,10 +939,19 @@ private fun MarkdownPreview(
             // paths in the repo (images/logo.png) resolve correctly — VS Code parity
             // (markdown-language-features uses asWebviewUri + localResourceRoots for
             // the same net effect). Spaces/etc are percent-encoded per segment.
+            // P-A: prefer the served origin. A file:// document cannot load remote
+            // http(s) images, and cannot use fetch/localStorage at all; the loopback
+            // origin can do both and still resolves repo-relative images.
+            val servedDir = if (activeFilePath.isNotBlank() &&
+                com.codespace.ide.preview.LivePreviewServer.isRunning()
+            ) {
+                val fileUrl = com.codespace.ide.preview.LivePreviewServer.getPreviewUrl(activeFilePath)
+                fileUrl.substringBeforeLast('/') + "/"
+            } else null
             val baseDir = java.io.File(activeFilePath).parent ?: "/"
-            val baseUrl = "file://" + baseDir.split("/").map { seg ->
+            val baseUrl = servedDir ?: ("file://" + baseDir.split("/").map { seg ->
                 if (seg.isEmpty()) "" else java.net.URLEncoder.encode(seg, "UTF-8").replace("+", "%20")
-            }.joinToString("/")
+            }.joinToString("/"))
             wv.settings.allowFileAccess = true
             val contentKey = content.take(128)
             if (wv.tag as? String != contentKey) {
@@ -881,6 +973,7 @@ private fun MarkdownPreview(
 private fun SvgPreview(
     content: String,
     onWebView: (WebView) -> Unit,
+    servedUrl: String? = null,
 ) {
     // P-RENDER: No max-width/max-height constraints so SVG can be zoomed freely.
     // overflow:auto allows panning when zoomed in.
@@ -888,7 +981,13 @@ private fun SvgPreview(
         <!DOCTYPE html><html><head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.3, maximum-scale=8.0, user-scalable=yes">
         <style>body{background:#1e1e1e;margin:0;padding:8px;overflow:auto;}
-               svg{display:block;margin:0 auto;}</style>
+               /* Transparency is invisible on a dark background without a checker. */
+               body{background-image:linear-gradient(45deg,#2a2a2a 25%,transparent 25%),
+                     linear-gradient(-45deg,#2a2a2a 25%,transparent 25%),
+                     linear-gradient(45deg,transparent 75%,#2a2a2a 75%),
+                     linear-gradient(-45deg,transparent 75%,#2a2a2a 75%);
+                     background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;}
+               svg{display:block;margin:0 auto;max-width:100%;height:auto;}</style>
         </head><body>$content</body></html>
     """.trimIndent()
 
@@ -909,10 +1008,16 @@ private fun SvgPreview(
             // P-RENDER: Use content-based key, NOT html.take(64) — the first 64 chars
             // are always the HTML template header, so the key never changed when SVG
             // content arrived from produceState, and the WebView never reloaded.
-            val contentKey = content.take(128)
+            val contentKey = servedUrl ?: content.take(128)
             if (wv.tag as? String != contentKey) {
                 wv.tag = contentKey
-                wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
+                if (servedUrl != null) {
+                    // P-A: real origin, so an SVG that references an external stylesheet,
+                    // a font or an image actually renders those instead of dropping them.
+                    wv.loadUrl(servedUrl)
+                } else {
+                    wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
+                }
             }
             onWebView(wv)
         },
@@ -1356,3 +1461,15 @@ private fun PreviewGuideRow(mode: String, accent: Color, description: String) {
         Text(description, fontSize = 12.sp, color = Color(0xFFCCCCCC), lineHeight = 18.sp, modifier = Modifier.weight(1f))
     }
 }
+
+
+/** Private navigation scheme used by the rendered markdown for "go to source line". */
+private const val PREVIEW_LINE_SCHEME = "vncode://line/"
+
+/** Maps a WebView console message level to the preview console's own levels. */
+private fun consoleLevel(msg: android.webkit.ConsoleMessage?): com.codespace.ide.preview.PreviewConsole.Level =
+    when (msg?.messageLevel()) {
+        android.webkit.ConsoleMessage.MessageLevel.ERROR -> com.codespace.ide.preview.PreviewConsole.Level.ERROR
+        android.webkit.ConsoleMessage.MessageLevel.WARNING -> com.codespace.ide.preview.PreviewConsole.Level.WARN
+        else -> com.codespace.ide.preview.PreviewConsole.Level.INFO
+    }

@@ -105,6 +105,16 @@ th {
 /* Checkbox lists */
 .task-list-item { list-style: none; }
 .task-list-item input { margin-right: 6px; }
+/* Code blocks: highlighted spans + copy affordance */
+.code-block { position: relative; }
+.code-block .copy-btn { position: absolute; top: 6px; right: 8px; background: #3a3a3a; color: #d4d4d4;
+  border: 1px solid #555; border-radius: 6px; padding: 3px 8px; font-size: 11px; opacity: .85; }
+.code-block .copy-btn:active { background: #4a4a4a; }
+.hl-keyword { color: #569cd6; }
+.hl-string { color: #ce9178; }
+.hl-comment { color: #6a9955; font-style: italic; }
+.hl-number { color: #b5cea8; }
+.hl-function { color: #dcdcaa; }
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
@@ -113,6 +123,38 @@ th {
 </head>
 <body>
 $body
+<script>
+document.addEventListener('click', function (e) {
+  var b = e.target && e.target.closest ? e.target.closest('.copy-btn') : null;
+  if (!b) return;
+  var block = b.parentNode;
+  var code = block ? block.querySelector('code') : null;
+  if (!code) return;
+  var text = code.innerText;
+  var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1200); };
+  var fallback = function () {
+    var ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (err) {}
+    document.body.removeChild(ta); done();
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, fallback);
+  } else { fallback(); }
+});
+document.addEventListener('dblclick', function (e) {
+  var el = e.target;
+  while (el && el !== document.body && !(el.getAttribute && el.getAttribute('data-line'))) el = el.parentNode;
+  if (el && el.getAttribute && el.getAttribute('data-line')) {
+    location.href = 'vncode://line/' + el.getAttribute('data-line');
+  }
+});
+window.onerror = function (m, s, l) { console.error('[error] ' + m + ' (' + (s || '') + ':' + (l || 0) + ')'); };
+window.addEventListener('unhandledrejection', function (e) {
+  var r = e && e.reason;
+  console.error('[unhandled] ' + (r && r.message ? r.message : r));
+});
+</script>
 </body>
 </html>"""
     }
@@ -151,9 +193,14 @@ $body
                     i++
                 }
                 i++  // skip closing ```
+                val raw = code.toString().trimEnd()
+                html.append("<div class=\"code-block\" data-line=\"${i + 1}\">")
+                html.append("<button class=\"copy-btn\" type=\"button\">Copy</button>")
                 html.append("<pre><code")
                 if (lang.isNotEmpty()) html.append(" class=\"language-$lang\"")
-                html.append(">${escapeHtml(code.toString().trimEnd())}</code></pre>\n")
+                html.append(">")
+                html.append(if (MarkdownHighlight.isSupported(lang)) MarkdownHighlight.highlight(raw, lang) else escapeHtml(raw))
+                html.append("</code></pre></div>\n")
                 continue
             }
 
@@ -171,7 +218,7 @@ $body
                 closeList(); closeTable()
                 val level = headingMatch.groupValues[1].length
                 val text = inlineFormat(headingMatch.groupValues[2].trim())
-                html.append("<h$level>$text</h$level>\n")
+                html.append("<h$level data-line=\"${i + 1}\">$text</h$level>\n")
                 i++
                 continue
             }
@@ -264,6 +311,7 @@ $body
 
             // Regular paragraph
             closeList(); closeTable()
+            val paraLine = i + 1
             val para = StringBuilder()
             while (i < lines.size && lines[i].isNotBlank() &&
                    !lines[i].trimStart().startsWith("#") &&
@@ -277,7 +325,7 @@ $body
                 i++
             }
             if (para.isNotEmpty()) {
-                html.append("<p>${inlineFormat(para.toString())}</p>\n")
+                html.append("<p data-line=\"$paraLine\">${inlineFormat(para.toString())}</p>\n")
             }
         }
 
