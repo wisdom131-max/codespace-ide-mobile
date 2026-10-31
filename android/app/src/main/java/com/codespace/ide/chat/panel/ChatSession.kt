@@ -652,8 +652,9 @@ class ChatSession(
         val content = args.optString("content", "")
         if (rawPath.isBlank()) return "FAILED: write_file needs a path"
         com.codespace.ide.chat.PendingChangesStore.activeSessionId = projectId
-        com.codespace.ide.chat.PendingChangesStore.activeProjectRoot =
-            com.codespace.ide.security.TrustState.activeProjectRoot(ctx)
+        // 17b: activate() sets the scope AND reloads proposals that survived the last run.
+        com.codespace.ide.chat.PendingChangesStore.activate(
+            ctx, com.codespace.ide.security.TrustState.activeProjectRoot(ctx))
         val staged = com.codespace.ide.chat.PendingChangesStore.stage(rawPath, content, ctx)
         val rel = WorkspaceContext.relativeTo(
             com.codespace.ide.security.TrustState.activeProjectRoot(ctx), rawPath) ?: rawPath

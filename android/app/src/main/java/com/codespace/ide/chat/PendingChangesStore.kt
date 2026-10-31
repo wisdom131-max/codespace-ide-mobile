@@ -61,6 +61,151 @@ object PendingChangesStore {
     @Volatile var activeSessionId: String? = null
     @Volatile var activeProjectRoot: String? = null
 
+    @Volatile private var appContext: android.content.Context? = null
+
+    /**
+     * Item 17b fix 1 (2026-10-31): proposals were keyed by PATH ALONE, so two sessions that
+     * staged the SAME file overwrote each other and one session's work silently became the
+     * other's. The key is now (session, canonical path), which is what the review card has
+     * always displayed: a proposal belongs to the session that made it.
+     */
+    private fun keyOf(session: String?, path: String): String =
+        (session ?: "default") + "|" + CanonicalPaths.canonicalKey(path)
+
+    private fun entriesFor(path: String): List<PendingChange> {
+        val canonical = CanonicalPaths.canonicalKey(path)
+        return pending.values.filter { CanonicalPaths.canonicalKey(it.path) == canonical }
+    }
+
+    /** Active session's entry for a path, else the most recently staged one. */
+    private fun entryFor(path: String): PendingChange? {
+        val all = entriesFor(path)
+        if (all.isEmpty()) return null
+        val active = activeSessionId
+        return all.firstOrNull { it.sessionId == active } ?: all.maxByOrNull { it.stagedAt }
+    }
+
+    private fun removeAllFor(path: String) {
+        val canonical = CanonicalPaths.canonicalKey(path)
+        pending.entries.removeAll { CanonicalPaths.canonicalKey(it.value.path) == canonical }
+    }
+
+    /**
+     * Bind the store to a project: set the scope AND reload whatever survived the last run.
+     * Fix 2 (2026-10-31): proposals lived only in memory, so a restart lost every staged
+     * edit and "attribution survives restart" could not be true.
+     */
+    fun activate(context: android.content.Context, projectRoot: String?) {
+        appContext = context.applicationContext
+        activeProjectRoot = projectRoot
+        loadFrom(pendingDir(context), projectRoot)
+    }
+
+    private fun pendingDir(context: android.content.Context): File =
+        File(File(context.applicationContext.filesDir, "chat"), "pending")
+
+    private fun persistNow() {
+        val ctx = appContext ?: return
+        val root = activeProjectRoot ?: return
+        saveTo(pendingDir(ctx), root)
+    }
+
+    /** Root tag used for the file name, so two projects never share a proposal file. */
+    private fun rootTag(root: String): String =
+        Integer.toHexString(root.hashCode()) + "-" + root.substringAfterLast('/').take(24)
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+    /** Hard cap: proposals carry full file bodies, so a runaway session must not fill the disk. */
+    private const val PERSIST_CAP_BYTES = 2 * 1024 * 1024
+
+    fun saveTo(dir: File, projectRoot: String?) {
+        val root = projectRoot ?: return
+        val target = File(dir, rootTag(root) + ".json")
+        val snapshot = synchronized(pending) { pending.values.toList() }
+        if (snapshot.isEmpty()) {
+            target.delete()
+            return
+        }
+        val arr = org.json.JSONArray()
+        for (e in snapshot) {
+            val o = org.json.JSONObject()
+            o.put("sessionId", e.sessionId)
+            o.put("path", e.path)
+            o.put("newContent", e.newContent)
+            o.put("baseContent", e.baseContent)
+            o.put("baseWasOpenBuffer", e.baseWasOpenBuffer)
+            o.put("baseDiskExisted", e.baseDiskExisted)
+            o.put("stagedAt", e.stagedAt)
+            o.put("status", e.status.name)
+            o.put("statusNote", e.statusNote)
+            arr.put(o)
+        }
+        val text = arr.toString()
+        if (text.toByteArray(Charsets.UTF_8).size > PERSIST_CAP_BYTES) {
+            // Refusing to write a truncated proposal beats writing one that would apply
+            // half a file: the review card would show content that is not what lands.
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[chat] pending proposals too large to persist (" + text.length + " chars); kept in memory only",
+                "chat",
+            )
+            return
+        }
+        try {
+            dir.mkdirs()
+            val tmp = File(target.parentFile, target.name + ".tmp")
+            tmp.writeText(text)
+            if (!tmp.renameTo(target)) {
+                target.delete()
+                tmp.renameTo(target)
+            }
+        } catch (t: Throwable) {
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[chat] could not persist pending proposals: " + (t.message ?: "error"), "chat")
+        }
+    }
+
+    fun loadFrom(dir: File, projectRoot: String?) {
+        val root = projectRoot ?: return
+        val source = File(dir, rootTag(root) + ".json")
+        if (!source.exists()) return
+        val text = try { source.readText() } catch (_: Throwable) { return }
+        val restored: List<PendingChange> = try {
+            val arr = org.json.JSONArray(text)
+            val out = ArrayList<PendingChange>(arr.length())
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val path = o.optString("path")
+                if (path.isBlank()) continue
+                out.add(
+                    PendingChange(
+                        path = path,
+                        newContent = o.optString("newContent"),
+                        baseContent = o.optString("baseContent"),
+                        baseWasOpenBuffer = o.optBoolean("baseWasOpenBuffer"),
+                        baseDiskExisted = o.optBoolean("baseDiskExisted"),
+                        stagedAt = o.optLong("stagedAt"),
+                        sessionId = o.optString("sessionId").ifBlank { "default" },
+                        status = runCatching { Status.valueOf(o.optString("status")) }
+                            .getOrDefault(Status.PENDING),
+                        statusNote = o.optString("statusNote"),
+                    )
+                )
+            }
+            out
+        } catch (_: Throwable) {
+            // A damaged proposal file is dropped whole rather than half-read: applying an
+            // entry whose base we cannot trust is worse than re-staging the edit.
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[chat] pending proposals unreadable; starting with none", "chat")
+            return
+        }
+        if (restored.isEmpty()) return
+        synchronized(pending) {
+            for (e in restored) pending[keyOf(e.sessionId, e.path)] = e
+        }
+        bumpRevision()
+    }
+
     /** Bumped on every store mutation — the panel reads it in composition. */
     val revision = androidx.compose.runtime.mutableStateOf(0)
 
@@ -110,7 +255,7 @@ object PendingChangesStore {
             "" to false
         }
         synchronized(pending) {
-            pending[path] = PendingChange(
+            pending[keyOf(session, path)] = PendingChange(
                 path = path,
                 newContent = newContent,
                 baseContent = base,
@@ -121,6 +266,7 @@ object PendingChangesStore {
             )
         }
         bumpRevision()
+        persistNow()
         // FsNotify probe (item 9): the STAGED path in the log answers the
         // path-dialect fork directly — project root vs rootfs guest landing.
         com.codespace.ide.diagnostics.AppOutputLog.log("[FsNotify] STAGED (not on disk — Apply required): " + path, "terminal")
@@ -137,11 +283,11 @@ object PendingChangesStore {
 
     /** Read-through overlay: the staged version of a path, or null. */
     fun overlayFor(path: String): String? =
-        synchronized(pending) { pending[CanonicalPaths.canonicalKey(path)]?.newContent }
+        synchronized(pending) { entryFor(path)?.newContent }
 
     /** True when the path has a staged entry (searchFiles overlay uses this). */
     fun hasPending(path: String): Boolean =
-        synchronized(pending) { pending.containsKey(CanonicalPaths.canonicalKey(path)) }
+        synchronized(pending) { entriesFor(path).isNotEmpty() }
 
     fun pendingFor(sessionId: String): List<PendingChange> =
         synchronized(pending) { pending.values.filter { it.sessionId == sessionId } }
@@ -151,13 +297,15 @@ object PendingChangesStore {
 
     fun discard(rawPath: String) {
         val path = CanonicalPaths.canonicalKey(rawPath)
-        synchronized(pending) { pending.remove(path) }
+        synchronized(pending) { removeAllFor(path) }
         bumpRevision()
+        persistNow()
     }
 
     fun discardAll(sessionId: String) {
         synchronized(pending) { pending.values.removeAll { it.sessionId == sessionId } }
         bumpRevision()
+        persistNow()
     }
 
     // ── Apply (user-initiated, from the review card) ─────────────────────────
@@ -190,7 +338,7 @@ object PendingChangesStore {
 
     private fun applyInternal(rawPath: String): ApplyOutcome {
         val path = CanonicalPaths.canonicalKey(rawPath)
-        val entry = synchronized(pending) { pending[path] } ?: return ApplyOutcome.NotFound(path)
+        val entry = synchronized(pending) { entryFor(path) } ?: return ApplyOutcome.NotFound(path)
         return try {
             // ── Drift verification (disk-staged entries ONLY — decision #3) ──
             if (!entry.baseDiskExisted) {
@@ -237,7 +385,7 @@ object PendingChangesStore {
             // mtime second could serve PRE-apply content to non-editor readers.
             // Invalidate explicitly on every verified disk write (both apply paths).
             com.codespace.ide.editor.FileCache.invalidate(path)
-            synchronized(pending) { pending.remove(path) }
+            synchronized(pending) { removeAllFor(path) }
             synchronized(undoGatePaths) { undoGatePaths.add(path) }
             lastApplied.value = lastApplied.value + (path to checkpointFile)
             appliedTick.value++
@@ -272,10 +420,20 @@ object PendingChangesStore {
     fun rediff(rawPath: String) {
         val path = CanonicalPaths.canonicalKey(rawPath)
         synchronized(pending) {
-            val e = pending[path] ?: return
-            pending[path] = e.copy(baseContent = try { File(path).readText() } catch (_: Exception) { e.baseContent }, status = Status.PENDING, statusNote = "")
+            val all = entriesFor(path)
+            if (all.isEmpty()) return
+            val fresh = try { File(path).readText() } catch (_: Exception) { null }
+            for (e in all) {
+                pending.remove(keyOf(e.sessionId, e.path))
+                pending[keyOf(e.sessionId, e.path)] = e.copy(
+                    baseContent = fresh ?: e.baseContent,
+                    status = Status.PENDING,
+                    statusNote = "",
+                )
+            }
         }
         bumpRevision()
+        persistNow()
     }
 
     /**
@@ -292,7 +450,7 @@ object PendingChangesStore {
 
     private fun forceApplyInternal(rawPath: String): ApplyOutcome {
         val path = CanonicalPaths.canonicalKey(rawPath)
-        val entry = synchronized(pending) { pending[path] } ?: return ApplyOutcome.NotFound(path)
+        val entry = synchronized(pending) { entryFor(path) } ?: return ApplyOutcome.NotFound(path)
         return try {
             val checkpointFile = try { writeCheckpoint(path) } catch (_: Exception) { null }
             val target = File(path)
@@ -312,7 +470,7 @@ object PendingChangesStore {
             // mtime second could serve PRE-apply content to non-editor readers.
             // Invalidate explicitly on every verified disk write (both apply paths).
             com.codespace.ide.editor.FileCache.invalidate(path)
-            synchronized(pending) { pending.remove(path) }
+            synchronized(pending) { removeAllFor(path) }
             synchronized(undoGatePaths) { undoGatePaths.add(path) }
             lastApplied.value = lastApplied.value + (path to checkpointFile)
             appliedTick.value++
@@ -450,15 +608,55 @@ object PendingChangesStore {
 
     private fun markBlocked(path: String, note: String) {
         synchronized(pending) {
-            pending[path]?.let { pending[path] = it.copy(status = Status.BLOCKED, statusNote = note) }
+            for (e in entriesFor(path)) {
+                pending[keyOf(e.sessionId, e.path)] =
+                    e.copy(status = Status.BLOCKED, statusNote = note)
+            }
         }
         bumpRevision()
+        persistNow()
     }
 
     private fun markDrift(path: String, currentDisk: String) {
         synchronized(pending) {
-            pending[path]?.let { pending[path] = it.copy(status = Status.DRIFT, statusNote = "File changed on disk after this edit was staged", baseContent = currentDisk, baseDiskExisted = true) }
+            for (e in entriesFor(path)) {
+                pending[keyOf(e.sessionId, e.path)] = e.copy(
+                    status = Status.DRIFT,
+                    statusNote = "File changed on disk after this edit was staged",
+                    baseContent = currentDisk,
+                    baseDiskExisted = true,
+                )
+            }
         }
+        bumpRevision()
+        persistNow()
+    }
+
+    /**
+     * Test seam (no production caller): stage an entry without an Android Context. The real
+     * stage() needs a Context only to resolve the path and read the base; the JVM tests are
+     * about keying and persistence, so they supply both directly.
+     */
+    internal fun stageForTest(sessionId: String, path: String, newContent: String, base: String = "") {
+        synchronized(pending) {
+            pending[keyOf(sessionId, path)] = PendingChange(
+                path = path,
+                newContent = newContent,
+                baseContent = base,
+                baseWasOpenBuffer = false,
+                baseDiskExisted = true,
+                stagedAt = System.currentTimeMillis(),
+                sessionId = sessionId,
+            )
+        }
+        bumpRevision()
+    }
+
+    internal fun clearForTest() {
+        synchronized(pending) { pending.clear() }
+        appContext = null
+        activeProjectRoot = null
+        activeSessionId = null
         bumpRevision()
     }
 

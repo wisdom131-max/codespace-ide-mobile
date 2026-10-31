@@ -14,7 +14,9 @@ import org.junit.Test
 class ChatOverflowSpecTest {
 
     @Test
-    fun `the six labels are exactly the requested ones, in the requested order`() {
+    fun `the six reference labels keep their requested order, and approvals follows them`() {
+        // The M3 reference fixed the first six. Item 9 appended Approvals as a seventh; moving
+        // it among the six would silently reorder a design the owner signed off.
         assertEquals(
             listOf(
                 "Undo Last Edit",
@@ -23,6 +25,7 @@ class ChatOverflowSpecTest {
                 "Move Chat into New Window",
                 "Show Voice Transcripts",
                 "Show View by Default",
+                "Approvals",
             ),
             ChatOverflowSpec.order.map { it.label },
         )
@@ -49,7 +52,7 @@ class ChatOverflowSpecTest {
     @Test
     fun `every other item is always enabled`() {
         val items = ChatOverflowSpec.items(canUndo = true, canRedo = true, viewByDefault = true, canMoveToEditor = true)
-        assertEquals(6, items.size)
+        assertEquals(7, items.size)
         assertTrue(items.all { it.enabled })
         assertNull(items.first { it.action == ChatOverflowAction.UNDO_LAST_EDIT }.reason)
     }

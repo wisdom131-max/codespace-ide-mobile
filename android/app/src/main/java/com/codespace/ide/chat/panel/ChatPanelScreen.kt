@@ -113,6 +113,11 @@ private fun ChatBody(
     }
     var notice by remember(projectId) { mutableStateOf<String?>(null) }
     var showOverflow by remember(projectId) { mutableStateOf(false) }
+    // Item 9: the approvals level lives one tap from the header now, not buried in prefs.
+    var showApprovals by remember(projectId) { mutableStateOf(false) }
+    var flowLevel by remember(projectId) {
+        mutableStateOf(com.codespace.ide.agent.ChatPermissionStore.level(ctx))
+    }
     var showTranscripts by remember(projectId) { mutableStateOf(false) }
     var transcriptRead by remember(projectId) { mutableStateOf(com.codespace.ide.chat.voice.VoiceTranscriptRead(emptyList())) }
     var viewByDefault by remember { mutableStateOf(ChatSettingsPrefs.showChatByDefault()) }
@@ -357,6 +362,7 @@ private fun ChatBody(
                 canRedo = com.codespace.ide.chat.panel.edits.LastEditActions.canRedo(activeId),
                 viewByDefault = viewByDefault,
                 canMoveToEditor = onMoveToEditor != null,
+                approvalsLabel = ApprovalLevelSpec.menuLabel(flowLevel),
             ),
             colors = c,
             onPick = { action ->
@@ -383,6 +389,7 @@ private fun ChatBody(
                         transcriptRead = voiceStore.read(projectId, activeId)
                         showTranscripts = true
                     }
+                    ChatOverflowAction.MANAGE_APPROVALS -> showApprovals = true
                     ChatOverflowAction.SHOW_VIEW_BY_DEFAULT -> {
                         viewByDefault = !viewByDefault
                         ChatSettingsPrefs.setShowChatByDefault(viewByDefault)
@@ -395,6 +402,20 @@ private fun ChatBody(
                 }
             },
             onDismiss = { showOverflow = false },
+        )
+    }
+    if (showApprovals) {
+        ApprovalLevelSheet(
+            current = flowLevel,
+            colors = c,
+            onPick = { picked ->
+                com.codespace.ide.agent.ChatPermissionStore.setLevel(ctx, picked)
+                flowLevel = picked
+                showApprovals = false
+                notice = "Approvals: " + ApprovalLevelSpec.row(picked).label +
+                    ". " + ApprovalLevelSpec.row(picked).detail
+            },
+            onDismiss = { showApprovals = false },
         )
     }
     if (showTranscripts) {

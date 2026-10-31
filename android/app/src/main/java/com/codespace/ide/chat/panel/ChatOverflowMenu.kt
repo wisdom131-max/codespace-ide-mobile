@@ -40,6 +40,9 @@ internal enum class ChatOverflowAction(val label: String) {
     MOVE_TO_NEW_WINDOW("Move Chat into New Window"),
     SHOW_VOICE_TRANSCRIPTS("Show Voice Transcripts"),
     SHOW_VIEW_BY_DEFAULT("Show View by Default"),
+
+    /** Item 9 (2026-10-31): the approvals level needs a door; this is it. */
+    MANAGE_APPROVALS("Approvals"),
 }
 
 internal data class ChatOverflowItem(
@@ -48,6 +51,8 @@ internal data class ChatOverflowItem(
     val reason: String? = null,
     /** Non-null = this item is a checkbox (Show View by Default). */
     val checked: Boolean? = null,
+    /** Non-null overrides the enum's label (the approvals row states the current level). */
+    val label: String? = null,
 )
 
 internal object ChatOverflowSpec {
@@ -62,6 +67,7 @@ internal object ChatOverflowSpec {
         canRedo: Boolean,
         viewByDefault: Boolean,
         canMoveToEditor: Boolean,
+        approvalsLabel: String = ChatOverflowAction.MANAGE_APPROVALS.label,
     ): List<ChatOverflowItem> = listOf(
         ChatOverflowItem(
             ChatOverflowAction.UNDO_LAST_EDIT,
@@ -81,6 +87,9 @@ internal object ChatOverflowSpec {
         ChatOverflowItem(ChatOverflowAction.MOVE_TO_NEW_WINDOW, enabled = true),
         ChatOverflowItem(ChatOverflowAction.SHOW_VOICE_TRANSCRIPTS, enabled = true),
         ChatOverflowItem(ChatOverflowAction.SHOW_VIEW_BY_DEFAULT, enabled = true, checked = viewByDefault),
+        // Item 9: always enabled, and its label carries the CURRENT level so the menu answers
+        // "what happens if I run something" without opening anything.
+        ChatOverflowItem(ChatOverflowAction.MANAGE_APPROVALS, enabled = true, label = approvalsLabel),
     )
 }
 
@@ -132,7 +141,7 @@ private fun OverflowRow(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                plainLabel ?: item.action.label,
+                plainLabel ?: item.label ?: item.action.label,
                 color = if (item.enabled) colors.text else colors.textSecondary,
                 fontSize = ChatTokens.FONT_SMALL.sp,
                 modifier = Modifier.weight(1f),
