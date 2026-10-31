@@ -70,8 +70,19 @@ fun androidx.compose.foundation.layout.BoxScope.LightbulbIndicator(
                     .zIndex(9f),
                 contentAlignment = Alignment.Center,
             ) {
+                // One glyph for everything hid the useful case: AI can act on this line too.
+                // Kinds come from the same provider the menu uses, so the icon cannot disagree
+                // with what the menu will actually show.
+                val bulbKinds = kotlin.runCatching {
+                    lspCodeActionProvider(lightbulbLine).map { it.kind ?: "" }
+                }.getOrDefault(emptyList())
                 Text(
-                    text = "💡",
+                    text = LightbulbSpec.glyph(
+                        LightbulbSpec.iconFor(
+                            hasQuickFix = bulbKinds.any { !LightbulbSpec.hasAiAction(listOf(it)) },
+                            hasAiFix = LightbulbSpec.hasAiAction(bulbKinds),
+                        )
+                    ),
                     fontSize = 10.sp,
                 )
             }

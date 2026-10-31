@@ -5062,6 +5062,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // P41-E: Multi-line ghost text overlay (extracted to separate composable to avoid method-too-large)
         if (toggles.showGhostText && ghostText != null && !showCompletions) {
+            // Selection toolbar (2026-10-31): Ask / Edit / Fix. Four lines on purpose: this
+            // composable is at its JVM method ceiling, so the state it needs lives in SelectionHost.
+            if (value.selection.start != value.selection.end) {
+                SelectionActionToolbar(
+                    SelectionHost(value.text, value.selection.start, value.selection.end, filePath,
+                        language.displayName, fontSize.toFloat(), vScroll.value, lintErrors,
+                        positionMapper, onAiFixRequest)
+                )
+            }
             GhostTextOverlay(
                 ghostText = ghostText!!,
                 ghostTextLines = ghostTextLines,

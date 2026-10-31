@@ -4,6 +4,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,6 +35,18 @@ fun androidx.compose.foundation.layout.BoxScope.GhostTextOverlay(
     onDismiss: () -> Unit,
     textLayoutResult: TextLayoutResult? = null,
 ) {
+    // Snooze lives here, keyed by the suggestion: hiding this one does not silence the next.
+    var snoozeKey by remember { mutableStateOf<Int?>(null) }
+    var snoozeUntil by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(snoozeUntil) {
+        if (snoozeUntil > 0L) {
+            kotlinx.coroutines.delay(GhostActionSpec.SNOOZE_MS)
+            snoozeUntil = 0L
+        }
+    }
+    val key = GhostActionSpec.snoozeKey(ghostText)
+    if (snoozeKey == key && GhostActionSpec.snoozeActive(snoozeUntil, System.currentTimeMillis())) return
+
     val ghostLines = ghostTextLines.ifEmpty { listOf(ghostText) }
     val ghostPos = PositionMapper(text).offsetToPosition(cursorPos)
     val cursorLine = ghostPos.line
@@ -83,13 +101,32 @@ fun androidx.compose.foundation.layout.BoxScope.GhostTextOverlay(
                     }
                 },
         ) {
-            Text(
-                text = line,
-                color = Color(0xFF6A6A6A),
-                fontSize = fontSize.sp,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 1,
-            )
+            androidx.compose.foundation.layout.Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = line,
+                    color = Color(0xFF6A6A6A),
+                    fontSize = fontSize.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                )
+                // The controls sit on the first line only, so they read as belonging to the
+                // suggestion rather than to the code underneath it.
+                if (lineIdx == 0) {
+                    GhostActionStrip(
+                        lines = ghostLines,
+                        onAcceptWord = onAcceptWord,
+                        onAcceptLine = onAcceptWord,
+                        onAcceptFull = { onAcceptFull(ghostLines.joinToString("\n")) },
+                        onSnooze = {
+                            snoozeKey = key
+                            snoozeUntil = System.currentTimeMillis() + GhostActionSpec.SNOOZE_MS
+                            onDismiss()
+                        },
+                    )
+                }
+            }
         }
     }
 }
