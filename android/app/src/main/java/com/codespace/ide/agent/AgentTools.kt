@@ -189,10 +189,10 @@ You can use multiple tools in sequence. When done, give a final summary.
         return try {
             when (name) {
                 "run_command" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
-                // REMOVAL 7/7 (advisor-approved stub 2026-10-27): ChatPlanStore is
-                // archived and removed with the old chat; the plan tool answers
-                // plainly until the rebuilt chat re-registers it. No chat classes.
-                "plan" -> "Plan staging returns with the new chat."
+                // 2026-10-31: the stub is gone. `plan` now stages a real plan in the same
+                // board manage_todo_list writes, so an approved plan is a visible checklist
+                // the user can watch rather than a sentence saying planning is unavailable.
+                "plan" -> planTool(args, context)
                 // CH02 (P3b): the four file tools now resolve their path through the
                 // shared guest->host choke point below — the model was systematically
                 // exposed to GUEST paths (terminal output, run_command results) while
@@ -883,6 +883,31 @@ You can use multiple tools in sequence. When done, give a final summary.
                 result.detail + " in " + target.name + "."
             }
         }
+    }
+
+    /**
+     * VS Code stages a plan for approval before acting. Ours lands in the todo board, which is
+     * already the surface the user reads, so a plan that is accepted is the same artifact the
+     * agent then ticks off. Accepts {steps:[{title, detail?, status?}]} or a plain steps array.
+     */
+    private fun planTool(args: JSONObject, context: android.content.Context): String {
+        val steps = args.optJSONArray("steps")
+            ?: return "plan needs a steps array: {\"steps\":[{\"title\":\"...\"}]}"
+        if (steps.length() == 0) return "plan needs at least one step."
+        val todos = org.json.JSONArray()
+        for (i in 0 until steps.length()) {
+            val o = steps.optJSONObject(i) ?: continue
+            val title = o.optString("title").trim()
+            if (title.isEmpty()) continue
+            val entry = JSONObject()
+            entry.put("title", title)
+            val detail = o.optString("detail").trim()
+            if (detail.isNotEmpty()) entry.put("detail", detail)
+            entry.put("status", o.optString("status").ifBlank { "pending" })
+            todos.put(entry)
+        }
+        if (todos.length() == 0) return "plan found no usable step titles."
+        return manageTodoList(todos.toString(), context)
     }
 
     /** VS Code's manage_todo_list. Empty argument reads the board back. */

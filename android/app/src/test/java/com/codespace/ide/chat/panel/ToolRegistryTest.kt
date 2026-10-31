@@ -3,6 +3,7 @@ package com.codespace.ide.chat.panel
 import com.codespace.ide.agent.AgentTools
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -26,7 +27,7 @@ class ToolRegistryTest {
         "copilot_getNotebookSummary", "read_notebook_cell_output",
         "test_search", "test_failure", "get_task_output", "get_project_setup_info",
         "get_search_view_results", "view_image", "tool_search",
-        "terminal_selection", "vscode_askQuestions",
+        "terminal_selection", "vscode_askQuestions", "web_search",
     )
 
     // --- registration parity -------------------------------------------------------
@@ -62,7 +63,9 @@ class ToolRegistryTest {
         val exposed = exposedInAnyMode()
         assertEquals("no name may sit outside exposed + hidden", ToolRegistry.names().size, hidden.size + exposed.size)
         assertTrue("hidden tools must carry a reason", ToolRegistry.hidden().all { !it.hiddenReason.isNullOrBlank() })
-        assertTrue(hidden.containsAll(listOf("save_secret", "delete_memory", "use_connector", "plan")))
+        assertTrue(hidden.containsAll(listOf(
+            "run_vscode_command", "get_vscode_api", "resolve_memory_file_uri",
+            "vscode_get_terminal_confirmation", "runSubagent", "search_subagent", "execution_subagent")))
     }
 
     // --- exposure per mode ---------------------------------------------------------
@@ -96,8 +99,12 @@ class ToolRegistryTest {
         assertTrue("Agent must contain everything Edit offers", agent.containsAll(edit))
         assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package", "run_notebook_cell", "get_terminal_output", "terminal_last_command", "runTests", "run_task", "create_and_run_task", "github_repo",
             "vscode_get_confirmation", "vscode_get_confirmation_with_options")))
-        assertFalse(agent.contains("save_secret"))
-        assertFalse(agent.contains("get_secret"))
+        // 2026-10-31: the 2026-10-30 parking decision was lifted by the owner, so these are
+        // offered in Agent only - the one mode where every call passes the approval gate.
+        assertTrue(agent.containsAll(listOf(
+            "save_secret", "get_secret", "use_connector", "connect_service", "delete_memory",
+            "git_commit_push", "git_pull_rebase", "git_branch", "delete_entity", "upload_file",
+            "schedule_task", "cancel_task", "plan", "web_search")))
     }
 
     @Test
@@ -184,6 +191,22 @@ class ToolRegistryTest {
             "view_image" to (listOf("path") to emptyList<String>()),
             "tool_search" to (listOf("query") to emptyList<String>()),
             "github_repo" to (emptyList<String>() to listOf("repo", "what", "path", "state")),
+            "git_commit_push" to (listOf("message") to listOf("repo_dir")),
+            "git_pull_rebase" to (emptyList<String>() to listOf("repo_dir")),
+            "git_branch" to (listOf("action") to listOf("name", "repo_dir")),
+            "save_secret" to (listOf("key", "value") to emptyList<String>()),
+            "get_secret" to (listOf("key") to emptyList<String>()),
+            "web_search" to (listOf("query") to emptyList<String>()),
+            "delete_memory" to (listOf("key") to emptyList<String>()),
+            "connect_service" to (listOf("service") to listOf("scopes")),
+            "use_connector" to (listOf("service", "method", "endpoint") to listOf("body")),
+            "create_entity" to (listOf("entity", "data") to emptyList<String>()),
+            "update_entity" to (listOf("entity", "filter", "data") to emptyList<String>()),
+            "delete_entity" to (listOf("entity", "filter") to emptyList<String>()),
+            "schedule_task" to (listOf("name", "cron", "command") to emptyList<String>()),
+            "cancel_task" to (listOf("name") to emptyList<String>()),
+            "upload_file" to (listOf("path") to emptyList<String>()),
+            "plan" to (listOf("steps") to listOf("title")),
             "terminal_selection" to (emptyList<String>() to emptyList<String>()),
             "vscode_askQuestions" to (listOf("question") to listOf("options", "allowFreeText")),
             "vscode_get_confirmation" to (listOf("message") to emptyList<String>()),
@@ -225,30 +248,29 @@ class ToolRegistryTest {
     // --- forbidden tools -----------------------------------------------------------
 
     @Test
-    fun secretsAreNeverExposedInAnyMode() {
-        for (mode in ChatMode.values()) {
+    fun secretsAreAgentOnly() {
+        for (mode in listOf(ChatMode.ASK, ChatMode.EDIT)) {
             for (secret in listOf("save_secret", "get_secret")) {
-                assertFalse(
-                    secret + " must never be advertised in " + mode,
-                    ToolRegistry.exposedNames(mode).contains(secret),
-                )
-                assertFalse(secret + " must never be allowed in " + mode, ToolRegistry.allows(mode, secret))
+                assertFalse(secret + " must not be offered in " + mode, ToolRegistry.allows(mode, secret))
             }
         }
+        assertTrue(ToolRegistry.allows(ChatMode.AGENT, "save_secret"))
+        assertTrue(ToolRegistry.allows(ChatMode.AGENT, "get_secret"))
     }
 
     @Test
-    fun destructiveToolsAreNeverExposedInAnyMode() {
-        for (mode in ChatMode.values()) {
-            // install_package moved to Agent-only on 2026-10-31 (VS Code parity: it exposes
-            // InstallExtension). It is still refused in Ask and Edit, so the guard below checks
-            // those two modes for it explicitly rather than dropping it from all checking.
-            for (dangerous in listOf("git_pull_rebase", "delete_entity", "upload_file", "delete_memory")) {
-                assertFalse(
-                    dangerous + " must never be advertised in " + mode,
-                    ToolRegistry.allows(mode, dangerous),
-                )
+    fun destructiveToolsAreAgentOnly() {
+        // Unlocked 2026-10-31 at the owner's instruction, but not widened: the weaker modes
+        // still cannot reach them, so "unlocked" means "Agent plus the approval gate".
+        for (mode in listOf(ChatMode.ASK, ChatMode.EDIT)) {
+            for (dangerous in listOf(
+                "git_pull_rebase", "delete_entity", "upload_file", "delete_memory", "cancel_task",
+            )) {
+                assertFalse(dangerous + " must not be offered in " + mode, ToolRegistry.allows(mode, dangerous))
             }
+        }
+        for (dangerous in listOf("git_pull_rebase", "delete_entity", "upload_file", "delete_memory")) {
+            assertTrue(ToolRegistry.allows(ChatMode.AGENT, dangerous))
         }
     }
 
@@ -259,9 +281,10 @@ class ToolRegistryTest {
         assertTrue(ToolRegistry.allows(ChatMode.AGENT, "save_memory"))
         assertFalse(ToolRegistry.allows(ChatMode.ASK, "save_memory"))
         assertFalse(ToolRegistry.allows(ChatMode.EDIT, "save_memory"))
-        for (mode in ChatMode.values()) {
-            assertFalse("deleting a memory has no undo", ToolRegistry.allows(mode, "delete_memory"))
-        }
+        // 2026-10-31: deletion unlocked into Agent only; Ask and Edit still cannot reach it.
+        assertTrue(ToolRegistry.allows(ChatMode.AGENT, "delete_memory"))
+        assertFalse(ToolRegistry.allows(ChatMode.EDIT, "delete_memory"))
+        assertFalse(ToolRegistry.allows(ChatMode.ASK, "delete_memory"))
     }
 
     @Test
@@ -294,7 +317,9 @@ class ToolRegistryTest {
         for (mode in ChatMode.values()) {
             assertTrue(ToolRegistry.allows(mode, "request_connector"))
         }
-        assertFalse("starting OAuth without a card stays blocked", ToolRegistry.allows(ChatMode.AGENT, "connect_service"))
+        assertTrue("unlocked 2026-10-31, still Agent-only", ToolRegistry.allows(ChatMode.AGENT, "connect_service"))
+        assertTrue(ToolRegistry.allows(ChatMode.AGENT, "use_connector"))
+        assertFalse(ToolRegistry.allows(ChatMode.EDIT, "use_connector"))
     }
 
     @Test
@@ -302,17 +327,19 @@ class ToolRegistryTest {
         assertTrue(ToolRegistry.allows(ChatMode.AGENT, "web_fetch"))
         assertFalse(ToolRegistry.allows(ChatMode.ASK, "web_fetch"))
         assertFalse(ToolRegistry.allows(ChatMode.EDIT, "web_fetch"))
+        assertTrue("unlocked 2026-10-31: searching is read-only egress", ToolRegistry.allows(ChatMode.ASK, "web_search"))
+        assertTrue(ToolRegistry.allows(ChatMode.AGENT, "web_search"))
     }
 
     @Test
-    fun thePlanStubStaysHiddenAndIsRefused() {
-        assertFalse(ToolRegistry.allows(ChatMode.AGENT, "plan"))
-        assertTrue(ToolRegistry.spec("plan")!!.hiddenReason!!.contains("Stub"))
-        val call = """<tool>{"name":"plan","arguments":{"steps":[]}}</tool>"""
-        assertTrue(AgentToolWire.decide(ChatMode.AGENT, call, 1) is ToolDecision.Refused)
+    fun planStagesIntoTheTodoBoardInAgentModeOnly() {
+        // The stub became a real tool on 2026-10-31: it writes the same board manage_todo_list
+        // writes, so an accepted plan is the checklist the work gets ticked off in.
+        assertTrue(ToolRegistry.allows(ChatMode.AGENT, "plan"))
+        assertFalse(ToolRegistry.allows(ChatMode.EDIT, "plan"))
+        assertNull("a live tool must not carry a hidden reason", ToolRegistry.spec("plan")!!.hiddenReason)
+        assertTrue(ToolRegistry.spec("plan")!!.description.contains("todo board"))
     }
-
-    // --- prompt --------------------------------------------------------------------
 
     @Test
     fun theProtocolCarriesDescriptionsAndSchemasForTheModeOnly() {
@@ -328,7 +355,7 @@ class ToolRegistryTest {
 
         val agent = AgentToolWire.protocol(ChatMode.AGENT)
         assertTrue(agent.contains("run_command"))
-        for (hidden in listOf("save_secret", "get_secret", "use_connector", "plan", "install_extension")) {
+        for (hidden in listOf("run_vscode_command", "get_vscode_api", "runSubagent", "install_extension")) {
             assertFalse("hidden tool leaked into the prompt: " + hidden, agent.contains(hidden))
         }
     }

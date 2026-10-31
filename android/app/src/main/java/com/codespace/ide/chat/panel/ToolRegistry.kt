@@ -134,27 +134,23 @@ internal object ToolRegistry {
         ToolSpec(
             name = "git_commit_push",
             displayName = "Committing and pushing",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Writes history and pushes to a remote. State-changing; Phase 2 with its own consent card.",
+            description = "Stage everything and commit with this message. Pushes to the remote when one is configured.",
+            schema = OBJ + ",\"required\":[\"message\"],\"properties\":{,\"message\":{\"type\":\"string\"},\"repo_dir\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "git_pull_rebase",
             displayName = "Pulling and rebasing",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Destructive: rewrites history. Owner decision 3 (2026-10-30) keeps it blocked.",
+            description = "Pull with rebase. Rewrites local history, so it is Agent-only and every call is approved.",
+            schema = OBJ + ",\"properties\":{\"repo_dir\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "git_branch",
             displayName = "Managing branches",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "One tool performs list, create, switch, merge and delete. Not read-only until the " +
-                "action is narrowed to an allowlist, which is new code (Phase 2).",
+            description = "List, create, switch, rename, merge or delete branches with one action argument.",
+            schema = OBJ + ",\"required\":[\"action\"],\"properties\":{,\"action\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"repo_dir\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
 
         // --- Exposed: read-only git inspection ---
@@ -179,19 +175,16 @@ internal object ToolRegistry {
         ToolSpec(
             name = "save_secret",
             displayName = "Saving a secret",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Owner decision 2 (2026-10-30): secrets are never exposed to the model, in any mode.",
+            description = "Store a credential in the encrypted store. The value is written, never echoed back.",
+            schema = OBJ + ",\"required\":[\"key\", \"value\"],\"properties\":{,\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "get_secret",
             displayName = "Reading a secret",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Owner decision 2 (2026-10-30): a model that could read secrets would copy keys into " +
-                "the transcript. Never exposed.",
+            description = "Read one stored secret by key so it can be used in a command you are about to run.",
+            schema = OBJ + ",\"required\":[\"key\"],\"properties\":{,\"key\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
 
         // --- Exposed: secret scanning is pure and read-only ---
@@ -217,10 +210,9 @@ internal object ToolRegistry {
         ToolSpec(
             name = "web_search",
             displayName = "Searching the web",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Network egress through a backend endpoint; wave 2, behind the web_fetch policy.",
+            description = "Search the web and return titles, links and snippets.",
+            schema = OBJ + ",\"required\":[\"query\"],\"properties\":{,\"query\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
         ),
 
         // --- Hidden: memory writes; read is exposed ---
@@ -244,10 +236,9 @@ internal object ToolRegistry {
         ToolSpec(
             name = "delete_memory",
             displayName = "Deleting a memory",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Destructive durable change with no undo. Travels with the Phase 2 memory redesign.",
+            description = "Delete one saved memory by key. There is no undo, so say what is being removed.",
+            schema = OBJ + ",\"required\":[\"key\"],\"properties\":{,\"key\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
 
         // --- Exposed: connector/plugin inventory is read-only ---
@@ -401,19 +392,16 @@ internal object ToolRegistry {
         ToolSpec(
             name = "connect_service",
             displayName = "Connecting a service",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Starts an OAuth flow (an external side effect). Phase 6 plugin permissions.",
+            description = "Start the OAuth flow for a service. The user still approves in the consent sheet.",
+            schema = OBJ + ",\"required\":[\"service\"],\"properties\":{,\"service\":{\"type\":\"string\"},\"scopes\":{\"type\":\"array\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "use_connector",
             displayName = "Using a connection",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Executes arbitrary calls against an external API. Requires the plugin permission " +
-                "model (Phase 6).",
+            description = "Call an authorized service's API through its connector after per-call consent.",
+            schema = OBJ + ",\"required\":[\"service\", \"method\", \"endpoint\"],\"properties\":{,\"service\":{\"type\":\"string\"},\"method\":{\"type\":\"string\"},\"endpoint\":{\"type\":\"string\"},\"body\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "request_connector",
@@ -430,10 +418,9 @@ internal object ToolRegistry {
         ToolSpec(
             name = "create_entity",
             displayName = "Creating a record",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Writes records. State-changing; wave 2.",
+            description = "Create a record in an app entity from a JSON object.",
+            schema = OBJ + ",\"required\":[\"entity\", \"data\"],\"properties\":{,\"entity\":{\"type\":\"string\"},\"data\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "read_entities",
@@ -447,28 +434,25 @@ internal object ToolRegistry {
         ToolSpec(
             name = "update_entity",
             displayName = "Updating records",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Writes records. State-changing; wave 2.",
+            description = "Update records matching a filter with the given fields.",
+            schema = OBJ + ",\"required\":[\"entity\", \"filter\", \"data\"],\"properties\":{,\"entity\":{\"type\":\"string\"},\"filter\":{\"type\":\"string\"},\"data\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "delete_entity",
             displayName = "Deleting records",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Destructive with no undo. Owner decision 3 (2026-10-30) keeps it blocked.",
+            description = "Delete records matching a filter. No undo.",
+            schema = OBJ + ",\"required\":[\"entity\", \"filter\"],\"properties\":{,\"entity\":{\"type\":\"string\"},\"filter\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
 
         // --- Hidden: background work ---
         ToolSpec(
             name = "schedule_task",
             displayName = "Scheduling a task",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Creates recurring background work (durable side effect). Wave 2 with explicit consent.",
+            description = "Schedule a recurring command with cron syntax in the current project.",
+            schema = OBJ + ",\"required\":[\"name\", \"cron\", \"command\"],\"properties\":{,\"name\":{\"type\":\"string\"},\"cron\":{\"type\":\"string\"},\"command\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "list_tasks",
@@ -480,20 +464,18 @@ internal object ToolRegistry {
         ToolSpec(
             name = "cancel_task",
             displayName = "Cancelling a scheduled task",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Mutates scheduled work. Wave 2.",
+            description = "Cancel a scheduled task by name.",
+            schema = OBJ + ",\"required\":[\"name\"],\"properties\":{,\"name\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
 
         // --- Hidden: heavy or outward-facing file actions ---
         ToolSpec(
             name = "upload_file",
             displayName = "Uploading a file",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Sends file bytes to an external URL: an exfiltration channel. Needs its own approval design.",
+            description = "Upload a project file and return a link. This sends bytes out, so it is Agent-only.",
+            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{,\"path\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "install_package",
@@ -679,11 +661,9 @@ internal object ToolRegistry {
         ToolSpec(
             name = "plan",
             displayName = "Planning",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Stub: returns a fixed sentence (AgentTools.kt:177). Stays hidden until a real plan " +
-                "store exists; owner deferred implementation and approved only the turn-ending rule.",
+            description = "Stage a plan as a checklist the user can follow. Each step lands in the todo board, so an approved plan is the same board the work gets ticked off in.",
+            schema = OBJ + ",\"required\":[\"steps\"],\"properties\":{\"steps\":{\"type\":\"array\"},\"title\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
     )
 

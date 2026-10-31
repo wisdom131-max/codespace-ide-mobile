@@ -182,9 +182,12 @@ object McpShellProfile {
         appendLine("# ── Health check ──────────────────────────────────────────────────")
         appendLine("agent_health() { curl -s \"\$AGENT_API_URL/health\" 2>/dev/null || echo '[agent] API not running'; }")
         appendLine("")
-        appendLine("echo '[Agent] tools ready. Type agent_tools to list, agent <tool> \"<json>\" to call.'")
-        appendLine("[ -n \"${'\$'}{WORKSPACE_PATH}\" ] && echo \"[Agent] Project files: ${'\$'}{WORKSPACE_PATH}\" || echo \"[Agent] Tip: open a project in Explorer to set WORKSPACE_PATH\"")
-        appendLine("echo '[Agent] Shorthands: agent_read, agent_write, agent_run, agent_git, agent_search, agent_mem_*, agent_fetch...'")
+        // SILENCED (owner instruction 2026-10-31): the shims stay, the announcement goes.
+        // Startup used to print three [Agent] lines above the prompt; they are the first thing a
+        // person sees when the terminal opens and they are not for human eyes. `agent_tools`
+        // still lists everything on demand, and the model learns about the tools from the chat
+        // prompt, so nothing is lost by not shouting at boot.
+        appendLine("[ -n \"${'\$'}{AGENT_VERBOSE:-}\" ] && echo '[Agent] shims ready - type agent_tools to list'")
     }
 
     private fun buildAgentJson(apiToken: String): String =

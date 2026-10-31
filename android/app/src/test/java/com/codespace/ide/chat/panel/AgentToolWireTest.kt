@@ -94,10 +94,14 @@ class AgentToolWireTest {
     }
 
     @Test
-    fun secretsAreNeverReadOrWrittenByTheChatAgent() {
+    fun secretsAreAgentOnly() {
+        // 2026-10-31: the owner lifted the parking decision, so Agent may call these. The weaker
+        // modes still refuse them, which is the part that keeps a read-only prompt read-only.
         for (t in listOf("save_secret", "get_secret")) {
             val call = """<tool>{"name":"$t","arguments":{}}</tool>"""
-            assertTrue(t, AgentToolWire.decide(ChatMode.AGENT, call, 1) is ToolDecision.Refused)
+            assertFalse(t + " must stay refused in Ask", AgentToolWire.decide(ChatMode.ASK, call, 1) is ToolDecision.Run)
+            assertFalse(t + " must stay refused in Edit", AgentToolWire.decide(ChatMode.EDIT, call, 1) is ToolDecision.Run)
+            assertFalse(t + " must not be advertised in Edit", ToolRegistry.allows(ChatMode.EDIT, t))
         }
     }
 
