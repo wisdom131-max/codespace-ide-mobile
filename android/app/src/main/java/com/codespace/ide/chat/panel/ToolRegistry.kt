@@ -260,6 +260,78 @@ internal object ToolRegistry {
             modes = READ_ALL,
         ),
 
+        // --- VS Code parity: the rest of their exposed inventory, mapped by mode ---
+        ToolSpec(
+            name = "list_dir",
+            displayName = "Listing a directory",
+            description = "List one directory. Their name for our list_files; same behaviour.",
+            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{\"path\":{\"type\":\"string\"}}}" ,
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "grep_search",
+            displayName = "Searching file text",
+            description = "Search file contents with a regular expression. Their name for our search_files.",
+            schema = OBJ + ",\"required\":[\"path\", \"pattern\"],\"properties\":{\"path\":{\"type\":\"string\"}, \"pattern\":{\"type\":\"string\"}}}" ,
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "file_search",
+            displayName = "Finding files by name",
+            description = "Find files whose NAME matches, without reading contents.",
+            schema = OBJ + ",\"required\":[\"query\"],\"properties\":{\"query\":{\"type\":\"string\"}, \"path\":{\"type\":\"string\"}}}" ,
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "semantic_search",
+            displayName = "Searching the project by keyword",
+            description = "Keyword search over file text with ranked snippets. It is NOT an embedding index, and the result says so.",
+            schema = OBJ + ",\"required\":[\"query\"],\"properties\":{\"query\":{\"type\":\"string\"}, \"path\":{\"type\":\"string\"}}}" ,
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "search_workspace_symbols",
+            displayName = "Searching declarations",
+            description = "Find declarations (fun/class/def/const...) whose name matches. Text-based, not language-server intelligence.",
+            schema = OBJ + ",\"required\":[\"query\"],\"properties\":{\"query\":{\"type\":\"string\"}, \"path\":{\"type\":\"string\"}}}" ,
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "read_project_structure",
+            displayName = "Reading the project structure",
+            description = "An indented tree of the project, bounded by depth and entry count.",
+            schema = OBJ + ",\"properties\":{\"path\":{\"type\":\"string\"}, \"depth\":{\"type\":\"string\"}}}" ,
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "create_file",
+            displayName = "Creating a file",
+            description = "Create a NEW file and refuse to overwrite an existing one.",
+            schema = OBJ + ",\"required\":[\"path\", \"content\"],\"properties\":{\"path\":{\"type\":\"string\"}, \"content\":{\"type\":\"string\"}}}" ,
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "insert_edit_into_file",
+            displayName = "Editing a file in place",
+            description = "Replace one exact string in a file. Their name for replace_string_in_file.",
+            schema = OBJ + ",\"required\":[\"path\", \"old_string\", \"new_string\"],\"properties\":{\"path\":{\"type\":\"string\"}, \"old_string\":{\"type\":\"string\"}, \"new_string\":{\"type\":\"string\"}, \"replace_all\":{\"type\":\"string\"}}}" ,
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "multi_replace_string_in_file",
+            displayName = "Editing several places at once",
+            description = "Several exact replacements in one file, applied all or nothing.",
+            schema = OBJ + ",\"required\":[\"path\", \"replacements\"],\"properties\":{\"path\":{\"type\":\"string\"}, \"replacements\":{\"type\":\"string\"}, \"replace_all\":{\"type\":\"string\"}}}" ,
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "run_in_terminal",
+            displayName = "Running a command",
+            description = "Run a shell command. Their name for run_command; Agent mode only.",
+            schema = OBJ + ",\"required\":[\"command\"],\"properties\":{\"command\":{\"type\":\"string\"}, \"workdir\":{\"type\":\"string\"}}}" ,
+            modes = EXEC_MODES,
+        ),
+
         // --- Hidden: external actions ---
         ToolSpec(
             name = "connect_service",

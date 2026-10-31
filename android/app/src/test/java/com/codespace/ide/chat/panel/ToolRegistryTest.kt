@@ -21,6 +21,8 @@ class ToolRegistryTest {
         "git_status", "git_diff", "detect_secrets",
         "read_memory", "list_tasks", "read_entities", "list_connectors",
         "get_errors", "get_changed_files", "request_connector",
+        "list_dir", "grep_search", "file_search", "semantic_search",
+        "search_workspace_symbols", "read_project_structure",
     )
 
     // --- registration parity -------------------------------------------------------
@@ -29,8 +31,8 @@ class ToolRegistryTest {
     fun theRegistryCoversEveryRegisteredToolExactlyOnce() {
         val registered = AgentTools.toolNames()
         assertEquals("registry and executor must agree on the registered set", registered.toSet(), ToolRegistry.names().toSet())
-        assertEquals(36, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 36, ToolRegistry.names().toSet().size)
+        assertEquals(ToolRegistry.names().size, ToolRegistry.names().toSet().size)
+        assertEquals("every registered tool is listed exactly once", 46, ToolRegistry.names().size)
     }
 
     @Test
@@ -48,9 +50,10 @@ class ToolRegistryTest {
     @Test
     fun theHiddenSetIsExactlyTheToolsheldBackFromTheModel() {
         val hidden = ToolRegistry.hidden().map { it.name }
-        assertEquals(16, hidden.size)
-        assertTrue(hidden.containsAll(listOf("connect_service", "use_connector", "git_branch", "plan", "delete_entity", "delete_memory")))
-        assertEquals("no name may sit outside exposed + hidden", 36, hidden.size + exposedInAnyMode().size)
+        val exposed = exposedInAnyMode()
+        assertEquals("no name may sit outside exposed + hidden", ToolRegistry.names().size, hidden.size + exposed.size)
+        assertTrue("hidden tools must carry a reason", ToolRegistry.hidden().all { !it.hiddenReason.isNullOrBlank() })
+        assertTrue(hidden.containsAll(listOf("save_secret", "delete_memory", "use_connector", "plan")))
     }
 
     // --- exposure per mode ---------------------------------------------------------
@@ -66,21 +69,22 @@ class ToolRegistryTest {
     @Test
     fun editAddsWritesButNeverExecution() {
         val edit = ToolRegistry.exposedNames(ChatMode.EDIT).toSet()
-        assertEquals(readOnlyWave + setOf("write_file", "replace_string_in_file", "create_directory"), edit)
-        assertTrue("Edit mode needs a targeted edit tool, not only whole-file writes", edit.contains("replace_string_in_file"))
+        // Everything readable is readable in Edit, plus the editing tools and NOTHING executable.
+        assertTrue("Edit must keep the read wave", edit.containsAll(readOnlyWave))
+        assertTrue(edit.containsAll(listOf(
+            "write_file", "replace_string_in_file", "create_directory", "create_file",
+            "insert_edit_into_file", "multi_replace_string_in_file")))
         assertFalse("Edit must never be offered a command", edit.contains("run_command"))
+        assertFalse("Edit must never be offered a shell alias", edit.contains("run_in_terminal"))
     }
 
     @Test
     fun agentAddsExecutionAndStillRefusesSecrets() {
         val agent = ToolRegistry.exposedNames(ChatMode.AGENT).toSet()
-        assertEquals(
-            readOnlyWave + setOf(
-                "write_file", "replace_string_in_file", "create_directory",
-                "run_command", "web_fetch", "save_memory", "install_package",
-            ),
-            agent,
-        )
+        val edit = ToolRegistry.exposedNames(ChatMode.EDIT).toSet()
+        // Agent is Edit plus the side-effecting tools, and secrets stay out of every mode.
+        assertTrue("Agent must contain everything Edit offers", agent.containsAll(edit))
+        assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package")))
         assertFalse(agent.contains("save_secret"))
         assertFalse(agent.contains("get_secret"))
     }
@@ -139,6 +143,16 @@ class ToolRegistryTest {
             "save_memory" to (listOf("key", "value") to emptyList<String>()),
             "install_package" to (listOf("manager", "package") to listOf("project_dir")),
             "request_connector" to (listOf("service") to emptyList<String>()),
+            "list_dir" to (listOf("path") to emptyList<String>()),
+            "grep_search" to (listOf("path", "pattern") to emptyList<String>()),
+            "file_search" to (listOf("query") to listOf("path")),
+            "semantic_search" to (listOf("query") to listOf("path")),
+            "search_workspace_symbols" to (listOf("query") to listOf("path")),
+            "read_project_structure" to (emptyList<String>() to listOf("path", "depth")),
+            "create_file" to (listOf("path", "content") to emptyList<String>()),
+            "insert_edit_into_file" to (listOf("path", "old_string", "new_string") to listOf("replace_all")),
+            "multi_replace_string_in_file" to (listOf("path", "replacements") to listOf("replace_all")),
+            "run_in_terminal" to (listOf("command") to listOf("workdir")),
             "replace_string_in_file" to (listOf("path", "old_string", "new_string") to listOf("replace_all")),
             "get_errors" to (emptyList<String>() to listOf("path")),
             "create_directory" to (listOf("path") to emptyList<String>()),

@@ -148,7 +148,10 @@ You can use multiple tools in sequence. When done, give a final summary.
     // /tools chat listing, never execution). MCP tools (mcp_<server>_<tool>)
     // are dynamic and NOT listed here — they surface via McpClientManager.
     private val BUILTIN_TOOL_NAMES: List<String> = listOf(
-        "run_command", "read_file", "write_file",
+        "run_command", "run_in_terminal", "read_file", "write_file",
+        "create_file", "insert_edit_into_file", "multi_replace_string_in_file",
+        "list_dir", "grep_search", "file_search", "semantic_search",
+        "search_workspace_symbols", "read_project_structure",
         "replace_string_in_file", "get_errors", "create_directory", "get_changed_files",
         "list_files", "search_files",
         "git_commit_push", "git_pull_rebase", "git_branch", "git_status", "git_diff",
@@ -183,6 +186,19 @@ You can use multiple tools in sequence. When done, give a final summary.
                 // these tools read the raw string as a HOST File.
                 "read_file" -> readFile(args.getString("path"), context)
                 "write_file" -> writeFile(args.getString("path"), args.getString("content"), context)
+                // VS Code parity aliases: same implementation, their tool name.
+                "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
+                "insert_edit_into_file" -> replaceStringInFile(
+                    args.getString("path"), args.getString("old_string"), args.getString("new_string"),
+                    args.optBoolean("replace_all", false), context)
+                "multi_replace_string_in_file" -> multiReplaceFile(args.getString("path"), args.optString("replacements"), args.optBoolean("replace_all", false), context)
+                "list_dir" -> listFiles(args.getString("path"), context)
+                "grep_search" -> searchFiles(args.getString("path"), args.getString("pattern"), context)
+                "file_search" -> findFiles(args.getString("query"), args.optString("path").ifBlank { null }, context)
+                "semantic_search" -> semanticSearch(args.getString("query"), args.optString("path").ifBlank { null }, context)
+                "search_workspace_symbols" -> workspaceSymbols(args.getString("query"), args.optString("path").ifBlank { null }, context)
+                "read_project_structure" -> projectStructure(args.optString("path").ifBlank { null }, args.optInt("depth", 2), context)
+                "run_in_terminal" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
                 // VS Code parity (2026-10-31): ToolName.ReplaceString, GetErrors,
                 // CreateDirectory, GetScmChanges. The two that read are bounded like the
                 // existing git tools so they cannot crowd the context window.
@@ -412,6 +428,157 @@ You can use multiple tools in sequence. When done, give a final summary.
         if (!ok) return "Could not create " + dir.absolutePath
         com.codespace.ide.util.FsChangeNotifier.notifyChanged()
         return "Created " + dir.absolutePath
+    }
+
+    /** VS Code's create_file: refuses to clobber, because "create" that overwrites is a trap. */
+    private fun createFile(path: String, content: String, context: android.content.Context): String {
+        val target = File(resolveToolPath(context, path))
+        if (target.exists()) return "File already exists: $path. Use write_file to replace it."
+        return writeFile(path, content, context)
+    }
+
+    /** VS Code's multi_replace_string_in_file: several edits, applied all or nothing. */
+    private fun multiReplaceFile(
+        path: String,
+        replacementsJson: String,
+        replaceAll: Boolean,
+        context: android.content.Context,
+    ): String {
+        val target = File(resolveToolPath(context, path))
+        if (!target.exists() || !target.isFile) return "File not found: $path"
+        val current = try {
+            target.readText()
+        } catch (t: Throwable) {
+            return "Could not read $path: " + (t.message ?: "error")
+        }
+        val pairs = ArrayList<Pair<String, String>>()
+        try {
+            val arr = org.json.JSONArray(replacementsJson)
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: return "Replacement " + (i + 1) + " is not an object."
+                val o = item.optString("old_string")
+                val n = item.optString("new_string")
+                if (o.isEmpty()) return "Replacement " + (i + 1) + " has an empty old_string."
+                pairs.add(o to n)
+            }
+        } catch (t: Throwable) {
+            return "replacements must be a JSON array of {old_string,new_string} objects."
+        }
+        return when (val outcome = RepoSearch.replaceMany(current, pairs, replaceAll)) {
+            is ReplaceOutcome.Refused -> outcome.reason
+            is ReplaceOutcome.Ok -> {
+                writeFile(target.absolutePath, outcome.updated, context)
+                "Replaced " + outcome.count + " occurrence(s) across " + pairs.size +
+                    " edit(s) in " + target.name + "."
+            }
+        }
+    }
+
+    /** Bounded project walk shared by the search-shaped tools. */
+    private fun walkTextFiles(
+        root: File,
+        contentPattern: Regex?,
+        nameNeedle: String?,
+        context: android.content.Context,
+    ): Pair<List<Pair<String, String>>, Int> {
+        val files = ArrayList<Pair<String, String>>()
+        var skipped = 0
+        val base = root.absolutePath
+        val walked = root.walkTopDown().take(RepoSearch.MAX_FILES + 1).toList()
+        for (f in walked) {
+            if (!f.isFile) continue
+            if (files.size >= RepoSearch.MAX_FILES) break
+            val name = f.name
+            if (nameNeedle != null && !name.lowercase().contains(nameNeedle)) continue
+            if (f.length() > 512L * 1024L) {
+                skipped++
+                continue
+            }
+            val text = try {
+                f.readText()
+            } catch (t: Throwable) {
+                skipped++
+                continue
+            }
+            if (text.indexOf('\u0000') >= 0) {
+                skipped++
+                continue
+            }
+            if (contentPattern != null && !contentPattern.containsMatchIn(text)) continue
+            files.add(f.absolutePath.removePrefix(base).trimStart('/') to text)
+        }
+        return files to skipped
+    }
+
+    /** VS Code's file_search: find files whose NAME matches, no content scan. */
+    private fun findFiles(query: String, path: String?, context: android.content.Context): String {
+        val root = File(resolveToolPath(context, path ?: "."))
+        if (!root.exists()) return "Path not found: " + (path ?: ".")
+        val needle = query.trim().lowercase()
+        if (needle.isEmpty()) return "file_search needs a non-empty query."
+        val (hits, skipped) = walkTextFiles(root, null, needle, context)
+        if (hits.isEmpty()) return "No file names match '" + query + "'" + if (skipped > 0) " (" + skipped + " unreadable files skipped)." else "."
+        val shown = hits.take(RepoSearch.MAX_HITS).joinToString("\n") { it.first }
+        val cut = if (hits.size > RepoSearch.MAX_HITS) "\n[... " + (hits.size - RepoSearch.MAX_HITS) + " more]" else ""
+        return shown + cut
+    }
+
+    /**
+     * semantic_search. HONEST: this is keyword matching over file text, not an embedding
+     * index. VS Code's is a maintained semantic index; ours says what it is so the model
+     * does not tell the user we searched by meaning.
+     */
+    private fun semanticSearch(query: String, path: String?, context: android.content.Context): String {
+        val root = File(resolveToolPath(context, path ?: "."))
+        if (!root.exists()) return "Path not found: " + (path ?: ".")
+        val terms = query.lowercase().split(Regex("[^a-z0-9_]+")).filter { it.length >= 3 }.take(6)
+        if (terms.isEmpty()) return "semantic_search needs a query with at least one word of 3+ characters."
+        val pattern = try {
+            Regex("(?i)" + terms.joinToString("|") { Regex.escape(it) })
+        } catch (t: Throwable) {
+            return "Could not build a search pattern from that query."
+        }
+        val (files, skipped) = walkTextFiles(root, pattern, null, context)
+        val scored = files.map { (rel, text) ->
+            val score = terms.count { text.contains(it, ignoreCase = true) }
+            Triple(rel, score, text)
+        }.sortedByDescending { it.second }.take(40)
+        if (scored.isEmpty()) return "No files mention any of: " + terms.joinToString(", ") + "."
+        val sb = StringBuilder()
+        sb.append("[keyword search, not a semantic index] Best matches for '").append(query).append("':\n")
+        for ((rel, score, text) in scored) {
+            val lineNo = text.lineSequence().indexOfFirst { line ->
+                terms.any { line.contains(it, ignoreCase = true) }
+            } + 1
+            val snippet = text.lineSequence().drop((lineNo - 1).coerceAtLeast(0)).firstOrNull()?.trim()?.take(140).orEmpty()
+            sb.append(rel).append(':').append(lineNo).append(" (").append(score).append(" terms) ").append(snippet).append('\n')
+        }
+        if (skipped > 0) sb.append("[").append(skipped).append(" unreadable or binary files skipped]\n")
+        return sb.toString().trim()
+    }
+
+    /** VS Code's search_workspace_symbols, text-based, and labelled as such. */
+    private fun workspaceSymbols(query: String, path: String?, context: android.content.Context): String {
+        val root = File(resolveToolPath(context, path ?: "."))
+        if (!root.exists()) return "Path not found: " + (path ?: ".")
+        val (files, _) = walkTextFiles(root, null, null, context)
+        val hits = RepoSearch.symbols(files, query)
+        if (hits.isEmpty()) return "No declarations matching '" + query + "' (text-based symbol scan)."
+        return "[text-based symbol scan, not language-server intelligence]\n" + hits.joinToString("\n")
+    }
+
+    /** VS Code's read_project_structure, bounded by depth and entry count. */
+    private fun projectStructure(path: String?, depth: Int, context: android.content.Context): String {
+        val root = File(resolveToolPath(context, path ?: "."))
+        if (!root.exists()) return "Path not found: " + (path ?: ".")
+        val paths = ArrayList<String>()
+        for (f in root.walkTopDown().maxDepth(depth.coerceIn(1, 6)).take(600)) {
+            if (f.absolutePath == root.absolutePath) continue
+            val rel = f.absolutePath.removePrefix(root.absolutePath).trimStart('/')
+            if (rel.isEmpty()) continue
+            paths.add(if (f.isDirectory) rel + "/" else rel)
+        }
+        return RepoSearch.structure(paths, depth)
     }
 
     private fun listFiles(path: String, context: android.content.Context): String {
