@@ -53,6 +53,10 @@ One **engine owner**, two **surfaces**, one **origin rule**.
 
 ## 3. Order, with the gates made explicit
 
+**ORDERING (owner, 2026-10-31): preview first, browser last.** Steps 0-2 below are the preview
+project and run on their own; the engine extraction and the browser surface split become the LAST
+project. See `PREVIEW-PARITY-AUDIT-2026-10-31.md` for the audit and the preview batches.
+
 **Step 0 - preview parity audit (no code, report only).**
 A line-by-line reading of `PreviewPane` (1358 lines) against VS Code's preview surfaces: Simple
 Browser (address bar, history, "open in external", port links), built-in Markdown preview
