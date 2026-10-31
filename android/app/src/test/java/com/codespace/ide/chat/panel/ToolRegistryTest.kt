@@ -24,6 +24,7 @@ class ToolRegistryTest {
         "list_dir", "grep_search", "file_search", "semantic_search",
         "search_workspace_symbols", "read_project_structure",
         "copilot_getNotebookSummary", "read_notebook_cell_output",
+        "test_search", "test_failure", "get_task_output", "get_project_setup_info",
     )
 
     // --- registration parity -------------------------------------------------------
@@ -91,7 +92,7 @@ class ToolRegistryTest {
         val edit = ToolRegistry.exposedNames(ChatMode.EDIT).toSet()
         // Agent is Edit plus the side-effecting tools, and secrets stay out of every mode.
         assertTrue("Agent must contain everything Edit offers", agent.containsAll(edit))
-        assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package", "run_notebook_cell", "get_terminal_output", "terminal_last_command")))
+        assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package", "run_notebook_cell", "get_terminal_output", "terminal_last_command", "runTests", "run_task", "create_and_run_task")))
         assertFalse(agent.contains("save_secret"))
         assertFalse(agent.contains("get_secret"))
     }
@@ -169,6 +170,13 @@ class ToolRegistryTest {
             "run_notebook_cell" to (listOf("path") to listOf("index")),
             "get_terminal_output" to (emptyList<String>() to listOf("runs")),
             "terminal_last_command" to (emptyList<String>() to emptyList<String>()),
+            "test_search" to (listOf("query") to emptyList<String>()),
+            "test_failure" to (emptyList<String>() to emptyList<String>()),
+            "get_task_output" to (emptyList<String>() to listOf("task")),
+            "get_project_setup_info" to (emptyList<String>() to emptyList<String>()),
+            "runTests" to (emptyList<String>() to listOf("query", "limit")),
+            "run_task" to (emptyList<String>() to listOf("task")),
+            "create_and_run_task" to (emptyList<String>() to listOf("task")),
             "replace_string_in_file" to (listOf("path", "old_string", "new_string") to listOf("replace_all")),
             "get_errors" to (emptyList<String>() to listOf("path")),
             "create_directory" to (listOf("path") to emptyList<String>()),

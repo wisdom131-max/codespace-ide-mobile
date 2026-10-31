@@ -2,7 +2,7 @@
 
 Source of truth: `microsoft/vscode-copilot-chat/src/extension/tools/common/toolNames.ts`, read
 directly, not from secondary write-ups. Counts below are from the live registry in
-`chat/panel/ToolRegistry.kt`: **79 entries, 55 executable, 24 registered-but-not-offered with a
+`chat/panel/ToolRegistry.kt`: **79 entries, 62 executable, 17 registered-but-not-offered with a
 written reason.**
 
 Mode legend: **A** = Ask (read-only), **E** = Edit, **G** = Agent. A tool's modes decide whether
@@ -48,17 +48,10 @@ hidden tool carries a non-blank reason.
 
 | VS Code tool | Why not offered |
 | --- | --- |
-| `runTests` | No test runner; Gradle tests are reachable through `run_command` today |
-| `test_search` | No test-explorer index exists to search |
-| `test_failure` | Depends on `runTests` producing structured results |
-| `get_project_setup_info` | Framework detection is unimplemented; `read_project_structure` answers with real evidence |
 | `get_search_view_results` | There is no persistent search view; our search returns hits inline |
 | `github_repo` | Needs a GitHub connector with repo scope plus a repo-context model |
 | `run_vscode_command` | VS Code command ids have no mobile equivalent |
 | `terminal_selection` | No selection API reaches the tool layer |
-| `create_and_run_task` | No task definition model exists |
-| `run_task` | Same gap |
-| `get_task_output` | Depends on `run_task`; use `get_terminal_output` |
 | `runSubagent` | No subagent runtime (and the owner forbids delegating their own work) |
 | `search_subagent` | Same |
 | `execution_subagent` | Same |

@@ -2,6 +2,11 @@ package com.codespace.ide.agent
 
 import android.content.Context
 import com.codespace.ide.data.SecureTokenStore
+import com.codespace.ide.testing.TestDiscoveryService
+import com.codespace.ide.testing.TestStore
+import com.codespace.ide.testing.TestRunManager
+import com.codespace.ide.testing.TestResultStore
+import com.codespace.ide.project.TaskRunner
 import com.codespace.ide.terminal.ProotInstaller
 import org.json.JSONArray
 import org.json.JSONObject
@@ -155,6 +160,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         "apply_patch", "manage_todo_list", "create_new_jupyter_notebook",
         "copilot_getNotebookSummary", "read_notebook_cell_output", "edit_notebook_file",
         "run_notebook_cell", "get_terminal_output", "terminal_last_command",
+        "runTests", "test_search", "test_failure", "create_and_run_task", "run_task",
+        "get_task_output", "get_project_setup_info",
         "replace_string_in_file", "get_errors", "create_directory", "get_changed_files",
         "list_files", "search_files",
         "git_commit_push", "git_pull_rebase", "git_branch", "git_status", "git_diff",
@@ -214,6 +221,14 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "run_notebook_cell" -> runNotebookCell(args.getString("path"), args.optInt("index", 0), context)
                 "get_terminal_output" -> terminalOutput(args.optInt("runs", 1))
                 "terminal_last_command" -> terminalLastCommand()
+                // --- tests and tasks: backed by the real test and task subsystems ---
+                "runTests" -> runTestsTool(args.optString("query"), args.optInt("limit", 10), context)
+                "test_search" -> testSearch(args.getString("query"), context)
+                "test_failure" -> testFailures()
+                "create_and_run_task" -> runTaskTool(args.optString("task"), context)
+                "run_task" -> runTaskTool(args.optString("task"), context)
+                "get_task_output" -> taskOutput(args.optString("task"))
+                "get_project_setup_info" -> projectSetupInfo(context)
                 // VS Code parity (2026-10-31): ToolName.ReplaceString, GetErrors,
                 // CreateDirectory, GetScmChanges. The two that read are bounded like the
                 // existing git tools so they cannot crowd the context window.
@@ -443,6 +458,165 @@ You can use multiple tools in sequence. When done, give a final summary.
         if (!ok) return "Could not create " + dir.absolutePath
         com.codespace.ide.util.FsChangeNotifier.notifyChanged()
         return "Created " + dir.absolutePath
+    }
+
+    /**
+     * runTests. Uses the real pipeline: discover, then run each leaf test through
+     * TestRunManager, which enforces one run at a time (two gradle daemons produce garbage).
+     */
+    private suspend fun runTestsTool(query: String?, limit: Int, context: android.content.Context): String {
+        val root = File(resolveToolPath(context, "."))
+        if (!root.exists()) return "No project root is open, so there is nothing to test."
+        val scan = try {
+            TestDiscoveryService.scanProject(context, root)
+        } catch (t: Throwable) {
+            return "Test discovery failed: " + (t.message ?: "error")
+        }
+        if (scan.testCount == 0) {
+            return "No tests discovered in " + root.name + " (" + scan.filesWithTests + " file(s) scanned)."
+        }
+        val needle = query?.trim().orEmpty()
+        val leaves = TestStore.leafItems().filter { item ->
+            needle.isEmpty() || item.testId.contains(needle, ignoreCase = true) ||
+                item.filePath.contains(needle, ignoreCase = true)
+        }
+        if (leaves.isEmpty()) {
+            return "No discovered test matches '" + needle + "'. " + scan.testCount + " test(s) exist."
+        }
+        val capped = leaves.take(limit.coerceIn(1, 25))
+        val results = ArrayList<TestRunManager.TestRunResult>()
+        for (item in capped) {
+            results.add(
+                TestRunManager.runTest(
+                    context = context,
+                    projectRoot = root.absolutePath,
+                    hostFilePath = item.filePath,
+                    language = item.language,
+                    testId = item.testId,
+                    suite = item.suite,
+                    lineIndex = item.lineIndex,
+                ),
+            )
+        }
+        val passed = results.count { it.status.name == "PASSED" }
+        val failed = results.filter { it.status.name == "FAILED" || it.status.name == "ERRORED" }
+        val sb = StringBuilder()
+        sb.append("Ran ").append(results.size).append(" of ").append(leaves.size)
+            .append(" test(s): ").append(passed).append(" passed, ").append(failed.size).append(" failed")
+        if (leaves.size > capped.size) sb.append(" [").append(leaves.size - capped.size).append(" not run: limit]")
+        sb.append('\n')
+        for (r in failed) {
+            sb.append("- ").append(r.testId)
+            if (r.exitCode != null) sb.append(" (exit ").append(r.exitCode).append(')')
+            sb.append('\n')
+        }
+        val messages = TestResultStore.items.value.values
+            .filter { it.computedState.name == "FAILED" || it.computedState.name == "ERRORED" }
+            .mapNotNull { item -> item.message?.let { item.testId + ": " + it.take(300) } }
+        if (messages.isNotEmpty()) {
+            sb.append("Failures:\n")
+            for (m in messages.take(10)) sb.append(m).append('\n')
+        }
+        return sb.toString().trim()
+    }
+
+    /** test_search: query the discovered-test index, the same one the Test explorer reads. */
+    private suspend fun testSearch(query: String, context: android.content.Context): String {
+        val needle = query.trim()
+        if (needle.isEmpty()) return "test_search needs a query."
+        if (TestStore.leafItems().isEmpty()) {
+            val root = File(resolveToolPath(context, "."))
+            try {
+                TestDiscoveryService.scanProject(context, root)
+            } catch (t: Throwable) {
+                return "Test discovery failed: " + (t.message ?: "error")
+            }
+        }
+        val hits = TestStore.leafItems().filter { item ->
+            item.testId.contains(needle, ignoreCase = true) || item.filePath.contains(needle, ignoreCase = true)
+        }
+        if (hits.isEmpty()) return "No discovered test matches '" + needle + "'."
+        return hits.take(40).joinToString("\n") { item ->
+            item.filePath + ":" + (item.lineIndex + 1) + " " + item.testId
+        }
+    }
+
+    /** test_failure: what actually failed in the last run, message included. */
+    private fun testFailures(): String {
+        val run = TestResultStore.latestRun.value
+        val bad = TestResultStore.items.value.values
+            .filter { it.computedState.name == "FAILED" || it.computedState.name == "ERRORED" }
+        if (bad.isEmpty()) {
+            return if (run == null) "No test run has been recorded yet." else "The last test run has no failures."
+        }
+        val sb = StringBuilder()
+        if (run != null) sb.append("Last run: ").append(run.passed).append(" passed, ")
+            .append(run.failed).append(" failed")
+        sb.append('\n')
+        for (item in bad.take(20)) {
+            sb.append("- ").append(item.testId).append(" [").append(item.computedState.name).append("]")
+            item.message?.let { sb.append(": ").append(it.take(300)) }
+            sb.append('\n')
+        }
+        return sb.toString().trim()
+    }
+
+    /** run_task / create_and_run_task: run a catalogue task. There is no ad-hoc task model yet. */
+    private suspend fun runTaskTool(requested: String, context: android.content.Context): String {
+        val wanted = requested.trim()
+        if (wanted.isEmpty()) {
+            return "Which task? Available: " +
+                TaskRunner.CATALOGUE.joinToString(", ") { it.id.name + " (" + it.displayName + ")" }
+        }
+        val task = TaskRunner.CATALOGUE.firstOrNull {
+            it.id.name.equals(wanted, ignoreCase = true) || it.displayName.equals(wanted, ignoreCase = true)
+        } ?: return "No such task: '" + wanted + "'. Available: " +
+            TaskRunner.CATALOGUE.joinToString(", ") { it.id.name }
+        val root = File(resolveToolPath(context, "."))
+        if (!root.exists()) return "No project root is open."
+        val result = try {
+            TaskRunner.run(context, task.id, root.absolutePath)
+        } catch (t: Throwable) {
+            return "Task " + task.id.name + " failed to start: " + (t.message ?: "error")
+        }
+        return task.id.name + " " + result.status.name + " in " + (result.durationMs / 1000) +
+            "s (errors " + result.errorCount + ", warnings " + result.warningCount + ")\n" +
+            result.output.takeLast(2000)
+    }
+
+    /** get_task_output: the last result the task tab is showing for a task. */
+    private fun taskOutput(requested: String): String {
+        val ids = TaskRunner.CATALOGUE.map { it.id }
+        val wanted = requested.trim()
+        val selected = if (wanted.isEmpty()) {
+            ids.filter { TaskRunner.stateFor(it).result != null }
+        } else {
+            ids.filter { it.name.equals(wanted, ignoreCase = true) }
+        }
+        if (selected.isEmpty()) {
+            return if (wanted.isEmpty()) {
+                "No task has run in this session. Available: " + ids.joinToString(", ") { it.name }
+            } else {
+                "No such task: '" + wanted + "'. Available: " + ids.joinToString(", ") { it.name }
+            }
+        }
+        val sb = StringBuilder()
+        for (id in selected) {
+            val run = TaskRunner.stateFor(id)
+            sb.append(id.name).append(" -> ").append(run.state.name).append('\n')
+            val output = run.result?.output
+            if (output.isNullOrBlank()) sb.append("(no output recorded)\n")
+            else sb.append(output.takeLast(3000)).append('\n')
+        }
+        return sb.toString().trim()
+    }
+
+    /** get_project_setup_info: read the root markers and say how to build, test and run. */
+    private fun projectSetupInfo(context: android.content.Context): String {
+        val root = File(resolveToolPath(context, "."))
+        if (!root.exists()) return "No project root is open."
+        val names = root.list()?.toList().orEmpty()
+        return ProjectSetup.describe(names)
     }
 
     /** VS Code's apply_patch: strict, verified, all or nothing. */
