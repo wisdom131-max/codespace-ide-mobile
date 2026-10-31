@@ -26,12 +26,78 @@ fun TodoExplorerPanel(
     todos: List<PowerUserAnalyzer.TodoItem>,
     onJumpToSource: (String, Int) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * The agent scheduler's tasks (2026-10-31, owner request). They belong on this panel because
+     * both answer "what is outstanding on this project"; they are kept visually separate because
+     * one list is comments in your source and the other is commands that will run on their own.
+     */
+    scheduledTasks: List<com.codespace.ide.agent.AgentScheduler.ScheduledRecord> = emptyList(),
+    onRunScheduledNow: ((String) -> Unit)? = null,
+    onCancelScheduled: ((String) -> Unit)? = null,
 ) {
     var filterTag by remember { mutableStateOf<String?>(null) }
     val tags = todos.map { it.tag }.distinct()
     val filtered = if (filterTag != null) todos.filter { it.tag == filterTag } else todos
 
     Column(modifier = modifier.fillMaxSize().padding(4.dp)) {
+        if (scheduledTasks.isNotEmpty()) {
+            Text(
+                "AGENT SCHEDULE",
+                color = Color(0xFF888888),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+            scheduledTasks.forEach { task ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 1.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            task.name,
+                            color = Color(0xFFD4D4D4),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        Text(
+                            task.cron + "  " + task.command.take(60),
+                            color = Color(0xFF7A7A8C),
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                    onRunScheduledNow?.let { run ->
+                        Text(
+                            "run",
+                            color = Color(0xFF569CD6),
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .clickable { run(task.name) }
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                        )
+                    }
+                    onCancelScheduled?.let { cancel ->
+                        Text(
+                            "cancel",
+                            color = Color(0xFFEF5350),
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .clickable { cancel(task.name) }
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+            androidx.compose.material3.HorizontalDivider(
+                color = Color(0xFF2D2D3F),
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+        }
         // Tag filter chips
         if (tags.isNotEmpty()) {
             Row(

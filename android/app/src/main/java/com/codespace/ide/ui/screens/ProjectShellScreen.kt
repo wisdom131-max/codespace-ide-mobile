@@ -4029,8 +4029,27 @@ private fun PssBottomPanelContent(
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color(0xFF569CD6))
                     }
                 } else {
+                    val scheduleScope = rememberCoroutineScope()
+                    var scheduled by remember { mutableStateOf<List<com.codespace.ide.agent.AgentScheduler.ScheduledRecord>>(emptyList()) }
+                    var scheduleTick by remember { mutableStateOf(0) }
+                    LaunchedEffect(scheduleTick) {
+                        scheduled = withContext(Dispatchers.IO) {
+                            try { com.codespace.ide.agent.AgentScheduler.records(context) } catch (_: Throwable) { emptyList() }
+                        }
+                    }
                     com.codespace.ide.ui.panes.TodoExplorerPanel(
                         todos = todoItems,
+                        scheduledTasks = scheduled,
+                        onRunScheduledNow = { name ->
+                            scheduleScope.launch(Dispatchers.IO) {
+                                com.codespace.ide.agent.AgentScheduler.runNow(name, context)
+                                scheduleTick++
+                            }
+                        },
+                        onCancelScheduled = { name ->
+                            com.codespace.ide.agent.AgentScheduler.cancel(name, context)
+                            scheduleTick++
+                        },
                         onJumpToSource = { file, line ->
                             // Open file and jump to line
                             // G05 (P4b): the line was DROPPED here — a TODO tap opened

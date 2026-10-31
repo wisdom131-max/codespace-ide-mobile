@@ -112,6 +112,47 @@ object AgentScheduler {
         return "Task '$name' scheduled (cron: $cron). Command: $command"
     }
 
+    /** One scheduled task, for UI that lists them rather than reading a paragraph. */
+    data class ScheduledRecord(
+        val name: String,
+        val cron: String,
+        val command: String,
+        val projectPath: String?,
+    )
+
+    /**
+     * The scheduler's own tasks (2026-10-31): `listTasks` returns prose for the chat tool, which
+     * a panel cannot lay out. Same file, same order, typed.
+     */
+    fun records(context: Context): List<ScheduledRecord> {
+        val tasks = readTasks(context)
+        val out = ArrayList<ScheduledRecord>()
+        for (name in tasks.keys()) {
+            val o = tasks.optJSONObject(name) ?: continue
+            out.add(
+                ScheduledRecord(
+                    name = name,
+                    cron = o.optString("cron"),
+                    command = o.optString("command"),
+                    projectPath = o.optString("projectPath").takeIf { it.isNotBlank() },
+                )
+            )
+        }
+        return out.sortedBy { it.name.lowercase() }
+    }
+
+    /**
+     * Run a scheduled task once, now, without touching its schedule. Blocking (the executor is),
+     * so callers launch it off the main thread.
+     */
+    fun runNow(name: String, context: Context): String {
+        val task = readTasks(context).optJSONObject(name) ?: return "No scheduled task named \"" + name + "\"."
+        val command = task.optString("command")
+        if (command.isBlank()) return "Task \"" + name + "\" has no command."
+        runCommand(command, task.optString("projectPath").takeIf { it.isNotBlank() }, context)
+        return "Ran \"" + name + "\" once."
+    }
+
     fun listTasks(context: Context): String {
         val tasks = readTasks(context)
         if (tasks.length() == 0) return "No scheduled tasks."

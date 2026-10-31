@@ -49,9 +49,15 @@ internal fun ConnectorsHubSheet(
     val scope = rememberCoroutineScope()
     val accessToken = remember { SecureTokenStore(context).lastAccessToken.orEmpty() }
 
-    var statuses by remember { mutableStateOf<List<ConnectorsApiClient.ConnectorStatus>>(emptyList()) }
+    // Paint the last known statuses FIRST, then correct them. The Hub used to show a spinner
+    // until a live round-trip finished, every single open, for a list that changes only when
+    // the user connects something.
+    var statuses by remember {
+        mutableStateOf(com.codespace.ide.data.ConnectorStatusCache.load(context))
+    }
     var loadError by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(true) }
+    // A cached list is already something to look at: no spinner, just a quiet refresh.
+    var loading by remember { mutableStateOf(statuses.isEmpty()) }
     // IG07 (2026-09-27): the in-app OAuth WebView + its callback-capture machinery
     // (oauthWebViewUrl / oauthCallbackUrl / completeOAuthCallback delivery) were
     // DELETED — AgentConnectorManager's own docs say Google/Slack BLOCK embedded
@@ -85,8 +91,17 @@ internal fun ConnectorsHubSheet(
         loadError = null
         val result = withContext(Dispatchers.IO) { ConnectorsApiClient.fetchStatus(accessToken, context) }
         result.fold(
-            onSuccess = { statuses = it },
-            onFailure = { loadError = it.message ?: "Failed to load connector status" },
+            onSuccess = {
+                statuses = it
+                // Only a real answer is worth remembering; a failure must not overwrite a good
+                // list with an empty one.
+                if (it.isNotEmpty()) com.codespace.ide.data.ConnectorStatusCache.save(context, it)
+            },
+            onFailure = {
+                // With a cached list on screen, a refresh failure is a note, not a blank page.
+                loadError = if (statuses.isEmpty()) (it.message ?: "Failed to load connector status") else null
+                toast = if (statuses.isNotEmpty()) "Showing the last saved statuses (refresh failed)" else null
+            },
         )
         loading = false
     }
