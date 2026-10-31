@@ -97,6 +97,12 @@ interface ChatEngine {
     val sessionId: String
     fun send(userText: String, attachments: List<ChatAttachment>, config: EngineConfig): kotlinx.coroutines.flow.Flow<EngineEvent>
 
+    /**
+     * Seeds this engine with a conversation that was already had (restored from the
+     * on-disk transcript). Default is a no-op so a stateless implementation stays valid.
+     */
+    fun restoreHistory(history: List<ChatMessage>) {}
+
     /** WP2-era single-arg convenience: send without attachments. */
     fun send(userText: String, config: EngineConfig): kotlinx.coroutines.flow.Flow<EngineEvent> =
         send(userText, emptyList(), config)

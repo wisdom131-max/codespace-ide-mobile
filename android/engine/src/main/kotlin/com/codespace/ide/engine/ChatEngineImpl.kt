@@ -24,6 +24,12 @@ class ChatEngineImpl(
 
     fun transcript(): List<ChatMessage> = state.snapshot()
 
+    /**
+     * MEMORY CONTINUITY: hand a restored conversation to a brand-new engine so the first
+     * question after reopening the panel is answered with the same context as before.
+     */
+    override fun restoreHistory(history: List<ChatMessage>) = state.restore(history)
+
     override fun send(userText: String, attachments: List<ChatAttachment>, config: EngineConfig): Flow<EngineEvent> = flow {
         state.append(ChatRole.USER, userText, MessageState.DONE)
         val eligible = state.snapshot().filter { it.state == MessageState.DONE && it.text.isNotEmpty() }

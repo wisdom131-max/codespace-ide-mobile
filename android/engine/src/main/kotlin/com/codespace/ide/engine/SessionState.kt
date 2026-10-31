@@ -28,6 +28,22 @@ class SessionState(private val engineSessionId: String) {
         }
     }
 
+    /**
+     * MEMORY CONTINUITY (2026-10-31): replay a conversation that outlived this process.
+     *
+     * The transcript on disk is the only thing that survives a closed panel, so a fresh
+     * engine starts blind unless it is handed what was already said. Restoring REPLACES the
+     * in-memory list rather than appending, because this is called exactly once, before the
+     * first send of a restored session, and "restore" that could double up would send the
+     * same turn twice to a paid model.
+     */
+    fun restore(history: List<ChatMessage>) {
+        synchronized(messages) {
+            messages.clear()
+            messages.addAll(history)
+        }
+    }
+
     /** Copy-out snapshot for renderers and for the history window. */
     fun snapshot(): List<ChatMessage> = synchronized(messages) { ArrayList(messages) }
 

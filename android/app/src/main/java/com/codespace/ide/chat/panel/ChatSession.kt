@@ -177,6 +177,7 @@ class ChatSession(
                         restoreFinished, ui.value.rows.size, loaded.messages.size)) {
                     ui.value = ui.value.copy(rows = stored)
                 }
+                seedEngineFrom(loaded.messages)
                 loaded.note?.let { appendRow(ChatRowModel.InfoNote(it)) }
                 restoreFinished = true
                 persistTranscript()
@@ -185,6 +186,24 @@ class ChatSession(
             // store debounces, and the scope is the store's, not this session's.
             scope.launch { ui.collect { persistTranscript() } }
         }
+    }
+
+    /**
+     * MEMORY CONTINUITY (2026-10-31) — the conversation outlives the panel.
+     *
+     * Symptom this fixes: close the chat tab, reopen it, ask about the same thing, and the
+     * model answered as if you had never spoken. The rows were on disk and were even restored
+     * to the screen, but the ENGINE was new and empty, so nothing from before was ever sent.
+     *
+     * Rules: only real dialogue is replayed (user and assistant). "note" rows are this UI's
+     * own annotations, and replaying them would spend context on text the user never said.
+     * An interrupted reply is replayed as it was stored, marker included, so the model sees
+     * exactly what the user was looking at.
+     */
+    private fun seedEngineFrom(stored: List<com.codespace.ide.chat.StoredMessage>) {
+        if (stored.isEmpty()) return
+        val seed = com.codespace.ide.chat.ChatSeed.dialogue(stored)
+        if (seed.isNotEmpty()) engine.restoreHistory(seed)
     }
 
     /** BATCH 4: hand the current transcript to the store (no-op before the restore ends). */
@@ -491,6 +510,10 @@ class ChatSession(
         keySlotsSeen.clear()
         lastStaged = emptyList()
         pendingAttachments.value = emptyList()
+        // MEMORY CONTINUITY: the rows are the visible half of a clear; the engine holds the
+        // other half. Without this the transcript looks empty while the model still remembers
+        // everything that was just cleared - the worst of both states.
+        engine.restoreHistory(emptyList())
         ui.value = ui.value.copy(rows = emptyList(), streaming = false, lastUserText = "")
     }
 

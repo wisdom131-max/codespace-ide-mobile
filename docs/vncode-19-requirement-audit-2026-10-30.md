@@ -91,3 +91,50 @@ Owner supplied the picker reference and the icon reference; both are now impleme
 | 9 / connector | Connector card | DEFECTIVE → COMPLETE | `AgentConnectorManager.requestConnectorCard` set a side channel consumed only by the DEAD `CopilotChatPanelInline`; the live panel now consumes it and draws `ConnectorConnectCard`, whose Connect opens `ConnectorsHubSheet(focusServiceId)` and whose Reject dismisses |
 
 Tests added: `AttachmentPickerTest` (9) — kind mapping, sort order, cap+truncation, missing folder vs empty folder, file-as-folder refusal, back-root clamp, sibling-prefix escape, badges, size labels.
+
+## Phase 3 — conversation memory across a closed panel (2026-10-31)
+
+### The defect, precisely
+
+The panel restored the ROWS from `ChatTranscriptStore` on open, so a reopened conversation
+looked continuous. The engine never learned about them: `ChatSession` builds a new
+`ChatEngineImpl`, whose `SessionState` starts empty, and `send()` only appends the new turn.
+`SessionState` had no way to accept an existing conversation, so every request carried one
+user message and nothing else.
+
+Confirmed by: `ChatSession.init` -> `transcripts.load` -> `ChatTranscript.messagesToRows`
+(rows only), then `engine.send(userText, ...)`; `SessionState` exposed append/update/snapshot
+and no restore path.
+
+### The fix
+
+1. `SessionState.restore(history)` replaces the in-memory list (replace, not append: a restore
+   that doubled up would send the same turn twice to a paid model).
+2. `ChatEngine.restoreHistory(...)` with a no-op default, implemented by `ChatEngineImpl`.
+3. `ChatSeed.dialogue(stored)` decides what crosses over: user/assistant turns only, in order.
+   "note" rows are this UI's own annotations and are dropped; an interrupted reply is replayed
+   as stored, marker included, so the model sees what the user was reading.
+4. `ChatSession` seeds the engine right after the restore, before the first send.
+5. `clearConversation()` now also clears the engine. Rows were the visible half of a clear; the
+   engine held the other half, so a cleared conversation still answered from memory.
+
+### Tests
+
+* `engine/.../HistoryRestoreTest.kt` (4) — asserts on the JSON bytes handed to the transport:
+  a restored conversation rides the next request, a double restore does not duplicate it, an
+  unseeded engine carries only the new turn, and a restored engine keeps appending.
+* `app/.../ChatSeedTest.kt` (6) — ordering and roles, notes excluded, unique ids across a
+  restore, blanks/unknown roles dropped, interrupted replies kept, empty transcript no-op.
+
+### Limits worth knowing
+
+Replayed history is bounded twice: the transcript cap (300 messages, 40 000 chars per message)
+and the model's own history window (`HistoryBudget`), which is why a very long conversation
+reopens with its most recent stretch rather than everything. That limitation is reported to the
+user by the existing "trimmed" note instead of being hidden.
+
+### Still to be researched (not claimed)
+
+How the VS Code chat panel binds a chat session to workspace context and memory is the
+10/16 research deliverable and has not been written yet; nothing above is presented as a copy
+of that design.
