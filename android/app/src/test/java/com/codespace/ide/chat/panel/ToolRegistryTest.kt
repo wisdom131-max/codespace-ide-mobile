@@ -25,6 +25,7 @@ class ToolRegistryTest {
         "search_workspace_symbols", "read_project_structure",
         "copilot_getNotebookSummary", "read_notebook_cell_output",
         "test_search", "test_failure", "get_task_output", "get_project_setup_info",
+        "get_search_view_results", "view_image", "tool_search",
     )
 
     // --- registration parity -------------------------------------------------------
@@ -92,7 +93,7 @@ class ToolRegistryTest {
         val edit = ToolRegistry.exposedNames(ChatMode.EDIT).toSet()
         // Agent is Edit plus the side-effecting tools, and secrets stay out of every mode.
         assertTrue("Agent must contain everything Edit offers", agent.containsAll(edit))
-        assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package", "run_notebook_cell", "get_terminal_output", "terminal_last_command", "runTests", "run_task", "create_and_run_task")))
+        assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package", "run_notebook_cell", "get_terminal_output", "terminal_last_command", "runTests", "run_task", "create_and_run_task", "github_repo")))
         assertFalse(agent.contains("save_secret"))
         assertFalse(agent.contains("get_secret"))
     }
@@ -177,6 +178,10 @@ class ToolRegistryTest {
             "runTests" to (emptyList<String>() to listOf("query", "limit")),
             "run_task" to (emptyList<String>() to listOf("task")),
             "create_and_run_task" to (emptyList<String>() to listOf("task")),
+            "get_search_view_results" to (emptyList<String>() to emptyList<String>()),
+            "view_image" to (listOf("path") to emptyList<String>()),
+            "tool_search" to (listOf("query") to emptyList<String>()),
+            "github_repo" to (emptyList<String>() to listOf("repo", "what", "path", "state")),
             "replace_string_in_file" to (listOf("path", "old_string", "new_string") to listOf("replace_all")),
             "get_errors" to (emptyList<String>() to listOf("path")),
             "create_directory" to (listOf("path") to emptyList<String>()),

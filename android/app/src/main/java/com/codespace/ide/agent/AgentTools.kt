@@ -162,6 +162,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "run_notebook_cell", "get_terminal_output", "terminal_last_command",
         "runTests", "test_search", "test_failure", "create_and_run_task", "run_task",
         "get_task_output", "get_project_setup_info",
+        "get_search_view_results", "github_repo", "view_image", "tool_search",
         "replace_string_in_file", "get_errors", "create_directory", "get_changed_files",
         "list_files", "search_files",
         "git_commit_push", "git_pull_rebase", "git_branch", "git_status", "git_diff",
@@ -229,6 +230,13 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "run_task" -> runTaskTool(args.optString("task"), context)
                 "get_task_output" -> taskOutput(args.optString("task"))
                 "get_project_setup_info" -> projectSetupInfo(context)
+                // --- view state, GitHub, images, and the inventory itself ---
+                "get_search_view_results" -> searchViewResults()
+                "github_repo" -> githubRepoTool(
+                    args.optString("repo"), args.optString("what", "overview"),
+                    args.optString("path"), args.optString("state"), context)
+                "view_image" -> viewImage(args.getString("path"), context)
+                "tool_search" -> toolSearch(args.getString("query"))
                 // VS Code parity (2026-10-31): ToolName.ReplaceString, GetErrors,
                 // CreateDirectory, GetScmChanges. The two that read are bounded like the
                 // existing git tools so they cannot crowd the context window.
@@ -458,6 +466,179 @@ You can use multiple tools in sequence. When done, give a final summary.
         if (!ok) return "Could not create " + dir.absolutePath
         com.codespace.ide.util.FsChangeNotifier.notifyChanged()
         return "Created " + dir.absolutePath
+    }
+
+    /** get_search_view_results: exactly what the search panel is showing, or that it is idle. */
+    private fun searchViewResults(): String {
+        val snap = SearchViewState.current()
+            ?: return "The search panel has not run a search in this session. Run one there, or use grep_search."
+        if (snap.hits.isEmpty()) return "The last search '" + snap.query + "' returned no results."
+        val sb = StringBuilder("Search '" + snap.query + "': " + snap.hits.size + " result(s)")
+        if (snap.truncated) sb.append(" (truncated to 200)")
+        sb.append('\n')
+        for (h in snap.hits.take(100)) {
+            sb.append(h.file).append(':').append(h.line).append(' ')
+                .append(h.text.trim().take(160)).append('\n')
+        }
+        return sb.toString().trim()
+    }
+
+    /**
+     * github_repo. Reads GitHub over REST with the token the Source Control panel stored. The
+     * repository defaults to the project's own origin remote, so it answers about the repo the
+     * user is actually looking at rather than one the model guessed.
+     */
+    private suspend fun githubRepoTool(
+        repoArg: String,
+        what: String,
+        pathArg: String,
+        state: String,
+        context: android.content.Context,
+    ): String {
+        val token = runCatching { SecureTokenStore(context).githubToken }.getOrNull()
+        if (token.isNullOrBlank()) {
+            return "GitHub is not connected. Connect it in the Source Control panel, then ask again."
+        }
+        val root = File(resolveToolPath(context, "."))
+        val gitConfig = File(root, ".git/config")
+        val fromRemote = if (gitConfig.exists()) {
+            runCatching { GitHubRepoSupport.repoRefFromGitConfig(gitConfig.readText()) }.getOrNull()
+        } else {
+            null
+        }
+        val repo = repoArg.trim().ifBlank {
+            fromRemote ?: return "No repo given, and this project has no GitHub origin remote to default to."
+        }
+        if (!repo.matches(Regex("[A-Za-z0-9._-]+/[A-Za-z0-9._-]+"))) return "Repository must be owner/name."
+        val wanted = what.trim().ifBlank { "overview" }
+        val requestPath = when (wanted) {
+            "overview" -> "/repos/$repo"
+            "issues" -> "/repos/$repo/issues?state=" + state.ifBlank { "open" } + "&per_page=20"
+            "prs" -> "/repos/$repo/pulls?state=" + state.ifBlank { "open" } + "&per_page=20"
+            "commits" -> "/repos/$repo/commits?per_page=15"
+            "file" -> {
+                if (pathArg.isBlank()) return "what=file needs a path."
+                "/repos/$repo/contents/" + pathArg.trimStart('/')
+            }
+            else -> return "Unknown what='" + wanted + "'. Use overview, issues, prs, file, or commits."
+        }
+        return try {
+            val response = githubGet(requestPath, token)
+            if (response.first != 200) {
+                return "GitHub answered " + response.first + " for " + requestPath + ": " + response.second.take(300)
+            }
+            when (wanted) {
+                "overview" -> GitHubRepoSupport.renderOverview(response.second)
+                "issues" -> GitHubRepoSupport.renderItems(response.second, "issues")
+                "prs" -> GitHubRepoSupport.renderItems(response.second, "pull requests")
+                "commits" -> renderCommits(response.second)
+                else -> {
+                    val obj = JSONObject(response.second)
+                    val encoded = obj.optString("content").replace("\n", "")
+                    val decoded = if (encoded.isBlank()) "" else
+                        String(android.util.Base64.decode(encoded, android.util.Base64.DEFAULT))
+                    GitHubRepoSupport.renderFile(pathArg, decoded)
+                }
+            }
+        } catch (t: Throwable) {
+            "GitHub request failed: " + (t.message ?: t.javaClass.simpleName)
+        }
+    }
+
+    private fun renderCommits(json: String): String {
+        val arr = runCatching { JSONArray(json) }.getOrNull()
+            ?: return "GitHub returned something that is not a commit list."
+        if (arr.length() == 0) return "No commits found."
+        val sb = StringBuilder()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val sha = o.optString("sha").take(7)
+            val message = o.optJSONObject("commit")?.optString("message")?.lineSequence()?.firstOrNull().orEmpty()
+            sb.append(sha).append(' ').append(message.take(120)).append('\n')
+        }
+        return sb.toString().trim()
+    }
+
+    private fun githubGet(path: String, token: String): Pair<Int, String> {
+        val url = URL("https://api.github.com" + path)
+        val conn = url.openConnection() as HttpsURLConnection
+        conn.requestMethod = "GET"
+        conn.setRequestProperty("Authorization", "Bearer " + token)
+        conn.setRequestProperty("Accept", "application/vnd.github+json")
+        conn.setRequestProperty("User-Agent", "vn-code")
+        conn.connectTimeout = 15000
+        conn.readTimeout = 20000
+        return try {
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+            code to body
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
+     * view_image. VS Code returns image BYTES as a tool result part (viewImageTool.tsx:
+     * LanguageModelDataPart.image), which a String return cannot do, so the bytes go to
+     * ToolImageQueue and ride the next send as a WP8 attachment. Downscaled first: a phone photo
+     * straight into a request is a payload the budget guard would reject anyway.
+     */
+    private fun viewImage(path: String, context: android.content.Context): String {
+        val file = File(resolveToolPath(context, path))
+        if (!file.exists() || !file.isFile) return "File not found: $path"
+        val lower = file.name.lowercase()
+        val mime = when {
+            lower.endsWith(".png") -> "image/png"
+            lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+            lower.endsWith(".webp") -> "image/webp"
+            lower.endsWith(".gif") -> "image/gif"
+            lower.endsWith(".bmp") -> "image/bmp"
+            else -> return "$path is not an image (png, jpg, webp, gif, bmp). Use read_file for text."
+        }
+        if (file.length() > 8L * 1024L * 1024L) {
+            return "Cannot view " + file.name + ": " + (file.length() / (1024 * 1024)) + "MB exceeds the 8MB limit."
+        }
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
+        val width = bounds.outWidth
+        val height = bounds.outHeight
+        if (width <= 0 || height <= 0) return "Could not decode $path as an image."
+        val sample = maxOf(1, maxOf(width, height) / 1568)
+        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+        val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
+            ?: return "Could not decode $path as an image."
+        val bytes = java.io.ByteArrayOutputStream()
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bytes)
+        val base64 = android.util.Base64.encodeToString(bytes.toByteArray(), android.util.Base64.NO_WRAP)
+        val label = file.name + " (" + bitmap.width + "x" + bitmap.height + ")"
+        val queued = ToolImageQueue.enqueue(ToolImageQueue.Pending(file.name, "image/jpeg", base64, label))
+        if (!queued) {
+            return "Not attached: " + ToolImageQueue.MAX_PENDING + " image(s) are already waiting for the next request."
+        }
+        return "Image " + label + " attached to your next request. It needs a model that accepts image " +
+            "input; with a text-only model the provider rejects the request rather than the image " +
+            "disappearing quietly."
+    }
+
+    /** tool_search: search this registry, so the model can find a tool it was not handed. */
+    private fun toolSearch(query: String): String {
+        val q = query.trim()
+        val all = com.codespace.ide.chat.panel.ToolRegistry.names()
+        if (q.isEmpty()) return "Give a query. " + all.size + " tools are registered."
+        val hits = all.mapNotNull { name ->
+            val spec = com.codespace.ide.chat.panel.ToolRegistry.spec(name) ?: return@mapNotNull null
+            val text = spec.name + " " + spec.displayName + " " + spec.description
+            if (!text.contains(q, ignoreCase = true)) return@mapNotNull null
+            val modeText = if (spec.modes.isEmpty()) {
+                "not offered: " + (spec.hiddenReason ?: "no reason recorded")
+            } else {
+                "modes " + spec.modes.joinToString("/") { it.name }
+            }
+            spec.name + " - " + spec.displayName + " (" + modeText + ")"
+        }
+        if (hits.isEmpty()) return "No tool matches '" + q + "'."
+        return hits.take(20).joinToString("\n")
     }
 
     /**

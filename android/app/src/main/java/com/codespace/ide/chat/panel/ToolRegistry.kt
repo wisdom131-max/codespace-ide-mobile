@@ -557,30 +557,44 @@ internal object ToolRegistry {
             modes = EXEC_MODES,
         ),
 
-        // --- Hidden: present in VS Code, and why each is not offered here ---
+        // --- View state, GitHub, images, inventory lookup ---
         ToolSpec(
             name = "get_search_view_results",
-            displayName = "Reading search view results",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "There is no persistent search view to read: our search tools return their hits directly in the tool result.",
+            displayName = "Reading search results",
+            description = "The hits the search panel is showing right now. Reads its snapshot; it does not re-run the search.",
+            schema = OBJ + ",\"properties\":{}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "view_image",
+            displayName = "Viewing an image",
+            description = "Attach an image to your next request so you can actually see it. Downscaled to 1568px; needs a model that accepts image input.",
+            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{\"path\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "tool_search",
+            displayName = "Searching the tool list",
+            description = "Find a tool by name or description, including tools not offered in this mode and why.",
+            schema = OBJ + ",\"required\":[\"query\"],\"properties\":{\"query\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
         ),
         ToolSpec(
             name = "github_repo",
             displayName = "Reading a GitHub repository",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "Requires a GitHub connector with repository scope. The connector card tool must raise consent first, and there is no repo-context model yet.",
+            description = "Overview, issues, pull requests, commits or a file, read over REST with the token the Source Control panel stored. Defaults to this project's origin remote.",
+            schema = OBJ + ",\"properties\":{\"repo\":{\"type\":\"string\"}, \"what\":{\"type\":\"string\"}, \"path\":{\"type\":\"string\"}, \"state\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
         ),
+
+        // --- Hidden: present in VS Code, and why each is not offered here ---
         ToolSpec(
             name = "run_vscode_command",
             displayName = "Running an editor command",
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "VS Code internal command ids have no mobile equivalent. The equivalent actions here are real tools (open file, edit, run), not string command ids.",
+            hiddenReason = "VS Code internal command ids have no mobile equivalent. The real actions here are separate tools, not string ids.",
         ),
         ToolSpec(
             name = "terminal_selection",
@@ -588,7 +602,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "The terminal pane exposes no selection API to the tool layer, so this would return an empty string and look like an answer.",
+            hiddenReason = "Verified 2026-10-31 against the vendored terminal: TerminalView.java tracks selection (isSelectingText) but exposes no selected-text accessor, so a tool would have to guess. Needs a small patch in the vendored view first; after that this tool is straightforward.",
         ),
         ToolSpec(
             name = "runSubagent",
@@ -596,7 +610,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "There is no subagent runtime in this app. The owner also forbids delegating their own work to subagents.",
+            hiddenReason = "Owner instruction 2026-10-31: subagents stay out. There is also no subagent runtime in the app.",
         ),
         ToolSpec(
             name = "search_subagent",
@@ -604,7 +618,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "No subagent runtime, same reason as runSubagent.",
+            hiddenReason = "Owner instruction 2026-10-31: subagents stay out.",
         ),
         ToolSpec(
             name = "execution_subagent",
@@ -612,7 +626,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "No subagent runtime, same reason as runSubagent.",
+            hiddenReason = "Owner instruction 2026-10-31: subagents stay out.",
         ),
         ToolSpec(
             name = "vscode_get_confirmation",
@@ -620,7 +634,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "Replaced by a stronger mechanism, not a weaker one: AgentFlowGate gates every state-changing call with an approval card before it runs. A tool that asks the model to ask the user would duplicate it.",
+            hiddenReason = "Superseded by AgentFlowGate, which gates the CALL rather than trusting the model to remember to ask.",
         ),
         ToolSpec(
             name = "vscode_get_confirmation_with_options",
@@ -628,7 +642,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "Same as vscode_get_confirmation: approval is enforced outside the model, so it cannot be skipped by not calling a tool.",
+            hiddenReason = "Same as vscode_get_confirmation: the gate is outside the model, so it cannot be skipped.",
         ),
         ToolSpec(
             name = "vscode_get_terminal_confirmation",
@@ -636,7 +650,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "run_in_terminal already passes the same approval gate as every other command.",
+            hiddenReason = "run_in_terminal already passes the same gate as every other command.",
         ),
         ToolSpec(
             name = "vscode_askQuestions",
@@ -644,7 +658,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "Needs a blocking question card in the chat surface. Deferred until that surface exists, so the model cannot claim it asked and got an answer.",
+            hiddenReason = "Needs a blocking question card. The agent loop continues as soon as a tool returns a string, so 'question asked' would let the model invent the answer. Needs a suspend-until-answered mechanism in ChatSession first.",
         ),
         ToolSpec(
             name = "switch_agent",
@@ -652,15 +666,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "Mode switching is a user control. Letting the model switch its own mode would let it grant itself permission.",
-        ),
-        ToolSpec(
-            name = "tool_search",
-            displayName = "Searching the tool list",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "The protocol sends every tool for the current mode, so there is nothing to search. It would become useful only past a much larger registry.",
+            hiddenReason = "Mode changing is a user control and a permission boundary. A model that can switch its own mode can grant itself Agent powers from Edit.",
         ),
         ToolSpec(
             name = "resolve_memory_file_uri",
@@ -668,7 +674,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "Memories are keyed, not URI-addressed. read_memory returns the content directly.",
+            hiddenReason = "Memories are keyed and stored as files under the app's own directory. A URI form would need a virtual memory filesystem exposed to other tools; read_memory already returns the content.",
         ),
         ToolSpec(
             name = "get_vscode_api",
@@ -676,7 +682,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "VS Code-specific. There is no extension host to introspect here.",
+            hiddenReason = "No extension host exists to introspect, so there is no API surface to describe.",
         ),
         ToolSpec(
             name = "create_new_workspace",
@@ -684,15 +690,7 @@ internal object ToolRegistry {
             description = "",
             schema = "",
             modes = NONE,
-            hiddenReason = "A project is the workspace in this app. Creating one is a UI flow with its own folder picker, not a model call.",
-        ),
-        ToolSpec(
-            name = "view_image",
-            displayName = "Viewing an image",
-            description = "",
-            schema = "",
-            modes = NONE,
-            hiddenReason = "The tool layer cannot push an image into the model's context, so this would return a path the model cannot see. Honest answer: not available.",
+            hiddenReason = "Project creation is a UI flow (folder picker plus a project record). A model call must not conjure projects; needs a projects-model API with its own consent card.",
         ),
 
         // --- Hidden: stub ---

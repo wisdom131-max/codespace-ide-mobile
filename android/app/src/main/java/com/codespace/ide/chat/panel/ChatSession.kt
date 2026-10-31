@@ -391,11 +391,18 @@ class ChatSession(
         // only, so nothing attachment-shaped persists anywhere.
         val staged = if (reuseStaged) lastStaged else pendingAttachments.value
         lastStaged = staged
+        // view_image cannot return bytes from a tool (a String return), so it queues them;
+        // they become attachments on THIS send, which the adapter already sends as image parts.
+        val toolImages = runCatching { com.codespace.ide.agent.ToolImageQueue.drain() }.getOrDefault(emptyList())
         val attachments = staged.map {
             com.codespace.ide.engine.ChatAttachment(
                 id = java.util.UUID.randomUUID().toString(),
                 name = it.name, mimeType = it.mimeType,
                 base64Data = it.base64, textData = it.text)
+        } + toolImages.map {
+            com.codespace.ide.engine.ChatAttachment(
+                id = java.util.UUID.randomUUID().toString(),
+                name = it.name, mimeType = it.mimeType, base64Data = it.base64)
         }
         val chips = staged.map { com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes)) }
         sendGeneration++

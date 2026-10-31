@@ -3262,6 +3262,16 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                 // Only the newest scan publishes — a superseded scan's results die here.
                 results = allResults
                 searching = false
+                // get_search_view_results reads THIS snapshot: one search, one answer. A tool
+                // that re-ran its own scan could disagree with what the user is looking at.
+                com.codespace.ide.agent.SearchViewState.publish(
+                    query = query,
+                    hits = allResults.map {
+                        com.codespace.ide.agent.SearchViewState.Hit(
+                            file = it.file, line = it.lineNum, text = it.lineText,
+                        )
+                    },
+                )
             }
         }
     }
