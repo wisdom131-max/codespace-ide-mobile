@@ -322,6 +322,69 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── Security ─────────────────────────────────────────────────────
+            Text("Formatter Selection", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            Text(
+                "Choose your preferred code formatter for each language.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+            )
+            // SK14 (2026-09-26): cross-link — formatter CHOICE lives here, but Format on
+            // Save and the TypeScript version live in In-Project Settings (gear menu).
+            // The two surfaces used to contradict silently with no pointer between them.
+            Text(
+                "Format on Save and the TypeScript version are set in In-Project Settings (gear menu). This picker only chooses which formatter runs.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+            )
+
+            // Show formatter pickers for languages with multiple options
+            FormatterConfig.availableFormatters.entries
+                .filter { it.value.size > 1 }
+                .sortedBy { it.key.displayName }
+                .forEach { (lang, options) ->
+                    val currentFormatter = remember { FormatterConfig.getSelectedFormatter(context, lang) }
+                    var expanded by remember { mutableStateOf(false) }
+                    ListItem(
+                        headlineContent = { Text(lang.displayName) },
+                        supportingContent = { Text("Formatter: ${currentFormatter.name}") },
+                        trailingContent = {
+                            Box {
+                                OutlinedButton(onClick = { expanded = true }) {
+                                    Text(currentFormatter.name, fontSize = 12.sp)
+                                }
+                                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                    options.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = { Text(option.name) },
+                                            onClick = {
+                                                FormatterConfig.setSelectedFormatter(context, lang, option.name)
+                                                expanded = false
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    )
+                    HorizontalDivider()
+                }
+
+            // Languages with built-in fallback only
+            Text(
+                "Built-in fallback (indentation + trailing whitespace) is used for languages without an external formatter.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+
+            HorizontalDivider()
+
+            // ── Settings Backup (SK12) ─────────────────────────────────────────
+            // SK12 (2026-09-26): exportJson/importJson (schema-validating, typed) had
+            // NO callers since they were written — there was no settings backup/restore
+            // path in any UI, and container backup does not cover settings.json.
             Text("Security", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
 
             ListItem(
@@ -465,6 +528,88 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── Container Backup ─────────────────────────────────────────────
+            Text("Ubuntu Container", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+
+            var showResetConfirm by remember { mutableStateOf(false) }
+            var resetStatus by remember { mutableStateOf("") }
+            var resetRunning by remember { mutableStateOf(false) }
+
+            ListItem(
+                headlineContent = { Text("Reinstall Ubuntu rootfs") },
+                supportingContent = {
+                    Text(
+                        resetStatus.ifEmpty {
+                            "Wipe and reinstall the Ubuntu container from scratch. " +
+                            "Use this if Terminal won't start or LSP reports 'rootfs not installed'. " +
+                            "⚠ All installed packages, files, and settings inside Ubuntu will be deleted."
+                        }
+                    )
+                },
+            )
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                OutlinedButton(
+                    enabled = !resetRunning,
+                    onClick = { showResetConfirm = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text(if (resetRunning) "Reinstalling…" else "Reinstall Ubuntu") }
+            }
+
+            if (showResetConfirm) {
+                key(orientation) {
+                AlertDialog(
+                    onDismissRequest = { showResetConfirm = false },
+                    title = { Text("Reinstall Ubuntu?") },
+                    text = {
+                        Text(
+                            "This will completely wipe your Ubuntu container and reinstall from scratch.\n\n" +
+                            "Everything inside Ubuntu will be deleted:\n" +
+                            "• All installed packages (Node.js, Python, etc.)\n" +
+                            "• All files in /root and /home\n" +
+                            "• All language server installations\n" +
+                            "• Shell history and profile customisations\n\n" +
+                            "Your project files (outside Ubuntu) are NOT affected.\n\n" +
+                            "Back up your container first if you have important data inside it."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showResetConfirm = false
+                                resetRunning = true
+                                scope.launch {
+                                    withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        try {
+                                            // Wipe rootfs dir and version marker
+                                            val rootfsDir = ProotInstaller.rootfsDir(context)
+                                            com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(rootfsDir)
+                                            val versionFile = java.io.File(context.filesDir, ".ubuntu_version")
+                                            versionFile.delete()
+                                            // Reinstall
+                                            ProotInstaller.install(context) { msg ->
+                                                resetStatus = msg
+                                            }
+                                        } catch (e: Exception) {
+                                            resetStatus = "Error: ${e.message}"
+                                        }
+                                    }
+                                    resetRunning = false
+                                    if (!resetStatus.startsWith("Error")) {
+                                        resetStatus = "Reinstall complete ✓ — open Terminal to finish setup"
+                                    }
+                                }
+                            }
+                        ) { Text("Reinstall", color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showResetConfirm = false }) { Text("Cancel") }
+                    },
+                )
+                }
+            }
+
+            HorizontalDivider()
+
+            // ── Workspace Memory ─────────────────────────────────────────────
             Text("Container Backup", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             var backupInfo by remember { mutableStateOf(BackupManager.backupInfo()) }
             var backupStatus by remember { mutableStateOf("") }
@@ -1148,88 +1293,6 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── Reset Ubuntu Container ────────────────────────────────────────
-            Text("Ubuntu Container", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
-
-            var showResetConfirm by remember { mutableStateOf(false) }
-            var resetStatus by remember { mutableStateOf("") }
-            var resetRunning by remember { mutableStateOf(false) }
-
-            ListItem(
-                headlineContent = { Text("Reinstall Ubuntu rootfs") },
-                supportingContent = {
-                    Text(
-                        resetStatus.ifEmpty {
-                            "Wipe and reinstall the Ubuntu container from scratch. " +
-                            "Use this if Terminal won't start or LSP reports 'rootfs not installed'. " +
-                            "⚠ All installed packages, files, and settings inside Ubuntu will be deleted."
-                        }
-                    )
-                },
-            )
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                OutlinedButton(
-                    enabled = !resetRunning,
-                    onClick = { showResetConfirm = true },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) { Text(if (resetRunning) "Reinstalling…" else "Reinstall Ubuntu") }
-            }
-
-            if (showResetConfirm) {
-                key(orientation) {
-                AlertDialog(
-                    onDismissRequest = { showResetConfirm = false },
-                    title = { Text("Reinstall Ubuntu?") },
-                    text = {
-                        Text(
-                            "This will completely wipe your Ubuntu container and reinstall from scratch.\n\n" +
-                            "Everything inside Ubuntu will be deleted:\n" +
-                            "• All installed packages (Node.js, Python, etc.)\n" +
-                            "• All files in /root and /home\n" +
-                            "• All language server installations\n" +
-                            "• Shell history and profile customisations\n\n" +
-                            "Your project files (outside Ubuntu) are NOT affected.\n\n" +
-                            "Back up your container first if you have important data inside it."
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                showResetConfirm = false
-                                resetRunning = true
-                                scope.launch {
-                                    withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                        try {
-                                            // Wipe rootfs dir and version marker
-                                            val rootfsDir = ProotInstaller.rootfsDir(context)
-                                            com.codespace.ide.terminal.ContainerSafety.deleteTreeSafe(rootfsDir)
-                                            val versionFile = java.io.File(context.filesDir, ".ubuntu_version")
-                                            versionFile.delete()
-                                            // Reinstall
-                                            ProotInstaller.install(context) { msg ->
-                                                resetStatus = msg
-                                            }
-                                        } catch (e: Exception) {
-                                            resetStatus = "Error: ${e.message}"
-                                        }
-                                    }
-                                    resetRunning = false
-                                    if (!resetStatus.startsWith("Error")) {
-                                        resetStatus = "Reinstall complete ✓ — open Terminal to finish setup"
-                                    }
-                                }
-                            }
-                        ) { Text("Reinstall", color = MaterialTheme.colorScheme.error) }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showResetConfirm = false }) { Text("Cancel") }
-                    },
-                )
-                }
-            }
-
-            HorizontalDivider()
-
-            // ── Workspace Memory ─────────────────────────────────────────────
             Text("Workspace Memory", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
 
             var workspaceRestoreEnabled by remember {
@@ -1263,69 +1326,6 @@ fun SettingsScreen(
 
             // ── P41-R: Formatter Selection ──────────────────────────────────
             // Feature Toggles moved to In-Project Settings (gear menu → In-Project Settings)
-            Text("Formatter Selection", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
-            Text(
-                "Choose your preferred code formatter for each language.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
-            )
-            // SK14 (2026-09-26): cross-link — formatter CHOICE lives here, but Format on
-            // Save and the TypeScript version live in In-Project Settings (gear menu).
-            // The two surfaces used to contradict silently with no pointer between them.
-            Text(
-                "Format on Save and the TypeScript version are set in In-Project Settings (gear menu). This picker only chooses which formatter runs.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
-            )
-
-            // Show formatter pickers for languages with multiple options
-            FormatterConfig.availableFormatters.entries
-                .filter { it.value.size > 1 }
-                .sortedBy { it.key.displayName }
-                .forEach { (lang, options) ->
-                    val currentFormatter = remember { FormatterConfig.getSelectedFormatter(context, lang) }
-                    var expanded by remember { mutableStateOf(false) }
-                    ListItem(
-                        headlineContent = { Text(lang.displayName) },
-                        supportingContent = { Text("Formatter: ${currentFormatter.name}") },
-                        trailingContent = {
-                            Box {
-                                OutlinedButton(onClick = { expanded = true }) {
-                                    Text(currentFormatter.name, fontSize = 12.sp)
-                                }
-                                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                                    options.forEach { option ->
-                                        DropdownMenuItem(
-                                            text = { Text(option.name) },
-                                            onClick = {
-                                                FormatterConfig.setSelectedFormatter(context, lang, option.name)
-                                                expanded = false
-                                            },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    )
-                    HorizontalDivider()
-                }
-
-            // Languages with built-in fallback only
-            Text(
-                "Built-in fallback (indentation + trailing whitespace) is used for languages without an external formatter.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-
-            HorizontalDivider()
-
-            // ── Settings Backup (SK12) ─────────────────────────────────────────
-            // SK12 (2026-09-26): exportJson/importJson (schema-validating, typed) had
-            // NO callers since they were written — there was no settings backup/restore
-            // path in any UI, and container backup does not cover settings.json.
             Text("Settings Backup", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             Text(
                 "Back up app settings (incl. keybindings) as JSON, or restore from a backup file.",

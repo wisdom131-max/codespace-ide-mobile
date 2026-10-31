@@ -2496,6 +2496,22 @@ fun EditorPane(
                 // view gets its OWN CodeEditor instance state (cursor/scroll/selection)
                 // while both bind the same buffer via resolveActiveTab.
                 key(activeId, com.codespace.ide.util.CanonicalPaths.canonicalKey(active.path)) {
+                    // .ipynb opens as a document, not as its JSON (2026-10-31). Rendering it in
+                    // CodeEditor meant editing a notebook required editing nbformat by hand.
+                    if (active.path.endsWith(".ipynb", ignoreCase = true) &&
+                        com.codespace.ide.agent.NotebookModel.isNotebook(active.content)
+                    ) {
+                        com.codespace.ide.ui.panes.NotebookCellView(
+                            path = active.path,
+                            content = active.content,
+                            savedContent = active.savedContent,
+                            onContentChange = { newText ->
+                                val idx = tabs.indexOfFirst { it.id == active.id }
+                                if (idx >= 0) tabs[idx] = active.copy(content = newText, isDirty = true)
+                            },
+                        )
+                        return@key
+                    }
                     // P22-D: Detect merge conflicts in current file
                     val detectedConflicts = remember(active.content) {
                         if (MergeConflictParser.hasConflicts(active.content)) {
