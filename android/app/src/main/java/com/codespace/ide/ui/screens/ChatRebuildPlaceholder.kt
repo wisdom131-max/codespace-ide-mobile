@@ -17,6 +17,9 @@ fun ChatRebuildPlaceholder(
     onClosePanel: (() -> Unit)? = null,
     /** M3: "Move Chat into Editor Area"; the shell opens the chat tab. */
     onMoveToEditor: (() -> Unit)? = null,
+    /** Editor AI handoff: a prompt waiting to be sent. */
+    pendingPrompt: String? = null,
+    onPromptConsumed: () -> Unit = {},
 ) {
     com.codespace.ide.chat.panel.ChatPanelScreen(
         projectId = projectId,
@@ -24,5 +27,7 @@ fun ChatRebuildPlaceholder(
         onOpenFile = onOpenFile,
         onClosePanel = onClosePanel,
         onMoveToEditor = onMoveToEditor,
+        pendingPrompt = pendingPrompt,
+        onPromptConsumed = onPromptConsumed,
     )
 }

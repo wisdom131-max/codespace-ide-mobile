@@ -25,6 +25,9 @@ fun ChatTabHost(
     tokenStore: com.codespace.ide.data.SecureTokenStore,
     onOpenFile: (String) -> Unit,
     onReturnToSidebar: () -> Unit,
+    /** Editor AI handoff, forwarded so the tab sends what the editor asked for. */
+    pendingPrompt: String? = null,
+    onPromptConsumed: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize()) {
         ChatPanelScreen(
@@ -33,6 +36,8 @@ fun ChatTabHost(
             onOpenFile = onOpenFile,
             // Closing the tab returns the chat to the sidebar rather than losing it.
             onClosePanel = onReturnToSidebar,
+            pendingPrompt = pendingPrompt,
+            onPromptConsumed = onPromptConsumed,
         )
     }
 }

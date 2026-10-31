@@ -54,6 +54,14 @@ fun ChatPanelScreen(
     onClosePanel: (() -> Unit)? = null,
     /** M3: "Move Chat into Editor Area". Null when this host has no editor area. */
     onMoveToEditor: (() -> Unit)? = null,
+    /**
+     * Editor handoff (2026-10-31): a prompt built by the editor's AI menus, waiting to be sent.
+     * Before this existed the shell stored the prompt and nothing read it, so every AI action in
+     * the editor produced no answer at all.
+     */
+    pendingPrompt: String? = null,
+    /** Called once the prompt has actually been handed to the session, so the shell can clear it. */
+    onPromptConsumed: () -> Unit = {},
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     // M3: ONE runtime per process, reference counted. A second window must share the same
@@ -87,6 +95,8 @@ fun ChatPanelScreen(
             },
             onClosePanel = onClosePanel,
             onMoveToEditor = onMoveToEditor,
+            pendingPrompt = pendingPrompt,
+            onPromptConsumed = onPromptConsumed,
         )
     }
 }
@@ -103,6 +113,8 @@ private fun ChatBody(
     onNewSession: () -> Unit,
     onClosePanel: (() -> Unit)?,
     onMoveToEditor: (() -> Unit)?,
+    pendingPrompt: String?,
+    onPromptConsumed: () -> Unit,
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val session = remember(projectId, activeId) { manager.session(projectId, activeId) }
@@ -143,6 +155,14 @@ private fun ChatBody(
     }
     val state by session.ui.collectAsState()
     val selection by session.selection.collectAsState()
+    // The one place an editor-built prompt becomes a message. Keyed on streaming as well, so a
+    // prompt that arrives mid-turn is sent when the turn ends instead of being dropped.
+    LaunchedEffect(pendingPrompt, state.streaming) {
+        val prompt = pendingPrompt
+        if (prompt.isNullOrBlank() || state.streaming) return@LaunchedEffect
+        session.send(prompt)
+        onPromptConsumed()
+    }
     // Batch 1: warm the workspace block off the UI thread and refresh it on every
     // streaming->idle transition (turn finished, cancelled or failed). The send path
     // reads only the cache, so a slow filesystem can never delay a message, while the

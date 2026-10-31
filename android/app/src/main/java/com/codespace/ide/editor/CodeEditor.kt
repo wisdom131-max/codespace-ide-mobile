@@ -3888,12 +3888,23 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             val selWord = remember(value.selection.start, value.selection.end) {
                 currentWord(value.text, value.selection.start)
             }
-            if (selWord != null && selWord.length >= 1) {
+            // 2026-10-31 (owner request): the chip is movable, has its own visibility control and
+            // an AI-only menu. Every decision lives in EditorActionMenuSpec (unit tested); this
+            // body only wires it, because CodeEditor's method size has no room for more.
+            val chip = rememberEditorChip()
+            val chipDiagnostic = chip.diagnostic(lintErrors, positionMapper, value.selection.start)
+            if (
+                chip.visible(
+                    word = selWord,
+                    hasSelection = value.selection.start != value.selection.end,
+                    diagnostic = chipDiagnostic,
+                    imeHeightPx = imeHeightPx,
+                )
+            ) {
                 Popup(
-                    alignment = androidx.compose.ui.Alignment.TopEnd,
-                    offset = androidx.compose.ui.unit.IntOffset(0, 0),
+                    alignment = androidx.compose.ui.Alignment.TopStart,
+                    offset = chip.offsetInt(),
                     properties = PopupProperties(focusable = false, dismissOnClickOutside = false)
-            // Touch consumption handled by popup content
                 ) {
                     var showLspMenu by remember { mutableStateOf(false) }
                     // P38-FIX: Auto-open LSP menu when long-press triggers
@@ -3904,21 +3915,28 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                         color = colors.background,
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
                         shadowElevation = 8.dp,
-                        modifier = Modifier.size(36.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clickable { showLspMenu = true },
-                            contentAlignment = androidx.compose.ui.Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = "Code actions",
-                                tint = Color(0xFF4EC9B0),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                        EditorChipButton(
+                            state = chip.state,
+                            hasDiagnostic = chipDiagnostic != null,
+                            onPick = { kind ->
+                                onAiFixRequest?.invoke(
+                                    chipPrompt(
+                                        kind = kind,
+                                        text = value.text,
+                                        selectionStart = value.selection.start,
+                                        selectionEnd = value.selection.end,
+                                        filePath = filePath,
+                                        languageName = language.displayName,
+                                        diagnostic = chipDiagnostic,
+                                        positionMapper = positionMapper,
+                                    )
+                                )
+                            },
+                            onOpenMore = { showLspMenu = true },
+                            onCycleState = { chip.cycle() },
+                            placement = chip.placement,
+                        )
                         androidx.compose.material3.DropdownMenu(
                             expanded = showLspMenu,
                             onDismissRequest = { showLspMenu = false },

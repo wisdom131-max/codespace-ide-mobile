@@ -4995,6 +4995,8 @@ private fun PssEditorColumn(
                         if (!editorTabs.contains(path)) editorTabs.add(path)
                         activeEditorTab = path
                     },
+                    pendingPrompt = pendingChatPrompt,
+                    onPromptConsumed = { pendingChatPrompt = null },
                     onReturnToSidebar = {
                         editorTabs.remove(com.codespace.ide.chat.panel.ChatTabSupport.TAB_ID)
                         activeEditorTab = editorTabs.lastOrNull()
@@ -5285,6 +5287,8 @@ private fun PssEditorColumn(
                 onClosePanel = { showChatPanel = false },
                 // M3: the chat becomes a TAB in the editor area - one chat surface at a time,
                 // so opening the tab closes the sidebar rather than duplicating the panel.
+                pendingPrompt = pendingChatPrompt,
+                onPromptConsumed = { pendingChatPrompt = null },
                 onMoveToEditor = {
                     val tab = com.codespace.ide.chat.panel.ChatTabSupport.TAB_ID
                     if (!editorTabs.contains(tab)) editorTabs.add(tab)
