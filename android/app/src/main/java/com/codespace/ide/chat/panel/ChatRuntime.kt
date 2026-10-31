@@ -29,6 +29,10 @@ object ChatRuntime {
             return existing
         }
         ChatSettingsPrefs.ensure(ctx)
+        // Item 19: saved undo history lives beside the transcripts, under the app's own storage.
+        com.codespace.ide.agent.AgentWriteJournal.configure(
+            java.io.File(ctx.applicationContext.filesDir, "chat/journal"),
+        )
         val created = ChatSessionManager(
             StoredCredentialsReader(tokenStore, CustomEndpointStore),
             appContext = ctx.applicationContext,

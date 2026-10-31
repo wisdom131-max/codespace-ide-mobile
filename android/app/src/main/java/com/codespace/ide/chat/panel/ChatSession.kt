@@ -893,7 +893,7 @@ class ChatSessionManager internal constructor(
         val sessionKey = key(projectId, conversationId)
         // Attribution: whichever session is being handed out is the one the panel is showing,
         // so it is the one the edit journal must attribute new change sets to.
-        com.codespace.ide.agent.AgentWriteJournal.activeSessionId = conversationId
+        com.codespace.ide.agent.AgentWriteJournal.activate(projectId, conversationId)
         val existing = sessions[sessionKey]
         if (existing != null) return existing
         val created = ChatSession(

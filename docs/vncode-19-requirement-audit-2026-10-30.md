@@ -165,3 +165,58 @@ attribution per session rather than per project.
 documentation actually says about workspace context and semantic search, what I could not read
 (the Memory page returned 404 at both plausible paths), and what VN Code does instead. It
 deliberately contains no claims about Copilot's closed implementation.
+
+## Phase 5 - persistent undo (item 19), search audit, staged attribution (2026-10-31)
+
+### Item 19: what the audit found, then what changed
+
+VN Code had TWO undo systems, neither persisted:
+- `editor/undo/SharedFileUndo` / `SnapshotUndoManager` - per-file text snapshots, in memory.
+- `AgentWriteJournal` - per-session change sets of agent writes (path + before + after), in
+  memory, guarded by a disk comparison before every undo.
+
+Only the second is a candidate for persistence, and the research says why: VS Code's undo
+elements are closures (`undoRedo.ts`), which cannot be serialised at all, so "persist the stack"
+is not a design that can be copied. The journal stores CONTENT, so it can be.
+
+Implemented: `agent/JournalStore.kt` plus hooks in the journal.
+- One file per (project, session): `filesDir/chat/journal/<project>/<session>.journal`.
+- Damage loads as NO history (a partial stack could revert the wrong file).
+- A set too large to hold is refused whole, never persisted in pieces, and says so.
+- `activate(project, session)` loads that session's history when it becomes current.
+- `forgetSession` deletes the file, so a deleted session leaves nothing undoable behind.
+- Redo state survives because `settled`/`outcome` are stored, and `latestUndone` therefore
+  still finds it after a restart.
+- Undo after a restart is exactly as safe as before: `undoEntry` re-reads the target and
+  refuses when the file is gone or no longer holds what the agent wrote.
+
+Tests: 11 in `JournalPersistenceTest` - exact round-trip, tabs/newlines/unicode, per-session and
+per-project isolation, damaged file, oversize refusal, empty-history cleanup, undo after a
+simulated restart, refusal when the file changed underneath, deleted target not recreated, a
+restored set invisible to another session, and `forgetSession` deleting the saved file.
+
+### Item 17: cross-session search - verified MISSING, not "already done"
+
+Evidence: `SessionListLogic.matchesSearch` matches **title and id only**, and its own KDoc says
+"Content search arrives with the Phase 2 retrieval index". No content-search implementation
+exists anywhere in the app (no symbol matching message bodies; the sessions preview reads lines
+for DISPLAY, not search). So there is nothing to leave alone and nothing to duplicate: the
+capability is missing, and the smallest addition is a bounded scan over
+`ChatTranscriptStore` transcripts with a per-file line match, returning (sessionId, snippet),
+which the existing rows can carry. Not implemented this batch - the batch scope was research,
+undo and attribution.
+
+### Item 17: staged-proposal attribution - PARTIAL, one real defect
+
+`PendingChangesStore` already carries `sessionId` per entry with `pendingFor(sessionId)`,
+`pendingCount`, `discardAll(sessionId)` and `applyAll(sessionId)`, so attribution exists.
+
+Two gaps, both evidenced:
+1. The pending map is keyed by **path** (`pending[path] = ...`): if two sessions stage the SAME
+   file, the second overwrites the first, so the proposals do mix. Smallest fix: key by
+   (sessionId, path).
+2. Nothing persists: there is no file write of pending entries anywhere in the store, so a
+   restart loses every proposal, and "attribution survives restart" cannot hold until the
+   proposals themselves do.
+
+Both are queued as the next small batch rather than half-applied here.

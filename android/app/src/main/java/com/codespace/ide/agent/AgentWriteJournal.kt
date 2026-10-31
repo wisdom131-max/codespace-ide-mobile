@@ -73,6 +73,52 @@ object AgentWriteJournal {
     var activeSessionId: String = ""
 
     /**
+     * Item 19: where saved history lives, and which project it is filed under.
+     *
+     * Null root means memory-only (JVM tests, or a build with no app storage), which is the
+     * behaviour this object had before persistence existed.
+     */
+    @Volatile
+    private var persistRoot: java.io.File? = null
+
+    @Volatile
+    private var activeProjectId: String = ""
+
+    /** Called once by the chat runtime with the app's storage root. */
+    fun configure(root: java.io.File?) {
+        persistRoot = root
+    }
+
+    /**
+     * Makes [sessionId] current AND loads the history that session had before the app closed.
+     *
+     * Reloading only replaces THIS session's sets, so another session that is streaming in the
+     * other window keeps its own in-memory history.
+     */
+    @Synchronized
+    fun activate(projectId: String, sessionId: String) {
+        val root = persistRoot
+        val same = projectId == activeProjectId && sessionId == activeSessionId
+        activeProjectId = projectId
+        activeSessionId = sessionId
+        if (root == null || same) return
+        val loaded = JournalStore.load(root, projectId, sessionId)
+        if (loaded.isEmpty()) return
+        sets.removeAll { it.sessionId == sessionId }
+        sets.addAll(loaded)
+        while (sets.size > MAX_SETS) sets.removeAt(0)
+        val highest = sets.maxOfOrNull { it.id } ?: 0L
+        if (highest >= nextId) nextId = highest + 1
+    }
+
+    /** Writes the current session's history, if persistence is on. */
+    private fun persistActive() {
+        val root = persistRoot ?: return
+        if (activeProjectId.isEmpty()) return
+        JournalStore.save(root, activeProjectId, activeSessionId, setsFor(activeSessionId))
+    }
+
+    /**
      * Opens a new change set for one agent operation. Called once per tool round so two
      * separate operations never merge into one misleading row.
      */
@@ -85,6 +131,7 @@ object AgentWriteJournal {
         val id = nextId++
         sets.add(ChangeSet(id = id, entries = emptyList(), sessionId = sessionId))
         while (sets.size > MAX_SETS) sets.removeAt(0)
+        persistActive()
         return id
     }
 
@@ -112,7 +159,10 @@ object AgentWriteJournal {
     /** Drops everything a deleted session owned, so its files can never be reverted later. */
     @Synchronized
     fun forgetSession(sessionId: String) {
+        val projectId = activeProjectId
+        val root = persistRoot
         sets.removeAll { it.sessionId == sessionId }
+        if (root != null && projectId.isNotEmpty()) JournalStore.delete(root, projectId, sessionId)
     }
 
     /**
@@ -140,6 +190,9 @@ object AgentWriteJournal {
             set.entries + entry
         }
         sets[i] = set.copy(entries = updated)
+        // Item 19: a recorded write is exactly what undo has to be able to reverse after a
+        // restart, so the moment it is recorded is the moment it is saved.
+        persistActive()
     }
 
     /**
@@ -270,17 +323,39 @@ object AgentWriteJournal {
         val i = sets.indexOfFirst { it.id == setId }
         if (i < 0) return
         sets[i] = sets[i].copy(settled = true, outcome = outcome, note = note)
+        persistActive()
     }
 
     /** Drops a settled set's explanatory note once the user has read it. */
     @Synchronized
     fun dismiss(setId: Long) {
         val i = sets.indexOfFirst { it.id == setId }
-        if (i >= 0 && sets[i].settled) sets.removeAt(i)
+        if (i >= 0 && sets[i].settled) {
+            sets.removeAt(i)
+            persistActive()
+        }
+    }
+
+    /**
+     * Test seam: drop in-memory state exactly as a process restart would, while LEAVING the
+     * saved history on disk. This is what makes "survives a restart" testable without lying
+     * about what a restart does.
+     */
+    internal fun resetForTest() {
+        synchronized(this) {
+            sets.clear()
+            nextId = 1L
+            activeSessionId = ""
+            activeProjectId = ""
+        }
     }
 
     fun clear() {
+        val root = persistRoot
+        val projectId = activeProjectId
+        val sessionId = activeSessionId
         synchronized(this) { sets.clear() }
+        if (root != null && projectId.isNotEmpty()) JournalStore.delete(root, projectId, sessionId)
     }
 
     // --- one entry, verified --------------------------------------------------------------
