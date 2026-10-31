@@ -87,3 +87,39 @@ Updated 2026-10-28 after WP9(a). Each DONE row carries commit + CI run.
 - S1-c warm-path re-enable (owner mobile-data)
 - XG01-04 extension-architecture enablers (owner ruling 2026-09-26)
 - docs: rebuild-plan.md v2 + ui-research.md (queued read-only)
+
+## 2026-10-31 — Editor AI menus: movable chip, wired handoff (950e19e, CI 41202315547 GREEN)
+
+Landed:
+- The editor's AI rows ANSWER. Both menus built a full prompt (file, language, imports, selection,
+  error) and handed it to the shell, which stored it in `pendingChatPrompt` and read it nowhere.
+  The prompt now reaches `ChatPanelScreen`, is sent once the session is idle, and is cleared only
+  after it was handed over. One consumption point, so the lightbulb and the chip both work.
+- Green ⋮ chip: draggable anywhere (long-press, snap to the nearer edge on release, clamped inside
+  the window, position persisted); one button cycles Solid → Ghost → Hidden; Hidden shrinks to a
+  findable handle instead of vanishing.
+- The chip's menu is AI only: Fix with AI pinned first (disabled with a reason when the line has no
+  error), the nine transforms, then "More actions..." which opens the language-server list where it
+  always was.
+- Code-producing actions now instruct the agent to land the change through `write_file`, so results
+  arrive as reviewable proposals; Explain stays in chat.
+- Appearance: no longer on every word under the caret; hidden while the keyboard is open; a
+  selection or a nearby diagnostic is enough on its own.
+- `EditorActionMenuSpec` holds every decision, with 18 unit tests. The chip's state lives in
+  `EditorQuickActionChip.kt` because wiring it inline pushed the `CodeEditor` composable past the
+  JVM 64KB method ceiling and the compiler silently failed to emit `CodeEditorKt`.
+
+Still pending (this entry lists all of it, per the continuity rule):
+1. Editor surface batch: selection toolbar (Ask / Edit / Fix), inline chat field under the
+   selection, ghost-text cycling (next/previous, accept word, accept line, hide, snooze), breakpoint
+   gutter plus `debug_breakpoints` tool, apply-through-diff for chat code blocks. Order and UI in
+   `docs/vscode-editor-ai-surfaces-2026-10-31.md`.
+2. Lightbulb: VS Code icon semantics (sparkle when an AI fix exists, sparkle+autofix when both,
+   auto-run when the single valid action is an AI fix) and its menu padding rule so the menu never
+   covers the line. Wiring is done; this is polish.
+3. Item 19: editor-side undo persistence beyond the current content journal.
+4. Item 17 remainder: cross-session content SEARCH (attribution and proposal persistence are done).
+5. Item 10/16 remainder: VS Code tool parity for notebooks/Jupyter/tasks/MCP surfaces.
+6. Roadmap table below: P1-P6 and Source Control items remain untouched.
+7. Device round for this batch (batched, not per-step, per the mobile-data rule).
+
