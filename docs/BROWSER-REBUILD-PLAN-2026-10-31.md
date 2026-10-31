@@ -102,14 +102,76 @@ the end of Step 5, per the standing batching rule, not one round per step.
   `localhost`. The policy question is whether non-localhost `http://` is ever allowed in the
   browser surface.
 
-## 5. Decisions I need before Step 3
+## 5. Decisions, locked (2026-10-31)
 
-1. Browser as its own bottom tab, or stay a mode inside the preview panel? (A separate tab is
-   honest about the two policies; it also adds a 19th tab to a portrait row that already shows all.)
-2. External links from the browser surface: open in Chrome, or ask once with a remember option?
-3. Whether `http://` non-localhost is allowed at all in the panel browser.
+**D1 - the browser stays a MODE inside the preview panel.** It does not get a 19th bottom tab. That
+keeps the existing portrait icon row untouched, and it means the two policies (preview vs browser)
+are selected inside one surface rather than by which tab you are on. Step 3 therefore builds a mode
+switch, not a new panel.
 
-## 6. What this plan does not claim
+### D2 - external links: follow VS Code exactly, because it validates the split
 
-It does not claim preview parity with VS Code, and it does not claim the WebView can reproduce
-VS Code's preview features. Step 0 exists precisely because that comparison has not been read yet.
+VS Code's integrated browser (shipped, documented at
+`code.visualstudio.com/docs/debugtest/integrated-browser`) does this, in its own words:
+
+- Links that are `localhost`, `127.0.0.1`, `[::1]`, and all-interfaces forms `0.0.0.0` / `[::]`
+  **open in the integrated browser by default**, from the terminal, chat, or anywhere else.
+- That routing is a setting (`workbench.browser.openLocalhostLinks`); turning it off sends those
+  links to the external browser instead.
+- Anything else goes to the **external** browser, and there is an explicit "Open in External
+  Browser" action for the case where you are already on a page.
+- Local `file://` pages open in it too, but only through a deliberate action (Explorer right-click,
+  editor-tab menu, or the globe button), never by navigation.
+
+So the policy in this app becomes: **loopback goes in, the open internet goes out, both by rule and
+both overridable by an explicit action.**
+
+What that affects in this codebase, precisely:
+
+1. `TerminalPane.kt:401` and `:2669` stop firing `Intent.ACTION_VIEW` unconditionally. They classify
+   the URL first: loopback -> panel browser; everything else -> external, as today. This is the only
+   behaviour the user will notice, and it is the one VS Code users already expect.
+2. `PortsPanel` keeps its `onOpenInPreview` verb. It calls the same router, so a port cannot
+   accidentally land in the preview (file) mode.
+3. `PreviewPane` BROWSER mode becomes "local server viewer" by default, with an explicit
+   "open here" for a non-loopback URL typed into the address bar.
+4. Chat and the connectors hub keep `ACTION_VIEW`: both are about the outside world (OAuth consent
+   pages, docs), and neither should ever render in a WebView that has file access.
+5. Downloads need `setDownloadListener` regardless of this decision; a refused download looks like
+   a dead button today.
+
+Benefit: the app never runs an arbitrary internet page in a WebView configured for project files,
+and logins keep living in Chrome where the password manager and existing sessions are. Cost: one
+extra step to view a remote staging site in-panel, which is the same cost VS Code imposes.
+
+### D3 - `http://` non-loopback: blocked in the browser mode, by a gate, not by the manifest
+
+How VS Code handles it: the integrated browser is Chromium inside Electron on desktop, so cleartext
+`http://` simply works and there is no per-surface policy; the protective layer there is the
+permissions model (camera, mic, geolocation prompts) and session storage isolation, not transport.
+
+That does not transfer. On Android the governing facts are different:
+
+- Cleartext is allowed app-wide here because the manifest sets `usesCleartextTraffic="true"`, which
+  the app genuinely needs: `CustomEndpointStore` accepts user-entered AI base URLs, and those are
+  routinely plain `http://192.168.1.x:1234` on a LAN. Tightening the manifest with a
+  network-security-config would break real users' model endpoints, which is a worse trade.
+- WebView mixed content defaults and `usesCleartextTraffic` are app-scoped. There is no per-WebView
+  "block cleartext" switch. So the block has to live in the navigation gate.
+
+The fix, in the engine (Step 3), applied to the **browser mode only**:
+
+1. `shouldOverrideUrlLoading` + `shouldInterceptRequest`: allow `https://` and loopback
+   (`127.0.0.1`, `localhost`, `::1`, and `10.0.2.2` for completeness); refuse `http://` with a
+   rendered interstitial that says what happened and offers "Open in Chrome".
+2. `settings.mixedContentMode = MIXED_CONTENT_NEVER_ALLOW` on the browser instance, always.
+3. The preview instance is exempt by construction: it only ever loads `http://127.0.0.1:5500/`.
+4. Address bar validation mirrors the gate, so the refusal is explained before the load.
+5. Navigator permission requests (camera, mic, geolocation) are denied by default with a one-time
+   prompt, rather than silently granted, matching VS Code's explicit permission model.
+6. Cookies: the cookie jar is shared process-wide, so the browser mode gets a "clear site data"
+   action and does not silently inherit preview cookies.
+
+What it affects: nothing outside the browser mode. Terminal `ACTION_VIEW`, AI endpoint calls,
+connector OAuth and the app's own HTTPS backend all keep working unchanged, because none of them go
+through the WebView gate.
