@@ -112,8 +112,12 @@ internal object WorkspaceContextSource {
         }
 
         val instructions = try {
-            if (active != null && AutoInstructionsProvider.isEnabled(context, active))
+            val repoRules = if (active != null && AutoInstructionsProvider.isEnabled(context, active))
                 AutoInstructionsProvider.buildBlock(active) else ""
+            // The skill index rides with the instructions: the model cannot apply a skill it does
+            // not know exists, and one line per skill is cheap enough to always send.
+            val skills = com.codespace.ide.data.SkillStore.indexBlock(context, active)
+            (repoRules + "\n" + skills).trim()
         } catch (_: Exception) { "" }
 
         return WorkspaceSnapshot(

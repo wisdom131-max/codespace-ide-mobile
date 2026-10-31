@@ -174,6 +174,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "create_entity", "read_entities", "update_entity", "delete_entity",
         "schedule_task", "list_tasks", "cancel_task", "upload_file", "install_package",
         "plan",
+        "create_skill", "list_skills", "read_skill", "delete_skill",
     )
 
     /** Builtin tool names for the /tools chat command (see BUILTIN_TOOL_NAMES). */
@@ -285,6 +286,45 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "web_search" -> webSearch(args.getString("query"))
                 // M5: every memory access carries the owner's scope and the calling session,
                 // so a "current session only" setting is enforced in the tool, not just in the UI.
+                // Custom skill authoring (2026-10-31): the copilot writes reusable project
+                // instructions once, then loads them by name instead of carrying them in every
+                // prompt. No non-local returns here: Kotlin turns those into a synthetic class
+                // that D8 refuses to dex.
+                "create_skill" -> runCatching {
+                    val path = com.codespace.ide.data.SkillStore.save(
+                        context,
+                        skillRoot(context),
+                        args.getString("name"),
+                        args.optString("description"),
+                        args.getString("instructions"),
+                    )
+                    "Skill saved: " + path
+                }.getOrElse { "Could not save skill: " + it.message }
+                "list_skills" -> runCatching {
+                    when (val r = com.codespace.ide.data.SkillStore.list(context, skillRoot(context))) {
+                        is com.codespace.ide.data.SkillStore.ListResult.Unreadable ->
+                            "Cannot read skills: " + r.reason
+                        is com.codespace.ide.data.SkillStore.ListResult.Ok ->
+                            if (r.skills.isEmpty()) "No skills yet in " + r.root
+                            else r.skills.joinToString("\n") { sk ->
+                                if (sk.description.isBlank()) "- " + sk.name
+                                else "- " + sk.name + ": " + sk.description
+                            }
+                    }
+                }.getOrElse { "Could not list skills: " + it.message }
+                "read_skill" -> runCatching {
+                    val skill = com.codespace.ide.data.SkillStore.read(
+                        context, skillRoot(context), args.getString("name"),
+                    )
+                    if (skill == null) "No skill named " + args.getString("name") else skill.body
+                }.getOrElse { "Could not read skill: " + it.message }
+                "delete_skill" -> runCatching {
+                    if (com.codespace.ide.data.SkillStore.delete(
+                            context, skillRoot(context), args.getString("name"),
+                        )
+                    ) "Deleted skill " + args.getString("name")
+                    else "No skill named " + args.getString("name")
+                }.getOrElse { "Could not delete skill: " + it.message }
                 "save_memory" -> AgentMemory.save(
                     args.getString("key"), args.getString("value"), context,
                     currentMemoryScope(), MemoryScopeState.activeSessionId,
@@ -380,6 +420,13 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     /** CH02/Round 1: one canonical host identity for direct and staged file operations. */
+    /**
+     * Where skills live. Project scoped when a project is open, so a skill travels with the repo;
+     * app scoped otherwise (SkillStore falls back), so the copilot can still write one down.
+     */
+    private fun skillRoot(context: Context): String? =
+        com.codespace.ide.security.TrustState.activeProjectRoot(context)
+
     private fun resolveToolPath(context: Context, path: String): String =
         ToolPathResolver.resolve(context, path)
 

@@ -665,6 +665,38 @@ internal object ToolRegistry {
             schema = OBJ + ",\"required\":[\"steps\"],\"properties\":{\"steps\":{\"type\":\"array\"},\"title\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
+        // --- Custom skills (2026-10-31): authored by the copilot, applied by name ---
+        ToolSpec(
+            name = "create_skill",
+            displayName = "Saving a skill",
+            description = "Save a reusable project skill: a name, a one-line description of WHEN to " +
+                "use it, and the instructions themselves. Saved under .vncode/skills in the project.",
+            schema = OBJ + ",\"required\":[\"name\",\"instructions\"],\"properties\":{" +
+                "\"name\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"}," +
+                "\"instructions\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "list_skills",
+            displayName = "Listing skills",
+            description = "List the project's saved skills with their descriptions.",
+            schema = OBJ + ",\"properties\":{}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "read_skill",
+            displayName = "Reading a skill",
+            description = "Load one skill's full instructions by name before doing the task it covers.",
+            schema = OBJ + ",\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "delete_skill",
+            displayName = "Deleting a skill",
+            description = "Delete a saved skill by name.",
+            schema = OBJ + ",\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
     )
 
     /** Every registered name, in registry order. */

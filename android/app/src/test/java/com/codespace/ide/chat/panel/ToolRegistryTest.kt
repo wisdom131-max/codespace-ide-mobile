@@ -22,6 +22,7 @@ class ToolRegistryTest {
         "git_status", "git_diff", "detect_secrets",
         "read_memory", "list_tasks", "read_entities", "list_connectors",
         "get_errors", "get_changed_files", "request_connector",
+        "list_skills", "read_skill",
         "list_dir", "grep_search", "file_search", "semantic_search",
         "search_workspace_symbols", "read_project_structure",
         "copilot_getNotebookSummary", "read_notebook_cell_output",
@@ -41,8 +42,8 @@ class ToolRegistryTest {
         // registry would be invisible to the mode gate, which is the real defect to catch.
         val missing = executable.toSet() - ToolRegistry.names().toSet()
         assertTrue("executor tool missing from the registry: " + missing, missing.isEmpty())
-        assertEquals("every registered tool is listed exactly once", 77, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 77, ToolRegistry.names().toSet().size)
+        assertEquals("every registered tool is listed exactly once", 81, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 81, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -216,6 +217,10 @@ class ToolRegistryTest {
             "create_directory" to (listOf("path") to emptyList<String>()),
             "get_changed_files" to (emptyList<String>() to listOf("repo_dir")),
             "list_connectors" to (emptyList<String>() to emptyList<String>()),
+            "create_skill" to (listOf("name", "instructions") to listOf("description")),
+            "list_skills" to (emptyList<String>() to emptyList<String>()),
+            "read_skill" to (listOf("name") to emptyList<String>()),
+            "delete_skill" to (listOf("name") to emptyList<String>()),
         )
         // Two directions, each with its own meaning: an expectation for a tool that is not
         // registered is a stale lie, and an exposed tool with no expectation means the model is
