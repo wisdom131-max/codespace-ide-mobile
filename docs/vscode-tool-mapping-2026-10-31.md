@@ -2,8 +2,13 @@
 
 Source of truth: `microsoft/vscode-copilot-chat/src/extension/tools/common/toolNames.ts`, read
 directly, not from secondary write-ups. Counts below are from the live registry in
-`chat/panel/ToolRegistry.kt`: **77 entries, 70 executable, 7 registered-but-not-offered with a
-written reason.** Two entries were removed outright at the owner's request: `create_new_workspace`
+`chat/panel/ToolRegistry.kt`: **77 entries, 54 executable, 23 registered-but-not-offered with a written reason.**
+
+CORRECTION (2026-10-31): earlier revisions of this doc reported 66/13 and then 70/7. Both were
+wrong. The registry's hidden set is 23, not 13: besides the VS Code-only tools, it carries the
+owner's own deferred decisions from 2026-10-30 (git write tools, secrets, connectors, entity
+writes, uploads, scheduled tasks, `plan`). Counted directly from `modes = ` in ToolRegistry.kt:
+READ_ALL 30, WRITE_MODES 10, EXEC_MODES 14, NONE 23. Two entries were removed outright at the owner's request: `create_new_workspace`
 and `switch_agent`.
 
 Mode legend: **A** = Ask (read-only), **E** = Edit, **G** = Agent. A tool's modes decide whether
