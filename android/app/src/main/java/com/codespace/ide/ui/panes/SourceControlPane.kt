@@ -114,9 +114,11 @@ fun SourceControlPane(
     var githubDeviceCode by remember { mutableStateOf<GitHubAuth.DeviceCode?>(null) }
     var githubSigningIn by remember { mutableStateOf(false) }
     val tokenStore = remember { SecureTokenStore(context) }
-    val githubToken by remember { mutableStateOf(tokenStore.githubToken) }
+    // Keyed on the auth epoch: a sign-in anywhere in the app updates this pane without a restart.
+    val authEpoch by com.codespace.ide.data.AuthEvents.epoch
+    val githubToken by remember(authEpoch) { mutableStateOf(tokenStore.githubToken) }
     var tokenRefreshKey by remember { mutableStateOf(0) }
-    val isGithubSignedIn = remember(tokenRefreshKey) { !tokenStore.githubToken.isNullOrBlank() }
+    val isGithubSignedIn = remember(tokenRefreshKey, authEpoch) { !tokenStore.githubToken.isNullOrBlank() }
     var diffFile by remember { mutableStateOf<String?>(null) }
     var diffData by remember { mutableStateOf<ScmFileDiff?>(null) }
     var snackbarMsg by remember { mutableStateOf<String?>(null) }
@@ -410,30 +412,29 @@ fun SourceControlPane(
                             Text("Browse My Repos", fontSize = 12.sp)
                         }
                     } else {
+                        // 2026-10-31: this pane used to run its own half of the Device Flow
+                        // inline. It stalled halfway because the code/state lived in this
+                        // composition: a recompose during polling lost the device code and the
+                        // button sat on "signing in" forever. It now opens the SAME dialog the
+                        // Hub and Settings use, which owns the flow from request to token write.
+                        var showGithubSignIn by remember { mutableStateOf(false) }
                         OutlinedButton(
-                            onClick = {
-                                githubSigningIn = true
-                                scope.launch {
-                                    try {
-                                        val device = GitHubAuth.requestDeviceCode()
-                                        githubDeviceCode = device
-                                        val tok = GitHubAuth.pollForToken(device)
-                                        val user = GitHubAuth.fetchUsername(tok)
-                                        tokenStore.githubToken = tok
-                                        tokenStore.githubUsername = user
-                                        tokenRefreshKey++
-                                        snackbarMsg = "Signed in as $user"
-                                    } catch (e: Exception) {
-                                        snackbarMsg = "GitHub sign-in failed: ${e.message}"
-                                    } finally {
-                                        githubSigningIn = false
-                                        githubDeviceCode = null
-                                    }
-                                }
-                            },
+                            onClick = { showGithubSignIn = true },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = IconColor),
                         ) {
                             Text("Sign in with GitHub", fontSize = 12.sp)
+                        }
+                        if (showGithubSignIn) {
+                            com.codespace.ide.ui.screens.HubGitHubSignInDialog(
+                                onDismiss = { showGithubSignIn = false },
+                                onSuccess = { user ->
+                                    showGithubSignIn = false
+                                    // One sign-in lights up every surface that reads the store.
+                                    tokenRefreshKey++
+                                    com.codespace.ide.data.AuthEvents.bump()
+                                    snackbarMsg = "Signed in as " + user
+                                },
+                            )
                         }
                     }
                 }

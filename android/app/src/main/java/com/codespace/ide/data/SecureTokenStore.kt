@@ -255,13 +255,21 @@ class SecureTokenStore @Inject constructor(
      *  auth) and to identify who's signed in. Null when signed out. */
     var githubToken: String?
         get() = prefs.getString(KEY_GITHUB_TOKEN, null)
-        set(value) = if (value != null) prefs.edit().putString(KEY_GITHUB_TOKEN, value).apply()
-                     else prefs.edit().remove(KEY_GITHUB_TOKEN).apply()
+        // Bumps AuthEvents so panels that read this at composition (Source Control, the repo
+        // browser, the Explorer chips) stop showing "not signed in" after a sign-in elsewhere.
+        set(value) {
+            if (value != null) prefs.edit().putString(KEY_GITHUB_TOKEN, value).apply()
+            else prefs.edit().remove(KEY_GITHUB_TOKEN).apply()
+            AuthEvents.bump()
+        }
 
     var githubUsername: String?
         get() = prefs.getString(KEY_GITHUB_USER, null)
-        set(value) = if (value != null) prefs.edit().putString(KEY_GITHUB_USER, value).apply()
-                     else prefs.edit().remove(KEY_GITHUB_USER).apply()
+        set(value) {
+            if (value != null) prefs.edit().putString(KEY_GITHUB_USER, value).apply()
+            else prefs.edit().remove(KEY_GITHUB_USER).apply()
+            AuthEvents.bump()
+        }
 
     /** Last JWT access token — stored so HomeScreen can warm-start without re-auth */
     var lastAccessToken: String?

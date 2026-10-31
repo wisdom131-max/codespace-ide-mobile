@@ -30,28 +30,24 @@ import java.io.File
  */
 object TrustState {
 
-    /** A pending interactive trust prompt; rendered by TrustPromptDialog. */
-    data class TrustPrompt(
-        val canonicalPath: String,
-        val displayName: String,
-        val deferred: CompletableDeferred<Boolean>,
-    )
+    /*
+     * NEUTRALISED (2026-10-31, owner instruction: "I want the trust neutralized").
+     *
+     * The gate used to ask once per folder. It then defaulted to "trusted" unless the
+     * "Confirm Project Trust" in-project toggle was on — which is why it could block work while
+     * reading as switched off: a BLANK or unresolvable project root still failed closed, and the
+     * toggle lived in in-project settings, not app-wide ones.
+     *
+     * Everything below now allows, unconditionally, with no dialog and no stored state. The
+     * functions stay because twenty call sites read them and because the folder-resolution helper
+     * (activeProjectRoot) lives here: deleting the object would drag path resolution into the same
+     * change, which is a far larger risk than the thing being removed. There is no setting, no
+     * prompt and no stored trust left to turn back on.
+     */
 
-    /** The active prompt, or null. Global — one dialog renders it (ProjectShellScreen). */
-    val prompt = mutableStateOf<TrustPrompt?>(null)
-
-    /** User tapped "Trust this project": persist + resolve the pending gate. */
-    fun grant(p: TrustPrompt, context: Context) {
-        setTrusted(context, p.canonicalPath, trusted = true)
-        p.deferred.complete(true)
-        if (prompt.value === p) prompt.value = null
-    }
-
-    /** User cancelled the prompt: do NOT persist; resolve the gate as refused. */
-    fun deny(p: TrustPrompt) {
-        p.deferred.complete(false)
-        if (prompt.value === p) prompt.value = null
-    }
+    /** Kept for source compatibility with the prompt-free API; nothing renders it any more. */
+@Suppress("unused")
+    private val neutralised: Boolean = true
 
     // ── Storage ────────────────────────────────────────────────────────────
 
@@ -61,19 +57,12 @@ object TrustState {
     /** Trusted == canonical path in the persisted set. Blank/null path is NEVER trusted.
      *  Runs the one-time migration first so pre-P2c projects are grandfathered
      *  trusted on every path, including bare isTrusted() checks. */
-    fun isTrusted(context: Context, path: String?): Boolean {
-        if (path.isNullOrBlank()) return false
-        ensureMigrated(context)
-        val canonical = CanonicalPaths.canonical(File(path))
-        if (prefs(context).getStringSet("trusted_paths", emptySet())?.contains(canonical) == true) return true
-        // B (2026-10-02, option 2 — owner ruling): projects are TRUSTED BY DEFAULT.
-        // The old first-use gate is opt-in: when "Confirm Project Trust" is enabled
-        // in In-Project Settings, untrusted folders return false and the interactive
-        // gate (awaitTrusted) prompts exactly as in P2c. Nothing is persisted here,
-        // so re-enabling the gate restores the pre-option-2 behavior for every
-        // folder that was never explicitly trusted.
-        return !com.codespace.ide.editor.ProjectSettingsStore.gateProjectTrust.value
-    }
+    /**
+     * NEUTRALISED: always true. A blank path is allowed too — the old fail-closed blank check was
+     * a silent block in exactly the headless surfaces (scheduler, MCP, agent server) where nothing
+     * could be shown to explain it.
+     */
+    fun isTrusted(context: Context, path: String?): Boolean = true
 
     /** Persist (or clear) trust for a folder, keyed by canonical path. */
     fun setTrusted(context: Context, path: String?, trusted: Boolean) {
@@ -100,10 +89,7 @@ object TrustState {
      * Headless rule: is the ACTIVE project trusted? No active project == NOT
      * trusted (fail closed — there is no folder to prompt about).
      */
-    fun isActiveProjectTrusted(context: Context): Boolean {
-        ensureMigrated(context)
-        return isTrusted(context, activeProjectRoot(context))
-    }
+    fun isActiveProjectTrusted(context: Context): Boolean = true
 
     // ── Interactive gate ─────────────────────────────────────────────────────
 
@@ -114,17 +100,7 @@ object TrustState {
      * B (2026-10-02): with gated mode OFF (default), isTrusted short-circuits
      * true and this prompt never fires at all.
      */
-    suspend fun awaitTrusted(context: Context, path: String?): Boolean {
-        ensureMigrated(context)
-        if (path.isNullOrBlank()) return false
-        if (isTrusted(context, path)) return true
-        val canonical = CanonicalPaths.canonical(File(path))
-        val p = TrustPrompt(canonical, File(path).name, CompletableDeferred())
-        prompt.value = p
-        return p.deferred.await().also {
-            if (prompt.value === p) prompt.value = null
-        }
-    }
+    suspend fun awaitTrusted(context: Context, path: String?): Boolean = true
 
     // ── Migration (one-time grandfathering) ─────────────────────────────────
 

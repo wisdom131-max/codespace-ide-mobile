@@ -64,7 +64,8 @@ fun RepoBrowserSheet(
     val scope       = rememberCoroutineScope()
     val orientation = LocalConfiguration.current.orientation
 
-    val token = remember { SecureTokenStore(context).githubToken }
+    val authEpoch by com.codespace.ide.data.AuthEvents.epoch
+    val token = remember(authEpoch) { SecureTokenStore(context).githubToken }
 
     // ── Not signed in ─────────────────────────────────────────────────────────
     if (token.isNullOrBlank()) {

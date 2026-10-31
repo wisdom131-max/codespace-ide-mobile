@@ -436,7 +436,6 @@ enum class RowType {
     ZEN_MODE_EXIT_CHECKBOX,
     FORMAT_ON_SAVE_CHECKBOX,
     TEXTMATE_HIGHLIGHT_CHECKBOX,
-    FORMATTER_DROPDOWN,      // Phase R — per-language formatter selection
     DIAGNOSTICS_SOURCE_DROPDOWN,
     PYRIGHT_VERSION_INPUT,
     GEMINI_IMAGE_MODEL_INPUT,
@@ -470,7 +469,6 @@ enum class RowType {
     // ── P54-CONNECTORS: Connectors category rows ──
     CONNECTORS_HUB,            // opens the Connectors Hub sheet
     // ── B (2026-10-02): trust gate opt-in (option 2: default-trusted) ──
-    GATE_PROJECT_TRUST_CHECKBOX,
     MCP_TOOLS_SECTION,         // MCP / Agent Tools servers section (relocated from Extensions panel)
     TASK_NOTIFY_WINDOW_ON_COMPLETION_CHECKBOX,
     MCP_INDICATOR_CHECKBOX,
@@ -528,9 +526,6 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
 
     // ── P54-CONNECTORS: Connectors category (Hub relocated from header chip,
     // MCP/Agent Tools relocated from the Extensions panel) ──
-    add(SettingsRow("gate_project_trust", SettingsCategory.SECURITY, "Confirm Project Trust",
-        "Ask once per project before running tasks, commands, or AI tools — off means projects are trusted by default",
-        RowType.GATE_PROJECT_TRUST_CHECKBOX))
     add(SettingsRow("connectors_hub", SettingsCategory.CONNECTORS, "Connectors Hub",
         "Manage GitHub, GitLab, Notion, Jira, Discord, Canva and other service connections",
         RowType.CONNECTORS_HUB))
@@ -591,39 +586,10 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "Run the language formatter before saving files",
         RowType.FORMAT_ON_SAVE_CHECKBOX))
 
-    // Phase R: Per-language formatter dropdowns — only for languages with multiple formatters
-    add(SettingsRow("fmt_kotlin", SettingsCategory.FORMATTING,
-        "Kotlin Formatter",
-        "Select the formatter for .kt and .kts files",
-        RowType.FORMATTER_DROPDOWN))
-    add(SettingsRow("fmt_js", SettingsCategory.FORMATTING,
-        "JavaScript Formatter",
-        "Select the formatter for .js and .jsx files",
-        RowType.FORMATTER_DROPDOWN))
-    add(SettingsRow("fmt_ts", SettingsCategory.FORMATTING,
-        "TypeScript Formatter",
-        "Select the formatter for .ts and .tsx files",
-        RowType.FORMATTER_DROPDOWN))
-    add(SettingsRow("fmt_python", SettingsCategory.FORMATTING,
-        "Python Formatter",
-        "Select the formatter for .py files",
-        RowType.FORMATTER_DROPDOWN))
-    add(SettingsRow("fmt_go", SettingsCategory.FORMATTING,
-        "Go Formatter",
-        "Select the formatter for .go files",
-        RowType.FORMATTER_DROPDOWN))
-    add(SettingsRow("fmt_java", SettingsCategory.FORMATTING,
-        "Java Formatter",
-        "Select the formatter for .java files",
-        RowType.FORMATTER_DROPDOWN))
-    add(SettingsRow("fmt_json", SettingsCategory.FORMATTING,
-        "JSON Formatter",
-        "Select the formatter for .json files",
-        RowType.FORMATTER_DROPDOWN))
-    add(SettingsRow("fmt_c_cpp", SettingsCategory.FORMATTING,
-        "C/C++ Formatter",
-        "Select the formatter for C and C++ files",
-        RowType.FORMATTER_DROPDOWN))
+    // Formatter CHOICE moved to app-wide Settings > Formatter Selection (2026-10-31): the
+    // same per-language pickers existed here and there, reading and writing one store. Two
+    // surfaces for one value is a place for them to disagree. Format on Save stays here,
+    // because that one is per project.
 
     add(SettingsRow("diag_source", SettingsCategory.PYTHON_LSP,
         "Diagnostics Source",
@@ -788,11 +754,10 @@ private fun SettingsRowRenderer(
         RowType.EXTRA_KEYS_CHECKBOX -> ExtraKeysRow(textPri, textSec, divider)
         RowType.CURSOR_BLINK_DROPDOWN -> CursorBlinkRow(accent, textPri, textSec, divider)
         RowType.ZEN_MODE_EXIT_CHECKBOX -> ZenModeExitRow(textPri, textSec, divider)
-        RowType.GATE_PROJECT_TRUST_CHECKBOX -> GateProjectTrustRow(textPri, textSec, divider)
+        // Trust row removed (2026-10-31): the gate it controlled no longer exists.
         RowType.MCP_INDICATOR_CHECKBOX -> McpIndicatorRow(textPri, textSec, divider)
         RowType.FORMAT_ON_SAVE_CHECKBOX -> FormatOnSaveRow(textPri, textSec, divider)
         RowType.TEXTMATE_HIGHLIGHT_CHECKBOX -> TextMateHighlightRow(textPri, textSec, divider)
-        RowType.FORMATTER_DROPDOWN -> FormatterDropdownRow(row, accent, textPri, textSec, divider)
         RowType.DIAGNOSTICS_SOURCE_DROPDOWN -> DiagnosticsSourceRow(accent, textPri, textSec, divider)
         RowType.PYRIGHT_VERSION_INPUT -> PyrightVersionRow(textPri, textSec, surface, divider)
         RowType.GEMINI_IMAGE_MODEL_INPUT -> GeminiImageModelRow(textPri, textSec, surface, divider)
@@ -1169,60 +1134,6 @@ private fun TextMateHighlightRow(textPri: Color, textSec: Color, divider: Color)
     HorizontalDivider(color = divider, modifier = Modifier.padding(top = 6.dp))
 }
 
-@Composable
-private fun FormatterDropdownRow(
-    row: SettingsRow,
-    accent: Color,
-    textPri: Color,
-    textSec: Color,
-    divider: Color,
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var expanded by remember { mutableStateOf(false) }
-
-    // Map row ID to Language
-    val language = when (row.id) {
-        "fmt_kotlin" -> Language.KOTLIN
-        "fmt_js" -> Language.JAVASCRIPT
-        "fmt_ts" -> Language.TYPESCRIPT
-        "fmt_python" -> Language.PYTHON
-        "fmt_go" -> Language.GO
-        "fmt_java" -> Language.JAVA
-        "fmt_json" -> Language.JSON
-        "fmt_c_cpp" -> Language.CPP
-        else -> return
-    }
-
-    val formatters = FormatterConfig.availableFormatters[language] ?: return
-    val selected = FormatterConfig.getSelectedFormatter(context, language)
-
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(row.label, color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text(row.description, color = textSec, fontSize = 11.sp)
-        }
-        Box {
-            OutlinedButton(onClick = { expanded = true }) {
-                Text(selected.name, fontSize = 12.sp, color = accent)
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                formatters.forEach { fmt ->
-                    DropdownMenuItem(
-                        text = { Text(fmt.name) },
-                        onClick = {
-                            FormatterConfig.setSelectedFormatter(context, language, fmt.name)
-                            expanded = false
-                        },
-                    )
-                }
-            }
-        }
-    }
-    HorizontalDivider(color = divider)
-}
 
 @Composable
 private fun SectionHeader(text: String, color: Color) {
@@ -1408,27 +1319,6 @@ private fun TerminalNotifyRow(textPri: Color, textSec: Color, divider: Color) {
         Checkbox(
             checked = enabled.value,
             onCheckedChange = { ProjectSettingsStore.setTerminalNotifications(it) },
-            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4FC3F7)),
-        )
-    }
-    HorizontalDivider(color = divider)
-}
-
-@Composable
-private fun GateProjectTrustRow(textPri: Color, textSec: Color, divider: Color) {
-    // B (2026-10-02): option 2 toggle — restores the P2c first-use trust prompt.
-    val enabled = ProjectSettingsStore.gateProjectTrust
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("Confirm Project Trust", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text("Ask once per project before running tasks, commands, or AI tools — off means trusted by default", color = textSec, fontSize = 11.sp)
-        }
-        Checkbox(
-            checked = enabled.value,
-            onCheckedChange = { ProjectSettingsStore.setGateProjectTrust(it) },
             colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4FC3F7)),
         )
     }

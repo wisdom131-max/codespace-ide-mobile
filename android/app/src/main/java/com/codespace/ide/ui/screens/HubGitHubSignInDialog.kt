@@ -39,7 +39,7 @@ import com.codespace.ide.data.SecureTokenStore
  * own file per the standing extraction rule.
  */
 @Composable
-internal fun HubGitHubSignInDialog(
+fun HubGitHubSignInDialog(
     onDismiss: () -> Unit,
     onSuccess: (username: String) -> Unit,
 ) {
