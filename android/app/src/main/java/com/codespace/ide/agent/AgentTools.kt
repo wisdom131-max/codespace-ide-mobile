@@ -152,6 +152,9 @@ You can use multiple tools in sequence. When done, give a final summary.
         "create_file", "insert_edit_into_file", "multi_replace_string_in_file",
         "list_dir", "grep_search", "file_search", "semantic_search",
         "search_workspace_symbols", "read_project_structure",
+        "apply_patch", "manage_todo_list", "create_new_jupyter_notebook",
+        "copilot_getNotebookSummary", "read_notebook_cell_output", "edit_notebook_file",
+        "run_notebook_cell", "get_terminal_output", "terminal_last_command",
         "replace_string_in_file", "get_errors", "create_directory", "get_changed_files",
         "list_files", "search_files",
         "git_commit_push", "git_pull_rebase", "git_branch", "git_status", "git_diff",
@@ -199,6 +202,18 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "search_workspace_symbols" -> workspaceSymbols(args.getString("query"), args.optString("path").ifBlank { null }, context)
                 "read_project_structure" -> projectStructure(args.optString("path").ifBlank { null }, args.optInt("depth", 2), context)
                 "run_in_terminal" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
+                // --- notebooks, patches, todos, and the agent's own terminal record ---
+                "apply_patch" -> applyPatch(args.getString("path"), args.getString("patch"), context)
+                "manage_todo_list" -> manageTodoList(args.optString("todos"), context)
+                "create_new_jupyter_notebook" -> createNotebook(args.getString("path"), args.optString("cells"), context)
+                "copilot_getNotebookSummary" -> notebookSummary(args.getString("path"), context)
+                "read_notebook_cell_output" -> notebookCellOutput(args.getString("path"), args.optInt("index", 0), context)
+                "edit_notebook_file" -> editNotebook(
+                    args.getString("path"), args.optInt("index", -1), args.optString("cell_type", "code"),
+                    args.optString("source"), args.optBoolean("clear_outputs", false), context)
+                "run_notebook_cell" -> runNotebookCell(args.getString("path"), args.optInt("index", 0), context)
+                "get_terminal_output" -> terminalOutput(args.optInt("runs", 1))
+                "terminal_last_command" -> terminalLastCommand()
                 // VS Code parity (2026-10-31): ToolName.ReplaceString, GetErrors,
                 // CreateDirectory, GetScmChanges. The two that read are bounded like the
                 // existing git tools so they cannot crowd the context window.
@@ -428,6 +443,175 @@ You can use multiple tools in sequence. When done, give a final summary.
         if (!ok) return "Could not create " + dir.absolutePath
         com.codespace.ide.util.FsChangeNotifier.notifyChanged()
         return "Created " + dir.absolutePath
+    }
+
+    /** VS Code's apply_patch: strict, verified, all or nothing. */
+    private fun applyPatch(path: String, patch: String, context: android.content.Context): String {
+        val target = File(resolveToolPath(context, path))
+        if (!target.exists() || !target.isFile) return "File not found: $path"
+        val current = try {
+            target.readText()
+        } catch (t: Throwable) {
+            return "Could not read $path: " + (t.message ?: "error")
+        }
+        return when (val result = PatchApplier.apply(current, patch)) {
+            is EditResult.Refused -> "Patch not applied: " + result.reason + " Nothing was changed."
+            is EditResult.Ok -> {
+                writeFile(target.absolutePath, result.text, context)
+                result.detail + " in " + target.name + "."
+            }
+        }
+    }
+
+    /** VS Code's manage_todo_list. Empty argument reads the board back. */
+    private fun manageTodoList(rawTodos: String, context: android.content.Context): String {
+        val store = File(resolveToolPath(context, ".codespace/todos.json"))
+        if (rawTodos.isBlank()) {
+            return TodoBoard.render(if (store.exists()) store.readText() else null)
+        }
+        return when (val result = TodoBoard.write(rawTodos)) {
+            is EditResult.Refused -> "Todo list not saved: " + result.reason
+            is EditResult.Ok -> {
+                store.parentFile?.mkdirs()
+                store.writeText(result.text)
+                result.detail + "\n" + TodoBoard.render(result.text)
+            }
+        }
+    }
+
+    private fun createNotebook(path: String, cellsJson: String, context: android.content.Context): String {
+        val target = File(resolveToolPath(context, path))
+        if (target.exists()) return "File already exists: $path"
+        val cells = ArrayList<Pair<String, String>>()
+        if (cellsJson.isNotBlank()) {
+            try {
+                val arr = org.json.JSONArray(cellsJson)
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: return "cells entry " + i + " is not an object."
+                    cells.add(o.optString("cell_type", "code") to o.optString("source"))
+                }
+            } catch (t: Throwable) {
+                return "cells must be a JSON array of {cell_type, source}."
+            }
+        }
+        return try {
+            target.parentFile?.mkdirs()
+            target.writeText(NotebookModel.newNotebook(cells))
+            "Created " + path + " with " + (if (cells.isEmpty()) 1 else cells.size) + " cell(s)."
+        } catch (t: Throwable) {
+            "Could not create $path: " + (t.message ?: "error")
+        }
+    }
+
+    private fun notebookSummary(path: String, context: android.content.Context): String {
+        val target = File(resolveToolPath(context, path))
+        if (!target.exists()) return "File not found: $path"
+        val text = try {
+            target.readText()
+        } catch (t: Throwable) {
+            return "Could not read $path: " + (t.message ?: "error")
+        }
+        return when (val r = NotebookModel.summary(text)) {
+            is EditResult.Refused -> r.reason
+            is EditResult.Ok -> r.text
+        }
+    }
+
+    private fun notebookCellOutput(path: String, index: Int, context: android.content.Context): String {
+        val target = File(resolveToolPath(context, path))
+        if (!target.exists()) return "File not found: $path"
+        val text = try {
+            target.readText()
+        } catch (t: Throwable) {
+            return "Could not read $path: " + (t.message ?: "error")
+        }
+        return when (val r = NotebookModel.outputsOf(text, index)) {
+            is EditResult.Refused -> r.reason
+            is EditResult.Ok -> r.text
+        }
+    }
+
+    private fun editNotebook(
+        path: String,
+        index: Int,
+        cellType: String,
+        source: String,
+        clearOutputs: Boolean,
+        context: android.content.Context,
+    ): String {
+        val target = File(resolveToolPath(context, path))
+        if (!target.exists()) return "File not found: $path"
+        val current = try {
+            target.readText()
+        } catch (t: Throwable) {
+            return "Could not read $path: " + (t.message ?: "error")
+        }
+        if (!NotebookModel.isNotebook(current)) return "$path is not an .ipynb notebook."
+        val result = if (clearOutputs) {
+            NotebookModel.clearOutputs(current, index)
+        } else {
+            NotebookModel.editCell(current, index, cellType, source)
+        }
+        return when (result) {
+            is EditResult.Refused -> "Notebook not changed: " + result.reason
+            is EditResult.Ok -> {
+                writeFile(target.absolutePath, result.text, context)
+                result.detail
+            }
+        }
+    }
+
+    /**
+     * run_notebook_cell. There is no kernel to talk to, so the cell is written to a temporary
+     * python file beside the notebook and run with the system python3. It reports exactly that
+     * rather than pretending a kernel session exists.
+     */
+    private fun runNotebookCell(path: String, index: Int, context: android.content.Context): String {
+        val target = File(resolveToolPath(context, path))
+        if (!target.exists()) return "File not found: $path"
+        val text = try {
+            target.readText()
+        } catch (t: Throwable) {
+            return "Could not read $path: " + (t.message ?: "error")
+        }
+        val cells = NotebookModel.cells(text) ?: return "$path is not a notebook."
+        val cell = cells.firstOrNull { it.index == index } ?: return "Cell " + index + " does not exist."
+        if (cell.kind != "code") return "Cell " + index + " is markdown, so there is nothing to run."
+        if (cell.source.isBlank()) return "Cell " + index + " is empty."
+        val script = File(target.parentFile, ".nb_cell_" + index + ".py")
+        return try {
+            script.writeText(cell.source)
+            val out = runCommand("python3 " + script.name, target.parentFile?.absolutePath, context)
+            "Ran cell " + index + " with python3 (no kernel session is kept):\n" + out
+        } catch (t: Throwable) {
+            "Could not run cell " + index + ": " + (t.message ?: "error")
+        } finally {
+            script.delete()
+        }
+    }
+
+    /** get_terminal_output: the agent's own command record, not the user's interactive shell. */
+    private fun terminalOutput(runs: Int): String {
+        val wanted = runs.coerceIn(1, 10)
+        val all = AgentTerminalFeed.runs
+        if (all.isEmpty()) return "The agent has not run any command in this session."
+        val slice = all.takeLast(wanted)
+        val sb = StringBuilder("[agent command record, not the interactive terminal]\n")
+        for (r in slice) {
+            sb.append('$').append(' ').append(r.command).append(" -> ").append(r.status.name)
+            if (r.exitCode != null) sb.append(" (exit ").append(r.exitCode).append(')')
+            sb.append('\n')
+            val out = r.output?.trim()
+            if (!out.isNullOrEmpty()) sb.append(out.take(2000)).append('\n')
+        }
+        return sb.toString().trim()
+    }
+
+    private fun terminalLastCommand(): String {
+        val last = AgentTerminalFeed.runs.lastOrNull()
+            ?: return "The agent has not run any command in this session."
+        return "Last agent command: " + last.command + " (" + last.status.name +
+            (last.exitCode?.let { ", exit " + it } ?: "") + ")"
     }
 
     /** VS Code's create_file: refuses to clobber, because "create" that overwrites is a trap. */

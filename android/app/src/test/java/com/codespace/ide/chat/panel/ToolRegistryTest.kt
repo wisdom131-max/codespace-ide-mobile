@@ -23,16 +23,22 @@ class ToolRegistryTest {
         "get_errors", "get_changed_files", "request_connector",
         "list_dir", "grep_search", "file_search", "semantic_search",
         "search_workspace_symbols", "read_project_structure",
+        "copilot_getNotebookSummary", "read_notebook_cell_output",
     )
 
     // --- registration parity -------------------------------------------------------
 
     @Test
     fun theRegistryCoversEveryRegisteredToolExactlyOnce() {
-        val registered = AgentTools.toolNames()
-        assertEquals("registry and executor must agree on the registered set", registered.toSet(), ToolRegistry.names().toSet())
-        assertEquals(ToolRegistry.names().size, ToolRegistry.names().toSet().size)
-        assertEquals("every registered tool is listed exactly once", 46, ToolRegistry.names().size)
+        val executable = AgentTools.toolNames()
+        // The registry is now the full inventory: executable tools PLUS the VS Code tools we
+        // deliberately do not offer, each with a written reason. So the invariant is a subset
+        // one way and a uniqueness check, not equality: an executable tool missing from the
+        // registry would be invisible to the mode gate, which is the real defect to catch.
+        val missing = executable.toSet() - ToolRegistry.names().toSet()
+        assertTrue("executor tool missing from the registry: " + missing, missing.isEmpty())
+        assertEquals("every registered tool is listed exactly once", 79, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 79, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -73,7 +79,8 @@ class ToolRegistryTest {
         assertTrue("Edit must keep the read wave", edit.containsAll(readOnlyWave))
         assertTrue(edit.containsAll(listOf(
             "write_file", "replace_string_in_file", "create_directory", "create_file",
-            "insert_edit_into_file", "multi_replace_string_in_file")))
+            "insert_edit_into_file", "multi_replace_string_in_file",
+            "apply_patch", "manage_todo_list", "create_new_jupyter_notebook", "edit_notebook_file")))
         assertFalse("Edit must never be offered a command", edit.contains("run_command"))
         assertFalse("Edit must never be offered a shell alias", edit.contains("run_in_terminal"))
     }
@@ -84,7 +91,7 @@ class ToolRegistryTest {
         val edit = ToolRegistry.exposedNames(ChatMode.EDIT).toSet()
         // Agent is Edit plus the side-effecting tools, and secrets stay out of every mode.
         assertTrue("Agent must contain everything Edit offers", agent.containsAll(edit))
-        assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package")))
+        assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package", "run_notebook_cell", "get_terminal_output", "terminal_last_command")))
         assertFalse(agent.contains("save_secret"))
         assertFalse(agent.contains("get_secret"))
     }
@@ -153,6 +160,15 @@ class ToolRegistryTest {
             "insert_edit_into_file" to (listOf("path", "old_string", "new_string") to listOf("replace_all")),
             "multi_replace_string_in_file" to (listOf("path", "replacements") to listOf("replace_all")),
             "run_in_terminal" to (listOf("command") to listOf("workdir")),
+            "apply_patch" to (listOf("path", "patch") to emptyList<String>()),
+            "manage_todo_list" to (emptyList<String>() to listOf("todos")),
+            "create_new_jupyter_notebook" to (listOf("path") to emptyList<String>()),
+            "edit_notebook_file" to (listOf("path") to listOf("index", "cell_type", "source", "clear_outputs")),
+            "copilot_getNotebookSummary" to (listOf("path") to emptyList<String>()),
+            "read_notebook_cell_output" to (listOf("path") to listOf("index")),
+            "run_notebook_cell" to (listOf("path") to listOf("index")),
+            "get_terminal_output" to (emptyList<String>() to listOf("runs")),
+            "terminal_last_command" to (emptyList<String>() to emptyList<String>()),
             "replace_string_in_file" to (listOf("path", "old_string", "new_string") to listOf("replace_all")),
             "get_errors" to (emptyList<String>() to listOf("path")),
             "create_directory" to (listOf("path") to emptyList<String>()),
