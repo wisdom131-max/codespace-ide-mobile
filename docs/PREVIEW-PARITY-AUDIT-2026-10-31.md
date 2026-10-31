@@ -22,7 +22,7 @@ tables, and task-list styling. HTML/SVG render as inline strings via `loadDataWi
 | Capability | VS Code | PreviewPane today | Feasible on Android WebView | Worth doing |
 |---|---|---|---|---|
 | Preview placement | Separate editor tab, opens to the side | Mode inside the bottom panel | n/a (surface is locked) | No change |
-| Updates while typing | Yes, live | Markdown re-renders on content change; HTML **verify** | Yes | Yes |
+| Updates while typing | Yes, live | Markdown re-renders on content change; HTML re-renders on typing — **device-verified 2026-11-01** | Yes | Yes |
 | Preview uses a real origin | Markdown preview is a webview with a CSP and no script execution; Live Preview serves over a localhost server | `loadDataWithBaseURL` with `about:blank`, `null`, and `file://<dir>/` for Markdown | Yes once served from `127.0.0.1:5500` | **Yes, first** |
 | Relative images in Markdown | Resolved workspace- and file-relative | Works via `file://` base dir | Yes (also via served origin) | Yes |
 | Remote images in Markdown | Allowed per preview security settings | **verify** — a `file://` document loading `http(s)` images is commonly blocked | Yes | Yes |
