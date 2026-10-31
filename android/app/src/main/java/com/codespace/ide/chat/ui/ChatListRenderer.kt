@@ -50,8 +50,14 @@ object NativeChatListRenderer : ChatListRenderer {
             is ChatRowModel.User -> UserBubble(row.text)
             // BATCH 7: assistant replies are Markdown. The streaming cursor still rides the
             // same row, so a growing reply keeps one identity and never re-lays out twice.
-            is ChatRowModel.AssistantStream ->
-                MarkdownView(row.text, row.cursorOn, state.onInsertCode)
+            is ChatRowModel.AssistantStream -> {
+                Column {
+                    MarkdownView(row.text, row.cursorOn, state.onInsertCode)
+                    // Only once the reply has settled: a glyph under a growing message would
+                    // move on every chunk and copy a half-finished answer.
+                    if (!row.cursorOn) CopyIconRow(row.text)
+                }
+            }
             is ChatRowModel.Thinking -> ThinkingCard(row.seconds)
             is ChatRowModel.Failed -> ErrorCard(row.verdict, row.detail, row.canRetry, state.onRetry)
             is ChatRowModel.RateLimited ->

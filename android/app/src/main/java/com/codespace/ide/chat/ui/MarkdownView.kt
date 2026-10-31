@@ -122,7 +122,8 @@ private fun MarkdownText(
 }
 
 /**
- * One fenced block: language label, Copy, Insert, and the code itself, verbatim.
+ * One fenced block: language label, one small Copy glyph, and the code itself verbatim.
+ * Insert-at-cursor was removed at the owner's request (2026-10-31).
  *
  * The actions are plain text hit targets on the existing accent colour - the same pattern
  * the error and approval cards already use, so nothing new has to be learned.
@@ -182,17 +183,9 @@ fun CodeBlockCard(
                     }
                     .padding(horizontal = 8.dp, vertical = 2.dp),
             )
-            Text(
-                "\u21B5",
-                color = c.accent,
-                fontSize = ChatTokens.FONT_SMALL.sp,
-                modifier = Modifier
-                    .clickable(onClickLabel = "Insert code at cursor") {
-                        val ok = onInsertCode?.invoke(code) ?: false
-                        outcome = if (ok) "Inserted" else "No editor open"
-                    }
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-            )
+            // Owner request 2026-10-31: the insert-at-cursor glyph is gone. Copying the block
+            // or tapping the reply's own copy icon covers the same need without a second
+            // meaning for the same glyph.
         }
         Text(
             text = code,

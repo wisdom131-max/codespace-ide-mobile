@@ -32,11 +32,20 @@ internal fun LightbulbMenuOverlay(
     lintErrors: List<LintError>,
     extraCursorsState: MutableState<List<androidx.compose.ui.text.TextRange>>,
     programmaticTextChange: (String, TextRange, String) -> Unit,
+    /** Editor font size, so the menu can clear the line by a fraction of it. */
+    fontSize: Float = 14f,
 ) {
     var showLightbulbMenu by showLightbulbMenuState
     DropdownMenu(
         expanded = showLightbulbMenu,
         onDismissRequest = { showLightbulbMenu = false },
+        // A third of a line height, the same rule VS Code uses: the popup stops covering the
+        // line it is offering to fix. DropdownMenu still flips and scrolls itself, so this
+        // cannot push the menu out of reach.
+        offset = androidx.compose.ui.unit.DpOffset(
+            x = 0.dp,
+            y = LightbulbSpec.menuPaddingDp(fontSize).dp,
+        ),
     ) {
         if (lightbulbActions.isNotEmpty()) {
             val categorized = com.codespace.ide.lsp.categorizeCodeActions(lightbulbActions)

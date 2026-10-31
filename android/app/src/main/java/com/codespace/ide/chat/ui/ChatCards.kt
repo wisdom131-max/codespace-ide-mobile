@@ -77,16 +77,21 @@ private fun StateCard(
 @Composable
 fun UserBubble(text: String, modifier: Modifier = Modifier) {
     val c = ChatTokens.LocalChatColors.current
-    Text(
-        text,
-        color = c.text,
-        fontSize = ChatTokens.FONT_BODY.sp,
-        fontFamily = FontFamily.SansSerif,
-        modifier = modifier
-            .fillMaxWidth()
-            .background(c.surfaceAlt, PanelShape)
-            .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
-    )
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text,
+            color = c.text,
+            fontSize = ChatTokens.FONT_BODY.sp,
+            fontFamily = FontFamily.SansSerif,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(c.surfaceAlt, PanelShape)
+                .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
+        )
+        // Same glyph as a finished reply, so copying either side of the conversation is one
+        // learned gesture rather than two.
+        CopyIconRow(text)
+    }
 }
 
 /** Streaming assistant text with an optional block cursor. */
