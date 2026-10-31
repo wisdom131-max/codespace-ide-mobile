@@ -28,9 +28,13 @@ internal data class SessionRowUi(
     val unread: Boolean,
     val archived: Boolean,
     val isActive: Boolean,
+    /** Item 17: shown with a marker AND sorted first, so the state is never ambiguous. */
+    val pinned: Boolean = false,
 )
 
 internal enum class SessionRowAction(val label: String) {
+    PIN("Pin"),
+    UNPIN("Unpin"),
     RENAME("Rename"),
     ARCHIVE("Archive"),
     UNARCHIVE("Unarchive"),
@@ -52,8 +56,9 @@ internal object SessionsViewLogic {
         signalsFor: (SessionMeta) -> SessionSignals = { SessionSignals() },
         nowMs: Long,
         activeId: String?,
+        pinned: Set<String> = emptySet(),
     ): List<SessionRowUi> {
-        val selected = SessionListLogic.select(sessions, query, signalsFor)
+        val selected = SessionListLogic.select(sessions, query, pinned = pinned, signalsFor = signalsFor)
         return selected.map { meta ->
             val signals = signalsFor(meta)
             SessionRowUi(
@@ -64,6 +69,7 @@ internal object SessionsViewLogic {
                 unread = !meta.isRead,
                 archived = meta.archived,
                 isActive = meta.id == activeId,
+                pinned = meta.id in pinned,
             )
         }
     }
@@ -117,8 +123,9 @@ internal object SessionsViewLogic {
     fun withSearch(query: SessionQuery, text: String): SessionQuery =
         query.copy(search = text.ifBlank { null })
 
-    /** Only the actions that make sense for this row. */
-    fun rowActions(archived: Boolean): List<SessionRowAction> = listOf(
+    /** Only the actions that make sense for this row. Pinning is offered first. */
+    fun rowActions(archived: Boolean, pinned: Boolean = false): List<SessionRowAction> = listOf(
+        if (pinned) SessionRowAction.UNPIN else SessionRowAction.PIN,
         SessionRowAction.RENAME,
         if (archived) SessionRowAction.UNARCHIVE else SessionRowAction.ARCHIVE,
         SessionRowAction.DELETE,

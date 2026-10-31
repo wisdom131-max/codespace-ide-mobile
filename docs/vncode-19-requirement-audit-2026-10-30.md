@@ -138,3 +138,30 @@ user by the existing "trimmed" note instead of being hidden.
 How the VS Code chat panel binds a chat session to workspace context and memory is the
 10/16 research deliverable and has not been written yet; nothing above is presented as a copy
 of that design.
+
+## Phase 4 - session pinning (item 17, part) 2026-10-31
+
+Pinning is in: Pin/Unpin leads each row's action menu, pinned rows lead the list under BOTH
+sorts while each half keeps the order the user asked for, a pinned row is marked with a filled
+diamond next to its title (a pin you cannot see is indistinguishable from a sort bug), and the
+pin survives a restart.
+
+Design choice worth recording: pins live in `pins.tsv` next to the index rather than as an
+index column. The index is version-tied so that a torn write is refused rather than read as
+"no sessions"; a view preference does not deserve another format bump and another way to reject
+somebody's real table. Pins are pruned when their session is deleted, so the file cannot
+accumulate ids that no row can ever match.
+
+Tests: 7 pin tests (restart persistence, selective unpin, refusal for a session that does not
+exist, damaged pins file, pinned-first under both sorts, empty pin set changes nothing, pin
+does not outlive a delete) plus a view-logic test for the marker and the menu order.
+
+Still open in 17: cross-session content search (title/id search only today), staged-proposal
+attribution per session rather than per project.
+
+## Research note
+
+`docs/vscode-chat-context-and-memory-research-2026-10-31.md` records what the VS Code
+documentation actually says about workspace context and semantic search, what I could not read
+(the Memory page returned 404 at both plausible paths), and what VN Code does instead. It
+deliberately contains no claims about Copilot's closed implementation.

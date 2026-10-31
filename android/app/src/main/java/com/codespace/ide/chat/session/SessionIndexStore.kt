@@ -454,6 +454,57 @@ internal class SessionIndexStore(
     }
 
     /** Temp file + fsync + rename. Returns an error message, or null on success. */
+    // ------------------------------------------------------------------ item 17: PINNING
+    //
+    // Pins live in their OWN file rather than as another column in the index. Two reasons:
+    // a pin is a view preference, not part of a session's identity, and the index is
+    // version-tied for torn-write detection, so adding a column there would mean another
+    // format bump and another chance to reject somebody's real session table.
+
+    fun pinsFileFor(projectId: String): java.io.File =
+        java.io.File(fileFor(projectId).parentFile, "pins.tsv")
+
+    /** Tolerant by design: a missing or damaged pins file means "nothing is pinned". */
+    fun readPins(projectId: String): Set<String> {
+        val f = pinsFileFor(projectId)
+        if (!f.exists()) return emptySet()
+        return try {
+            f.readLines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("#") }
+                .toSet()
+        } catch (t: Throwable) {
+            emptySet()
+        }
+    }
+
+    /** Removes one id from the pins file. Silent: a pins file problem must not fail a delete. */
+    private fun prunePin(projectId: String, sessionId: String) {
+        val current = readPins(projectId)
+        if (sessionId !in current) return
+        val next = current - sessionId
+        val body = "# VN Code pinned sessions\n" + next.sorted().joinToString("") { it + "\n" }
+        writeAtomic(pinsFileFor(projectId), body)
+    }
+
+    /**
+     * Pins or unpins ONE session. Refuses a session id that is not in the table, so a stale
+     * row cannot leave a pin behind that no session can ever match.
+     */
+    fun setPinned(projectId: String, sessionId: String, pinned: Boolean): SessionWrite {
+        val read = read(projectId)
+        if (read !is SessionIndexRead.Ok) {
+            return SessionWrite.Failed("The session list could not be read, so nothing was pinned.")
+        }
+        if (!read.index.contains(sessionId)) {
+            return SessionWrite.Failed("That session no longer exists.")
+        }
+        val next = if (pinned) readPins(projectId) + sessionId else readPins(projectId) - sessionId
+        val body = "# VN Code pinned sessions\n" + next.sorted().joinToString("") { it + "\n" }
+        val error = writeAtomic(pinsFileFor(projectId), body)
+        return if (error == null) SessionWrite.Ok else SessionWrite.Failed(error)
+    }
+
     private fun writeAtomic(target: File, content: String): String? {
         val tmp = File(target.parentFile, target.name + TEMP_SUFFIX)
         return try {
@@ -626,6 +677,11 @@ internal class SessionIndexStore(
             }
             is SessionWrite.Ok -> Unit
         }
+
+        // Item 17: drop the pin with the session, in every path from here on. Done after the
+        // metadata write (the session is already gone from the list), so a failed delete above
+        // never loses a pin for a session that still exists.
+        prunePin(projectId, sessionId)
 
         val sink = transcripts
         if (sink == null) {

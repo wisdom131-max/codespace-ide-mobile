@@ -112,6 +112,7 @@ internal object SessionListLogic {
     fun select(
         sessions: List<SessionMeta>,
         query: SessionQuery,
+        pinned: Set<String> = emptySet(),
         signalsFor: (SessionMeta) -> SessionSignals = { SessionSignals() },
     ): List<SessionMeta> {
         val needle = query.search?.trim()?.lowercase().orEmpty()
@@ -123,7 +124,7 @@ internal object SessionListLogic {
             if (query.filters.isEmpty()) return@filter true
             query.filters.any { matches(it, meta, signalsFor(meta)) }
         }
-        return sorted(filtered, query.sort)
+        return sorted(filtered, query.sort, pinned)
     }
 
     /** Title and id only. Content search arrives with the Phase 2 retrieval index. */
@@ -148,8 +149,12 @@ internal object SessionListLogic {
      * Deterministic ordering with an id tiebreak, so two sessions updated in the same
      * millisecond never swap places between recompositions.
      */
-    fun sorted(sessions: List<SessionMeta>, sort: SessionSort): List<SessionMeta> =
-        when (sort) {
+    fun sorted(
+        sessions: List<SessionMeta>,
+        sort: SessionSort,
+        pinned: Set<String> = emptySet(),
+    ): List<SessionMeta> {
+        val ordered = when (sort) {
             SessionSort.UPDATED -> sessions.sortedWith(
                 compareByDescending<SessionMeta> { it.updatedAtMs }
                     .thenByDescending { it.createdAtMs }
@@ -161,4 +166,10 @@ internal object SessionListLogic {
                     .thenBy { it.id },
             )
         }
+        if (pinned.isEmpty()) return ordered
+        // Pins move a row to the top but never re-order the groups: both halves keep the
+        // ordering the user asked for, so switching sort keeps behaving like that sort.
+        val (first, rest) = ordered.partition { it.id in pinned }
+        return first + rest
+    }
 }

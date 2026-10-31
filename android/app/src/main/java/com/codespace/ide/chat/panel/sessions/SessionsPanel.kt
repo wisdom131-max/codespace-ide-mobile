@@ -103,7 +103,12 @@ internal fun SessionsPanel(
             needsAttention = meta.id == activeId && stagedWaiting,
         )
     }
-    val rows = SessionsViewLogic.rows(index.sessions, query, signalsFor, System.currentTimeMillis(), activeId)
+    // Re-read whenever the table or this panel's revision changes: the file is tiny and a
+    // stale pin set would draw the marker on the wrong row.
+    val pins = remember(projectId, revision) { manager.pinnedSessions(projectId) }
+    val rows = SessionsViewLogic.rows(
+        index.sessions, query, signalsFor, System.currentTimeMillis(), activeId, pins,
+    )
 
     // Previews come from the transcripts on disk, read OFF the main thread: a row must never
     // block composition on file I/O, and a failed read simply means no preview.
@@ -209,6 +214,14 @@ internal fun SessionsPanel(
             onPick = { action ->
                 actionsFor = null
                 when (action) {
+                    SessionRowAction.PIN -> {
+                        notice = manager.setPinned(projectId, row.id, true)
+                        revision++
+                    }
+                    SessionRowAction.UNPIN -> {
+                        notice = manager.setPinned(projectId, row.id, false)
+                        revision++
+                    }
                     SessionRowAction.RENAME -> renameFor = row
                     SessionRowAction.ARCHIVE -> {
                         notice = manager.archiveSession(projectId, row.id, true).also { if (it == null) revision++ }
@@ -474,6 +487,14 @@ private fun SessionRowItem(
             .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (row.pinned) {
+                Text(
+                    "\u25C6",
+                    color = colors.accent,
+                    fontSize = ChatTokens.FONT_MICRO.sp,
+                )
+                Spacer(Modifier.width(ChatTokens.GAP_TIGHT.dp))
+            }
             Text(
                 row.title,
                 color = colors.text,

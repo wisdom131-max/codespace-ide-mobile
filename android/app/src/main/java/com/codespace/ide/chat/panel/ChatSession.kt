@@ -1017,6 +1017,17 @@ class ChatSessionManager internal constructor(
             is com.codespace.ide.chat.session.SessionWrite.Failed -> w.reason
         }
 
+    /** Item 17: the pinned ids for this project (empty when nothing is pinned). */
+    internal fun pinnedSessions(projectId: String): Set<String> =
+        index?.readPins(projectId) ?: emptySet()
+
+    /** Item 17: pin or unpin one conversation. Returns null on success, a reason on failure. */
+    internal fun setPinned(projectId: String, conversationId: String, pinned: Boolean): String? =
+        when (val w = requireStore().setPinned(projectId, conversationId, pinned)) {
+            is com.codespace.ide.chat.session.SessionWrite.Ok -> null
+            is com.codespace.ide.chat.session.SessionWrite.Failed -> w.reason
+        }
+
     /** Marks a conversation as looked at, which is what "Read" is derived from. */
     fun markRead(projectId: String, conversationId: String): String? =
         when (val w = requireStore().markRead(projectId, conversationId)) {

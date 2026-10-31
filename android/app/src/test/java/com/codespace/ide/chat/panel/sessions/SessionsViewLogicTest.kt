@@ -224,14 +224,36 @@ class SessionsViewLogicTest {
 
     @Test
     fun `row actions follow the archive state`() {
+        // Item 17: pinning leads the menu, and it is offered for archived rows too - archiving
+        // a session you pinned should not be a one-way trip.
         assertEquals(
-            listOf(SessionRowAction.RENAME, SessionRowAction.ARCHIVE, SessionRowAction.DELETE),
+            listOf(SessionRowAction.PIN, SessionRowAction.RENAME, SessionRowAction.ARCHIVE, SessionRowAction.DELETE),
             SessionsViewLogic.rowActions(archived = false),
         )
         assertEquals(
-            listOf(SessionRowAction.RENAME, SessionRowAction.UNARCHIVE, SessionRowAction.DELETE),
+            listOf(SessionRowAction.PIN, SessionRowAction.RENAME, SessionRowAction.UNARCHIVE, SessionRowAction.DELETE),
             SessionsViewLogic.rowActions(archived = true),
         )
+        assertEquals(
+            listOf(SessionRowAction.UNPIN, SessionRowAction.RENAME, SessionRowAction.ARCHIVE, SessionRowAction.DELETE),
+            SessionsViewLogic.rowActions(archived = false, pinned = true),
+        )
+    }
+
+    @Test
+    fun `a pinned row is marked and leads the list`() {
+        val older = meta("s_old", "Older", 1_000L, 1_000L)
+        val newer = meta("s_new", "Newer", 2_000L, 2_000L)
+        val rows = SessionsViewLogic.rows(
+            sessions = listOf(older, newer),
+            query = SessionQuery(),
+            nowMs = 3_000L,
+            activeId = null,
+            pinned = setOf("s_old"),
+        )
+        assertEquals(listOf("s_old", "s_new"), rows.map { it.id })
+        assertTrue("the pinned row carries the marker flag", rows.first().pinned)
+        assertFalse(rows.last().pinned)
     }
 
     @Test

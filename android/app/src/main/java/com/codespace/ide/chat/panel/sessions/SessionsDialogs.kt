@@ -58,7 +58,7 @@ internal fun RowActionsDialog(
         Surface(colors) {
             Text(row.title, color = colors.text, fontSize = ChatTokens.FONT_BODY.sp)
             Spacer(Modifier.heightIn(min = ChatTokens.GAP.dp))
-            SessionsViewLogic.rowActions(row.archived).forEach { action ->
+            SessionsViewLogic.rowActions(row.archived, row.pinned).forEach { action ->
                 MenuRow(
                     label = action.label,
                     colors = colors,
