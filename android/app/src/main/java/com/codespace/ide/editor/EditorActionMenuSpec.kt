@@ -115,10 +115,16 @@ internal object EditorActionMenuSpec {
         hasNearbyDiagnostic: Boolean,
         imeVisible: Boolean,
     ): Boolean {
-        if (imeVisible) return false
         // The hidden handle is always drawn; it is the way back.
         if (state == EditorChipState.HIDDEN) return true
-        return hasSelection || hasNearbyDiagnostic || hasWordUnderCursor
+        // INLINE CHAT DISCOVERY (owner request 2026-11-01). The keyboard used to hide the chip
+        // for the whole IME session, which is precisely when a user selects code and goes
+        // looking for AI: the entry point vanished at the moment it was wanted. Selection and
+        // errors now keep it - placed above the keyboard (EditorChipHostState.offsetInt) - and
+        // only the bare word-under-cursor case stays quiet while typing.
+        if (hasSelection || hasNearbyDiagnostic) return true
+        if (imeVisible) return false
+        return hasWordUnderCursor
     }
 
     // ── Placement ─────────────────────────────────────────────────────────────

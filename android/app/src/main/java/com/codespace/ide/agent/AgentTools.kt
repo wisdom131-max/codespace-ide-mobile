@@ -46,6 +46,14 @@ You have access to these tools for acting on the user's environment:
    <tool>{"name":"read_file","arguments":{"path":"/path/to/file"}}</tool>
 3. write_file     — Write content to a file (creates or overwrites)
    <tool>{"name":"write_file","arguments":{"path":"/path/to/file","content":"..."}}</tool>
+3b. replace_string_in_file — Change PART of an existing file. PREFER THIS over write_file for
+   any edit to a file that already exists: you send only the old and new text, so a large file
+   cannot be truncated or mangled by re-emitting it. old_string must appear EXACTLY once unless
+   replace_all is true; on zero or several matches the call is refused with the count and the
+   file is left untouched, so include enough surrounding lines to be unique.
+   <tool>{"name":"replace_string_in_file","arguments":{"path":"/path/to/file","old_string":"exact text","new_string":"replacement","replace_all":false}}</tool>
+3c. multi_replace_string_in_file — Several such edits to ONE file in one call
+   <tool>{"name":"multi_replace_string_in_file","arguments":{"path":"/path/to/file","replacements":"[{\"old_string\":\"a\",\"new_string\":\"b\"}]","replace_all":false}}</tool>
 4. list_files     — List files in a directory
    <tool>{"name":"list_files","arguments":{"path":"/path/to/dir"}}</tool>
 5. search_files   — Search for a text pattern in files

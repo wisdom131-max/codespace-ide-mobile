@@ -3903,7 +3903,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             ) {
                 Popup(
                     alignment = androidx.compose.ui.Alignment.TopStart,
-                    offset = chip.offsetInt(),
+                    offset = chip.offsetInt(imeHeightPx),
                     properties = PopupProperties(focusable = false, dismissOnClickOutside = false)
                 ) {
                     var showLspMenu by remember { mutableStateOf(false) }

@@ -69,13 +69,32 @@ class EditorActionMenuSpecTest {
     // ── Visibility ──────────────────────────────────────────────────────────
 
     @Test
-    fun `the keyboard being open hides the chip`() {
-        assertFalse(
+    fun `a selection keeps the chip while the keyboard is up`() {
+        // Discovery fix 2026-11-01: hiding for the whole IME session hid the AI entry point at
+        // the exact moment a user selects code and looks for it. The chip is now placed above
+        // the keyboard instead of below it.
+        assertTrue(
             EditorActionMenuSpec.shouldShow(
                 state = EditorChipState.SOLID,
                 hasSelection = true,
                 hasWordUnderCursor = true,
-                hasNearbyDiagnostic = true,
+                hasNearbyDiagnostic = false,
+                imeVisible = true,
+            )
+        )
+        assertTrue(
+            EditorActionMenuSpec.shouldShow(EditorChipState.SOLID, false, false, true, true)
+        )
+    }
+
+    @Test
+    fun `typing over a bare word does not raise the chip`() {
+        assertFalse(
+            EditorActionMenuSpec.shouldShow(
+                state = EditorChipState.SOLID,
+                hasSelection = false,
+                hasWordUnderCursor = true,
+                hasNearbyDiagnostic = false,
                 imeVisible = true,
             )
         )

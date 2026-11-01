@@ -130,8 +130,24 @@ internal class EditorChipHostState(
         private set
     val placement = EditorChipPlacement(stored ?: (maxX - 44f).coerceAtLeast(4f) to 8f, maxX, maxY)
 
-    fun offsetInt(): androidx.compose.ui.unit.IntOffset = with(density) {
-        androidx.compose.ui.unit.IntOffset(placement.x.dp.roundToPx(), placement.y.dp.roundToPx())
+    /**
+     * Where the popup sits, in window pixels.
+     *
+     * [imeHeightPx] is the keyboard. A chip inside the keyboard's band is a chip nobody can see
+     * or tap, and on a phone the keyboard is up whenever the user is actually editing - which is
+     * exactly when the AI menu is wanted. So the chip is clamped into the strip above the IME
+     * rather than hidden below it.
+     */
+    fun offsetInt(imeHeightPx: Int = 0): androidx.compose.ui.unit.IntOffset = with(density) {
+        val xPx = placement.x.dp.roundToPx()
+        val yPx = placement.y.dp.roundToPx()
+        if (imeHeightPx <= 0) {
+            androidx.compose.ui.unit.IntOffset(xPx, yPx)
+        } else {
+            val chipPx = EditorActionMenuSpec.diameterDp(state).dp.roundToPx()
+            val bottomPx = maxY.dp.roundToPx() - imeHeightPx
+            androidx.compose.ui.unit.IntOffset(xPx, yPx.coerceAtMost((bottomPx - chipPx).coerceAtLeast(0)))
+        }
     }
 
     fun cycle() {
