@@ -42,7 +42,15 @@ object AgentConnectorManager {
     /** Phase 1 (Item 4): personal-API-token services — user pastes the token in the Connectors Hub. */
     private val PAT_SERVICES = listOf("sentry", "vercel", "cloudflare", "posthog", "stripe", "railway", "render")
 
-    val SERVICES get() = OAUTH_SERVICES + PAT_SERVICES
+    /**
+     * On-device services (2026-11-01): Firebase, Supabase and n8n are connectors in the Hub now,
+     * but their credentials never leave the phone and their base URL is the user's own, so the
+     * backend proxy cannot hold them the way it holds the OAuth providers. They are routed here
+     * instead, through LocalConnectorStore + LocalConnectorCall.
+     */
+    private val LOCAL_SERVICES = com.codespace.ide.data.LocalConnectorStore.SERVICES
+
+    val SERVICES get() = OAUTH_SERVICES + PAT_SERVICES + LOCAL_SERVICES
 
     private val DISPLAY_NAMES = mapOf(
         "gmail" to "Gmail",
@@ -64,6 +72,9 @@ object AgentConnectorManager {
         "discord" to "Discord",
         "canva" to "Canva",
         "huggingface" to "Hugging Face",
+        "firebase" to "Firebase",
+        "supabase" to "Supabase",
+        "n8n" to "n8n",
     )
 
     /** Phase 1 C3: when request_connector runs, the chat UI shows an inline
@@ -90,7 +101,11 @@ object AgentConnectorManager {
 
         val result = ConnectorsApiClient.fetchStatus(token, context)
         return result.fold(
-            onSuccess = { statuses -> formatStatuses(statuses) },
+            onSuccess = { statuses ->
+                formatStatuses(statuses) { service ->
+                    com.codespace.ide.data.LocalConnectorStore.isConfigured(context, service)
+                }
+            },
             onFailure = { e -> "Couldn't reach the connectors backend: ${e.message}" },
         )
     }
@@ -106,7 +121,10 @@ object AgentConnectorManager {
      *
      * Split out of listConnectors so a unit test can pin the output without a network call.
      */
-    fun formatStatuses(statuses: List<ConnectorsApiClient.ConnectorStatus>): String {
+    fun formatStatuses(
+        statuses: List<ConnectorsApiClient.ConnectorStatus>,
+        onDeviceConfigured: ((String) -> Boolean)? = null,
+    ): String {
         val sb = StringBuilder("Available connectors:\n")
         var connected = 0
         for (s in statuses) {
@@ -123,8 +141,18 @@ object AgentConnectorManager {
                 sb.append(ConnectorRecipes.usageLines(s.id))
             }
         }
+        // The three on-device services never come back from /connectors/status - they are not on
+        // the backend at all - so without this they would be invisible to the agent even though
+        // the Hub shows them. Printed with their configured state and, once usable, their calls.
+        for (service in LOCAL_SERVICES) {
+            val ready = onDeviceConfigured?.invoke(service) == true
+            sb.append("  ").append(if (ready) "[CONNECTED]" else "[not configured]")
+                .append(' ').append(displayNameFor(service)).append(" (").append(service)
+                .append(") — on this device\n")
+            if (ready) sb.append(ConnectorRecipes.usageLines(service))
+        }
         if (connected == 0) {
-            sb.append("  Nothing is connected yet. Use request_connector to show the user a connect card.\n")
+            sb.append("  Use request_connector to show the user a connect card for anything not connected.\n")
         }
         sb.append("\nAct on a CONNECTED service with use_connector(service, method, endpoint, body).")
         sb.append("\nThe endpoint is relative to that provider's API base. There are no per-provider")
@@ -198,6 +226,9 @@ object AgentConnectorManager {
         if (service !in SERVICES) {
             return "Unknown or unsupported service: $service. Available: ${SERVICES.joinToString(", ")}."
         }
+        // On-device first: these three are addressed from credentials on the phone, so they must
+        // not depend on a VN Code cloud sign-in that the backend proxy needs.
+        if (service in LOCAL_SERVICES) return useLocalConnector(service, method, endpoint, body, context)
         val token = requireAccessToken(context)
             ?: return "Not signed in to CodeSpace IDE — sign in first."
 
@@ -205,6 +236,41 @@ object AgentConnectorManager {
         return result.fold(
             onSuccess = { it.take(6000) },
             onFailure = { e -> "Connector call failed: ${e.message}" },
+        )
+    }
+
+    /**
+     * Firebase / Supabase / n8n: credentials on the device, called directly.
+     *
+     * The agent gets a sentence it can act on rather than a stack trace - an unconfigured service
+     * is the common case, and "open the Connectors Hub" is the fix.
+     */
+    private fun useLocalConnector(
+        service: String,
+        method: String,
+        endpoint: String,
+        body: String,
+        context: Context
+    ): String {
+        val name = displayNameFor(service)
+        val store = com.codespace.ide.data.LocalConnectorStore
+        if (store.activeProjectId(context) == null) {
+            return "$name is configured per project and no project is open. Ask the user to open a project first."
+        }
+        if (!store.isConfigured(context, service)) {
+            return "$name is not configured on this device yet. The user configures it in the Connectors Hub " +
+                "(chat kebab menu or Settings), where it appears under \"On this device\". " +
+                "Use request_connector with service \"$service\" to show them the card."
+        }
+        val key = when (service) {
+            "firebase" -> store.value(context, "firebase", "firebase_apikey")
+            "supabase" -> store.value(context, "supabase", "supabase_anon_key")
+            else -> store.value(context, "n8n", "n8n_apikey")
+        } ?: return "$name is missing its key. Ask the user to re-enter it in the Connectors Hub."
+        val base = store.baseUrl(context, service)
+            ?: return "$name is missing its URL. Ask the user to re-enter it in the Connectors Hub."
+        return LocalConnectorCall.execute(
+            LocalConnectorCall.build(service, base, key, method, endpoint, body)
         )
     }
 }

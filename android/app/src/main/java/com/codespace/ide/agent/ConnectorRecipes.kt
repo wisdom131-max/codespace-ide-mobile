@@ -92,6 +92,22 @@ internal object ConnectorRecipes {
             "GET /v1/designs - designs",
             "POST /v1/designs - create a design",
         ),
+        // ── On-device services (2026-11-01): called from the app, not the backend proxy ──
+        "supabase" to listOf(
+            "GET /rest/v1/:table?select=* - read rows through the auto REST API",
+            "POST /rest/v1/:table {..} - insert a row",
+            "GET /auth/v1/settings - what this project has enabled",
+        ),
+        "n8n" to listOf(
+            "GET /api/v1/workflows - workflows on the instance",
+            "POST /api/v1/workflows/:id/activate - turn a workflow on",
+            "GET /api/v1/executions?limit=10 - recent runs",
+        ),
+        "firebase" to listOf(
+            "GET /:collection - read Firestore documents in a collection",
+            "POST /:collection {fields:{..}} - create a document",
+            "GET https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=<web api key> - verify the key",
+        ),
         "posthog" to listOf(
             "GET /api/projects/ - projects",
             "GET /api/projects/:id/insights/ - saved insights",

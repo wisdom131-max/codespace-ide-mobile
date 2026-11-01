@@ -53,8 +53,24 @@ class ConnectorInventoryTest {
     @Test
     fun `an empty inventory tells the agent how to ask for a connection`() {
         val text = AgentConnectorManager.formatStatuses(emptyList())
-        assertTrue(text, text.contains("Nothing is connected yet"))
         assertTrue(text, text.contains("request_connector"))
+    }
+
+    @Test
+    fun `on-device services appear even though the backend never reports them`() {
+        val text = AgentConnectorManager.formatStatuses(emptyList()) { it == "supabase" }
+        assertTrue(text, text.contains("Supabase (supabase)"))
+        assertTrue(text, text.contains("Firebase (firebase)"))
+        assertTrue(text, text.contains("n8n (n8n)"))
+        // Configured means usable: the calls are printed for that one service only.
+        assertTrue(text, text.contains("POST /rest/v1/:table"))
+    }
+
+    @Test
+    fun `an unconfigured on-device service gets no recipes`() {
+        val text = AgentConnectorManager.formatStatuses(emptyList()) { false }
+        assertTrue(text, text.contains("[not configured] Supabase (supabase)"))
+        assertFalse(text, text.contains("POST /rest/v1/:table"))
     }
 
     @Test

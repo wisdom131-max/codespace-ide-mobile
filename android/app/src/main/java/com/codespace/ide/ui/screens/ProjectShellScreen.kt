@@ -706,6 +706,12 @@ fun ProjectShellScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // The Connectors Hub can be opened from Settings, where no project is on screen, and the
+    // on-device services (Firebase / Supabase / n8n) are stored per project. Recording the project
+    // as it opens is what lets the Hub — and the agent's use_connector — address the right one.
+    LaunchedEffect(projectId) {
+        com.codespace.ide.data.LocalConnectorStore.rememberActiveProject(context, projectId)
+    }
     // Resolve human-readable project name from local project store
     val projectName = remember(projectId) {
         try {
@@ -909,7 +915,6 @@ fun ProjectShellScreen(
     // Connect card); null = full hub.
     var connectorsFocusId by remember { mutableStateOf<String?>(null) }
     // Connectors Phase 3 (Group C): project-level Firebase/Supabase/n8n panel
-    var showProjectServices by remember { mutableStateOf(false) }
     val terminalEnhancements = remember { TerminalEnhancementManager(context) }
     var _terminalTheme by remember { mutableStateOf(terminalEnhancements.currentTheme()) }
     var showTerminalThemePicker by remember { mutableStateOf(false) }
@@ -1999,14 +2004,6 @@ fun ProjectShellScreen(
             ConnectorsHubSheet(onDismiss = { showConnectorsSheet = false }, focusServiceId = connectorsFocusId)
         }
 
-        // ── Connectors Phase 3: Project Services panel (Firebase/Supabase/n8n) ──
-        if (showProjectServices) {
-            com.codespace.ide.ui.panels.ProjectServicesPanel(
-                projectId = projectId,
-                onDismiss = { showProjectServices = false },
-            )
-        }
-
 
                 // P27-1: Panel overflow menu — extracted to composable, all 45 items wired
         if (showPanelMenu) {
@@ -2189,7 +2186,6 @@ fun ProjectShellScreen(
             showInProjectSettings = showInProjectSettings,
             onShowInProjectSettingsChange = { showInProjectSettings = it },
             onOpenConnectorsHub = { focusId -> connectorsFocusId = focusId; showConnectorsSheet = true },
-            onOpenProjectServices = { showProjectServices = true },
             commandQuery = commandQuery,
             onCommandQueryChange = { commandQuery = it },
             showNotifDrawer = showNotifDrawer,
@@ -2311,7 +2307,6 @@ private fun PssOverlays(
     onShowInProjectSettingsChange: (Boolean) -> Unit,
     // Item3: open Connectors Hub from In-Project Settings
     onOpenConnectorsHub: (String?) -> Unit,
-    onOpenProjectServices: () -> Unit,
     commandQuery: String,
     onCommandQueryChange: (String) -> Unit,
     showNotifDrawer: Boolean,
@@ -2853,11 +2848,11 @@ private fun PssOverlays(
                         item {
                             Row(
                                 Modifier.fillMaxWidth()
-                                    .clickable { onOpenProjectServices(); onShowGearMenuChange(false) }
+                                    .clickable { onOpenConnectorsHub(null); onShowGearMenuChange(false) }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("Project Services (Firebase / Supabase / n8n)", fontSize = 13.sp, color = MenuText)
+                                Text("Services (Firebase / Supabase / n8n) — in Connectors", fontSize = 13.sp, color = MenuText)
                             }
                         }
                         item {

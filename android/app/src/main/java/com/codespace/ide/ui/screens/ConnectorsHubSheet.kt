@@ -321,6 +321,16 @@ internal fun ConnectorsHubSheet(
                 HorizontalDivider(color = Color(0xFF3C3C3C))
                 Spacer(Modifier.height(8.dp))
 
+                // Firebase / Supabase / n8n — moved here 2026-11-01. They were a separate
+                // "Project services" page in the gear menu; a service you configure is a
+                // connector, and having one kind of service live outside the Hub is what made
+                // the Hub feel incomplete. Credentials stay on the device (see LocalConnectorStore).
+                LocalConnectorsSection(
+                    menuText = MenuText,
+                    onToast = { toast = it },
+                )
+                Spacer(Modifier.height(8.dp))
+
                 // GitHub — HUB-GITHUB-PROPAGATION (2026-09-10): was a dead pointer row
                 // that only dismissed the sheet. Now shows the LIVE SecureTokenStore state
                 // (same keys Settings > Accounts writes and Source Control reads), offers
