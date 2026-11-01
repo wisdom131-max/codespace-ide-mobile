@@ -90,21 +90,48 @@ object AgentConnectorManager {
 
         val result = ConnectorsApiClient.fetchStatus(token, context)
         return result.fold(
-            onSuccess = { statuses ->
-                val sb = StringBuilder("Available connectors:\n")
-                for (s in statuses) {
-                    val status = when {
-                        s.connected -> "[CONNECTED]"
-                        !s.configured -> "[not set up by owner yet]"
-                        else -> "[available]"
-                    }
-                    sb.append("  $status ${s.name} (${s.id})\n")
-                }
-                sb.append("\nGitHub: use Settings > Accounts > Sign in with GitHub (separate system).")
-                sb.toString().trim()
-            },
+            onSuccess = { statuses -> formatStatuses(statuses) },
             onFailure = { e -> "Couldn't reach the connectors backend: ${e.message}" },
         )
+    }
+
+    /**
+     * The inventory the model reads, and the place its "no gitlab tools" conclusion came from.
+     *
+     * A CONNECTED service used to be printed as a bare "[CONNECTED] GitLab (gitlab)" line, which
+     * says a credential exists and says nothing about what can be done with it - so the agent
+     * searched for a gitlab-specific tool, found none (there is no such tool by design), and
+     * reported that it could not create the repo. Every connected service now prints the calls it
+     * answers to, with the tool name in front, and the footer spells out the rule.
+     *
+     * Split out of listConnectors so a unit test can pin the output without a network call.
+     */
+    fun formatStatuses(statuses: List<ConnectorsApiClient.ConnectorStatus>): String {
+        val sb = StringBuilder("Available connectors:\n")
+        var connected = 0
+        for (s in statuses) {
+            val status = when {
+                s.connected -> "[CONNECTED]"
+                !s.configured -> "[not set up by owner yet]"
+                else -> "[available]"
+            }
+            sb.append("  ").append(status).append(' ').append(s.name).append(" (").append(s.id).append(")\n")
+            if (s.connected) {
+                connected++
+                // Only for a connected service: showing recipes for something not signed in
+                // would invite a call that can only fail.
+                sb.append(ConnectorRecipes.usageLines(s.id))
+            }
+        }
+        if (connected == 0) {
+            sb.append("  Nothing is connected yet. Use request_connector to show the user a connect card.\n")
+        }
+        sb.append("\nAct on a CONNECTED service with use_connector(service, method, endpoint, body).")
+        sb.append("\nThe endpoint is relative to that provider's API base. There are no per-provider")
+        sb.append("\ntools: creating a GitLab repository is use_connector(service \"gitlab\", method \"POST\",")
+        sb.append("\nendpoint \"/projects\", body {\"name\":\"my-repo\"}), not a gitlab_* tool.")
+        sb.append("\nGitHub: use Settings > Accounts > Sign in with GitHub (separate device-flow system).")
+        return sb.toString().trim()
     }
 
     /**

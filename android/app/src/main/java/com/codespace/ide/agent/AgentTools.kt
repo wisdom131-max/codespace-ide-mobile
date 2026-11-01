@@ -105,8 +105,12 @@ P1. plan           — Stage a structured plan / todo list for user review and
     <tool>{"name":"list_connectors","arguments":{}}</tool>
 21. connect_service — Initiate OAuth flow (returns auth URL)
     <tool>{"name":"connect_service","arguments":{"service":"gmail","scopes":["read","send"]}}</tool>
-22. use_connector   — Call API with connector token
+22. use_connector   — Call ANY connected service's own REST API with its stored token. This is the
+    only tool there is for connectors: there are no per-service tools, so "no gitlab tool" is not a
+    blocker — use this. endpoint is relative to the provider's API base; call list_connectors first
+    to see which services are connected and which endpoints each one answers.
     <tool>{"name":"use_connector","arguments":{"service":"gmail","method":"GET","endpoint":"/messages"}}</tool>
+    <tool>{"name":"use_connector","arguments":{"service":"gitlab","method":"POST","endpoint":"/projects","body":"{\"name\":\"my-repo\",\"visibility\":\"private\"}"}}</tool>
 23. request_connector — Show the user an inline "Connect <Service>" card in the chat when they need a service that isn't connected yet (works for all connector types)
     <tool>{"name":"request_connector","arguments":{"service":"sentry"}}</tool>
 
