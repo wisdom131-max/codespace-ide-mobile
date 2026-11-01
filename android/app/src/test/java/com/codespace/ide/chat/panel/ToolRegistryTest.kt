@@ -28,7 +28,7 @@ class ToolRegistryTest {
         "copilot_getNotebookSummary", "read_notebook_cell_output",
         "test_search", "test_failure", "get_task_output", "get_project_setup_info",
         "get_search_view_results", "view_image", "tool_search",
-        "terminal_selection", "vscode_askQuestions", "web_search",
+        "terminal_selection", "vncode_askQuestions", "web_search",
     )
 
     // --- registration parity -------------------------------------------------------
@@ -99,7 +99,7 @@ class ToolRegistryTest {
         // Agent is Edit plus the side-effecting tools, and secrets stay out of every mode.
         assertTrue("Agent must contain everything Edit offers", agent.containsAll(edit))
         assertTrue(agent.containsAll(listOf("run_command", "run_in_terminal", "web_fetch", "save_memory", "install_package", "run_notebook_cell", "get_terminal_output", "terminal_last_command", "runTests", "run_task", "create_and_run_task", "github_repo",
-            "vscode_get_confirmation", "vscode_get_confirmation_with_options")))
+            "vncode_get_confirmation", "vncode_get_confirmation_with_options")))
         // 2026-10-31: the 2026-10-30 parking decision was lifted by the owner, so these are
         // offered in Agent only - the one mode where every call passes the approval gate.
         assertTrue(agent.containsAll(listOf(
@@ -209,9 +209,9 @@ class ToolRegistryTest {
             "upload_file" to (listOf("path") to emptyList<String>()),
             "plan" to (listOf("steps") to listOf("title")),
             "terminal_selection" to (emptyList<String>() to emptyList<String>()),
-            "vscode_askQuestions" to (listOf("question") to listOf("options", "allowFreeText")),
-            "vscode_get_confirmation" to (listOf("message") to emptyList<String>()),
-            "vscode_get_confirmation_with_options" to (listOf("message") to listOf("options")),
+            "vncode_askQuestions" to (listOf("question") to listOf("options", "allowFreeText")),
+            "vncode_get_confirmation" to (listOf("message") to emptyList<String>()),
+            "vncode_get_confirmation_with_options" to (listOf("message") to listOf("options")),
             "replace_string_in_file" to (listOf("path", "old_string", "new_string") to listOf("replace_all")),
             "get_errors" to (emptyList<String>() to listOf("path")),
             "create_directory" to (listOf("path") to emptyList<String>()),

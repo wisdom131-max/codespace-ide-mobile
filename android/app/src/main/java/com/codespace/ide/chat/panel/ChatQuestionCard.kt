@@ -28,7 +28,7 @@ import com.codespace.ide.agent.AgentQuestionGate
 import com.codespace.ide.chat.ui.ChatTokens
 
 /**
- * vscode_askQuestions / vscode_get_confirmation card.
+ * vncode_askQuestions / vncode_get_confirmation card.
  *
  * The model is SUSPENDED while this is on screen: whatever the user taps here is what the tool
  * returns. Same visual family as ChatApprovalCard (rounded panel, tight padding, one action row)

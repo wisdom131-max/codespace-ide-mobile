@@ -255,41 +255,63 @@ class ChatSession(
                     (sizeBytes / (1024L * 1024L)) + " MB). The on-device payload budget would reject it anyway."))
             return
         }
-        if (mimeType.isBlank()) {
-            appendRow(ChatRowModel.InfoNote(
-                "Attachment refused: could not read this file or determine its type."))
-            return
-        }
+        // Android's resolver returns null for plenty of ordinary files (.md, .kt, .json from
+        // some providers), so a blank type is not an unreadable file - it is an unanswered
+        // question. The name answers it, and it is already what the chip shows the user.
+        val mime = mimeType.ifBlank { mimeForName(name) }
         // WP9 redaction gate: credential-shaped files never leave the device.
         if (looksLikeCredentialFile(name)) {
             appendRow(ChatRowModel.InfoNote(
                 "Attachment refused: '" + name + "' looks like a credential file. Keys and secrets are never sent to a provider."))
             return
         }
-        val isTextKind = text != null || mimeType.startsWith("text/") ||
-            mimeType == "application/json" || mimeType == "application/xml" ||
-            mimeType == "application/yaml" || mimeType == "application/x-yaml"
-        if (!isTextKind && mimeType != "application/pdf" && !mimeType.startsWith("image/")) {
+        val isTextKind = text != null || mime.startsWith("text/") ||
+            mime == "application/json" || mime == "application/xml" ||
+            mime == "application/yaml" || mime == "application/x-yaml"
+        if (!isTextKind && mime != "application/pdf" && !mime.startsWith("image/")) {
             appendRow(ChatRowModel.InfoNote(
-                "Attachment refused: images, PDF and text files can be attached (got " + mimeType + ")."))
+                "Attachment refused: images, PDF and text files can be attached (got " + mime + ")."))
             return
         }
         // Capability gate applies to IMAGES/PDF only - every text model takes text.
         if (!isTextKind) {
             val sel = selection.value
             val cap = resolveCapability(sel)
-            val unsupported = (mimeType.startsWith("image/") && cap != null && !cap.supportsImages) ||
-                (mimeType == "application/pdf" && cap != null && !cap.supportsPdf)
+            val unsupported = (mime.startsWith("image/") && cap != null && !cap.supportsImages) ||
+                (mime == "application/pdf" && cap != null && !cap.supportsPdf)
             if (unsupported) {
                 appendRow(ChatRowModel.InfoNote(
                     "Attachment refused: " + sel.modelId + " (capability estimate) does not take " +
-                        (if (mimeType == "application/pdf") "PDF" else "image") + " attachments."))
+                        (if (mime == "application/pdf") "PDF" else "image") + " attachments."))
                 return
             }
         }
         val stagedText = if (isTextKind) (text ?: "") else null
         pendingAttachments.value = pendingAttachments.value +
-            PanelAttachment(name, mimeType, if (stagedText != null) "" else base64, sizeBytes, stagedText)
+            PanelAttachment(name, mime, if (stagedText != null) "" else base64, sizeBytes, stagedText)
+    }
+
+    companion object {
+    /** Extension to MIME, used when the picker could not tell us. */
+        internal fun mimeForName(name: String): String {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "pdf" -> "application/pdf"
+            "json" -> "application/json"
+            "xml" -> "application/xml"
+            "yml", "yaml" -> "application/yaml"
+            "md", "markdown" -> "text/markdown"
+            "txt", "log", "csv", "ini", "toml", "properties",
+            "kt", "kts", "java", "py", "js", "ts", "tsx", "jsx", "c", "h", "cpp",
+            "hpp", "cs", "go", "rs", "rb", "php", "swift", "sh", "bash", "zsh",
+            "html", "css", "scss", "sql", "gradle", "patch", "diff" -> "text/plain"
+            else -> "application/octet-stream"
+        }
+    }
     }
 
     fun removePending(name: String) {

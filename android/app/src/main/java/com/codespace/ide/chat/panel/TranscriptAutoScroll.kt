@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -139,18 +140,17 @@ internal fun TranscriptAutoScroll(scroll: ScrollState, growthKey: Int, follow: F
  */
 @Composable
 internal fun JumpToLatestButton(colors: ChatColors, onClick: () -> Unit) {
+    // One circular affordance that floats over the transcript. The previous version was a
+    // full-width row: it permanently cost the conversation ~28dp of height and read as a
+    // divider rather than a control, which is exactly what the owner objected to.
     Box(
-        Modifier.fillMaxWidth().padding(vertical = ChatTokens.NAV_ROW_PAD_VERTICAL.dp),
+        Modifier
+            .size(32.dp)
+            .clip(RoundedCornerShape(50))
+            .background(colors.surfaceAlt)
+            .clickable(onClickLabel = "Jump to latest message", onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
-                .background(colors.surfaceAlt)
-                .clickable(onClickLabel = "Jump to latest message", onClick = onClick)
-                .padding(horizontal = 10.dp, vertical = 3.dp),
-        ) {
-            Text("\u2193 Latest", color = colors.accent, fontSize = ChatTokens.FONT_MICRO.sp)
-        }
+        Text("\u2193", color = colors.accent, fontSize = 15.sp)
     }
 }

@@ -163,8 +163,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         "runTests", "test_search", "test_failure", "create_and_run_task", "run_task",
         "get_task_output", "get_project_setup_info",
         "get_search_view_results", "github_repo", "view_image", "tool_search",
-        "terminal_selection", "vscode_askQuestions", "vscode_get_confirmation",
-        "vscode_get_confirmation_with_options",
+        "terminal_selection", "vncode_askQuestions", "vncode_get_confirmation",
+        "vncode_get_confirmation_with_options",
         "replace_string_in_file", "get_errors", "create_directory", "get_changed_files",
         "list_files", "search_files",
         "git_commit_push", "git_pull_rebase", "git_branch", "git_status", "git_diff",
@@ -241,9 +241,9 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "view_image" -> viewImage(args.getString("path"), context)
                 "tool_search" -> toolSearch(args.getString("query"))
                 "terminal_selection" -> terminalSelection()
-                "vscode_askQuestions" -> askQuestions(args)
-                "vscode_get_confirmation" -> getConfirmation(args.optString("message"), emptyList())
-                "vscode_get_confirmation_with_options" -> getConfirmation(
+                "vncode_askQuestions" -> askQuestions(args)
+                "vncode_get_confirmation" -> getConfirmation(args.optString("message"), emptyList())
+                "vncode_get_confirmation_with_options" -> getConfirmation(
                     args.optString("message"),
                     args.optJSONArray("options")?.let { arr ->
                         (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
@@ -536,12 +536,12 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     /**
-     * vscode_askQuestions. SUSPENDS until the user answers, because that is the only way the
+     * vncode_askQuestions. SUSPENDS until the user answers, because that is the only way the
      * model gets a real answer instead of being handed the word "asked" and inventing the rest.
      */
     private suspend fun askQuestions(args: JSONObject): String {
         val question = args.optString("question").trim()
-        if (question.isEmpty()) return "vscode_askQuestions needs a question."
+        if (question.isEmpty()) return "vncode_askQuestions needs a question."
         val options = args.optJSONArray("options")?.let { arr ->
             (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
         } ?: emptyList()
@@ -565,7 +565,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     /**
-     * vscode_get_confirmation. The same suspend-until-answered gate, phrased as a yes/no, so a
+     * vncode_get_confirmation. The same suspend-until-answered gate, phrased as a yes/no, so a
      * risky action waits for a human instead of relying on the model's judgement.
      */
     private suspend fun getConfirmation(message: String, options: List<String>): String {

@@ -9,7 +9,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * The blocking half of vscode_askQuestions and vscode_get_confirmation.
+ * The blocking half of vncode_askQuestions and vncode_get_confirmation.
  *
  * Both VS Code tools SUSPEND: the model gets the user's actual answer as the tool result. A tool
  * here returns a String the moment it returns, so without a gate the model would be handed

@@ -262,8 +262,9 @@ private fun ChatBody(
                 contentAlignment = androidx.compose.ui.Alignment.Center,
             ) { ChatEmptyWelcome(c) }
         } else
+        androidx.compose.foundation.layout.Box(Modifier.weight(1f).fillMaxWidth()) {
         Column(
-            Modifier.weight(1f)
+            Modifier.fillMaxSize()
                 .verticalScroll(scroll)
                 .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp)
         ) {
@@ -298,9 +299,16 @@ private fun ChatBody(
                 )
             }
         }
-        // Item 3: the way back, only while the user is scrolled away from the newest message.
-        if (!follow.following) {
-            JumpToLatestButton(c) { jumpScope.launch { follow.jumpToLatest(scroll) } }
+            // Item 3: the way back, overlaid so it never consumes a row of the conversation.
+            if (!follow.following) {
+                androidx.compose.foundation.layout.Box(
+                    Modifier
+                        .align(androidx.compose.ui.Alignment.BottomEnd)
+                        .padding(end = 12.dp, bottom = 10.dp),
+                ) {
+                    JumpToLatestButton(c) { jumpScope.launch { follow.jumpToLatest(scroll) } }
+                }
+            }
         }
         // Section 7 — ORDER MATTERS and is deliberate: the approval card (work awaiting
         // authorization) sits ABOVE the Files Changed row (work already done). They are never
@@ -367,7 +375,16 @@ private fun ChatBody(
             onAddContext = { showPicker = true },
             onOpenModel = { showSelect = true },
             onTools = { showKeys = true },
-            onSend = { if (input.isNotBlank()) { session.send(input); input = "" } },
+            onSend = {
+                if (input.isNotBlank()) {
+                    // Sending is an explicit request to see the answer, so this re-pins the
+                    // view even when the user had scrolled up to read history.
+                    follow.recordUserFollow(true)
+                    session.send(input)
+                    input = ""
+                    jumpScope.launch { follow.jumpToLatest(scroll) }
+                }
+            },
             onStop = { session.cancel() },
             // The visible "Local Approvals: Auto-all" row is GONE at the owner's request
             // (spec section 4). Only the LABEL went: ChatPermissionStore is untouched and
