@@ -112,6 +112,24 @@ session and still need their commit id pasted here.
 - Connector audit of the 22 requested services: which exist, what they ask for, what is broken.
 - Terminal link tap: extraction, file probe, staged diagnostic modes, async resolution.
 
+## Requested, not yet delivered (exact asks)
+
+| Ask | State |
+|---|---|
+| Agent scheduler's own task list panel | No panel exists. TaskRunnerPanel covers tasks.json only. |
+| Task runner: VS Code `tasks.json` parity *and* compare against VS Code behaviour | Runner, spec and panel exist; the behavioural comparison has not been done. |
+| MCP: wire exists, "verify end to end, do not rebuild" | `mcp_` dispatch exists in AgentTools; no verification pass recorded. |
+| Undo boundaries (item 19): prune on delete, shared paths to the open session, rename continuity | Prune ships (AgentWriteJournal.forgetSession). The other two are unverified. |
+| Preview scroll sync in both directions | Editor to preview ships; preview to editor does not. |
+| Full TeX maths | MathML subset only; macros outside it render as their names. |
+| Editor P1-P6: registry, Open With, binary banner, 2 MB truncation + Load full file, markdown preview via registry, third-party viewers | Not started. |
+| Source Control: initialize-repository offer, generate-commit-message from chat | Not started. |
+| Connectors: Wave 0 request shaping (Notion version header, Jira cloudId), then the 11 missing services | Plan written, nothing shipped. |
+| Terminal link tap: diagnostic mode switch (Off / Log / Resolve / Full), async, fsync breadcrumbs | Extractor and probe ship; the mode switch needs verification. |
+| Chat: @participants and /slash autocomplete, #selection / #problems / terminal-output attach kinds | Not started. |
+| Two-repo split: proot work in ubuntu-proot-test only | Outstanding; proot signal-31 work unfinished. |
+| Device round covering everything since the U-round | Not done. |
+
 ## Still open (continuity — nothing above is claimed as done unless listed here)
 
 - Preview: reverse scroll sync (preview → editor) is not implemented; maths is a MathML subset,
