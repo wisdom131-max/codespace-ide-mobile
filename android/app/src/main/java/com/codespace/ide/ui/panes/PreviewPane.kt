@@ -373,6 +373,28 @@ fun PreviewPane(
                             )
                         },
                 )
+                // Leave the app: the page here, in Chrome, with Chrome's logins and downloads.
+                Text(
+                    text = "\u2197",
+                    fontSize = 12.sp,
+                    color = TextMuted,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable {
+                            val url = webViewRef?.url ?: sharedState.browserUrl
+                            if (url.isNotBlank()) {
+                                try {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(url),
+                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                } catch (_: Exception) {
+                                }
+                            }
+                        },
+                )
                 // Lock icon
                 Icon(
                     Icons.Default.Lock,
@@ -518,7 +540,10 @@ fun PreviewPane(
             // means Android manages system bar insets normally and they are never hidden.
             // The previous fix incorrectly hid the status bar via a DisposableEffect, which
             // made the blank-status-bar bug permanent while in fullscreen instead of fixing it.
-            properties = DialogProperties(usePlatformDefaultWidth = false),
+            // Full screen, edge to edge: the dialog itself must stop applying system-bar
+            // insets, and the header row takes the top inset instead, so the page reaches
+            // the bottom of the phone rather than sitting above a dead band.
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) {
             Column(
                 Modifier
@@ -528,9 +553,10 @@ fun PreviewPane(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 44.dp)
+                        .height(38.dp)
+                        .statusBarsPadding()
                         .background(Surface)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     // P34-BROWSER: Back button — visible in fullscreen so user can
@@ -576,7 +602,7 @@ fun PreviewPane(
                         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                             Text(
                                 sharedState.activeMode.label,
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 color = TextPrimary,
                                 fontWeight = FontWeight.SemiBold,
                             )

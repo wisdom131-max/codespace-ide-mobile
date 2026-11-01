@@ -810,7 +810,22 @@ fun ProjectShellScreen(
     // to Preview doesn't reset the active sub-tab or the connected Browser URL.
     val sharedPreviewState = com.codespace.ide.ui.panes.rememberPreviewState()
 
+
     val activeBottomTabMs = remember(projectId, restoredState) { mutableStateOf(restoredState?.bottomTab?.let { BottomTab.valueOf(it) } ?: BottomTab.TERMINAL) }; var activeBottomTab by activeBottomTabMs
+
+    // Localhost links from the terminal or the Ports panel open in the panel's browser mode,
+    // which is why this effect sits after the tab state rather than beside the preview state.
+    val pendingPreviewUrl = com.codespace.ide.preview.PreviewOpenUrl.pending
+    LaunchedEffect(pendingPreviewUrl) {
+        if (!pendingPreviewUrl.isNullOrBlank()) {
+            sharedPreviewState.browserUrl = pendingPreviewUrl
+            sharedPreviewState.browserInput = pendingPreviewUrl
+            sharedPreviewState.activeMode = com.codespace.ide.ui.panes.PreviewMode.BROWSER
+            showBottomPanel = true
+            activeBottomTab = BottomTab.PREVIEW
+            com.codespace.ide.preview.PreviewOpenUrl.pending = null
+        }
+    }
     var totalWidth         by remember { mutableFloatStateOf(1080f) }
     // P15-H: two-column layout on wide landscape screens (tablets / foldables)
     // NOTE: totalWidth starts at 1080f and gets updated via onGloballyPositioned.

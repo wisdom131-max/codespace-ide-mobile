@@ -398,9 +398,9 @@ internal class SimpleTerminalViewClient : TerminalViewClient {
                         )
                     } catch (_: Throwable) { null }
                     if (urlMatch != null) {
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                            Uri.parse(urlMatch.value)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        v.context.startActivity(intent)
+                        // A dev-server URL is only meaningful here; sending it to Chrome
+                        // showed a page the browser could not reach half the time.
+                        com.codespace.ide.preview.PreviewOpenUrl.open(v.context, urlMatch.value)
                         return
                     }
                     // A3: plain-text file-link detection - build errors print
@@ -2665,11 +2665,7 @@ internal fun TerminalPane(
                                 androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
                             .clickable {
                                 try {
-                                    val intent = android.content.Intent(
-                                        android.content.Intent.ACTION_VIEW,
-                                        android.net.Uri.parse(url)
-                                    )
-                                    context.startActivity(intent)
+                                    com.codespace.ide.preview.PreviewOpenUrl.open(context, url)
                                 } catch (_: Exception) {
                                     android.widget.Toast.makeText(
                                         context, "Cannot open: $url", android.widget.Toast.LENGTH_SHORT
