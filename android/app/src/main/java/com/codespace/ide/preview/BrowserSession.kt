@@ -82,13 +82,21 @@ object BrowserSession {
 
     fun userAgent(context: Context, desktop: Boolean): String {
         val real = WebSettings.getDefaultUserAgent(context)
-        return if (!desktop) {
-            real.replace("; wv", "")
-        } else {
-            val major = Regex("Chrome/(\\d+)").find(real)?.groupValues?.getOrNull(1) ?: "141"
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/$major.0.0.0 Safari/537.36"
-        }
+        return if (desktop) desktopUserAgentFrom(real) else mobileUserAgentFrom(real)
+    }
+
+    /**
+     * The engine's own UA with the "wv" token removed: same Chrome major version, no WebView
+     * branding. Coherence is the whole point - a UA that disagrees with the UA-CH metadata and
+     * the JS APIs is what bot protection rejects.
+     */
+    fun mobileUserAgentFrom(real: String): String = real.replace("; wv", "")
+
+    /** Desktop UA that still claims the engine's real version rather than an invented one. */
+    fun desktopUserAgentFrom(real: String): String {
+        val major = Regex("Chrome/(\\d+)").find(real)?.groupValues?.getOrNull(1) ?: "141"
+        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/$major.0.0.0 Safari/537.36"
     }
 
     @SuppressLint("SetJavaScriptEnabled")

@@ -23,11 +23,19 @@ object PreviewOpenUrl {
 
     /** True for loopback and *.localhost, which can only mean "a server on this device". */
     fun isLocalhost(url: String): Boolean {
-        val host = try {
+        // A dev server is often printed without a scheme ("localhost:5173"), and a bare
+        // host:port parses with that host as the SCHEME, so retry with https:// as well.
+        val host = (try {
             java.net.URI(url).host
         } catch (_: Exception) {
             null
-        } ?: return false
+        }) ?: (try {
+            // "127.0.0.1:8080" is not even a parseable URI (a scheme cannot start with a
+            // digit), so the retry has to be attempted after a failure, not just after null.
+            java.net.URI("https://" + url).host
+        } catch (_: Exception) {
+            null
+        }) ?: return false
         val h = host.lowercase()
         return h == "localhost" || h == "127.0.0.1" || h == "0.0.0.0" ||
             h == "::1" || h == "[::1]" || h.endsWith(".localhost")
