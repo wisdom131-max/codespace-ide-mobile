@@ -698,7 +698,7 @@ private fun PreviewBody(
             val svgServedUrl = if (projectRootPath != null && activeFilePath.endsWith(".svg") &&
                 com.codespace.ide.preview.LivePreviewServer.isRunning()
             ) com.codespace.ide.preview.LivePreviewServer.getPreviewUrl(activeFilePath) else null
-            SvgPreview(content, onWebView = onWebView, servedUrl = svgServedUrl)
+            SvgViewer(content = content, fileName = activeFilePath, onWebView = onWebView, servedBaseUrl = svgServedUrl)
         }
         PreviewMode.BROWSER   -> BrowserPreview(browserUrl, onWebView = onWebView, onTitle = onTitle, onLoading = onLoading, onCanGoBack = onCanGoBack, sharedWebView = sharedWebView)
     }
@@ -1086,64 +1086,6 @@ private fun MarkdownPreview(
 // ─────────────────────────────────────────────────────────────────────────────
 // SVG Preview
 // ─────────────────────────────────────────────────────────────────────────────
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun SvgPreview(
-    content: String,
-    onWebView: (WebView) -> Unit,
-    servedUrl: String? = null,
-) {
-    // P-RENDER: No max-width/max-height constraints so SVG can be zoomed freely.
-    // overflow:auto allows panning when zoomed in.
-    val html = """
-        <!DOCTYPE html><html><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.3, maximum-scale=8.0, user-scalable=yes">
-        <style>body{background:#1e1e1e;margin:0;padding:8px;overflow:auto;}
-               /* Transparency is invisible on a dark background without a checker. */
-               body{background-image:linear-gradient(45deg,#2a2a2a 25%,transparent 25%),
-                     linear-gradient(-45deg,#2a2a2a 25%,transparent 25%),
-                     linear-gradient(45deg,transparent 75%,#2a2a2a 75%),
-                     linear-gradient(-45deg,transparent 75%,#2a2a2a 75%);
-                     background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;}
-               svg{display:block;margin:0 auto;max-width:100%;height:auto;}</style>
-        </head><body>$content</body></html>
-    """.trimIndent()
-
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = false
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
-                // P-ZOOM: Enable pinch-to-zoom for SVG
-                settings.setSupportZoom(true)
-                settings.builtInZoomControls = true
-                settings.displayZoomControls = false
-                onWebView(this)
-            }
-        },
-        update = { wv ->
-            // P-RENDER: Use content-based key, NOT html.take(64) — the first 64 chars
-            // are always the HTML template header, so the key never changed when SVG
-            // content arrived from produceState, and the WebView never reloaded.
-            val contentKey = servedUrl ?: content.take(128)
-            if (wv.tag as? String != contentKey) {
-                wv.tag = contentKey
-                if (servedUrl != null) {
-                    // P-A: real origin, so an SVG that references an external stylesheet,
-                    // a font or an image actually renders those instead of dropping them.
-                    wv.loadUrl(servedUrl)
-                } else {
-                    wv.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
-                }
-            }
-            onWebView(wv)
-        },
-        onRelease = { wv -> (wv.parent as? android.view.ViewGroup)?.removeView(wv) },
-        modifier = Modifier.fillMaxSize(),
-    )
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Browser Preview — points at localhost or any URL (e.g. running dev server)
 // ─────────────────────────────────────────────────────────────────────────────
