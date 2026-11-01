@@ -5033,7 +5033,11 @@ private fun PssEditorColumn(
                     fontSize           = editorFontSize,
                     onOpenCommandPalette = onShowCommandPalette,
                     onInsertRequest    = keyInsertDispatcher,
-                    onCursorChange     = { line, col -> cursorLine = line; cursorCol = col },
+                    onCursorChange     = { line, col ->
+                        cursorLine = line; cursorCol = col
+                        // Preview scroll sync reads this; harmless when no preview is open.
+                        com.codespace.ide.preview.PreviewScrollSync.onCursor(activeEditorTab ?: "", line)
+                    },
                     wordWrap           = wordWrap,
                     showInlayHints     = showInlayHints,
                     toggles            = FeatureToggleStore.toEditorFeatureToggles(),

@@ -664,6 +664,11 @@ private fun PreviewBody(
                 modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
             )
         }
+        // Custom stylesheet editing: Markdown only, and in the pane's own overlay row so no
+        // existing control moves.
+        if (activeMode == PreviewMode.MARKDOWN) {
+            PreviewThemeButton(modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp))
+        }
     }
 }
 
@@ -903,8 +908,32 @@ private fun MarkdownPreview(
     onOpenLine: (String, Int) -> Unit = { _, _ -> },
 ) {
     // P-RENDER: Use local MarkdownRenderer instead of CDN marked.js — works offline.
-    val html = remember(content) {
-        com.codespace.ide.editor.MarkdownRenderer.render(content)
+    val mdContext = androidx.compose.ui.platform.LocalContext.current
+    var mdWebView by remember { mutableStateOf<WebView?>(null) }
+    LaunchedEffect(mdContext) { com.codespace.ide.preview.PreviewTheme.ensureLoaded(mdContext) }
+    val customCss = com.codespace.ide.preview.PreviewTheme.css
+    val html = remember(content, customCss) {
+        // mermaid is only inlined when a diagram is actually present: it is ~1 MB.
+        val diagramScript = if (com.codespace.ide.preview.MermaidAssets.hasMermaidFence(content)) {
+            com.codespace.ide.preview.MermaidAssets.script(mdContext)
+        } else null
+        com.codespace.ide.editor.MarkdownRenderer.render(
+            content,
+            customCss = customCss,
+            mermaidJs = diagramScript,
+        )
+    }
+
+    // Editor → preview: VS Code calls this scrollPreviewWithEditor. The caret line becomes a
+    // scroll ratio, so the two panes track each other without a block-to-line map.
+    val syncLine = com.codespace.ide.preview.PreviewScrollSync.line
+    val syncPath = com.codespace.ide.preview.PreviewScrollSync.filePath
+    val totalLines = remember(content) { content.lines().size.coerceAtLeast(1) }
+    LaunchedEffect(syncLine, syncPath, activeFilePath) {
+        if (syncPath != null && syncPath == activeFilePath) {
+            val ratio = com.codespace.ide.preview.PreviewScrollSync.ratio(syncLine, totalLines)
+            mdWebView?.evaluateJavascript("window.vncodeScrollToRatio && window.vncodeScrollToRatio($ratio)", null)
+        }
     }
 
     AndroidView(
@@ -968,10 +997,12 @@ private fun MarkdownPreview(
                         return true
                     }
                 }
+                mdWebView = this
                 onWebView(this)
             }
         },
         update = { wv ->
+            mdWebView = wv
             // P-RENDER: Use content-based key — html.take(64) was always the template
             // header, so the WebView never reloaded when markdown content arrived.
             // MD-IMG: base = file:// URL of the file's directory so RELATIVE image

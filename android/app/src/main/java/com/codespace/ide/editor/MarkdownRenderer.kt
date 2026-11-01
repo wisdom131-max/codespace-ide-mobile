@@ -10,7 +10,42 @@ import java.net.URLEncoder
  */
 object MarkdownRenderer {
 
-    fun render(markdown: String): String {
+    fun render(markdown: String, customCss: String = "", mermaidJs: String? = null): String {
+        var html = renderBody(markdown)
+        val extras = StringBuilder()
+        val cleanCss = com.codespace.ide.preview.PreviewTheme.sanitize(customCss)
+        if (cleanCss.isNotBlank()) {
+            extras.append("<style>\n").append(cleanCss).append("\n</style>\n")
+        }
+        if (mermaidJs != null) {
+            extras.append("<script>\n").append(mermaidJs).append("\n</script>\n")
+            extras.append(
+                "<script>try{mermaid.initialize({startOnLoad:true,theme:'dark'," +
+                    "securityLevel:'strict'});}catch(e){console.error('[mermaid] '+((e&&e.message)||e));}</script>\n"
+            )
+        }
+        extras.append(SCROLL_HOOK_JS)
+        html = html.replace("</body>", extras.toString() + "</body>")
+        return html
+    }
+
+    /** Editor → preview scroll hook. A ratio needs no block map, so it cannot go stale. */
+    private val SCROLL_HOOK_JS: String = """
+<script>
+window.vncodeScrollToRatio = function (r) {
+  try {
+    var doc = document.documentElement;
+    var max = doc.scrollHeight - window.innerHeight;
+    if (max <= 0) return;
+    var target = Math.max(0, Math.min(1, r)) * max;
+    if (Math.abs(window.scrollY - target) < 4) return;
+    window.scrollTo(0, target);
+  } catch (e) {}
+};
+</script>
+"""
+
+    private fun renderBody(markdown: String): String {
         val body = parseMarkdown(markdown)
         return """<!DOCTYPE html>
 <html>
@@ -115,6 +150,8 @@ th {
 .hl-comment { color: #6a9955; font-style: italic; }
 .hl-number { color: #b5cea8; }
 .hl-function { color: #dcdcaa; }
+/* Diagrams */
+.mermaid { padding: 8px 0; text-align: center; overflow-x: auto; }
 /* Math */
 .math-display { overflow-x: auto; padding: 6px 0; }
 math { font-size: 1.05em; }
@@ -224,6 +261,14 @@ window.addEventListener('unhandledrejection', function (e) {
                 }
                 i++  // skip closing ```
                 val raw = code.toString().trimEnd()
+                if (lang.equals("mermaid", ignoreCase = true)) {
+                    // Rendered by the bundled mermaid build (see MermaidAssets); escaped so
+                    // the diagram source cannot inject markup into the host document.
+                    html.append("<div class=\"mermaid\" data-line=\"${i + 1}\">")
+                    html.append(escapeHtml(raw))
+                    html.append("</div>\n")
+                    continue
+                }
                 html.append("<div class=\"code-block\" data-line=\"${i + 1}\">")
                 html.append("<button class=\"copy-btn\" type=\"button\">Copy</button>")
                 html.append("<pre><code")
