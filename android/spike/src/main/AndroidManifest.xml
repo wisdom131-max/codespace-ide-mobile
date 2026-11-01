@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- A browser without the network permission is a browser that cannot browse: the old
+         spike never asked for it, so every page failed with ERR_ACCESS_DENIED. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
-        android:label="VN Spike"
+        android:label="VN Browser"
+        android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
             android:name=".SpikeActivity"
