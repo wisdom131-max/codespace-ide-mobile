@@ -134,6 +134,7 @@ session and still need their commit id pasted here.
 | Chat: @participants and /slash autocomplete, #selection / #problems / terminal-output attach kinds | Menus ship (ef8e446 GREEN 41320521740); the #selection / #problems / terminal-attach kinds are still not done. |
 | Inline chat discovery | Chip reachable above the keyboard (6f2e9a2). A true inline chat bar (prompt + accept/reject in the editor) does not exist yet. |
 | Write/edit tool gap | Edit tools now documented and preferred (6f2e9a2). No new edit capability was added; the gap was documentation. |
+| CI minutes: mirrors stopped, proot repo consolidated | The 2,000-minute allowance was being spent by mirror repos running upstream pipelines. Actions disabled on nine `vn-ref-*` mirrors and the dormant `ubuntu-proot-bash-test`; `ubuntu-proot-test` rewritten as one workflow with concurrency cancellation, docs-only pushes ignored, gradle cache (9c993c3, run 41349769309 green, 4.1 min). `codespace-ide-mobile` untouched: it is public, so its runs are free, and its build is the verification pipeline. |
 | Connector discoverability | The agent refused a GitLab repo creation because it looked for a `gitlab_*` tool and there is none by design; `list_connectors` printed a bare `[CONNECTED]` line. Connected services now print their canonical `use_connector` calls (d67dc97), recipes for all 19 hub services live in ConnectorRecipes.kt, and the footer states the no-per-provider-tools rule. |
 | SVG viewer (strong-viewer parity) | Rebuilt as a real viewer (f34a020): toolbar zoom 10-3200%, pinch and drag pan, fit, 1:1, four backgrounds, PNG export, data URI copy, source overlay, parse error with line number, size/node/byte metrics. Old JS-off thumbnail and its dead composable removed. Survey and plan: docs/SVG-VIEWER-PLAN-2026-11-01.md |
 | Status bar branch item | Real branch, guest-aware, refreshes on checkout, tap opens branch picker + create-and-switch (4bf1bfb). |
@@ -151,8 +152,9 @@ session and still need their commit id pasted here.
 - Connectors: the recipe fix makes a CONNECTED service discoverable, but nothing yet proves the
   backend proxy reaches GitLab with a real token (needs one live `POST /projects`); Wave 0 request
   shaping (Notion version header, Jira cloudId) is still open.
-- CI minutes: `codespace-ide-mobile` is a public repo, so its Actions runs are free; the private
-  `vn-ref-rea` runs three workflows per push and is what consumes the 2,000-minute allowance.
+- CI minutes: mirrors are off, so the burn is now near zero until the December 1 reset. Undo for any
+  mirror is `PUT /repos/{owner}/{repo}/actions/permissions {"enabled": true}`. If a mirror is ever
+  needed for a build, re-enable it and run one job by hand rather than leaving upstream CI live.
 - Browser: no device verification of this build yet.
 - Explorer/editor P1-P6: editor registry, Open With, binary banner, 2 MB truncation + Load full
   file, markdown preview via the registry, third-party viewers. Source Control: initialize-repo
