@@ -115,6 +115,10 @@ th {
 .hl-comment { color: #6a9955; font-style: italic; }
 .hl-number { color: #b5cea8; }
 .hl-function { color: #dcdcaa; }
+/* Math */
+.math-display { overflow-x: auto; padding: 6px 0; }
+math { font-size: 1.05em; }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
@@ -141,6 +145,14 @@ document.addEventListener('click', function (e) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(done, fallback);
   } else { fallback(); }
+});
+document.addEventListener('click', function (e) {
+  var a = e.target && e.target.closest ? e.target.closest('a') : null;
+  if (!a) return;
+  var href = a.getAttribute('href') || '';
+  if (href.charAt(0) === '#') return;  // in-page anchor: let the browser jump
+  e.preventDefault();
+  location.href = 'vncode://link/' + encodeURIComponent(href);
 });
 document.addEventListener('dblclick', function (e) {
   var el = e.target;
@@ -181,6 +193,24 @@ window.addEventListener('unhandledrejection', function (e) {
 
         while (i < lines.size) {
             val line = lines[i]
+
+            // Display math: $$ … $$ as its own block.
+            if (line.trim().startsWith("$$") && line.trim().length > 2) {
+                closeList(); closeTable()
+                val tex = StringBuilder(line.trim().removePrefix("$$").removeSuffix("$$"))
+                if (!line.trim().endsWith("$$") || line.trim() == "$$") {
+                    i++
+                    while (i < lines.size && !lines[i].trim().endsWith("$$")) {
+                        tex.append("\n").append(lines[i]); i++
+                    }
+                    if (i < lines.size) tex.append("\n").append(lines[i].trim().removeSuffix("$$"))
+                }
+                html.append("<div class=\"math-display\">")
+                html.append(MarkdownMath.toMathML(tex.toString(), display = true))
+                html.append("</div>\n")
+                i++
+                continue
+            }
 
             // Code block (```)
             if (line.trimStart().startsWith("```")) {
@@ -334,7 +364,23 @@ window.addEventListener('unhandledrejection', function (e) {
     }
 
     private fun inlineFormat(text: String): String {
-        var result = escapeHtml(text)
+        // Inline math is lifted out BEFORE escaping: the TeX parser needs the raw characters,
+        // and escapeHtml would turn < and & inside a formula into entities the parser then
+        // reads as text. Placeholders use control characters because escapeHtml only rewrites
+        // &, < and >, so a token survives the escape pass untouched.
+        // Code spans are protected FIRST: `$HOME` is a shell variable, not a formula, and the
+        // maths pass below would otherwise lift it out of the backticks and render it.
+        val codes = mutableListOf<String>()
+        val codeProtected = Regex("`([^`]+)`").replace(text) { m ->
+            codes.add(m.groupValues[1])
+            "\u0001C${codes.size - 1}\u0002"
+        }
+        val maths = mutableListOf<String>()
+        val withTokens = Regex("\\$(?![\\s$])(.+?)(?<![\\s])\\$").replace(codeProtected) { m ->
+            maths.add(MarkdownMath.toMathML(m.groupValues[1]))
+            "\u0001M${maths.size - 1}\u0002"
+        }
+        var result = escapeHtml(withTokens)
         // Images: ![alt](url)
         result = Regex("!\\[(.+?)\\]\\((.+?)\\)").replace(result) { m ->
             "<img src=\"${encodeUrl(m.groupValues[2])}\" alt=\"${m.groupValues[1]}\">"
@@ -353,6 +399,12 @@ window.addEventListener('unhandledrejection', function (e) {
         result = Regex("~~(.+?)~~").replace(result) { "<del>${it.groupValues[1]}</del>" }
         // Inline code: `code`
         result = Regex("`(.+?)`").replace(result) { "<code>${it.groupValues[1]}</code>" }
+        codes.forEachIndexed { idx, code ->
+            result = result.replace("\u0001C$idx\u0002", "<code>" + escapeHtml(code) + "</code>")
+        }
+        maths.forEachIndexed { idx, math ->
+            result = result.replace("\u0001M$idx\u0002", math)
+        }
         return result
     }
 

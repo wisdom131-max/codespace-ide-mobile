@@ -856,6 +856,40 @@ private fun HtmlPreview(
     )
 }
 
+/**
+ * Route one link tapped in a preview.
+ *
+ * Relative hrefs are resolved against the directory of the document being previewed, which is
+ * the same rule the renderer used to resolve images: `../docs/a.md` from `docs/guide/b.md` lands
+ * two directories up, not in the process working directory. A resolved file opens in the editor
+ * at line 1; anything with a web scheme goes to the platform browser, because a preview pane
+ * that navigates to a website is no longer a preview.
+ */
+private fun resolvePreviewLink(
+    href: String,
+    activeFilePath: String,
+    context: android.content.Context?,
+    onOpenLine: (String, Int) -> Unit,
+) {
+    val clean = href.substringBefore('#').substringBefore('?')
+    if (clean.isBlank()) return
+    val lower = clean.lowercase()
+    if (lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("mailto:")) {
+        if (context == null) return
+        try {
+            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(clean)))
+        } catch (_: Exception) {}
+        return
+    }
+    val base = java.io.File(activeFilePath).parentFile ?: return
+    val target = try {
+        java.io.File(base, clean).canonicalFile
+    } catch (_: Exception) {
+        java.io.File(base, clean)
+    }
+    if (target.exists()) onOpenLine(target.absolutePath, 1)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Markdown Preview — uses local MarkdownRenderer (offline, no CDN dependency)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -900,6 +934,11 @@ private fun MarkdownPreview(
                         if (target.startsWith(PREVIEW_LINE_SCHEME)) {
                             val line = target.removePrefix(PREVIEW_LINE_SCHEME).toIntOrNull() ?: 0
                             if (line > 0) onOpenLine(activeFilePath, line)
+                            return true
+                        }
+                        if (target.startsWith(PREVIEW_LINK_SCHEME)) {
+                            val href = android.net.Uri.decode(target.removePrefix(PREVIEW_LINK_SCHEME))
+                            resolvePreviewLink(href, activeFilePath, view?.context, onOpenLine)
                             return true
                         }
                         if (target.startsWith("http://") || target.startsWith("https://")) {
@@ -1465,6 +1504,13 @@ private fun PreviewGuideRow(mode: String, accent: Color, description: String) {
 
 /** Private navigation scheme used by the rendered markdown for "go to source line". */
 private const val PREVIEW_LINE_SCHEME = "vncode://line/"
+
+/**
+ * Links inside a rendered Markdown document come back over a private scheme so the pane never
+ * navigates away from the document it just rendered. A relative link is a repository file and
+ * belongs in the editor; an absolute web link belongs in the browser.
+ */
+private const val PREVIEW_LINK_SCHEME = "vncode://link/"
 
 /** Maps a WebView console message level to the preview console's own levels. */
 private fun consoleLevel(msg: android.webkit.ConsoleMessage?): com.codespace.ide.preview.PreviewConsole.Level =

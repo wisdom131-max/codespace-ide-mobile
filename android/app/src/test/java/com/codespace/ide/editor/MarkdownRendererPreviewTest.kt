@@ -48,4 +48,27 @@ class MarkdownRendererPreviewTest {
         assertTrue(html.contains("unhandledrejection"))
         assertTrue(html.contains("vncode://line/"))
     }
+
+    @Test
+    fun inlineMathRendersAndLeavesCodeSpansAlone() {
+        val html = MarkdownRenderer.render("energy \$E=mc^2\$ and `\$HOME`")
+        assertTrue(html, html.contains("<math"))
+        // \$HOME inside backticks is a shell variable: it must stay a code span.
+        assertTrue(html, html.contains("<code>\$HOME</code>"))
+        assertFalse(html, html.contains("<code><math"))
+    }
+
+    @Test
+    fun displayMathGetsItsOwnBlock() {
+        val html = MarkdownRenderer.render("\$\$\\frac{1}{2}\$\$")
+        assertTrue(html, html.contains("math-display"))
+        assertTrue(html, html.contains("<mfrac>"))
+    }
+
+    @Test
+    fun linksAreRoutedThroughTheHostNotNavigated() {
+        val html = MarkdownRenderer.render("[doc](docs/other.md)")
+        assertTrue(html, html.contains("vncode://link/"))
+        assertTrue(html, html.contains("docs/other.md"))
+    }
 }
