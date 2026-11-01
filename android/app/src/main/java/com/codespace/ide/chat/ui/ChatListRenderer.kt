@@ -40,12 +40,30 @@ object NativeChatListRenderer : ChatListRenderer {
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(ChatTokens.GAP.dp),
         ) {
-            state.rows.forEach { row -> RenderRow(row, state) }
+            state.rows.forEachIndexed { index, row ->
+                RenderRow(row, state, stepsAfter(state.rows, index))
+            }
         }
     }
 
+    /**
+     * The steps that belong to a Thinking row: the tool lines the engine already emits as
+     * InfoNote ("read_file: 42 lines"), which are user-facing summaries, not reasoning.
+     */
+    internal fun stepsAfter(rows: List<ChatRowModel>, index: Int): List<String> {
+        if (rows.getOrNull(index) !is ChatRowModel.Thinking) return emptyList()
+        val out = mutableListOf<String>()
+        var i = index + 1
+        while (i < rows.size) {
+            val r = rows[i]
+            if (r is ChatRowModel.InfoNote) out.add(r.text) else break
+            i++
+        }
+        return out
+    }
+
     @Composable
-    private fun RenderRow(row: ChatRowModel, state: ChatRenderState) {
+    private fun RenderRow(row: ChatRowModel, state: ChatRenderState, steps: List<String> = emptyList()) {
         when (row) {
             is ChatRowModel.User -> UserBubble(row.text)
             // BATCH 7: assistant replies are Markdown. The streaming cursor still rides the
@@ -58,7 +76,7 @@ object NativeChatListRenderer : ChatListRenderer {
                     if (!row.cursorOn) CopyIconRow(row.text)
                 }
             }
-            is ChatRowModel.Thinking -> ThinkingCard(row.seconds)
+            is ChatRowModel.Thinking -> ThinkingCard(row.seconds, steps)
             is ChatRowModel.Failed -> ErrorCard(row.verdict, row.detail, row.canRetry, state.onRetry)
             is ChatRowModel.RateLimited ->
                 RateLimitCard(row.waitSec, row.attempt, row.maxAttempts, state.onRetry)

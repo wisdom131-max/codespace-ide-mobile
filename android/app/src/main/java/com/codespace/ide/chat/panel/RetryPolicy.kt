@@ -28,10 +28,10 @@ import com.codespace.ide.engine.ChatError
 internal object RetryPolicy {
 
     /** Automatic re-attempts allowed per user message (so at most three wire attempts). */
-    const val DEFAULT_MAX_ATTEMPTS = 2
+    const val DEFAULT_MAX_ATTEMPTS = 3
 
     /** A provider wait longer than this is surfaced, not waited: the app must not look hung. */
-    const val MAX_AUTO_WAIT_SEC = 30
+    const val MAX_AUTO_WAIT_SEC = 60
 
     /** Fixed ladder for a 429 with no usable Retry-After. */
     private val FALLBACK_WAITS_SEC = intArrayOf(5, 15)

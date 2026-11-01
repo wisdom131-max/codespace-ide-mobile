@@ -10,10 +10,18 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -107,11 +115,53 @@ fun StreamingText(text: String, cursorOn: Boolean, modifier: Modifier = Modifier
     )
 }
 
-/** "Thinking Ns" while the provider is reasoning before first output. */
+/**
+ * "Thought for Ns" plus a chevron. VS Code renders reasoning as a collapsible disclosure
+ * (ThinkingDisplayMode: collapsed / collapsedPreview / fixedScrolling) and never prints the
+ * model's raw reasoning. The same rule applies here: the collapsed line states the cost, the
+ * expanded body lists what the assistant actually did - tool names, status, results - and says
+ * plainly that the reasoning itself stays hidden.
+ */
 @Composable
-fun ThinkingCard(seconds: Int, modifier: Modifier = Modifier) {
+fun ThinkingCard(seconds: Int, steps: List<String> = emptyList(), modifier: Modifier = Modifier) {
     val c = ChatTokens.LocalChatColors.current
-    StateCard("Thinking " + seconds + "s", "", c.textSecondary, c.surface, modifier = modifier)
+    var expanded by remember { mutableStateOf(false) }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(ChatTokens.RADIUS_CARD.dp))
+            .background(c.surface)
+            .clickable { expanded = !expanded }
+            .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (expanded) "\u25BE" else "\u25B8",
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "Thought for " + seconds + "s" + (if (steps.isEmpty()) "" else "  \u00b7  " + steps.size + " steps"),
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+            )
+        }
+        if (expanded) {
+            if (steps.isEmpty()) {
+                Text(
+                    "Reasoning stays hidden. Nothing here is the model's internal text.",
+                    color = c.textSecondary,
+                    fontSize = ChatTokens.FONT_MICRO.sp,
+                )
+            } else {
+                steps.forEach { step ->
+                    Text(step, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
+                }
+            }
+        }
+    }
 }
 
 /** Plain-word error card from the engine's error taxonomy. */

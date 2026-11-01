@@ -130,7 +130,11 @@ class ChatSessionRetryTest {
         s.send("hi")
         runBlocking { delay(4_000) }
         assertFalse(s.ui.value.streaming)
-        assertEquals("1 initial + 2 automatic", 3, t.calls)
+        assertEquals(
+            "1 initial + " + RetryPolicy.DEFAULT_MAX_ATTEMPTS + " automatic",
+            1 + RetryPolicy.DEFAULT_MAX_ATTEMPTS,
+            t.calls,
+        )
         assertTrue(
             "the manual card is the end state",
             s.ui.value.rows.any { it is ChatRowModel.RateLimited && it.attempt == 0 },

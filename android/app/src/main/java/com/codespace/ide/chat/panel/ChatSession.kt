@@ -109,6 +109,15 @@ class ChatSession(
     private val transcripts: com.codespace.ide.chat.TranscriptSink? = null,
 ) {
     private val streamBuf = StringBuilder()
+
+    /**
+     * Characters already shown to the user when the previous attempt was cut short by a 429.
+     * The retried request streams its own text from the beginning, so the buffer is truncated
+     * back to this length on its first delta - otherwise the transcript shows the partial
+     * answer followed by a second copy of it, which is what "the response gets cut off" looks
+     * like from the outside.
+     */
+    private var retryKeepLen = 0
     private var sendJob: Job? = null
     private var failoverAttempts = 0
     /** Completed tool exchanges in THIS request; capped by AgentToolWire.MAX_ROUNDS. */
@@ -575,6 +584,10 @@ class ChatSession(
     ) {
         when (ev) {
             is EngineEvent.Delta -> {
+                if (retryKeepLen > 0) {
+                    streamBuf.setLength(retryKeepLen)
+                    retryKeepLen = 0
+                }
                 streamBuf.append(ev.text)
                 val text = streamBuf.toString()
                 val st = ui.value
@@ -641,6 +654,8 @@ class ChatSession(
                     autoRetries++
                     appendRow(ChatRowModel.RateLimited(
                         decision.waitSec, decision.attempt, decision.maxAttempts))
+                    // Keep what the user has already read; the next attempt overwrites from here.
+                    retryKeepLen = streamBuf.length
                     // streaming stays TRUE: the request is still in flight (a Stop must be
                     // able to cancel the wait), and a new send would change the generation.
                     sendJob = scope.launch {

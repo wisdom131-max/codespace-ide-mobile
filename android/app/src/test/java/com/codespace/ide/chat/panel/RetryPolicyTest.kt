@@ -56,10 +56,12 @@ class RetryPolicyTest {
     fun retriesAreBounded() {
         val first = RetryPolicy.decide(ChatError.RateLimited(3), 0)
         val second = RetryPolicy.decide(ChatError.RateLimited(3), 1)
-        val third = RetryPolicy.decide(ChatError.RateLimited(3), 2)
+        val last = RetryPolicy.decide(ChatError.RateLimited(3), RetryPolicy.DEFAULT_MAX_ATTEMPTS - 1)
         assertTrue(first.retry)
         assertTrue(second.retry)
         assertEquals(2, second.attempt)
+        val third = RetryPolicy.decide(ChatError.RateLimited(3), RetryPolicy.DEFAULT_MAX_ATTEMPTS)
+        assertFalse("no unlimited retries", last.retry.not())
         assertFalse("no unlimited retries", third.retry)
         assertNull("nothing else is wrong, so no excuse is needed", third.refusal?.takeIf { false })
         assertTrue(third.refusal!!.contains("retries used up", ignoreCase = true))
