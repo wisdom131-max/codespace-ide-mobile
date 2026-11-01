@@ -1,0 +1,127 @@
+# Implemented — everything requested and delivered
+
+One canonical list, grouped by area. Each row is something that was asked for and is now in the
+app. Commit + CI run where the record exists; rows marked *backfill* were reported in an earlier
+session and still need their commit id pasted here.
+
+## Chat rebuild (owner-requested rewrite, A / WP1-WP9)
+
+| Delivered | Commit / Run |
+|---|---|
+| Token layer, single source for Compose + CSS | 228350e / 8df9ed9 GREEN 3377 |
+| Component library + ChatListRenderer interface | 4e535b7 GREEN 3378 |
+| Design gallery (debug-only) | f69dc73 GREEN 3379 |
+| ProviderAdapter seam + OpenAI adapter | f1ba20c GREEN 3381 |
+| Gemini adapter (bounded thinking, thought-part filter) | 2bd5b92 + a7d4c33 GREEN 3383 |
+| Key/endpoint migration (read-only) | d6bf9e8 GREEN 3386 → b90fc0e GREEN 3388 |
+| Chat panel on the engine | b90fc0e GREEN 3388 |
+| Anthropic native + OpenAI-compatible presets, reasoning defaults | 8b590ef / 7e1f489 / dbbdbaa GREEN 3390-3396 |
+| Custom endpoints: per-endpoint keys, live model list, CRUD | 3397 series GREEN 3397 |
+| Model catalog + capability data, context-window budget | f21a5b1 GREEN 3399 |
+| Multi-key pool, opt-in failover, manual switch | e653fe5 GREEN 3401 |
+| Settings, storage cleanup, capability overrides, model persistence | 4b268d8 + 2aa3eca GREEN 3403 |
+| Attachment pipeline: picker, 10 MB cap, staging, redaction | a79c8e7 + 46ee083 / 13244a2 GREEN 3406 |
+| Text/context attachments + credential redaction gate | 74fe423 + 5532eb7 GREEN 3409 |
+
+## Composer and agent activity (the video-derived rebuild)
+
+| Delivered | Commit / Run |
+|---|---|
+| Composer rebuilt to the reference: single card, toolbar row, send cluster, keys in Settings | 4e62781 GREEN 3432 |
+| Ask / Edit / Agent modes wired, per-provider payloads | 085e577 + 855b371 GREEN 3437 |
+| Composer polish: plus on its own row, no mic, blue-on-text border, tighter chips | d573aef GREEN 3438 |
+| Tool-wire decision layer (parse, mode rules, round cap, result turn) | 31259f4 GREEN 3439 |
+| Chat panel acts, behind the approval gate | ce98d03 + ebf8b9a GREEN 3441 |
+| Composer proportions: Add Context, gear, no approvals row, bounded field | 7a9880d + b5cc8ec GREEN 3443 |
+| Compact pass: ring, card padding, chips hug text, 28 glyph, 40dp row | 091b192 GREEN 3444 |
+| Agent commands visible in the terminal: command, status, duration, output | 46d1b61 + bc969c8 GREEN 3447 |
+| Explorer refreshes and reveals on agent writes | 457a84f GREEN 3448 |
+| FILES CHANGED row: journal, real line diff, Keep/Undo, drift-safe revert | ca5f811 + 95aefe5 GREEN 3450 |
+| VISIBLE APPROVAL row: Allow once/session/always, dual-click, expiry | 8e4d185 + d384d60 GREEN 3452 |
+
+## Editor
+
+| Delivered | Commit / Run |
+|---|---|
+| Editor AI menus answer: prompt handed to the chat and sent once idle | 950e19e GREEN 41202315547 |
+| Green chip draggable, edge-snap, clamped, persisted; Solid/Ghost/Hidden | 950e19e GREEN 41202315547 |
+| Chip menu is AI-first: Fix with AI pinned, nine transforms, "More actions..." | 950e19e GREEN 41202315547 |
+| Code-producing actions land through write_file as reviewable proposals | 950e19e GREEN 41202315547 |
+| Lightbulb: no longer fires on every word, hidden with keyboard open, selection/diagnostic driven | 950e19e GREEN 41202315547 |
+| Formatter settings surfaced in the app-wide settings page | backfill |
+| Find & Replace, Go to Line, multi-cursor | backfill |
+| Source Control pane: history, stash, branch delete/rename, conflicts, .gitignore, tags, local snapshots | backfill |
+| Editor action-menu spec, 18 unit tests | 950e19e GREEN 41202315547 |
+
+## Notebooks
+
+| Delivered | Commit / Run |
+|---|---|
+| `.ipynb` cell view: cells in order, markdown as prose, outputs shown | fada95c GREEN 41234630438 |
+| Tap to edit source, add/delete cells, saved back as valid `.ipynb` | fada95c GREEN 41234630438 |
+| Notebook tools the model can call: create, summary, read_cell_output, edit_cell, run_cell | backfill |
+
+## Settings and skills
+
+| Delivered | Commit / Run |
+|---|---|
+| App-wide settings regrouped: settings → environments → data | fada95c GREEN 41234630438 |
+| Custom skills written to `.vncode/skills`, four tools, index always in instructions, bodies loaded by name | 35c9952 GREEN 41237798083 |
+| Unreadable skill files reported instead of overwritten | 35c9952 GREEN 41237798083 |
+
+## Preview panel
+
+| Delivered | Commit / Run |
+|---|---|
+| Real served origin (`127.0.0.1:5500`) for HTML, SVG, Markdown | 3e1c74b GREEN 41253179294 |
+| Console strip: `onConsoleMessage` + `window.onerror` | 3e1c74b GREEN 41253179294 |
+| Reload on every verified save, `no-store` on both response writers | 3e1c74b GREEN 41253179294 |
+| Markdown: syntax highlighting + copy button | 3e1c74b GREEN 41253179294 |
+| SVG: transparency checkerboard, fill-to-viewport | 3e1c74b GREEN 41253179294 |
+| Double-tap a block to open that line in the editor | 3e1c74b GREEN 41253179294 |
+| Link clicks: relative → editor, web → Chrome, anchors jump | 4ea48e9 GREEN 41255130664 |
+| Offline TeX → MathML (`$x^2$`, `$$…$$`), no bundled assets | 4ea48e9 GREEN 41255130664 |
+| Code spans protected from the maths pass | 4ea48e9 GREEN 41255130664 |
+| Scroll sync, editor cursor → preview | c72ed94 GREEN 41256640337 |
+| Custom stylesheet setting, hardened against closing its own tag | c72ed94 GREEN 41256640337 |
+| Mermaid diagrams from fences, engine inlined only when needed | c72ed94 GREEN 41256640337 |
+| HTML re-render while typing confirmed on device | dcb86f5 (docs) |
+
+## Browser
+
+| Delivered | Commit / Run |
+|---|---|
+| One `BrowserSession` owner; rotation keeps page, DOM, history | 3e72899 GREEN 41264729591 |
+| Coherent identity: engine-derived UA, `; wv` stripped, no fake Chrome 125 | 3e72899 GREEN 41264729591 |
+| Error page only for main-frame failures | 3e72899 GREEN 41264729591 |
+| Renderer death recovered instead of wedging the view | 3e72899 GREEN 41264729591 |
+| `window.open` and `target=_blank` open in the live view | 3e72899 GREEN 41264729591 |
+| Long-press sheet: open image, download, copy link | 3e72899 GREEN 41264729591 |
+| Downloads, uploads, camera/mic/geolocation, third-party cookies handled | 3e72899 GREEN 41264729591 |
+| Full-screen zoom actually fills the screen; 38dp slim header | 3157555 GREEN 41275724473 |
+| Forward, PC/Mobile UA toggle, ↗ hand a page to Chrome | 3157555 GREEN 41275724473 |
+| Loopback links from terminal and Ports panel open in the panel | 3157555 GREEN 41275724473 |
+| Standalone browser bench app for device testing | b74cc37 GREEN 41259951642 |
+| Tests: identity rule, loopback routing, theme/mermaid injection, skill naming | 1535705 |
+
+## Earlier delivered, commit id still to backfill
+
+- Trust gate neutralised: every call site treats projects as trusted, redundant prompt removed.
+- Shared token storage for GitHub/GitLab and other services; write-once-bump-once sign-in so one
+  sign-in lights up every panel (`SecureTokenStore` + `AuthEvents`).
+- Connector audit of the 22 requested services: which exist, what they ask for, what is broken.
+- Terminal link tap: extraction, file probe, staged diagnostic modes, async resolution.
+
+## Still open (continuity — nothing above is claimed as done unless listed here)
+
+- Preview: reverse scroll sync (preview → editor) is not implemented; maths is a MathML subset,
+  not full TeX.
+- Browser: no device verification of this build yet.
+- Explorer/editor P1-P6: editor registry, Open With, binary banner, 2 MB truncation + Load full
+  file, markdown preview via the registry, third-party viewers. Source Control: initialize-repo
+  offer, generate-commit-message.
+- Connectors: Wave 0 request shaping (Notion version header, Jira cloudId), then the 11 missing.
+- `vn-ref-rea` and the other clones: Actions blocked by account billing/spending limit; nothing
+  has executed since 2026-10-31 09:46, so their SDK errors cannot be read until that is restored.
+- Cumulative device round covering the two menus, notebook cell view, skills, settings, preview
+  and browser.
