@@ -375,6 +375,12 @@ private fun ChatBody(
             attachments = session.pendingChips(),
             onRemoveAttachment = { chip -> session.removePending(chip.name) },
             onAddContext = { showPicker = true },
+            onComposerCommand = { id ->
+                when (id) {
+                    "clear" -> session.clearConversation()
+                    "attach" -> showPicker = true
+                }
+            },
             onOpenModel = { showSelect = true },
             onTools = { showKeys = true },
             onSend = {

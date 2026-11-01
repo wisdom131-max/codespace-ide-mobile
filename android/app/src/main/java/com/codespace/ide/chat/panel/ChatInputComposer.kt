@@ -76,6 +76,8 @@ internal fun ChatInputComposer(
     onStop: () -> Unit,
     attachments: List<com.codespace.ide.chat.ui.AttachmentChipModel> = emptyList(),
     onRemoveAttachment: (com.codespace.ide.chat.ui.AttachmentChipModel) -> Unit = {},
+    /** `/` and `@` entries that run an action rather than inserting a token. */
+    onComposerCommand: (String) -> Unit = {},
 ) {
     val c = ChatTokens.LocalChatColors.current
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -119,6 +121,27 @@ internal fun ChatInputComposer(
             ) {
                 // Staged files sit at the HEAD of the field with their own x, so removing
                 // one is done where it was attached rather than by hunting a transcript row.
+                // `/` and `@`: a short menu of things this app can actually do. It appears only
+                // for the token being typed at the end of the field, so it can never cover a
+                // sentence the user is reading.
+                val menu = ComposerCompletions.menuFor(value)
+                if (menu.isNotEmpty()) {
+                    ComposerMenu(
+                        items = menu,
+                        onPick = { item ->
+                            val id = item.command
+                            when {
+                                id != null -> {
+                                    onValueChange(ComposerCompletions.applyTo(value, "").trimEnd())
+                                    onComposerCommand(id)
+                                }
+                                item.insertable -> onValueChange(ComposerCompletions.applyTo(value, item.token))
+                                else -> Unit
+                            }
+                        },
+                    )
+                    Spacer(Modifier.height(ChatTokens.COMPOSER_ROW_GAP.dp))
+                }
                 if (attachments.isNotEmpty()) {
                     com.codespace.ide.chat.ui.AttachmentChipRow(
                         chips = attachments,
@@ -166,6 +189,36 @@ internal fun ChatInputComposer(
  * target around it, so it reads small and still taps reliably. Aligned to the card's own
  * start edge, not an offset, so it holds at any width and when the field grows.
  */
+/**
+ * The `/` and `@` rows. Plain list, one line each, dismissable by typing: no focus stealing, so
+ * the keyboard stays on the field while the list is open.
+ */
+@Composable
+private fun ComposerMenu(items: List<ComposerCompletion>, onPick: (ComposerCompletion) -> Unit) {
+    val c = ChatTokens.LocalChatColors.current
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(ChatTokens.RADIUS_CARD.dp))
+            .background(c.surfaceAlt)
+            .padding(vertical = 4.dp),
+    ) {
+        items.forEach { item ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = item.command != null || item.insertable) { onPick(item) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(item.token, color = c.text, fontSize = ChatTokens.FONT_MICRO.sp)
+                Spacer(Modifier.width(8.dp))
+                Text(item.hint, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
+            }
+        }
+    }
+}
+
 @Composable
 private fun AddContextChip(onClick: () -> Unit) {
     val c = ChatTokens.LocalChatColors.current
