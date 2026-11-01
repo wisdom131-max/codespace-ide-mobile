@@ -160,8 +160,9 @@ session and still need their commit id pasted here.
   file, markdown preview via the registry, third-party viewers. Source Control: initialize-repo
   offer, generate-commit-message.
 - Connectors: Wave 0 request shaping (Notion version header, Jira cloudId), then the 11 missing.
-- `vn-ref-rea` and the other clones: Actions blocked by account billing/spending limit; nothing
-  has executed since 2026-10-31 09:46, so their SDK errors cannot be read until that is restored.
+- `vn-ref-rea` and the other clones: their Actions are now disabled on purpose (2026-11-01), which
+  supersedes the earlier billing block. The SDK errors recorded against them were never read, and
+  reading them means re-enabling one mirror for a single dispatched job.
 - Chat: the `#selection` / `#problems` / terminal-output attach kinds are still unbuilt (the
   `@` and `/` menus ship).
 - Inline chat as an in-editor prompt bar with accept/reject: not built. What ships is the chip
