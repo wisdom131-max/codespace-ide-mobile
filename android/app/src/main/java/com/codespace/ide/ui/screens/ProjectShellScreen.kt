@@ -901,6 +901,7 @@ fun ProjectShellScreen(
     // P34-NOTIF: notificationMsg/notificationType removed — toast handled by NotificationToastBanner
     // P34-NOTIF: notifList/notifUnread removed — NotificationStore is single source of truth
     var showNotifDrawer    by remember { mutableStateOf(false) }
+    var showBranchPicker   by remember { mutableStateOf(false) }
     var snapshotMessage    by remember { mutableStateOf<String?>(null) }
     // Connectors hub (replaces Person menu)
     var showConnectorsSheet by remember { mutableStateOf(false) }
@@ -2099,16 +2100,24 @@ fun ProjectShellScreen(
 
 
             // ── VS Code status bar (hidden in Zen Mode) ──
+            val statusProjectRoot = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: ""
             if (!zenMode && showStatusBar && !fullScreen) {
             StatusBarContent(
                 statusBarBg = StatusBarBg,
                 activeEditorTab = activeEditorTab,
                 cursorLine = cursorLine,
                 cursorCol = cursorCol,
-                projectRootPath = com.codespace.ide.util.ProjectPathResolver.resolveProjectRoot(context, projectId) ?: "",
+                projectRootPath = statusProjectRoot,
                 onToggleNotif = { showNotifDrawer = !showNotifDrawer; if (showNotifDrawer) NotificationStore.markAllRead() },
                 onOpenChat = { showChatPanel = true },
+                onBranchClick = { showBranchPicker = true },
             ) }
+            if (showBranchPicker) {
+                BranchPickerSheet(
+                    projectRootPath = statusProjectRoot,
+                    onDismiss = { showBranchPicker = false },
+                )
+            }
     } // end Editor Column
 
         // P45-G2: Floating draggable Zen Mode exit button
@@ -4648,6 +4657,8 @@ private fun StatusBarContent(
     onToggleNotif: () -> Unit = {},  // P34-NOTIF: bell in status bar
     /** I5 — chat status item (VS Code chatStatus analog): tap opens the chat panel. */
     onOpenChat: (() -> Unit)? = null,
+    /** VS Code parity: the branch item opens the checkout picker. */
+    onBranchClick: () -> Unit = {},
 ) {
     // BUG-1 FIX (VS Code statusbarPart pattern): reserve the bell's slot so the
     // branch name (left) / RAM readout + MCP (right) shift inward — never overlaid.
@@ -4658,26 +4669,10 @@ private fun StatusBarContent(
             .padding(start = 8.dp + notifReserveStart, end = 8.dp + notifReserveEnd),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // P-STATUS-BRANCH: Dynamic Git branch detection — reads .git/HEAD instead
-        // of hardcoding "main". Falls back to "main" if not a git repo.
-        val branchName = remember(projectRootPath) {
-            try {
-                val headFile = java.io.File(projectRootPath, ".git/HEAD")
-                if (headFile.exists()) {
-                    val content = headFile.readText().trim()
-                    if (content.startsWith("ref:")) {
-                        content.substringAfterLast('/')
-                    } else {
-                        content.take(7) // detached HEAD, show short SHA
-                    }
-                } else {
-                    "main"
-                }
-            } catch (_: Exception) { "main" }
-        }
-        Icon(Icons.Default.AccountTree, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
-        Spacer(Modifier.width(4.dp))
-        Text(branchName, fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
+        // P-STATUS-BRANCH, made real (2026-11-01): guest-aware head resolution, a label that
+        // follows a checkout, and a tap that opens the branch picker. See StatusBranch.kt.
+        val branchName = rememberGitBranchLabel(projectRootPath)
+        BranchStatusChip(label = branchName, onClick = onBranchClick)
         // REMOVAL 4/7: the AI model status item is gone with the old chat
         // engine; the status bar keeps branch + language + RAM/MCP items.
         Spacer(Modifier.width(8.dp))
