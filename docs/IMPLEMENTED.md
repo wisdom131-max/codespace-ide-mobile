@@ -134,6 +134,7 @@ session and still need their commit id pasted here.
 | Chat: @participants and /slash autocomplete, #selection / #problems / terminal-output attach kinds | Menus ship (ef8e446 GREEN 41320521740); the #selection / #problems / terminal-attach kinds are still not done. |
 | Inline chat discovery | Chip reachable above the keyboard (6f2e9a2). A true inline chat bar (prompt + accept/reject in the editor) does not exist yet. |
 | Write/edit tool gap | Edit tools now documented and preferred (6f2e9a2). No new edit capability was added; the gap was documentation. |
+| Connector discoverability | The agent refused a GitLab repo creation because it looked for a `gitlab_*` tool and there is none by design; `list_connectors` printed a bare `[CONNECTED]` line. Connected services now print their canonical `use_connector` calls (d67dc97), recipes for all 19 hub services live in ConnectorRecipes.kt, and the footer states the no-per-provider-tools rule. |
 | SVG viewer (strong-viewer parity) | Rebuilt as a real viewer (f34a020): toolbar zoom 10-3200%, pinch and drag pan, fit, 1:1, four backgrounds, PNG export, data URI copy, source overlay, parse error with line number, size/node/byte metrics. Old JS-off thumbnail and its dead composable removed. Survey and plan: docs/SVG-VIEWER-PLAN-2026-11-01.md |
 | Status bar branch item | Real branch, guest-aware, refreshes on checkout, tap opens branch picker + create-and-switch (4bf1bfb). |
 | Two-repo split: proot work in ubuntu-proot-test only | Outstanding; proot signal-31 work unfinished. |
@@ -147,6 +148,11 @@ session and still need their commit id pasted here.
   viewer still reads the saved file, so live update needs a save; no symbol/outline tree, which
   would need a document model. SVGO-style minification is a deliberate no.
 - Device check for the SVG viewer and the branch picker: neither has run on the TECNO yet.
+- Connectors: the recipe fix makes a CONNECTED service discoverable, but nothing yet proves the
+  backend proxy reaches GitLab with a real token (needs one live `POST /projects`); Wave 0 request
+  shaping (Notion version header, Jira cloudId) is still open.
+- CI minutes: `codespace-ide-mobile` is a public repo, so its Actions runs are free; the private
+  `vn-ref-rea` runs three workflows per push and is what consumes the 2,000-minute allowance.
 - Browser: no device verification of this build yet.
 - Explorer/editor P1-P6: editor registry, Open With, binary banner, 2 MB truncation + Load full
   file, markdown preview via the registry, third-party viewers. Source Control: initialize-repo
