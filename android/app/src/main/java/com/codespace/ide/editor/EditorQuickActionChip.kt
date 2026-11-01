@@ -66,14 +66,38 @@ internal class EditorChipPlacement(
     var x by mutableFloatStateOf(start.first)
     var y by mutableFloatStateOf(start.second)
     private var dragging = false
+    private var grabX = 0f
+    private var grabY = 0f
 
-    fun drag(dx: Float, dy: Float) {
+    /** Finger's offset INSIDE the chip when the drag began, in pixels. */
+    fun beginDrag(grabPx: Float, grabPy: Float) {
+        grabX = grabPx
+        grabY = grabPy
+        dragging = true
+    }
+
+    /**
+     * Follow the finger, in absolute terms.
+     *
+     * THE DRAG BUG (owner report 2026-11-01: "the drag doesn't move the chip"). The chip is the
+     * content of a Popup, so moving the chip moves its WINDOW. A delta measured inside that
+     * window therefore cancels itself out: the finger moves 20px right, the window moves 20px
+     * right, the next local position is unchanged, and the chip sits still forever.
+     *
+     * The finger's position in the editor is `windowOffset + localPosition`, and that sum does
+     * not change when the window moves. So track the sum and subtract where the finger grabbed
+     * the chip; the result is stable frame to frame even though the window is chasing the drag.
+     */
+    fun dragTo(localPx: Float, localPy: Float, densityPx: Float) {
+        if (!dragging) return
+        val absX = x * densityPx + localPx
+        val absY = y * densityPx + localPy
         val (nx, ny) = EditorActionMenuSpec.clamp(
-            x + dx, y + dy, EditorActionMenuSpec.diameterDp(EditorChipState.SOLID), maxX, maxY,
+            (absX - grabX) / densityPx, (absY - grabY) / densityPx,
+            EditorActionMenuSpec.diameterDp(EditorChipState.SOLID), maxX, maxY,
         )
         x = nx
         y = ny
-        dragging = true
     }
 
     /** Snap to the nearer edge, then persist: a parked chip must survive a restart. */
@@ -206,17 +230,23 @@ internal fun EditorChipButton(
             .background(surface)
             .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
             .alpha(EditorActionMenuSpec.alpha(state))
+            // ORDER MATTERS (the second half of the drag bug): pointerInput is the INNERMOST
+            // node, so it sees the down event before clickable does. With clickable last it
+            // consumed the down first and the long-press detector - which requires an
+            // unconsumed down - never started, so the chip could not be picked up at all. A tap
+            // still works: clickable accepts an already-consumed down.
+            .clickable { expanded = true }
             .pointerInput(Unit) {
                 detectDragGesturesAfterLongPress(
-                    onDrag = { change, drag ->
+                    onDragStart = { pos -> placement.beginDrag(pos.x, pos.y) },
+                    onDrag = { change, _ ->
                         change.consume()
-                        placement.drag(drag.x / density, drag.y / density)
+                        placement.dragTo(change.position.x, change.position.y, density)
                     },
                     onDragEnd = { placement.release(ctx) },
                     onDragCancel = { placement.release(ctx) },
                 )
-            }
-            .clickable { expanded = true },
+            },
         contentAlignment = Alignment.Center,
     ) {
         if (hidden) {

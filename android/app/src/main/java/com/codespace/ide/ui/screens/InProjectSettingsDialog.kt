@@ -435,6 +435,7 @@ enum class RowType {
     CURSOR_BLINK_DROPDOWN,
     ZEN_MODE_EXIT_CHECKBOX,
     FORMAT_ON_SAVE_CHECKBOX,
+    FORMATTER_CHOICE,
     TEXTMATE_HIGHLIGHT_CHECKBOX,
     DIAGNOSTICS_SOURCE_DROPDOWN,
     PYRIGHT_VERSION_INPUT,
@@ -586,10 +587,15 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         "Run the language formatter before saving files",
         RowType.FORMAT_ON_SAVE_CHECKBOX))
 
-    // Formatter CHOICE moved to app-wide Settings > Formatter Selection (2026-10-31): the
-    // same per-language pickers existed here and there, reading and writing one store. Two
-    // surfaces for one value is a place for them to disagree. Format on Save stays here,
-    // because that one is per project.
+    add(SettingsRow("formatter_choice", SettingsCategory.FORMATTING,
+        "Formatter per Language",
+        "Which formatter runs for each language (Format on Save uses this choice)",
+        RowType.FORMATTER_CHOICE))
+
+    // The formatter CHOICE lives here, next to the switch that runs it (owner request
+    // 2026-11-01). It was in Settings > Formatter Selection, which meant choosing a formatter
+    // and enabling Format on Save happened on two different pages, in two different dialogs,
+    // reading one store.
 
     add(SettingsRow("diag_source", SettingsCategory.PYTHON_LSP,
         "Diagnostics Source",
@@ -757,6 +763,8 @@ private fun SettingsRowRenderer(
         // Trust row removed (2026-10-31): the gate it controlled no longer exists.
         RowType.MCP_INDICATOR_CHECKBOX -> McpIndicatorRow(textPri, textSec, divider)
         RowType.FORMAT_ON_SAVE_CHECKBOX -> FormatOnSaveRow(textPri, textSec, divider)
+        RowType.FORMATTER_CHOICE ->
+            FormatterSelectionRows(androidx.compose.ui.platform.LocalContext.current)
         RowType.TEXTMATE_HIGHLIGHT_CHECKBOX -> TextMateHighlightRow(textPri, textSec, divider)
         RowType.DIAGNOSTICS_SOURCE_DROPDOWN -> DiagnosticsSourceRow(accent, textPri, textSec, divider)
         RowType.PYRIGHT_VERSION_INPUT -> PyrightVersionRow(textPri, textSec, surface, divider)

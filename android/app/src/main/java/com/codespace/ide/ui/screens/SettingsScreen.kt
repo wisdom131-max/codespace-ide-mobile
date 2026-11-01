@@ -114,9 +114,12 @@ fun SettingsScreen(
 
     // ── GitHub sign-in (Device Flow) state ──────────────────────────────────
     var githubUsername by remember { mutableStateOf(tokenStore.githubUsername) }
-    var githubDeviceCode by remember { mutableStateOf<GitHubAuth.DeviceCode?>(null) }
-    var githubStatus by remember { mutableStateOf("") } // "", "waiting", "error:<msg>"
-    var githubJob by remember { mutableStateOf<Job?>(null) }
+    // CONNECTOR-HUB BYPASS (owner request 2026-11-01): this screen used to run its OWN copy of
+    // the GitHub Device Flow, with its own state, its own dialog and its own error strings. The
+    // Hub and Source Control already open HubGitHubSignInDialog, so two flows were keeping the
+    // same credentials in step by luck. Now Settings opens that dialog too: one flow, one
+    // write, one AuthEvents bump, every panel lit.
+    var showGithubSignIn by remember { mutableStateOf(false) }
 
     // ── AI provider keys UI: REMOVED 2026-10-27 (advisor ruling; archived to
     // vn-code-archive). savedMsg/showClearDialog remain — restore-backup and
@@ -158,48 +161,17 @@ fun SettingsScreen(
         ) == BiometricManager.BIOMETRIC_SUCCESS
     }
 
-    // ── GitHub device-code dialog ────────────────────────────────────────────
-    githubDeviceCode?.let { device ->
-        key(orientation) {
-        AlertDialog(
-            onDismissRequest = { /* must Cancel explicitly — polling is still running */ },
-            title = { Text("Connect GitHub") },
-            text = {
-                Column {
-                    Text("1. Open this on any device:")
-                    Text(device.verificationUri, style = MaterialTheme.typography.bodyMedium)
-                    Text("2. Enter this code:", modifier = Modifier.padding(top = 12.dp))
-                    Text(
-                        device.userCode,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                    )
-                    Text("Waiting for you to approve…", style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = {
-                Row {
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(device.userCode)) }) {
-                        Text("Copy code")
-                    }
-                    TextButton(onClick = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(device.verificationUri))
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
-                    }) { Text("Open GitHub") }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    githubJob?.cancel()
-                    githubDeviceCode = null
-                    githubStatus = ""
-                }) { Text("Cancel") }
+    // The Hub's dialog, opened from here. It runs the same Device Flow and writes the same
+    // SecureTokenStore keys, which is what makes one sign-in reach every panel.
+    if (showGithubSignIn) {
+        HubGitHubSignInDialog(
+            onDismiss = { showGithubSignIn = false },
+            onSuccess = { username ->
+                showGithubSignIn = false
+                githubUsername = username
+                savedMsg = "✓ Connected to GitHub as $username"
             },
         )
-        }
     }
 
     // ── Clear-data dialog ────────────────────────────────────────────────────
@@ -321,64 +293,12 @@ fun SettingsScreen(
             )
             HorizontalDivider()
 
+            // Formatter choice moved to the settings page (gear menu > Formatting) on
+            // 2026-11-01, next to Format on Save. One picker, one surface: it used to exist in
+            // both places, reading the same store, which is a disagreement waiting to happen.
+            HorizontalDivider()
+
             // ── Security ─────────────────────────────────────────────────────
-            Text("Formatter Selection", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
-            Text(
-                "Choose your preferred code formatter for each language.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
-            )
-            // SK14 (2026-09-26): cross-link — formatter CHOICE lives here, but Format on
-            // Save and the TypeScript version live in In-Project Settings (gear menu).
-            // The two surfaces used to contradict silently with no pointer between them.
-            Text(
-                "Format on Save and the TypeScript version are set in In-Project Settings (gear menu). This picker only chooses which formatter runs.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
-            )
-
-            // Show formatter pickers for languages with multiple options
-            FormatterConfig.availableFormatters.entries
-                .filter { it.value.size > 1 }
-                .sortedBy { it.key.displayName }
-                .forEach { (lang, options) ->
-                    val currentFormatter = remember { FormatterConfig.getSelectedFormatter(context, lang) }
-                    var expanded by remember { mutableStateOf(false) }
-                    ListItem(
-                        headlineContent = { Text(lang.displayName) },
-                        supportingContent = { Text("Formatter: ${currentFormatter.name}") },
-                        trailingContent = {
-                            Box {
-                                OutlinedButton(onClick = { expanded = true }) {
-                                    Text(currentFormatter.name, fontSize = 12.sp)
-                                }
-                                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                                    options.forEach { option ->
-                                        DropdownMenuItem(
-                                            text = { Text(option.name) },
-                                            onClick = {
-                                                FormatterConfig.setSelectedFormatter(context, lang, option.name)
-                                                expanded = false
-                                            },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    )
-                    HorizontalDivider()
-                }
-
-            // Languages with built-in fallback only
-            Text(
-                "Built-in fallback (indentation + trailing whitespace) is used for languages without an external formatter.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-
             HorizontalDivider()
 
             // ── Settings Backup (SK12) ─────────────────────────────────────────
@@ -477,40 +397,9 @@ fun SettingsScreen(
             } else {
                 ListItem(
                     headlineContent = { Text("GitHub") },
-                    supportingContent = {
-                        Text(
-                            when {
-                                githubStatus == "waiting" -> "Waiting for you to approve on github.com…"
-                                githubStatus.startsWith("error:") -> githubStatus.removePrefix("error:")
-                                else -> "Not connected — needed for Source Control push/pull"
-                            }
-                        )
-                    },
+                    supportingContent = { Text("Not connected — needed for Source Control push/pull") },
                     trailingContent = {
-                        if (githubStatus == "waiting") {
-                            CircularProgressIndicator(modifier = Modifier.padding(4.dp))
-                        } else {
-                            Button(onClick = {
-                                githubStatus = "waiting"
-                                githubJob = scope.launch {
-                                    try {
-                                        val device = GitHubAuth.requestDeviceCode()
-                                        githubDeviceCode = device
-                                        val token = GitHubAuth.pollForToken(device)
-                                        val username = GitHubAuth.fetchUsername(token)
-                                        tokenStore.githubToken = token
-                                        tokenStore.githubUsername = username
-                                        githubUsername = username
-                                        githubDeviceCode = null
-                                        githubStatus = ""
-                                        savedMsg = "✓ Connected to GitHub as $username"
-                                    } catch (e: Exception) {
-                                        githubDeviceCode = null
-                                        githubStatus = "error:${e.message ?: "Sign-in failed"}"
-                                    }
-                                }
-                            }) { Text("Sign in") }
-                        }
+                        Button(onClick = { showGithubSignIn = true }) { Text("Sign in") }
                     },
                 )
             }
@@ -1767,7 +1656,7 @@ private val SETTINGS_SEARCH_INDEX = listOf(
     SettingsIndexEntry("Reinstall Ubuntu rootfs", "Ubuntu Container", "Settings"),
     SettingsIndexEntry("Settings backup (export / import JSON)", "Settings Backup", "Settings"),
     SettingsIndexEntry("Restore previous session on project open", "Workspace Memory", "Settings"),
-    SettingsIndexEntry("Formatter selection", "Formatter Selection", "Settings"),
+    SettingsIndexEntry("Formatter selection", "Formatting", "In-Project Settings (gear menu)"),
     SettingsIndexEntry("Clear data", "Clear Data", "Settings"),
     SettingsIndexEntry("Deleted projects (recycle bin)", "Clear Data", "Settings"),
     SettingsIndexEntry("Keybindings editor", "Keybindings", "In-Project Settings (gear menu)"),

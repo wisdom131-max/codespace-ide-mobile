@@ -78,7 +78,10 @@ internal fun ConnectorsHubSheet(
     var toast by remember { mutableStateOf<String?>(null) }
     // HUB-GITHUB-PROPAGATION: live GitHub Device Flow state (SecureTokenStore keys —
     // the same ones Settings > Accounts and Source Control read/write).
-    var githubUser by remember { mutableStateOf(SecureTokenStore(context).githubUsername) }
+    // Keyed on the auth epoch so a sign-in from Settings, Source Control or this sheet repaints
+    // the row without a restart - the write-once, bump-once rule the hub exists to enforce.
+    val authEpoch = com.codespace.ide.data.AuthEvents.epoch.value
+    var githubUser by remember(authEpoch) { mutableStateOf(SecureTokenStore(context).githubUsername) }
     var showGithubDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(refreshKey) {
@@ -106,6 +109,17 @@ internal fun ConnectorsHubSheet(
         loading = false
     }
 
+
+    // GITHUB AS A CONNECTOR (2026-11-01): the focus key was a backend service id, and GitHub is
+    // local Device Flow state, so a "connect GitHub" tap that asked the hub to focus "github"
+    // matched nothing and landed on a list where every row looked the same. Focusing it now
+    // either opens its sign-in dialog or leaves the row that is already at the top of the sheet.
+    LaunchedEffect(focusService) {
+        if (focusService == "github") {
+            if (SecureTokenStore(context).githubUsername == null) showGithubDialog = true
+            focusService = null
+        }
+    }
 
     Box(
         Modifier
