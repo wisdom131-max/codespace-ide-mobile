@@ -92,7 +92,8 @@ internal object ChatTranscript {
                     if (names.isNotBlank()) mapped.add(StoredMessage("note", "Attached: " + names, true, nowMs))
                 }
                 // Transient surfaces: an action or a moment, not transcript. See header.
-                is ChatRowModel.Thinking, is ChatRowModel.Failed, is ChatRowModel.RateLimited,
+                is ChatRowModel.ToolActivity, is ChatRowModel.Thinking, is ChatRowModel.Failed,
+                is ChatRowModel.RateLimited,
                 ChatRowModel.NoCredits, ChatRowModel.Offline, is ChatRowModel.OverBudget,
                 is ChatRowModel.TrimmedHistory -> Unit
             }

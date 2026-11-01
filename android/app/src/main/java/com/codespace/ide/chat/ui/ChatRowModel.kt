@@ -20,6 +20,14 @@ sealed interface ChatRowModel {
     /** WP6: visible, honest system note (e.g. key switched on opt-in failover). */
     data class InfoNote(val text: String) : ChatRowModel
 
+    /**
+     * One step the assistant took: the tool and what it did. Rendered as a compact line with a
+     * chevron for the detail and an x to dismiss, which is the shape VS Code gives its tool
+     * activity in the transcript. Kept apart from InfoNote so a note the user must read can
+     * never be dismissed by the same gesture.
+     */
+    data class ToolActivity(val label: String, val detail: String) : ChatRowModel
+
     data class TrimmedHistory(val droppedCount: Int) : ChatRowModel
     data class Attachments(val chips: List<AttachmentChipModel>) : ChatRowModel
 }

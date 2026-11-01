@@ -74,6 +74,8 @@ internal fun ChatInputComposer(
     onTools: () -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    attachments: List<com.codespace.ide.chat.ui.AttachmentChipModel> = emptyList(),
+    onRemoveAttachment: (com.codespace.ide.chat.ui.AttachmentChipModel) -> Unit = {},
 ) {
     val c = ChatTokens.LocalChatColors.current
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -115,6 +117,15 @@ internal fun ChatInputComposer(
                         bottom = ChatTokens.COMPOSER_PAD_BOTTOM.dp,
                     ),
             ) {
+                // Staged files sit at the HEAD of the field with their own x, so removing
+                // one is done where it was attached rather than by hunting a transcript row.
+                if (attachments.isNotEmpty()) {
+                    com.codespace.ide.chat.ui.AttachmentChipRow(
+                        chips = attachments,
+                        onRemove = onRemoveAttachment,
+                    )
+                    Spacer(Modifier.height(ChatTokens.COMPOSER_ROW_GAP.dp))
+                }
                 AddContextChip(onClick = onAddContext)
                 ChatComposerField(
                     value = value,

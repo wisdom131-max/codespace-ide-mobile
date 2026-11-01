@@ -13,6 +13,8 @@ data class ChatRenderState(
     val onSendAnyway: () -> Unit = {},
     val onCancel: () -> Unit = {},
     val onRemoveChip: (AttachmentChipModel) -> Unit = {},
+    /** The x on an activity row. */
+    val onDismissRow: (ChatRowModel) -> Unit = {},
     /**
      * BATCH 7: insert a code block into the ACTIVE editor at the caret. Returns false when
      * no editor is open, which the card reports honestly rather than failing silently.
@@ -85,6 +87,8 @@ object NativeChatListRenderer : ChatListRenderer {
             is ChatRowModel.OverBudget -> OverBudgetCard(row.estimate, state.onSendAnyway, state.onCancel)
             is ChatRowModel.TrimmedHistory -> TrimmedHistoryRow(row.droppedCount)
             is ChatRowModel.InfoNote -> InfoNoteRow(row.text)
+            is ChatRowModel.ToolActivity ->
+                ToolActivityRow(row.label, row.detail, onDismiss = { state.onDismissRow(row) })
             is ChatRowModel.Attachments -> AttachmentChipRow(row.chips, state.onRemoveChip)
         }
     }

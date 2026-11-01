@@ -37,6 +37,14 @@ import androidx.compose.ui.unit.sp
 private val PanelShape = RoundedCornerShape(ChatTokens.RADIUS_PANEL.dp)
 private val ChipShape = RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp)
 
+/** Rounded on three corners, squared toward the sender: reads as a message, not a panel. */
+private val SenderShape = RoundedCornerShape(
+    topStart = ChatTokens.RADIUS_CARD.dp,
+    topEnd = ChatTokens.RADIUS_CARD.dp,
+    bottomEnd = ChatTokens.RADIUS_CARD.dp,
+    bottomStart = 2.dp,
+)
+
 /** One compact attachment chip's UI model (display name + human size text). */
 data class AttachmentChipModel(val name: String, val sizeText: String)
 
@@ -93,7 +101,10 @@ fun UserBubble(text: String, modifier: Modifier = Modifier) {
             fontFamily = FontFamily.SansSerif,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(c.surfaceAlt, PanelShape)
+                // The owner's own words are the one thing in the transcript that is theirs,
+                // so the bubble carries the accent instead of the neutral card grey. Same
+                // radius family, asymmetric so it reads as a message and not a panel.
+                .background(c.accent.copy(alpha = 0.12f), SenderShape)
                 .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
         )
         // Same glyph as a finished reply, so copying either side of the conversation is one
@@ -160,6 +171,59 @@ fun ThinkingCard(seconds: Int, steps: List<String> = emptyList(), modifier: Modi
                     Text(step, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
                 }
             }
+        }
+    }
+}
+
+/**
+ * One AI action: chevron for the detail, x to dismiss. Collapsed by default because a long
+ * run of steps is noise; the x exists because the owner asked to be able to clear a step they
+ * have already read without clearing its neighbours.
+ */
+@Composable
+fun ToolActivityRow(
+    label: String,
+    detail: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = ChatTokens.LocalChatColors.current
+    var expanded by remember { mutableStateOf(false) }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(ChatTokens.RADIUS_CARD.dp))
+            .background(c.surface)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (expanded) "\u25BE" else "\u25B8",
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+                modifier = Modifier
+                    .clickable { expanded = !expanded }
+                    .padding(end = 6.dp),
+            )
+            Text(
+                label,
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { expanded = !expanded },
+            )
+            Text(
+                "\u00d7",
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+                modifier = Modifier
+                    .clickable(onClickLabel = "Dismiss this step", onClick = onDismiss)
+                    .padding(start = 8.dp),
+            )
+        }
+        if (expanded) {
+            Text(detail, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
         }
     }
 }

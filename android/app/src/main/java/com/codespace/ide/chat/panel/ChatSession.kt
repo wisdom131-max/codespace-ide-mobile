@@ -146,7 +146,6 @@ class ChatSession(
      */
     @Volatile private var sendGeneration = 0
     /** Automatic 429 re-attempts used for the CURRENT send. */
-    private var autoRetries = 0
     /** A save failure is shown once, not once per delta. */
     private var storageErrorShown = false
 
@@ -323,6 +322,14 @@ class ChatSession(
     }
     }
 
+    /** The x on an activity row: drop that one line, nothing else in the transcript moves. */
+    fun dismissRow(row: ChatRowModel) {
+        val st = ui.value
+        val at = st.rows.indexOfFirst { it === row }
+        if (at < 0) return
+        ui.value = st.copy(rows = st.rows.filterIndexed { i, _ -> i != at })
+    }
+
     fun removePending(name: String) {
         pendingAttachments.value = pendingAttachments.value.filterNot { it.name == name }
     }
@@ -438,7 +445,6 @@ class ChatSession(
         val chips = staged.map { com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes)) }
         sendGeneration++
         val gen = sendGeneration
-        autoRetries = 0
         val newRows = ArrayList<ChatRowModel>(2)
         // BATCH 5: status cards from the PREVIOUS attempt ("provider is rate limiting",
         // "offline") describe a moment that has passed; a new attempt must not inherit
@@ -646,29 +652,12 @@ class ChatSession(
                     attemptSend(cfg.copy(apiKey = key2 ?: ""), nextSlot, userText, attachments, confirmOverBudget, gen)
                     return
                 }
-                // BATCH 6: a 429 gets a BOUNDED automatic retry. Everything else keeps its
-                // own card immediately - retrying an auth failure or an empty account is
-                // not a time problem, and pretending it is would burn the user's credits.
-                val decision = RetryPolicy.decide(err, autoRetries)
-                if (decision.retry && gen == sendGeneration) {
-                    autoRetries++
-                    appendRow(ChatRowModel.RateLimited(
-                        decision.waitSec, decision.attempt, decision.maxAttempts))
-                    // Keep what the user has already read; the next attempt overwrites from here.
-                    retryKeepLen = streamBuf.length
-                    // streaming stays TRUE: the request is still in flight (a Stop must be
-                    // able to cancel the wait), and a new send would change the generation.
-                    sendJob = scope.launch {
-                        kotlinx.coroutines.delay(decision.waitSec * 1000L)
-                        if (gen == sendGeneration) {
-                            attemptSend(cfg, slotName, userText, attachments, confirmOverBudget, gen)
-                        }
-                    }
-                    return
-                }
-                decision.refusal?.let { appendRow(ChatRowModel.InfoNote(it)) }
-                // BATCH 5: the engine's taxonomy decides WHICH card, so 429 / 402 /
-                // offline are no longer flattened into one generic red card.
+                // Owner ruling 2026-11-01: no automatic retry ladder, no invented wait cap.
+                // VS Code's chat has neither - it renders the provider's error with a Retry
+                // button and resends only when that button is pressed
+                // (chatErrorConfirmationPart.ts:79). The wait is whatever the provider said.
+                // The already-streamed prefix is kept, so a pressed Retry continues from it.
+                retryKeepLen = streamBuf.length
                 appendRow(ChatStatusMapping.rowForError(err))
                 ui.value = ui.value.copy(streaming = false)
             }
@@ -727,7 +716,7 @@ class ChatSession(
             val results = StringBuilder()
             for (call in calls) {
                 val summary = AgentToolWire.summary(call)
-                appendRow(ChatRowModel.InfoNote(AgentToolWire.stepLabel(call) + ": " + summary))
+                appendRow(ChatRowModel.ToolActivity(AgentToolWire.stepLabel(call), summary))
                 // Batch 2: EDIT-mode writes are PROPOSALS. Staging cannot touch the
                 // user's files (it writes a private pending record), so it needs no
                 // approval prompt - the user's Apply in the editor strip IS the

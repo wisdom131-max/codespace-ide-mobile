@@ -280,7 +280,6 @@ private fun ChatBody(
                 var rows = if (state.streaming && state.firstDeltaMs == 0L)
                     state.rows + listOf(ChatRowModel.Thinking(((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt()))
                 else state.rows
-                if (pending.isNotEmpty()) rows = rows + ChatRowModel.Attachments(session.pendingChips())
                 // Batch 3: follow the newest content while the user is at the bottom, and
                 // never fight them once they scroll up. Emits nothing.
                 TranscriptAutoScroll(scroll, transcriptGrowthKey(rows), follow)
@@ -291,6 +290,7 @@ private fun ChatBody(
                         onSendAnyway = { session.sendAnyway() },
                         onCancel = { session.dismissOverBudget() },
                         onRemoveChip = { chip -> session.removePending(chip.name) },
+                        onDismissRow = { row -> session.dismissRow(row) },
                         // BATCH 7: Insert goes to whatever editor is on screen right now;
                         // false (no editor) is reported by the card, not swallowed here.
                         onInsertCode = { code -> com.codespace.ide.editor.EditorInsertBus.insert(code) },
@@ -372,6 +372,8 @@ private fun ChatBody(
                     notice = "Could not remember the " + it.label + " mode for this session."
                 }
             },
+            attachments = session.pendingChips(),
+            onRemoveAttachment = { chip -> session.removePending(chip.name) },
             onAddContext = { showPicker = true },
             onOpenModel = { showSelect = true },
             onTools = { showKeys = true },
