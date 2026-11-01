@@ -352,6 +352,27 @@ fun PreviewPane(
                         .size(18.dp)
                         .clickable(enabled = sharedState.canGoBack) { webViewRef?.goBack() }
                 )
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = "Forward",
+                    tint = TextMuted,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable { webViewRef?.let { if (it.canGoForward()) it.goForward() } },
+                )
+                Text(
+                    text = if (com.codespace.ide.preview.BrowserSession.desktopMode) "PC" else "M",
+                    fontSize = 10.sp,
+                    color = TextMuted,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable {
+                            com.codespace.ide.preview.BrowserSession.applyUserAgent(
+                                context,
+                                !com.codespace.ide.preview.BrowserSession.desktopMode,
+                            )
+                        },
+                )
                 // Lock icon
                 Icon(
                     Icons.Default.Lock,
@@ -657,6 +678,7 @@ private fun PreviewBody(
     }
         // P-B: the console only appears where it means something — a page preview.
         // Browser mode has its own surface and its own story, and is dealt with last.
+        com.codespace.ide.ui.panes.BrowserLongPressSheet()
         if (activeMode != PreviewMode.BROWSER) {
             PreviewConsoleButton(
                 entries = consoleEntries,
@@ -1350,7 +1372,8 @@ private fun BrowserPreview(
     AndroidView(
         factory = { ctx ->
             // P48: Reuse shared WebView if available (fullscreen mirror), else create new
-            val wv = sharedWebView?.value ?: WebView(ctx)
+            val wv = sharedWebView?.value
+                ?: com.codespace.ide.preview.BrowserSession.attach(ctx)
             // CRASH-FIX 2026-08-17: When a shared WebView is reused across two
             // AndroidView composables (e.g. normal preview + fullscreen mirror),
             // Compose can call this factory for the NEW parent before onRelease
@@ -1358,14 +1381,15 @@ private fun BrowserPreview(
             // parent". Force-detach here so re-attachment always succeeds.
             (wv.parent as? android.view.ViewGroup)?.removeView(wv)
             if (sharedWebView?.value == null) {
-                // First time — configure the WebView with all security + desktop + video fixes
-                configureSecureWebView(wv)
+                // First time — the session owns the settings; it also reuses this same
+                // instance after a rotation so the page is not reloaded from scratch.
+                com.codespace.ide.preview.BrowserSession.configure(wv, ctx.applicationContext)
                 wv.webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                         onLoading(true)
-                        // P48: Inject UA override on page START, not just finish —
-                        // Google checks navigator.userAgentData before the page fully loads
-                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
+                        // UA-COHERENCE: the faked navigator.userAgentData is gone. It advertised
+                        // a client that disagreed with the real engine version, which is exactly
+                        // what "your browser is not secure" pages key on.
                         // TEST-51-FIX: Inject video fix JS early for YouTube (before video elements load)
                         if (url != null && (url.contains("youtube.com") || url.contains("youtu.be"))) {
                             view?.evaluateJavascript(YOUTUBE_VIDEO_FIX_JS, null)
@@ -1375,8 +1399,7 @@ private fun BrowserPreview(
                         onLoading(false)
                         onTitle(view?.title ?: "")
                         onCanGoBack(view?.canGoBack() == true)
-                        // P48: Re-inject UA override after page loads
-                        view?.evaluateJavascript(USER_AGENT_DATA_OVERRIDE_JS, null)
+                        // (UA metadata override intentionally removed — see UA-COHERENCE above.)
                         // P48: Inject CSS fixes for YouTube (playsinline + desktop layout)
                         val currentUrl = url ?: ""
                         if (currentUrl.contains("youtube.com") || currentUrl.contains("youtu.be")) {
@@ -1386,19 +1409,36 @@ private fun BrowserPreview(
                             // TEST-51-FIX: Inject styles into Shadow DOM (fixes settings black screen)
                             view?.evaluateJavascript(YOUTUBE_SHADOW_DOM_FIX_JS, null)
                         }
-                        // P48: Inject desktop viewport CSS on all sites
-                        view?.evaluateJavascript("var s2=document.createElement('style');s2.textContent='" + DESKTOP_VIEWPORT_CSS.replace("\n"," ") + "';document.head.appendChild(s2);", null)
-                        // P48: Force desktop site by overriding viewport meta tag
-                        view?.evaluateJavascript("var m=document.querySelector('meta[name=viewport]');if(m)m.setAttribute('content','width=1280,initial-scale=0.4,maximum-scale=4.0,user-scalable=yes');", null)
+                        // Desktop layout is a MODE, not a default: forcing width=1280 on a mobile
+                        // UA made touch sites render as desktop pages and break their own JS.
+                        if (com.codespace.ide.preview.BrowserSession.desktopMode) {
+                            view?.evaluateJavascript("var s2=document.createElement('style');s2.textContent='" + DESKTOP_VIEWPORT_CSS.replace("\n"," ") + "';document.head.appendChild(s2);", null)
+                            view?.evaluateJavascript("var m=document.querySelector('meta[name=viewport]');if(m)m.setAttribute('content','width=1280,initial-scale=0.4,maximum-scale=4.0,user-scalable=yes');", null)
+                        }
                         CookieManager.getInstance().flush()
                     }
                     override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                         onLoading(false)
                         onCanGoBack(view?.canGoBack() == true)
-                        val errHtml = """<html><body style="background:#1e1e1e;color:#f48771;font-family:sans-serif;padding:24px;display:flex;align-items:center;justify-content:center;min-height:80vh;text-align:center;">
-                            <div><h2>Cannot connect</h2><p>$description</p><p style="color:#717171;font-size:13px;">Is your server running on ${url}?</p></div></body></html>"""
-                        view?.loadDataWithBaseURL(null, errHtml, "text/html", "UTF-8", null)
+                        // MAIN FRAME ONLY. This overload fires for every failed subresource, so a
+                        // single broken avatar used to replace a working page with "Cannot connect" —
+                        // the dead browser that a refresh appeared to fix.
+                        if (failingUrl != null && failingUrl == url) {
+                            val errHtml = """<html><body style="background:#1e1e1e;color:#f48771;font-family:sans-serif;padding:24px;display:flex;align-items:center;justify-content:center;min-height:80vh;text-align:center;">
+                                <div><h2>Cannot connect</h2><p>$description</p><p style="color:#717171;font-size:13px;">Is your server running on ${url}?</p></div></body></html>"""
+                            view?.loadDataWithBaseURL(null, errHtml, "text/html", "UTF-8", null)
+                        }
                     }
+                    override fun onRenderProcessGone(
+                        view: WebView?,
+                        detail: android.webkit.RenderProcessGoneDetail?,
+                    ): Boolean {
+                        // Out-of-memory renderer death used to leave a frozen pane.
+                        com.codespace.ide.preview.BrowserSession.destroy()
+                        onLoading(false)
+                        return true
+                    }
+
                     override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
                         handler?.proceed()
                     }
