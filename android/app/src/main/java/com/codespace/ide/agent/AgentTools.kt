@@ -1344,8 +1344,17 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
     }
 
-    private fun getRepoDir(repoDir: String?, context: Context): File =
-        File(repoDir ?: "/root")
+    /**
+     * D14 (2026-11-01): an omitted repo_dir used to mean /root, so "commit my changes" committed
+     * wherever the shell happened to sit and the user's actual project stayed untouched. The open
+     * project wins now, then the trust root, then /root as the last resort. The file tools already
+     * resolved through ToolPathResolver, so git was the only group operating on a guess.
+     */
+    private fun getRepoDir(repoDir: String?, context: Context): File {
+        if (!repoDir.isNullOrBlank()) return File(repoDir)
+        val project = com.codespace.ide.security.TrustState.activeProjectRoot(context)
+        return File(project ?: "/root")
+    }
 
     private fun gitCommitPush(message: String, repoDir: String?, context: Context): String {
         val repo = getRepoDir(repoDir, context)
