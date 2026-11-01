@@ -45,10 +45,15 @@ session and still need their commit id pasted here.
 |---|---|
 | Editor AI menus answer: prompt handed to the chat and sent once idle | 950e19e GREEN 41202315547 |
 | Green chip draggable, edge-snap, clamped, persisted; Solid/Ghost/Hidden | 950e19e GREEN 41202315547 |
+| Chip drag actually moves the chip: gesture-order + absolute tracking (popup window feedback) | fe22784 GREEN 41324787347 |
+| Formatter choice moved beside Format on Save, one surface for one value | fe22784 GREEN 41324787347 |
+| GitHub sign-in from Settings opens the shared dialog (hub bypass closed); hub row keyed on the auth epoch; "github" focus lands | fe22784 GREEN 41324787347 |
+| AI chip stays reachable with the keyboard up, clamped above the IME | 6f2e9a2 GREEN 41339078514 |
+| Edit tools documented in the tool protocol (prefer replace_string_in_file over full rewrites) | 6f2e9a2 GREEN 41339078514 |
 | Chip menu is AI-first: Fix with AI pinned, nine transforms, "More actions..." | 950e19e GREEN 41202315547 |
 | Code-producing actions land through write_file as reviewable proposals | 950e19e GREEN 41202315547 |
 | Lightbulb: no longer fires on every word, hidden with keyboard open, selection/diagnostic driven | 950e19e GREEN 41202315547 |
-| Formatter settings surfaced in the app-wide settings page | backfill |
+| Formatter settings surfaced in the app-wide settings page | backfill; relocated fe22784 |
 | Find & Replace, Go to Line, multi-cursor | backfill |
 | Source Control pane: history, stash, branch delete/rename, conflicts, .gitignore, tags, local snapshots | backfill |
 | Editor action-menu spec, 18 unit tests | 950e19e GREEN 41202315547 |
@@ -126,7 +131,9 @@ session and still need their commit id pasted here.
 | Source Control: initialize-repository offer, generate-commit-message from chat | Not started. |
 | Connectors: Wave 0 request shaping (Notion version header, Jira cloudId), then the 11 missing services | Plan written, nothing shipped. |
 | Terminal link tap: diagnostic mode switch (Off / Log / Resolve / Full), async, fsync breadcrumbs | Extractor and probe ship; the mode switch needs verification. |
-| Chat: @participants and /slash autocomplete, #selection / #problems / terminal-output attach kinds | Not started. |
+| Chat: @participants and /slash autocomplete, #selection / #problems / terminal-output attach kinds | Menus ship (ef8e446 GREEN 41320521740); the #selection / #problems / terminal-attach kinds are still not done. |
+| Inline chat discovery | Chip reachable above the keyboard (6f2e9a2). A true inline chat bar (prompt + accept/reject in the editor) does not exist yet. |
+| Write/edit tool gap | Edit tools now documented and preferred (6f2e9a2). No new edit capability was added; the gap was documentation. |
 | Two-repo split: proot work in ubuntu-proot-test only | Outstanding; proot signal-31 work unfinished. |
 | Device round covering everything since the U-round | Not done. |
 
@@ -141,5 +148,10 @@ session and still need their commit id pasted here.
 - Connectors: Wave 0 request shaping (Notion version header, Jira cloudId), then the 11 missing.
 - `vn-ref-rea` and the other clones: Actions blocked by account billing/spending limit; nothing
   has executed since 2026-10-31 09:46, so their SDK errors cannot be read until that is restored.
+- Chat: the `#selection` / `#problems` / terminal-output attach kinds are still unbuilt (the
+  `@` and `/` menus ship).
+- Inline chat as an in-editor prompt bar with accept/reject: not built. What ships is the chip
+  being reachable while the keyboard is open.
 - Cumulative device round covering the two menus, notebook cell view, skills, settings, preview
-  and browser.
+  and browser, plus this round: formatter relocation, one GitHub sign-in (fe22784), keyboard-up
+  chip (6f2e9a2), edit-tool protocol (6f2e9a2).
