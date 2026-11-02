@@ -135,6 +135,8 @@ session and still need their commit id pasted here.
 | Inline chat discovery | Chip reachable above the keyboard (6f2e9a2). A true inline chat bar (prompt + accept/reject in the editor) does not exist yet. |
 | Write/edit tool gap | Edit tools now documented and preferred (6f2e9a2). No new edit capability was added; the gap was documentation. |
 | CI minutes: mirrors stopped, proot repo consolidated | The 2,000-minute allowance was being spent by mirror repos running upstream pipelines. Actions disabled on nine `vn-ref-*` mirrors and the dormant `ubuntu-proot-bash-test`; `ubuntu-proot-test` rewritten as one workflow with concurrency cancellation, docs-only pushes ignored, gradle cache (9c993c3, run 41349769309 green, 4.1 min). `codespace-ide-mobile` untouched: it is public, so its runs are free, and its build is the verification pipeline. |
+| Chat: trimmed-history row and 429 card removed | Both surface types deleted outright, with their composables, mapping branches, stale-status entries and gallery samples (5ab85c1, run 41384534493 green): trimming is silent, a 429 is an ordinary retryable failure with manual Retry. 402 and offline keep their cards. |
+| Connectors Hub: Firebase / Supabase / n8n | The Project Services page is deleted; the three are connectors under "On this device" in the Hub (121f6b2, run 41352688590 green), reachable by the agent through `use_connector` with per-provider auth shaping. |
 | Connector discoverability | The agent refused a GitLab repo creation because it looked for a `gitlab_*` tool and there is none by design; `list_connectors` printed a bare `[CONNECTED]` line. Connected services now print their canonical `use_connector` calls (d67dc97), recipes for all 19 hub services live in ConnectorRecipes.kt, and the footer states the no-per-provider-tools rule. |
 | SVG viewer (strong-viewer parity) | Rebuilt as a real viewer (f34a020): toolbar zoom 10-3200%, pinch and drag pan, fit, 1:1, four backgrounds, PNG export, data URI copy, source overlay, parse error with line number, size/node/byte metrics. Old JS-off thumbnail and its dead composable removed. Survey and plan: docs/SVG-VIEWER-PLAN-2026-11-01.md |
 | Status bar branch item | Real branch, guest-aware, refreshes on checkout, tap opens branch picker + create-and-switch (4bf1bfb). |
@@ -148,7 +150,10 @@ session and still need their commit id pasted here.
 - SVG viewer: export at an explicit size (cssho `Alt+Shift+S X` equivalent) is not built; the
   viewer still reads the saved file, so live update needs a save; no symbol/outline tree, which
   would need a document model. SVGO-style minification is a deliberate no.
-- Device check for the SVG viewer and the branch picker: neither has run on the TECNO yet.
+- Device check for the SVG viewer, the branch picker and the Hub's on-device group: none has run
+  on the TECNO yet.
+- Local connectors (Firebase/Supabase/n8n) store per project; the Hub resolves the last opened
+  project, so a second project's credentials are only reachable after opening that project.
 - Connectors: the recipe fix makes a CONNECTED service discoverable, but nothing yet proves the
   backend proxy reaches GitLab with a real token (needs one live `POST /projects`); Wave 0 request
   shaping (Notion version header, Jira cloudId) is still open.
