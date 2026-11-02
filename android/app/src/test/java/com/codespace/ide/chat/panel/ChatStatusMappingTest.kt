@@ -17,20 +17,12 @@ import org.junit.Test
 class ChatStatusMappingTest {
 
     @Test
-    fun aRateLimitWithRetryAfterBecomesTheWaitCardWithThatNumber() {
+    fun aRateLimitIsAnOrdinaryRetryableFailure() {
+        // Owner ruling (2026-11-02): no rate-limit surface in the chat. The provider's verdict
+        // and the manual Retry button are the whole of it.
         val row = ChatStatusMapping.rowForError(ChatError.RateLimited(42))
-        assertEquals(ChatRowModel.RateLimited(42), row)
-    }
-
-    @Test
-    fun aRateLimitWithoutRetryAfterStillBecomesTheWaitCard() {
-        val row = ChatStatusMapping.rowForError(ChatError.RateLimited(null))
-        assertEquals(ChatRowModel.RateLimited(ChatStatusMapping.UNKNOWN_WAIT_SEC), row)
-    }
-
-    @Test
-    fun aNegativeRetryAfterCannotProduceANegativeCountdown() {
-        assertEquals(ChatRowModel.RateLimited(0), ChatStatusMapping.rowForError(ChatError.RateLimited(-5)))
+        assertTrue(row is ChatRowModel.Failed)
+        assertEquals(true, (row as ChatRowModel.Failed).canRetry)
     }
 
     @Test
@@ -64,12 +56,12 @@ class ChatStatusMappingTest {
         val rows = listOf(
             ChatRowModel.User("first"),
             ChatRowModel.AssistantStream("an answer", cursorOn = false),
-            ChatRowModel.RateLimited(30),
+            ChatRowModel.Failed("Rate limited", "", true),
             ChatRowModel.InfoNote("write_file: staged a.kt"),
         )
         val kept = ChatStatusMapping.dropStaleStatus(rows)
         assertEquals(3, kept.size)
-        assertTrue(kept.none { it is ChatRowModel.RateLimited })
+        assertTrue("the stale failure is gone", kept.none { it is ChatRowModel.Failed })
         assertTrue("the conversation itself is untouched", kept[1] is ChatRowModel.AssistantStream)
         assertTrue("an honest note is history, not status", kept[2] is ChatRowModel.InfoNote)
     }
@@ -78,12 +70,10 @@ class ChatStatusMappingTest {
     fun everyTransientStatusKindIsCleared() {
         val transient: List<ChatRowModel> = listOf(
             ChatRowModel.Thinking(4),
-            ChatRowModel.RateLimited(10),
             ChatRowModel.Failed("boom", "", true),
             ChatRowModel.NoCredits,
             ChatRowModel.Offline,
             ChatRowModel.OverBudget("est"),
-            ChatRowModel.TrimmedHistory(3),
         )
         assertTrue(transient.all(ChatStatusMapping::isStaleOnNewSend))
         assertTrue(ChatStatusMapping.dropStaleStatus(transient).isEmpty())

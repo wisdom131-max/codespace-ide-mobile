@@ -13,9 +13,8 @@ import com.codespace.ide.chat.ui.ChatRowModel
  *
  * TWO JUDGEMENT CALLS, both stated rather than implied:
  *
- * 1. NOT EVERY ROW IS HISTORY. Thinking, Failed, RateLimited, NoCredits, Offline,
- *    OverBudget and TrimmedHistory describe a MOMENT (this request is retrying, the
- *    network is down). Restoring them tomorrow would show a live-looking "Offline" card
+ * 1. NOT EVERY ROW IS HISTORY. Thinking, Failed, NoCredits, Offline and OverBudget
+ *    describe a MOMENT (this request is retrying, the network is down). Restoring them tomorrow would show a live-looking "Offline" card
  *    for a connection that has long since come back. They are actions, not transcript,
  *    so they are not stored. User text, assistant text and honest system NOTES (the
  *    "wrote src/a.kt" kind) are.
@@ -93,9 +92,7 @@ internal object ChatTranscript {
                 }
                 // Transient surfaces: an action or a moment, not transcript. See header.
                 is ChatRowModel.ToolActivity, is ChatRowModel.Thinking, is ChatRowModel.Failed,
-                is ChatRowModel.RateLimited,
-                ChatRowModel.NoCredits, ChatRowModel.Offline, is ChatRowModel.OverBudget,
-                is ChatRowModel.TrimmedHistory -> Unit
+                ChatRowModel.NoCredits, ChatRowModel.Offline, is ChatRowModel.OverBudget -> Unit
             }
         }
         if (streaming) {

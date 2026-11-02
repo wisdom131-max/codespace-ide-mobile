@@ -63,9 +63,7 @@ private fun sampleState(): ChatRenderState {
                     AttachmentChipModel("stack.txt", "0.9 KB"),
                 )
             ),
-            ChatRowModel.TrimmedHistory(12),
             ChatRowModel.OverBudget("Estimated 9.4k tokens — over the 8k send budget."),
-            ChatRowModel.RateLimited(17),
             ChatRowModel.Offline,
             ChatRowModel.NoCredits,
             ChatRowModel.Failed(

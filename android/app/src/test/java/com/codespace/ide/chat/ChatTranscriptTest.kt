@@ -96,11 +96,9 @@ class ChatTranscriptTest {
             listOf(
                 ChatRowModel.User("q"),
                 ChatRowModel.Thinking(3),
-                ChatRowModel.RateLimited(30),
                 ChatRowModel.NoCredits,
                 ChatRowModel.Offline,
                 ChatRowModel.OverBudget("est"),
-                ChatRowModel.TrimmedHistory(12),
                 ChatRowModel.Failed("boom", "detail", true),
                 ChatRowModel.AssistantStream("a", cursorOn = false),
             ),

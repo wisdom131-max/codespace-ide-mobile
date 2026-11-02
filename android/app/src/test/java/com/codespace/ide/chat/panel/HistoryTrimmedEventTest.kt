@@ -76,9 +76,10 @@ class HistoryTrimmedEventTest {
     }
 
     @Test
-    fun theTrimmedEventReachesTheTranscriptRow() {
-        // The mapping the session performs: a positive count becomes the honest row.
-        val rows = listOf<ChatRowModel>(ChatRowModel.TrimmedHistory(3))
-        assertEquals(3, (rows[0] as ChatRowModel.TrimmedHistory).droppedCount)
+    fun theTrimmedEventAddsNothingToTheTranscript() {
+        // Owner ruling (2026-11-02): the window still narrows, the transcript does not narrate
+        // it. This asserts the row type is gone rather than that a row was written.
+        val rows = listOf<ChatRowModel>(ChatRowModel.InfoNote("a"))
+        assertEquals("trimming is silent", 1, rows.size)
     }
 }

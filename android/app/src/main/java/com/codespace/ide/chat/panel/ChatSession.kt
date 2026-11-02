@@ -111,11 +111,11 @@ class ChatSession(
     private val streamBuf = StringBuilder()
 
     /**
-     * Characters already shown to the user when the previous attempt was cut short by a 429.
-     * The retried request streams its own text from the beginning, so the buffer is truncated
-     * back to this length on its first delta - otherwise the transcript shows the partial
-     * answer followed by a second copy of it, which is what "the response gets cut off" looks
-     * like from the outside.
+     * Characters already shown to the user when the previous attempt failed and the user
+     * pressed Retry. The resent request streams its own text from the beginning, so the
+     * buffer is truncated back to this length on its first delta - otherwise the transcript
+     * shows the partial answer followed by a second copy of it, which is what "the response
+     * gets cut off" looks like from the outside.
      */
     private var retryKeepLen = 0
     private var sendJob: Job? = null
@@ -597,12 +597,7 @@ class ChatSession(
                 streamBuf.append(ev.text)
                 val text = streamBuf.toString()
                 val st = ui.value
-                // BATCH 6: an answer arriving means the wait is over - the "rate limited,
-                // retrying in Ns" card must not sit above a reply that is streaming fine.
-                // Walks back over a Thinking row, which sits between the card and the text.
-                // The cleaned list is the BASE for this frame: assigning st.rows afterwards
-                // would put the resolved wait card straight back.
-                val rowsNow = ChatStatusMapping.clearResolvedWait(st.rows)
+                val rowsNow = st.rows
                 val rows = if (rowsNow.lastOrNull() is ChatRowModel.AssistantStream)
                     rowsNow.dropLast(1) + listOf(ChatRowModel.AssistantStream(text, true))
                 else rowsNow + listOf(ChatRowModel.AssistantStream(text, true))
@@ -631,10 +626,10 @@ class ChatSession(
                 }
             }
             is EngineEvent.HistoryTrimmed -> {
-                // BATCH 5: TrimmedHistory was in the model and the renderer but nothing
-                // ever produced it; a silently narrowed window made the model answer about
-                // a conversation it could not see.
-                if (ev.droppedCount > 0) appendRow(ChatRowModel.TrimmedHistory(ev.droppedCount))
+                // Owner ruling (2026-11-02): no trimmed-history row. The budget still trims -
+                // that is how a long conversation keeps being sendable - but the transcript
+                // is the conversation, not a log of the engine's housekeeping.
+                @Suppress("UNUSED_EXPRESSION") ev.droppedCount
             }
             is EngineEvent.Failed -> {
                 val err = ev.error

@@ -80,12 +80,9 @@ object NativeChatListRenderer : ChatListRenderer {
             }
             is ChatRowModel.Thinking -> ThinkingCard(row.seconds, steps)
             is ChatRowModel.Failed -> ErrorCard(row.verdict, row.detail, row.canRetry, state.onRetry)
-            is ChatRowModel.RateLimited ->
-                RateLimitCard(row.waitSec, row.attempt, row.maxAttempts, state.onRetry)
             ChatRowModel.NoCredits -> NoCreditsCard()
             ChatRowModel.Offline -> OfflineCard(state.onRetry)
             is ChatRowModel.OverBudget -> OverBudgetCard(row.estimate, state.onSendAnyway, state.onCancel)
-            is ChatRowModel.TrimmedHistory -> TrimmedHistoryRow(row.droppedCount)
             is ChatRowModel.InfoNote -> InfoNoteRow(row.text)
             is ChatRowModel.ToolActivity ->
                 ToolActivityRow(row.label, row.detail, onDismiss = { state.onDismissRow(row) })

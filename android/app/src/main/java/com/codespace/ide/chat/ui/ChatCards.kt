@@ -246,39 +246,6 @@ fun ErrorCard(
     )
 }
 
-/**
- * 429: the provider asked for a wait.
- *
- * BATCH 5: the copy used to promise "Retrying in Ns" while nothing retried. It now states
- * what the provider actually said, and offers the user the one action that exists - a
- * manual retry once they judge the wait is over.
- */
-@Composable
-fun RateLimitCard(
-    waitSec: Int,
-    attempt: Int = 0,
-    maxAttempts: Int = 0,
-    onRetry: (() -> Unit)? = null,
-    modifier: Modifier = Modifier,
-) {
-    val c = ChatTokens.LocalChatColors.current
-    val autoRetrying = attempt > 0 && maxAttempts > 0
-    val detail = when {
-        autoRetrying -> "Rate limited (429). Retrying automatically in " + waitSec +
-            "s (attempt " + attempt + " of " + maxAttempts + "). Stop cancels."
-        waitSec > 0 -> "Rate limited (429). The provider asked for " + waitSec +
-            "s before another attempt."
-        else -> "Rate limited (429). Try again in a moment."
-    }
-    StateCard(
-        "Provider asked to wait", detail, c.warning, c.warningBg,
-        // An automatic retry needs no button; a manual one does.
-        if (onRetry != null && !autoRetrying) "Retry" else null,
-        if (!autoRetrying) onRetry else null,
-        modifier,
-    )
-}
-
 /** 402: out of credits, plain verdict, no retry offered. */
 @Composable
 fun NoCreditsCard(modifier: Modifier = Modifier) {
@@ -361,21 +328,6 @@ fun InfoNoteRow(text: String, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .background(c.surfaceAlt, ChipShape)
-    )
-}
-
-/** Thin banner row: history was trimmed by the history budget. */
-@Composable
-fun TrimmedHistoryRow(droppedCount: Int, modifier: Modifier = Modifier) {
-    val c = ChatTokens.LocalChatColors.current
-    Text(
-        "Trimmed history — " + droppedCount + " older message(s) not sent",
-        color = c.textSecondary,
-        fontSize = ChatTokens.FONT_MICRO.sp,
-        modifier = modifier
-            .fillMaxWidth()
-            .background(c.surfaceAlt, ChipShape)
-            .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.GAP_TIGHT.dp),
     )
 }
 

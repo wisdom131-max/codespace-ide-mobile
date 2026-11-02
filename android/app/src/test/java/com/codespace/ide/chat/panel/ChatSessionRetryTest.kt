@@ -56,14 +56,8 @@ class ChatSessionRetryTest {
         settle(s)
         assertEquals("no automatic retry: the provider is asked exactly once", 1, t.calls)
         assertFalse("the request is over, not waiting in the background", s.ui.value.streaming)
-        assertTrue(
-            "the card asks the user what to do next",
-            s.ui.value.rows.any { it is ChatRowModel.RateLimited },
-        )
-        assertTrue(
-            "nothing claims an attempt number it never made",
-            s.ui.value.rows.filterIsInstance<ChatRowModel.RateLimited>().all { it.attempt == 0 },
-        )
+        val failure = s.ui.value.rows.filterIsInstance<ChatRowModel.Failed>().single()
+        assertTrue("a rate limit is retryable by hand", failure.canRetry)
     }
 
     @Test
