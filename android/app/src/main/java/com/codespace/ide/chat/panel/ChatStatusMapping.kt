@@ -28,14 +28,20 @@ internal object ChatStatusMapping {
      * One engine error -> one row.
      *
      * 402 and transport failures keep their own cards because they need their own action
-     * (top up, reconnect). A 429 does NOT get one: the owner ruled the rate-limit surface
-     * out of the chat, so it lands in Failed carrying the provider's own verdict and the
-     * same manual Retry as every other retryable error.
+     * (top up, reconnect).
+     *
+     * 429 carries VS Code's own sentence rather than the transport's verdict: the reference
+     * humanises Retry-After and writes prose ("Sorry, your request was rate-limited. Please wait
+     * 2 minutes before trying again."), and it does not retry by itself. RateLimitMessage holds
+     * that copy and the reasoning, so a wording change has one home.
      */
     fun rowForError(err: ChatError): ChatRowModel = when (err) {
         is ChatError.OutOfCredits -> ChatRowModel.NoCredits
         is ChatError.Network -> ChatRowModel.Offline
         is ChatError.OverBudget -> ChatRowModel.OverBudget(err.detail)
+        is ChatError.RateLimited -> ChatRowModel.Failed(
+            RateLimitMessage.VERDICT, RateLimitMessage.detail(err.retryAfterSec), err.retryable,
+        )
         else -> ChatRowModel.Failed(err.userVerdict, "", err.retryable)
     }
 

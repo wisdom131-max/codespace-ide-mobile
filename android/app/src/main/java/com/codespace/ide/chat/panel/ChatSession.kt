@@ -625,12 +625,6 @@ class ChatSession(
                     is ToolDecision.Run -> runTools(decision.calls, cfg, slotName, confirmOverBudget, gen)
                 }
             }
-            is EngineEvent.HistoryTrimmed -> {
-                // Owner ruling (2026-11-02): no trimmed-history row. The budget still trims -
-                // that is how a long conversation keeps being sendable - but the transcript
-                // is the conversation, not a log of the engine's housekeeping.
-                @Suppress("UNUSED_EXPRESSION") ev.droppedCount
-            }
             is EngineEvent.Failed -> {
                 val err = ev.error
                 // WP6: OPT-IN key failover on auth/credits rejection - visible,

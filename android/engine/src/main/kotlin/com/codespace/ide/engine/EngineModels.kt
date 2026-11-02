@@ -79,12 +79,11 @@ sealed class EngineEvent {
     data class Completed(val totalChars: Int) : EngineEvent()
     /** Send failed with a classified error from the taxonomy. */
     data class Failed(val error: ChatError) : EngineEvent()
-    /**
-     * BATCH 5: the history window dropped older messages before this send, so the model
-     * did NOT see them. Emitted before anything else; silent trimming is what makes a model
-     * answer about a conversation it can no longer see.
-     */
-    data class HistoryTrimmed(val droppedCount: Int) : EngineEvent()
+    // 2026-11-02: HistoryTrimmed was deleted, not silenced. The window is still narrowed by
+    // HistoryBudget before each send - VS Code narrows its own (summarizedConversationHistory.tsx
+    // exists precisely for "when the context window is exceeded") - but neither product narrates
+    // it in the transcript, and a row saying "3 older messages not sent" told the user about an
+    // engine decision they cannot act on from inside the chat.
 }
 
 /**

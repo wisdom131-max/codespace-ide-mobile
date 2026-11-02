@@ -34,9 +34,6 @@ class ChatEngineImpl(
         state.append(ChatRole.USER, userText, MessageState.DONE)
         val eligible = state.snapshot().filter { it.state == MessageState.DONE && it.text.isNotEmpty() }
         val window = HistoryBudget.select(eligible, HistoryMode.parse(config.historyMode))
-        // BATCH 5: say so when older messages were dropped from the outgoing window.
-        val dropped = eligible.size - window.size
-        if (dropped > 0) emit(EngineEvent.HistoryTrimmed(dropped))
         val payload = adapter.payload(window, userText, attachments, config)
         val overBudget = BudgetGuard.checkPayload(payload.length, config.maxPayloadChars)
         if (overBudget != null && !config.confirmOverBudget) {
