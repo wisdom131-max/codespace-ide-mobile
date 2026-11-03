@@ -78,18 +78,6 @@ object TaskRunner {
         onProblemsUpdate: ((List<GradleErrorParser.BuildProblem>) -> Unit)? = null,
     ): BuildRunner.BuildResult {
         val task = CATALOGUE.first { it.id == taskId }
-        // P2c TrustState choke point: launching a build/task is a gated action —
-        // prompt once via the global trust dialog for untrusted projects.
-        if (!com.codespace.ide.security.TrustState.awaitTrusted(context, projectPath)) {
-            val refused = BuildRunner.BuildResult(
-                status = BuildRunner.BuildStatus.FAILED,
-                output = "Project not trusted yet - task launch was cancelled at the trust prompt. Trust the project and run again.",
-                durationMs = 0,
-                errorCount = 1,
-            )
-            markDone(taskId, refused)
-            return refused
-        }
         // TG08 (2026-09-26): "Run Unit Tests" no longer assumes a gradle project.
         // JS/Python/Dart projects previously got a cryptic failing gradle wrapper —
         // the entry was Android-first in a multi-language IDE. The gradle `test`

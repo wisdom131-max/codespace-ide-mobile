@@ -156,13 +156,6 @@ object TestRunManager {
         active = true
         cancelRequested = false
         try {
-            // Trust gate first (IG02/P2c pattern): prompt once, refuse on no.
-            val trustPath = projectRoot ?: File(hostFilePath).parent
-            if (!TrustState.awaitTrusted(context, trustPath)) {
-                log("[TestRun] Project not trusted — test run refused. Trust the project and try again.")
-                return@withContext TestRunResult(testId, TestRunStatus.UNTRUSTED, null, 0)
-            }
-
             // Guest translation — the file must be reachable inside the rootfs.
             val guestFile = ProotInstaller.hostToGuestPath(context, hostFilePath)
             if (guestFile == null) {
@@ -262,13 +255,6 @@ object TestRunManager {
         }
         active = true
         try {
-            // Trust gate first (same choke point as Run).
-            val trustPath = projectRoot ?: File(hostFilePath).parent
-            if (!TrustState.awaitTrusted(context, trustPath)) {
-                log("[TestDebug] Project not trusted - debug session refused.")
-                return@withContext TestRunResult(testId, TestRunStatus.UNTRUSTED, null, 0)
-            }
-
             val guestFile = ProotInstaller.hostToGuestPath(context, hostFilePath)
             if (guestFile == null) {
                 log("[TestDebug] Cannot reach this file inside the Ubuntu sandbox - debug refused.")
