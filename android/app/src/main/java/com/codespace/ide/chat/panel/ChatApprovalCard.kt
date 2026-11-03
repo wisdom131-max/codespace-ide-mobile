@@ -99,6 +99,9 @@ internal fun ChatApprovalCard() {
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            pending.onTrust?.let { trust ->
+                ApprovalAction("Trust project", c.textSecondary, filled = false, divider = false) { trust() }
+            }
             ApprovalAction("Skip", c.textSecondary, filled = false, divider = true) {
                 AgentFlowGate.reject()
             }

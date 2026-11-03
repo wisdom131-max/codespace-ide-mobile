@@ -202,6 +202,17 @@ object AgentScheduler {
     private fun runCommand(command: String, projectPath: String?, ctx: android.content.Context?) {
         try {
             if (ctx == null) return
+            if (projectPath != null &&
+                !com.codespace.ide.security.TrustState.isTrusted(ctx, projectPath)) {
+                com.codespace.ide.data.NotificationStore.add(
+                    title = "Scheduled task blocked",
+                    body = "Task not run: its project is not trusted yet. Open the project and " +
+                        "trust it at the prompt (or run any gated action in chat) to re-enable.",
+                    severity = com.codespace.ide.data.NotificationStore.Severity.WARNING,
+                    source = com.codespace.ide.data.NotificationStore.Source.AI,
+                )
+                return
+            }
             com.codespace.ide.terminal.ProotInstaller.execOnce(ctx, command, timeoutSeconds = 60L)
         } catch (_: Exception) {}
     }

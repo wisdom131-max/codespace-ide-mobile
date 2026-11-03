@@ -65,6 +65,11 @@ object ProjectTaskRunner {
             _state.value = State(lastLabel = label, output = reason, ok = false)
             return reason
         }
+        if (!com.codespace.ide.security.TrustState.awaitTrusted(context, projectPath)) {
+            val refused = "Project not trusted yet - task launch was cancelled at the trust prompt."
+            _state.value = State(lastLabel = label, output = refused, ok = false)
+            return refused
+        }
         val log = StringBuilder()
         for (task in ordered) {
             _state.value = State(runningLabel = task.label, lastLabel = task.label, output = log.toString(), ok = null)

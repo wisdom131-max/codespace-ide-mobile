@@ -206,6 +206,14 @@ fun AttachDebugDialog(
                             isAttaching = true
                             errorMsg = null
                             scope.launch(Dispatchers.IO) {
+                                // P2c TrustState choke point: attaching the debugger is a
+                                // gated action — prompt once via the global trust dialog.
+                                if (!com.codespace.ide.security.TrustState.awaitTrusted(
+                                        context, com.codespace.ide.security.TrustState.activeProjectRoot(context))) {
+                                    isAttaching = false
+                                    errorMsg = "Project not trusted yet - attach was cancelled at the trust prompt."
+                                    return@launch
+                                }
                                 val sessionId = UniversalDebugManager.attachDebug(
                                     context = context,
                                     language = lang,

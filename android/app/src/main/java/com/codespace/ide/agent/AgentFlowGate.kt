@@ -39,14 +39,21 @@ object AgentFlowGate {
         val deferred: CompletableDeferred<Boolean>,
         /** ROUND 5: lets the card offer "Always allow <tool>" — may be null in headless calls. */
         val onAlwaysAllow: (() -> Unit)? = null,
+        /**
+         * P2c (CH03): "Trust this project" quick-action — non-null when this call
+         * was gated by PROJECT TRUST (untrusted project, first gated action).
+         * The card calls it (persist trust) and then approves this call.
+         */
+        val onTrust: (() -> Unit)? = null,
     )
 
     val pending: MutableState<PendingApproval?> = mutableStateOf(null)
 
     /**
      * P2c: forceApproval bypasses isAutoApproved ENTIRELY — the card shows even in
-     * AUTO levels. Used for use_connector (IG15: per-call consent, every call,
-     * token-bearing network egress).
+     * AUTO levels. Used for (a) use_connector (IG15: per-call consent, every call,
+     * token-bearing network egress) and (b) the first gated action in an untrusted
+     * project (prompt-once trust card).
      */
     /** CH09 (P4h): serializes concurrent approvals — a second gated call now WAITS
      * for the current card instead of clobbering it (the old clobber left the first
@@ -58,6 +65,7 @@ object AgentFlowGate {
         toolName: String,
         argsSummary: String,
         forceApproval: Boolean = false,
+        onTrust: (() -> Unit)? = null,
     ): ApprovalVerdict {
         if (!forceApproval && ChatPermissionStore.isAutoApproved(context, toolName)) return ApprovalVerdict.APPROVED
         // Section 6: an explicit "allow for this session" answer is honoured WITHOUT
@@ -68,7 +76,7 @@ object AgentFlowGate {
             pending.value = PendingApproval(toolName, argsSummary, deferred, onAlwaysAllow = {
                 ChatPermissionStore.allowTool(context, toolName)
                 deferred.complete(true)
-            })
+            }, onTrust = onTrust)
             // CH09 (P4h): the old await() suspended FOREVER — a lost card left the
             // chat loading with Stop as the only escape. 10 minutes with no response
             // = the call is abandoned with an honest TIMEOUT verdict.
