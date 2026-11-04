@@ -221,15 +221,31 @@ internal object AgentToolWire {
      * Both complete dialects are removed whole; anything left of a protocol tag is removed
      * too, because an unclosed block is still protocol, not an answer.
      */
-    fun visibleText(text: String): String {
-        var out = CALL_REGEX.replace(text, "")
-        out = HERMES_CALL_REGEX.replace(out, "")
-        // An OPENING protocol tag that no complete block consumed is the head of a truncated or
-        // malformed call. Everything from it onward is protocol: cut the tail rather than leave
-        // its parameter values ("notes.txt") standing as if the assistant had written them.
-        val tail = PROTOCOL_OPENER.find(out)
-        if (tail != null) out = out.take(tail.range.first)
-        out = PROTOCOL_FRAGMENT.replace(out, "")
+    fun visibleText(text: String, keep: Set<IntRange> = emptySet()): String {
+        val ranges = ArrayList<IntRange>()
+        for (m in CALL_REGEX.findAll(text)) ranges.add(m.range)
+        for (m in HERMES_CALL_REGEX.findAll(text)) ranges.add(m.range)
+        // Slice around removed blocks instead of blanking them: a blank leaves a hole in the
+        // sentence ("Here you go           done"), which reads as a bug of its own.
+        val sb = StringBuilder(text.length)
+        var cursor = 0
+        for (r in ranges.sortedBy { it.first }) {
+            if (r.first < cursor) continue
+            val kept = keep.any { it.first == r.first && it.last == r.last }
+            if (kept) continue
+            sb.append(text, cursor, r.first)
+            cursor = r.last + 1
+        }
+        sb.append(text, cursor, text.length)
+        var out = sb.toString()
+        if (keep.isEmpty()) {
+            // An OPENING protocol tag that no complete block consumed is the head of a truncated
+            // or malformed call. Everything from it onward is protocol: cut the tail rather than
+            // leave its parameter values standing as if the assistant had written them.
+            val tail = PROTOCOL_OPENER.find(out)
+            if (tail != null) out = out.take(tail.range.first)
+            out = PROTOCOL_FRAGMENT.replace(out, "")
+        }
         return out.replace(Regex("""\n{3,}"""), "\n\n").trim()
     }
 
@@ -239,9 +255,38 @@ internal object AgentToolWire {
      * [round] is 1-based and counts completed exchanges in this request. At the cap the
      * calls are refused instead of executed: the honest stop, not a silent extra round.
      */
-    fun decide(mode: ChatMode, reply: String, round: Int): ToolDecision {
-        val calls = parse(reply)
-        val visible = visibleText(reply)
+    fun decide(
+        mode: ChatMode,
+        reply: String,
+        round: Int,
+        /**
+         * 2026-11-04 guard (a): text-dialect calls are read only when the request actually
+         * offered tools. A model that was never given the protocol cannot be answering in it,
+         * so any markup in its reply is someone else's words.
+         */
+        toolsOffered: Boolean = true,
+        /**
+         * 2026-11-04 guard (c): everything the model was SHOWN this turn - tool results, file
+         * reads, attachment text, injected project context. A call whose markup (or, for the
+         * text dialect, whose arguments) appears verbatim in here is an echo of untrusted
+         * content, not the model's own intent, so it is never executed.
+         */
+        turnContext: List<String> = emptyList(),
+    ): ToolDecision {
+        // (d) a call written inside a fenced code block or a quoted block is documentation,
+        // never a directive: those regions are masked before anything is parsed.
+        val scannable = maskQuotedAndFenced(reply)
+        val detailed = parseDetailed(scannable)
+        val echoRanges = HashSet<IntRange>()
+        val echoes = ArrayList<ParsedToolCall>()
+        val calls = ArrayList<ParsedToolCall>()
+        for (d in detailed) {
+            if (toolsOffered && !isEcho(d, turnContext)) calls.add(d.call)
+            else { echoes.add(d.call); echoRanges.add(d.range) }
+        }
+        // An echo is shown as literal text (the user must see what the model repeated), so its
+        // block is exempt from the strip that normally keeps protocol out of prose.
+        val visible = visibleText(reply, keep = echoRanges)
         if (calls.isEmpty()) return ToolDecision.Answer(visible)
 
         if (!modeRunsTools(mode)) {
@@ -324,4 +369,96 @@ internal object AgentToolWire {
         "search_files" -> "Searching the project"
         else -> ToolRegistry.spec(call.name)?.displayName ?: call.name
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 2026-11-04 device finding #3 (raw markup in the chat) - the parse GUARD.
+    //
+    // The wire is text, so a reply can contain markup that did not come from the model's own
+    // intent: a file it read, a README, an attachment, a page it fetched. VS Code never faces
+    // this because tool calls arrive as structured parts, not as text it must interpret
+    // (chatParticipants.ts:158 gates on capabilities.supportsToolCalling). VN Code chose the text
+    // wire (AgentToolWire.kt header) to work with any OpenAI-compatible endpoint, so it has to
+    // pay for that choice with an explicit guard.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    internal data class DetailedCall(
+        val call: ParsedToolCall,
+        val range: IntRange,
+        /** true for the XML/Hermes dialect, whose arguments are the echo risk. */
+        val textDialect: Boolean,
+    )
+
+    /** Fenced code blocks and quoted blocks are masked so nothing inside them is parsed. */
+    internal fun maskQuotedAndFenced(text: String): String {
+        val sb = StringBuilder(text)
+        var i = 0
+        while (i < sb.length) {
+            if (sb.startsWith("```", i)) {
+                val end = sb.indexOf("```", i + 3)
+                val stop = if (end < 0) sb.length else end + 3
+                for (k in i until stop) if (sb[k] != '\n') sb.setCharAt(k, ' ')
+                i = stop
+                continue
+            }
+            if (sb[i] == '>' && (i == 0 || sb[i - 1] == '\n')) {
+                var j = i
+                while (j < sb.length && sb[j] != '\n') { sb.setCharAt(j, ' '); j++ }
+                i = j
+                continue
+            }
+            i++
+        }
+        return sb.toString()
+    }
+
+    /** Same calls [parse] returns, plus where they were and which dialect they came from. */
+    internal fun parseDetailed(text: String): List<DetailedCall> {
+        val found = ArrayList<DetailedCall>()
+        for (m in CALL_REGEX.findAll(text)) {
+            val body = m.groupValues[2]
+            val name = NAME_REGEX.find(body)?.groupValues?.get(1) ?: continue
+            val args = jsonArgumentsFrom(body) ?: "{}"
+            found.add(DetailedCall(ParsedToolCall(name, args), m.range, textDialect = false))
+        }
+        for (m in HERMES_CALL_REGEX.findAll(text)) {
+            found.add(
+                DetailedCall(
+                    ParsedToolCall(m.groupValues[1], hermesArguments(m.groupValues[2])),
+                    m.range,
+                    textDialect = true,
+                ),
+            )
+        }
+        return found.sortedBy { it.range.first }
+    }
+
+    /**
+     * (c) THE ECHO CHECK.
+     *
+     * Suppressed when the call's own markup appears verbatim in what the model was shown this
+     * turn. For the text dialect, the arguments alone are enough: a file that contains a Hermes
+     * block is exactly how an instruction-injection payload travels, and a path that was printed
+     * by an earlier tool result is indistinguishable from one the model invented.
+     */
+    internal fun isEcho(d: DetailedCall, context: List<String>): Boolean {
+        if (context.isEmpty()) return false
+        val haystack = context.joinToString("\n").let(::squash)
+        if (haystack.isEmpty()) return false
+        val raw = squash(d.callNameAndArgs())
+        if (raw.isNotEmpty() && haystack.contains(raw)) return true
+        if (!d.textDialect) return false
+        val primary = primaryArgument(d.call.argumentsJson)
+        return primary.length >= 8 && haystack.contains(squash(primary))
+    }
+
+    private fun DetailedCall.callNameAndArgs(): String =
+        "<tool_call><function=" + call.name + ">" + call.argumentsJson + "</function></tool_call>"
+
+    /** The first string value in the argument object, unescaped enough for comparison. */
+    private fun primaryArgument(argsJson: String): String {
+        val m = Regex("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"").find(argsJson) ?: return ""
+        return m.groupValues[2]
+    }
+
+    private fun squash(value: String): String = value.replace(Regex("\\s+"), " ").trim()
 }

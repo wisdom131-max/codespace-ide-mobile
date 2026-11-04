@@ -123,6 +123,14 @@ class ChatSession internal constructor(
     private val streamBuf = StringBuilder()
 
     /**
+     * 2026-11-04 guard (c): everything this TURN showed the model - tool results, file reads,
+     * attachment text, injected workspace context. A text-dialect call that also appears in here
+     * is an echo of untrusted content, never the model's own intent. Cleared at the start of
+     * every send so nothing leaks across turns.
+     */
+    private val turnContext = ArrayList<String>()
+
+    /**
      * Characters already shown to the user when the previous attempt failed and the user
      * pressed Retry. The resent request streams its own text from the beginning, so the
      * buffer is truncated back to this length on its first delta - otherwise the transcript
@@ -446,6 +454,8 @@ class ChatSession internal constructor(
             maxPayloadChars = com.codespace.ide.engine.ModelCatalog.payloadBudgetChars(resolveCapability(sel)),
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
+        turnContext.clear()
+        wsBlock.takeIf { it.isNotBlank() }?.let { turnContext.add(it) }
         failoverAttempts = 0
         toolRound = 0
         keySlotsSeen.clear()
@@ -468,6 +478,7 @@ class ChatSession internal constructor(
                 id = java.util.UUID.randomUUID().toString(),
                 name = it.name, mimeType = it.mimeType, base64Data = it.base64)
         }
+        for (a in attachments) a.textData?.let { if (it.isNotBlank()) turnContext.add(it) }
         val chips = staged.map { com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes)) }
         sendGeneration++
         val gen = sendGeneration
@@ -641,7 +652,13 @@ class ChatSession internal constructor(
                 // Section 6: a finished reply is either an ANSWER or an ACTION request. The
                 // decision is pure (AgentToolWire); this only carries it out. The raw
                 // <tool> block never reaches the transcript.
-                val decision = AgentToolWire.decide(mode, streamBuf.toString(), toolRound + 1)
+                val decision = AgentToolWire.decide(
+                    mode,
+                    streamBuf.toString(),
+                    toolRound + 1,
+                    toolsOffered = AgentToolWire.modeRunsTools(mode),
+                    turnContext = turnContext.toList(),
+                )
                 val shown = when (decision) {
                     is ToolDecision.Answer -> decision.text
                     is ToolDecision.Refused -> decision.visibleText
@@ -777,6 +794,8 @@ class ChatSession internal constructor(
                     (if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
                         AgentToolWire.firstLine(out)
                 ))
+                // Guard (c): a tool result joins the echo corpus for the REST of this turn.
+                turnContext.add(out)
                 results.append(AgentToolWire.resultMessage(call, out))
                 results.append("\n\n")
             }
