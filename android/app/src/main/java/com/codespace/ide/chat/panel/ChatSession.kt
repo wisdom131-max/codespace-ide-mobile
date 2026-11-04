@@ -379,7 +379,18 @@ class ChatSession internal constructor(
     fun send(userText: String, confirmOverBudget: Boolean = false) =
         sendCore(userText, confirmOverBudget, reuseStaged = false)
 
-    private fun sendCore(userText: String, confirmOverBudget: Boolean, reuseStaged: Boolean) {
+    /**
+     * [replaceTurn] is Retry. A retry re-asks the SAME turn: the user message and its attachment
+     * row are already in the transcript and must not be added again (device finding #14 - three
+     * "Read wire-test/app.conf" bubbles after one rate-limited send). The failed status row is
+     * still dropped by dropStaleStatus, so the retry replaces the outcome, not the question.
+     */
+    private fun sendCore(
+        userText: String,
+        confirmOverBudget: Boolean,
+        reuseStaged: Boolean,
+        replaceTurn: Boolean = false,
+    ) {
         if (ui.value.streaming || userText.isBlank()) return
         // A new turn supersedes a previous interruption: from here on the transcript is live
         // again and must not keep carrying the "cut off" marker.
@@ -467,8 +478,10 @@ class ChatSession internal constructor(
         ChatStatusMapping.dropStaleStatus(ui.value.rows).let { kept ->
             if (kept.size != ui.value.rows.size) ui.value = ui.value.copy(rows = kept)
         }
-        newRows.add(ChatRowModel.User(userText))
-        if (chips.isNotEmpty()) newRows.add(ChatRowModel.Attachments(chips))
+        if (!replaceTurn) {
+            newRows.add(ChatRowModel.User(userText))
+            if (chips.isNotEmpty()) newRows.add(ChatRowModel.Attachments(chips))
+        }
         if (!reuseStaged) pendingAttachments.value = emptyList()
         ui.value = ui.value.copy(
             rows = ui.value.rows + newRows,
@@ -538,7 +551,11 @@ class ChatSession internal constructor(
 
     fun retry() {
         val t = ui.value.lastUserText
-        if (t.isNotBlank() && !ui.value.streaming) sendCore(t, confirmOverBudget = false, reuseStaged = true)
+        if (t.isNotBlank() && !ui.value.streaming) {
+            // 2026-11-04 (device finding #14): a retry REPLACES the turn's outcome. Passing the
+            // same question through the normal send path appended another user row each time.
+            sendCore(t, confirmOverBudget = false, reuseStaged = true, replaceTurn = true)
+        }
     }
 
     /** Over-budget override: the owner-ruled explicit "Send anyway?" per send. */

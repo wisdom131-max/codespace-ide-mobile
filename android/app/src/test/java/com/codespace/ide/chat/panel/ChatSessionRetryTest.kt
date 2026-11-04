@@ -74,4 +74,38 @@ class ChatSessionRetryTest {
         assertEquals("the recovered answer is stated once", 1, answers.size)
         assertTrue(answers.all { it.text.contains("recovered") })
     }
+
+    /**
+     * Device finding 2026-11-04 #14. The owner's screenshot showed "Read wire-test/app.conf" three
+     * times after one rate-limited send: retry() re-enters the send path, which appended a new
+     * user row every time. A retry replaces the outcome of a turn; it does not repeat the question.
+     */
+    @Test
+    fun retryingNeverAddsAnotherUserMessage() {
+        val t = RateLimitedThenOk(retryAfter = "1", failTimes = 3)
+        val s = session(t)
+        s.send("Read wire-test/app.conf")
+        settle(s)
+        s.retry()
+        settle(s)
+        s.retry()
+        settle(s)
+        val asked = s.ui.value.rows.filterIsInstance<ChatRowModel.User>()
+        assertEquals("one question, three attempts", 1, asked.size)
+        assertEquals("Read wire-test/app.conf", asked.single().text)
+        assertEquals("three real wire attempts", 3, t.calls)
+    }
+
+    /** A retry must not leave the previous failure card behind either. */
+    @Test
+    fun aRetryReplacesTheFailureCardInsteadOfStackingIt() {
+        val t = RateLimitedThenOk(retryAfter = "1", failTimes = 2)
+        val s = session(t)
+        s.send("hi")
+        settle(s)
+        s.retry()
+        settle(s)
+        val failures = s.ui.value.rows.filterIsInstance<ChatRowModel.Failed>()
+        assertEquals("one outcome row at a time", 1, failures.size)
+    }
 }
