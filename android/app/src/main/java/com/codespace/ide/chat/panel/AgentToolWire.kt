@@ -386,6 +386,8 @@ internal object AgentToolWire {
         val range: IntRange,
         /** true for the XML/Hermes dialect, whose arguments are the echo risk. */
         val textDialect: Boolean,
+        /** The tag text exactly as the model wrote it; the echo check compares this whole block. */
+        val text: String = "",
     )
 
     /** Fenced code blocks and quoted blocks are masked so nothing inside them is parsed. */
@@ -418,7 +420,7 @@ internal object AgentToolWire {
             val body = m.groupValues[2]
             val name = NAME_REGEX.find(body)?.groupValues?.get(1) ?: continue
             val args = jsonArgumentsFrom(body) ?: "{}"
-            found.add(DetailedCall(ParsedToolCall(name, args), m.range, textDialect = false))
+            found.add(DetailedCall(ParsedToolCall(name, args), m.range, textDialect = false, text = m.value))
         }
         for (m in HERMES_CALL_REGEX.findAll(text)) {
             found.add(
@@ -426,6 +428,7 @@ internal object AgentToolWire {
                     ParsedToolCall(m.groupValues[1], hermesArguments(m.groupValues[2])),
                     m.range,
                     textDialect = true,
+                    text = m.value,
                 ),
             )
         }
@@ -444,12 +447,19 @@ internal object AgentToolWire {
         if (context.isEmpty()) return false
         val haystack = context.joinToString("\n").let(::squash)
         if (haystack.isEmpty()) return false
-        val raw = squash(d.callNameAndArgs())
-        if (raw.isNotEmpty() && haystack.contains(raw)) return true
-        if (!d.textDialect) return false
-        val primary = primaryArgument(d.call.argumentsJson)
-        return primary.length >= 8 && haystack.contains(squash(primary))
+        // WHOLE BLOCK OR NOTHING (advisor ruling 2026-11-04, after the false positive below).
+        //
+        // The first rule also matched a bare argument value, and that ate the commonest agent
+        // flow there is: list_dir names app.conf, then the model reads app.conf. An injected
+        // file repeats the entire call, tags and all, so the whole block is the honest test.
+        val block = squash(d.callNameAndArgs())
+        if (block.isNotEmpty() && haystack.contains(block)) return true
+        val asWritten = squash(d.raw)
+        return asWritten.isNotEmpty() && haystack.contains(asWritten)
     }
+
+    /** The exact tag text this call was matched from, as the model wrote it. */
+    private val DetailedCall.raw: String get() = text
 
     private fun DetailedCall.callNameAndArgs(): String =
         "<tool_call><function=" + call.name + ">" + call.argumentsJson + "</function></tool_call>"

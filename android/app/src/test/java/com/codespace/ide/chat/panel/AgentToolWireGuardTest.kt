@@ -115,4 +115,46 @@ class AgentToolWireGuardTest {
         )
         assertTrue(decision is ToolDecision.Answer)
     }
+
+    // ---- 2026-11-04 advisor item 1: the guard must not eat the NORMAL flow -------------
+    //
+    // A listing that names a file, followed by a read of that file, is the commonest thing an
+    // agent does. The first version of the echo rule dropped the second call whenever its
+    // argument value appeared anywhere in this turn's context, which is exactly that flow.
+
+    @Test
+    fun `a call whose argument was just listed still runs`() {
+        val listing = "wire-test/app.conf\nwire-test/notes.txt\nwire-test/src/Main.kt"
+        val reply = "<tool_call>\n<function=read_file>\n<parameter=path>\nwire-test/app.conf\n</parameter>\n</function>\n</tool_call>"
+        val d = AgentToolWire.decide(
+            mode = ChatMode.AGENT,
+            reply = reply,
+            round = 2,
+            toolsOffered = true,
+            turnContext = listOf(listing),
+        )
+        assertTrue("the model asked to read a file it just saw listed", d is ToolDecision.Run)
+        assertEquals("read_file", (d as ToolDecision.Run).calls.single().name)
+    }
+
+    @Test
+    fun `a call whose argument came back from a search still runs`() {
+        val search = "src/App.kt:12: fun main() {\nsrc/Util.kt:3: fun helper() {"
+        val reply = "<tool_call><function=read_file><parameter=path>src/App.kt</parameter></function></tool_call>"
+        val d = AgentToolWire.decide(
+            ChatMode.AGENT, reply, 3, toolsOffered = true, turnContext = listOf(search),
+        )
+        assertTrue(d is ToolDecision.Run)
+    }
+
+    @Test
+    fun `the owner markup still runs after a listing of the same file`() {
+        val listing = "notes.txt\napp.conf\nkeep.txt"
+        val reply = "<tool_call> <function=read_file> <parameter=path> wire-test/app.conf </parameter> </function> </tool_call>"
+        val d = AgentToolWire.decide(
+            ChatMode.AGENT, reply, 2, toolsOffered = true, turnContext = listOf(listing),
+        )
+        assertTrue("the owner's exact Qwen shape, after a listing", d is ToolDecision.Run)
+        assertEquals("read_file", (d as ToolDecision.Run).calls.single().name)
+    }
 }
