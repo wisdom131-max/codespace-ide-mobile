@@ -38,8 +38,51 @@ internal object AgentToolWire {
 
     private val CALL_REGEX =
         Regex("""<(tool|tool_call)>\s*(\{.*?\})\s*</\1>""", RegexOption.DOT_MATCHES_ALL)
+
+    /**
+     * 2026-11-04 (device finding, Stage 1): models served through a custom OpenAI-compatible
+     * endpoint do not all speak the JSON dialect above. Qwen (and any Hermes-derived template:
+     * Nous-Hermes, OpenHermes, many fine-tunes) emits an XML dialect instead:
+     *
+     *   <tool_call>
+     *   <function=read_file>
+     *   <parameter=path>
+     *   wire-test/notes.txt
+     *   </parameter>
+     *   </function>
+     *   </tool_call>
+     *
+     * That text was not matched by CALL_REGEX, so visibleText() left it untouched and the
+     * transcript rendered the protocol as if the assistant had said it out loud. Parsing it
+     * here - and stripping it in visibleText - is the whole fix; the model was asking for the
+     * tool correctly in the dialect its template uses.
+     */
+    private val HERMES_CALL_REGEX = Regex(
+        """<tool_call>\s*<function=([A-Za-z0-9_]+)>\s*(.*?)\s*</function>\s*</tool_call>""",
+        RegexOption.DOT_MATCHES_ALL,
+    )
+    private val HERMES_PARAM_REGEX = Regex(
+        """<parameter=([A-Za-z0-9_]+)>\s*(.*?)\s*</parameter>""",
+        RegexOption.DOT_MATCHES_ALL,
+    )
+
+    /**
+     * Protocol leftovers that carry no parseable call: an unclosed block, a stray half of one,
+     * or a fragment split by a dropped chunk. Stripped from the visible answer so markup can
+     * never be read as prose, and never turned into an execution.
+     */
+    private val PROTOCOL_FRAGMENT = Regex(
+        """</?(tool_call|tool|function|parameter)[^>]*>""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** The first opening tag of either dialect: `<tool_call>`, `<tool>`, `<function=`, `<parameter=`. */
+    private val PROTOCOL_OPENER = Regex(
+        """<(tool_call|tool|function|parameter)[^>]*>""",
+        RegexOption.IGNORE_CASE,
+    )
     private val NAME_REGEX = Regex(""""name"\s*:\s*"([A-Za-z0-9_]+)"""")
-    private val ARGS_REGEX = Regex(""""arguments"\s*:\s*(\{.*\})\s*$""", RegexOption.DOT_MATCHES_ALL)
+    private val ARGS_KEY = Regex(""""arguments"\s*:\s*\{""")
 
     /**
      * Batch 1: READ-ONLY tools. Ask mode gets these and nothing else.
@@ -80,17 +123,115 @@ internal object AgentToolWire {
         "Proposed edit staged: " + relPath + " (" + chars + " chars). Nothing has been written to " +
             "disk. Review it in the editor strip and Apply or Discard there."
 
-    /** Tool calls in [text], in the order they appear. Unparseable blocks are skipped. */
-    fun parse(text: String): List<ParsedToolCall> =
-        CALL_REGEX.findAll(text).mapNotNull { m ->
+    /**
+     * Tool calls in [text], in the order they appear, in either dialect.
+     *
+     * Unparseable blocks are skipped - and because visibleText() strips the same spans, a
+     * skipped block leaves nothing behind in the answer either.
+     */
+    fun parse(text: String): List<ParsedToolCall> {
+        val found = ArrayList<Triple<Int, Int, ParsedToolCall>>()
+        for (m in CALL_REGEX.findAll(text)) {
             val body = m.groupValues[2]
-            val name = NAME_REGEX.find(body)?.groupValues?.get(1) ?: return@mapNotNull null
-            val args = ARGS_REGEX.find(body)?.groupValues?.get(1) ?: "{}"
-            ParsedToolCall(name, args)
-        }.toList()
+            val name = NAME_REGEX.find(body)?.groupValues?.get(1) ?: continue
+            val args = jsonArgumentsFrom(body) ?: "{}"
+            found.add(Triple(m.range.first, 0, ParsedToolCall(name, args)))
+        }
+        for (m in HERMES_CALL_REGEX.findAll(text)) {
+            val name = m.groupValues[1]
+            val args = hermesArguments(m.groupValues[2])
+            found.add(Triple(m.range.first, 1, ParsedToolCall(name, args)))
+        }
+        return found.sortedWith(compareBy({ it.first }, { it.second })).map { it.third }
+    }
 
-    /** The reply with its tool blocks removed: what a human should actually read. */
-    fun visibleText(text: String): String = CALL_REGEX.replace(text, "").trim()
+    /**
+     * The `arguments` object out of a JSON-dialect body, brace-balanced.
+     *
+     * The old regex was `\{.*\}` greedily anchored to the end of the body, so a reply of the
+     * exact shape the protocol documents - {"name":..,"arguments":{..}} - handed the dispatcher
+     * `{..}}`: one closing brace too many, because the greedy match swallowed the call's own
+     * terminator. Balanced counting is the only version that survives a nested object (a patch
+     * body, a JSON string argument) without guessing.
+     */
+    private fun jsonArgumentsFrom(body: String): String? {
+        val key = ARGS_KEY.find(body) ?: return null
+        val start = key.range.last
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (i in start until body.length) {
+            val c = body[i]
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    c == '\\' -> escaped = true
+                    c == '"' -> inString = false
+                }
+                continue
+            }
+            when (c) {
+                '"' -> inString = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return body.substring(start, i + 1)
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * XML parameters -> the JSON object the dispatcher already accepts. Values are kept
+     * verbatim except for JSON escaping: a file path or a patch body must not be altered.
+     */
+    internal fun hermesArguments(body: String): String {
+        val sb = StringBuilder("{")
+        var first = true
+        for (p in HERMES_PARAM_REGEX.findAll(body)) {
+            val key = p.groupValues[1]
+            val value = p.groupValues[2]
+            if (!first) sb.append(',')
+            first = false
+            sb.append(jsonString(key)).append(':').append(jsonString(value))
+        }
+        return sb.append('}').toString()
+    }
+
+    private fun jsonString(value: String): String {
+        val sb = StringBuilder(value.length + 2).append('"')
+        for (c in value) {
+            when (c) {
+                '"' -> sb.append("\\\"")
+                '\\' -> sb.append("\\\\")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                else -> if (c < ' ') sb.append("\\u").append(
+                    c.code.toString(16).padStart(4, '0')) else sb.append(c)
+            }
+        }
+        return sb.append('"').toString()
+    }
+
+    /**
+     * The reply with its tool blocks removed: what a human should actually read.
+     *
+     * Both complete dialects are removed whole; anything left of a protocol tag is removed
+     * too, because an unclosed block is still protocol, not an answer.
+     */
+    fun visibleText(text: String): String {
+        var out = CALL_REGEX.replace(text, "")
+        out = HERMES_CALL_REGEX.replace(out, "")
+        // An OPENING protocol tag that no complete block consumed is the head of a truncated or
+        // malformed call. Everything from it onward is protocol: cut the tail rather than leave
+        // its parameter values ("notes.txt") standing as if the assistant had written them.
+        val tail = PROTOCOL_OPENER.find(out)
+        if (tail != null) out = out.take(tail.range.first)
+        out = PROTOCOL_FRAGMENT.replace(out, "")
+        return out.replace(Regex("""\n{3,}"""), "\n\n").trim()
+    }
 
     /**
      * Decide what a finished reply means.
