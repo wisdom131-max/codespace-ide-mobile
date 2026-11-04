@@ -587,11 +587,25 @@ class ChatSession internal constructor(
         return true
     }
 
+    /**
+     * Retry the last turn.
+     *
+     * 2026-11-04 (device finding #14): a retry REPLACES the turn's outcome; passing the same
+     * question through the normal send path appended another user row each time.
+     *
+     * A turn whose tools already RAN is retried as it stands, and that is deliberate. Side effects
+     * (a file written, a deletion staged) really happened and are not rolled back - the journal
+     * keeps them, Files Changed keeps listing them, and Undo Last Edit is the way back. What a
+     * retry must never do is duplicate the record of them: no second user row, no second
+     * Files-Changed entry, because the change set belongs to the turn, not to the attempt.
+     * VS Code behaves the same way: a retried fetch replaces the response while the tool results
+     * already collected for the round stay in the session (`toolCallResults`, keyed by tool call
+     * id - intents/node/toolCallingLoop.ts:170, 1824; the retry itself is
+     * prompt/node/chatMLFetcher.ts:313-345).
+     */
     fun retry() {
         val t = ui.value.lastUserText
         if (t.isNotBlank() && !ui.value.streaming) {
-            // 2026-11-04 (device finding #14): a retry REPLACES the turn's outcome. Passing the
-            // same question through the normal send path appended another user row each time.
             sendCore(t, confirmOverBudget = false, reuseStaged = true, replaceTurn = true)
         }
     }

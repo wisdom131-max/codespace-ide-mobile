@@ -108,4 +108,32 @@ class ChatSessionRetryTest {
         val failures = s.ui.value.rows.filterIsInstance<ChatRowModel.Failed>()
         assertEquals("one outcome row at a time", 1, failures.size)
     }
+
+    /**
+     * Advisor item 4 (2026-11-04): a retry AFTER a turn whose tools already ran.
+     *
+     * The side effects are real and stay - the journal keeps them and Undo Last Edit is the way
+     * back. What must not happen is a second copy of the record: no second user row, and no
+     * second change set for the same turn. VS Code likewise replaces the response while keeping
+     * the round's collected tool results (toolCallingLoop.ts:170, 1824).
+     */
+    @Test
+    fun aRetryAfterToolsRanNeitherDuplicatesTheQuestionNorTheChangeSet() {
+        val journal = com.codespace.ide.agent.AgentWriteJournal
+        journal.clear()
+        val t = RateLimitedThenOk(retryAfter = null, failTimes = 1)
+        val s = session(t)
+        journal.beginOperation("proj")
+        journal.record("wire-test/notes.txt", "delta\n", "delta\nepsilon\n")
+        val before = journal.sets.size
+        s.send("add delta to notes.txt")
+        settle(s)
+        s.retry()
+        settle(s)
+        assertEquals("one question for the whole turn", 1, s.ui.value.rows.count {
+            it is ChatRowModel.User
+        })
+        assertEquals("the file change is recorded once", before, journal.sets.size)
+        journal.clear()
+    }
 }
