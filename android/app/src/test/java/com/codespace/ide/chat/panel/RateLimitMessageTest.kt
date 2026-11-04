@@ -3,6 +3,7 @@ package com.codespace.ide.chat.panel
 import com.codespace.ide.chat.ui.ChatRowModel
 import com.codespace.ide.engine.ChatError
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -46,13 +47,16 @@ class RateLimitMessageTest {
     }
 
     @Test
-    fun theSentenceCarriesTheWaitAndTheReferenceLink() {
+    fun theSentenceCarriesTheWaitAndNoMarkup() {
         val text = RateLimitMessage.detail(120)
         assertEquals(
-            "Sorry, your request was rate-limited. Please wait 2 minutes before trying again. " +
-                "[Learn More](" + RateLimitMessage.LEARN_MORE + ")",
+            "Sorry, your request was rate-limited. Please wait 2 minutes before trying again.",
             text,
         )
+        // The terminal draws text, not markdown: a bracketed link would be shown verbatim, and
+        // the Copilot help page is not this app's user's help page (advisor ruling, Stage 2 #8).
+        assertFalse("no markdown link in a plain-text row", text.contains("]("))
+        assertFalse("no bare url either", text.contains("http"))
     }
 
     @Test

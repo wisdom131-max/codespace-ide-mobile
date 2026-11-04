@@ -22,8 +22,15 @@ package com.codespace.ide.chat.panel
  */
 internal object RateLimitMessage {
 
-    /** VS Code uses this link in every rate-limit copy. */
-    const val LEARN_MORE = "https://aka.ms/github-copilot-rate-limit-error"
+    /**
+     * REMOVED 2026-11-04 (advisor ruling, Stage 2 #8). This link used to be appended as raw
+     * markdown, `[Learn More](https://aka.ms/github-copilot-rate-limit-error)`, in a BYOK app.
+     * Two things wrong with that: the terminal draws text, not markdown, so the brackets were
+     * shown to the user verbatim; and the page is GitHub Copilot's rate-limit help, which tells
+     * this app's user nothing about the endpoint they typed into Settings. A link is only
+     * honest when an official page actually exists for THAT provider, so the copy carries none
+     * and the row shows plain sentences.
+     */
 
     /**
      * `secondsToHumanReadableTime` from `src/util/common/time.ts`, thresholds and all.
@@ -51,7 +58,7 @@ internal object RateLimitMessage {
     fun detail(retryAfterSec: Int?): String {
         val wait = if (retryAfterSec == null || retryAfterSec <= 0) "a moment" else humanize(retryAfterSec)
         return "Sorry, your request was rate-limited. Please wait " + wait +
-            " before trying again. [Learn More](" + LEARN_MORE + ")"
+            " before trying again."
     }
 
     /** The heading above [detail]; the reference has no title, so this stays two words. */

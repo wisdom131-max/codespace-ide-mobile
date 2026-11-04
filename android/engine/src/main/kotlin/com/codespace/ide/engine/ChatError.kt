@@ -9,9 +9,18 @@ package com.codespace.ide.engine
  */
 sealed class ChatError(val userVerdict: String, val retryable: Boolean) {
 
-    /** 429: wait card with the provider's Retry-After when present. */
+    /**
+     * 429: wait card with the provider's Retry-After when present. The earlier copy said
+     * "Wait 30" - the raw number, no unit - whenever the header was present.
+     */
     class RateLimited(val retryAfterSec: Int?) :
-        ChatError("The AI provider is busy. Wait ${retryAfterSec ?: "a few seconds and try again."}", true)
+        ChatError(
+            if (retryAfterSec != null && retryAfterSec > 0)
+                "The AI provider is busy. Try again in $retryAfterSec seconds."
+            else
+                "The AI provider is busy. Try again in a few seconds.",
+            true,
+        )
 
     /** 402: plain out-of-credits verdict — never shared with 429 wording. */
     class OutOfCredits(val providerHint: String) :
@@ -56,15 +65,40 @@ sealed class ChatError(val userVerdict: String, val retryable: Boolean) {
 
 object ErrorTaxonomy {
 
-    /** Retry-After header lookup by common names (case-insensitive). */
-    fun retryAfterSec(headers: Map<String, String>): Int? {
+    /**
+     * Retry-After header lookup by common names (case-insensitive).
+     *
+     * RFC 7231 allows TWO forms and providers use both: delta-seconds ("30") and an HTTP-date
+     * ("Wed, 21 Oct 2026 07:28:00 GMT"). Only the first was understood, so every date-form header
+     * silently became "no wait given" and the card asked for a wait it did not name. A date in the
+     * past is a zero wait, not a missing one.
+     */
+    fun retryAfterSec(headers: Map<String, String>, nowMs: Long = System.currentTimeMillis()): Int? {
         for ((k, v) in headers) {
-            if (k.equals("Retry-After", ignoreCase = true)) {
-                return v.trim().toIntOrNull()
-            }
+            if (!k.equals("Retry-After", ignoreCase = true)) continue
+            val raw = v.trim()
+            raw.toIntOrNull()?.let { return if (it < 0) 0 else it }
+            val at = parseHttpDate(raw) ?: continue
+            val delta = ((at - nowMs) / 1000L).toInt()
+            return if (delta < 0) 0 else delta
         }
         return null
     }
+
+    private fun parseHttpDate(value: String): Long? =
+        HTTP_DATE_FORMATS.firstNotNullOfOrNull { fmt ->
+            try {
+                fmt.parse(value)?.time
+            } catch (_: java.text.ParseException) {
+                null
+            }
+        }
+
+    private val HTTP_DATE_FORMATS = listOf(
+        java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US),
+        java.text.SimpleDateFormat("EEEE, dd-MMM-yy HH:mm:ss zzz", java.util.Locale.US),
+        java.text.SimpleDateFormat("EEE MMM d HH:mm:ss yyyy", java.util.Locale.US),
+    ).onEach { it.isLenient = false }
 
     /**
      * Classify an HTTP response status (+ headers/body) into the taxonomy.
