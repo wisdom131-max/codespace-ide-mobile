@@ -137,6 +137,13 @@ internal class TranscriptFiles(private val rootDir: File) {
      */
     private fun ensureDir(dir: File): String? {
         if (dir.isDirectory) return null
+        // 2026-11-04 advisor item 3: one line, path NAME only (never conversation text, never
+        // the full path), so a recurrence of finding #13 shows WHAT happened without leaking a
+        // transcript into the log.
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[chat-storage] recreating conversation directory " + dir.name,
+            channel = "info",
+        )
         if (dir.exists()) return "Chat storage is unavailable: " + dir.name + " is not a directory."
         if (!dir.mkdirs() && !dir.isDirectory) {
             return "Could not create the chat storage folder (" + dir.name +
@@ -180,10 +187,20 @@ internal class TranscriptFiles(private val rootDir: File) {
             } catch (first: java.io.IOException) {
                 // One honest retry: recreate the directory (it can vanish between mkdirs and
                 // open) and write again. If this one fails too, the reason is reported.
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[chat-storage] write failed for " + dir.name + ": " +
+                        (first.message ?: "unknown") + " - retrying once",
+                    channel = "info",
+                )
                 ensureDir(dir)?.let { return it }
                 try {
                     tmp.writeText(body)
                 } catch (second: java.io.IOException) {
+                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                        "[chat-storage] save retry failed for " + dir.name +
+                            ": " + (second.message ?: "write failed"),
+                        channel = "info",
+                    )
                     return "Could not save this conversation: " +
                         (second.message ?: first.message ?: "write failed")
                 }
