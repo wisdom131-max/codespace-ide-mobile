@@ -130,6 +130,21 @@ internal class TranscriptFiles(private val rootDir: File) {
         }
     }
 
+    /**
+     * Makes sure [dir] exists and really is a directory. Returns a reason when it cannot be.
+     * Checked before every temp open: the ENOENT in finding #13 was mkdirs() being called and
+     * its answer thrown away.
+     */
+    private fun ensureDir(dir: File): String? {
+        if (dir.isDirectory) return null
+        if (dir.exists()) return "Chat storage is unavailable: " + dir.name + " is not a directory."
+        if (!dir.mkdirs() && !dir.isDirectory) {
+            return "Could not create the chat storage folder (" + dir.name +
+                "). The conversation stays in memory and will be saved when storage is back."
+        }
+        return null
+    }
+
     /** Writes the transcript; returns an error message or null. Empty list deletes. */
     fun saveNow(projectId: String, conversationId: String, messages: List<StoredMessage>): String? {
         return try {
@@ -142,9 +157,37 @@ internal class TranscriptFiles(private val rootDir: File) {
                 if (bak.exists()) bak.delete()
                 return null
             }
-            target.parentFile?.mkdirs()
-            val tmp = File(target.parentFile, target.name + ".tmp")
-            tmp.writeText(ChatTranscript.encode(messages))
+            // 2026-11-04 (device finding #13): the temp open failed with ENOENT because
+            // nothing verified that the conversation's directory still existed. mkdirs() was
+            // called and its RESULT was ignored, so a directory that a storage cleaner had
+            // removed (or that a race removed between mkdirs and open) surfaced as
+            // "s_chat... txt.tmp: open failed" on top of a live conversation. The directory is
+            // now created and VERIFIED before every temp open, and a write that still fails is
+            // retried once after forcing the directory back.
+            val dir = target.parentFile
+                ?: return "Chat storage is unavailable (no conversation directory)."
+            val body = ChatTranscript.encode(messages)
+            val tmp = File(dir, target.name + ".tmp")
+            ensureDir(dir)?.let { return it }
+            try {
+                if (tmp.exists() && !tmp.delete()) {
+                    // A stale temp we cannot replace: write the real file directly rather than
+                    // leave the transcript unsaved.
+                    target.writeText(body)
+                    return null
+                }
+                tmp.writeText(body)
+            } catch (first: java.io.IOException) {
+                // One honest retry: recreate the directory (it can vanish between mkdirs and
+                // open) and write again. If this one fails too, the reason is reported.
+                ensureDir(dir)?.let { return it }
+                try {
+                    tmp.writeText(body)
+                } catch (second: java.io.IOException) {
+                    return "Could not save this conversation: " +
+                        (second.message ?: first.message ?: "write failed")
+                }
+            }
             if (target.exists()) {
                 try {
                     target.copyTo(bak, overwrite = true)

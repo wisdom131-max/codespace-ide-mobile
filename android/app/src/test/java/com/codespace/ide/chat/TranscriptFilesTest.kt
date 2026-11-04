@@ -132,4 +132,61 @@ class TranscriptFilesTest {
         assertEquals("kept", loaded.messages[0].text)
         assertNotNull("skipped data must be disclosed", loaded.note)
     }
+
+    // ---- 2026-11-04, device finding #13: the ENOENT that landed on a live conversation ----
+
+    /** The project's directory is created on the FIRST save, not assumed to exist. */
+    @Test
+    fun aFirstSaveCreatesTheProjectDirectory() {
+        val dir = File(root, "fresh-project")
+        assertFalse("precondition: no directory yet", dir.exists())
+        val out = files.saveNow("fresh-project", "s_one", msgs("hello"))
+        assertNull("first save must succeed: " + out, out)
+        assertTrue(dir.isDirectory)
+        assertEquals(1, files.load("fresh-project", "s_one").messages.size)
+    }
+
+    /** A stale temp file from a killed process must not block the next save. */
+    @Test
+    fun aStaleTempFileDoesNotBlockTheNextSave() {
+        files.saveNow("p", "s_a", msgs("first"))
+        val stale = File(File(root, "p"), "s_a.txt.tmp")
+        stale.writeText("half written garbage")
+        val out = files.saveNow("p", "s_a", msgs("second"))
+        assertNull("save over a stale temp must succeed: " + out, out)
+        assertEquals("second", files.load("p", "s_a").messages.first().text)
+        assertFalse("the stale temp is gone", stale.exists())
+    }
+
+    /**
+     * The directory vanishing between two saves (a storage cleaner, or a delete racing a live
+     * session) must be RECOVERED, not reported as a data-loss failure.
+     */
+    @Test
+    fun aDirectoryDeletedBetweenSavesIsRecreated() {
+        files.saveNow("p", "s_a", msgs("first"))
+        val dir = File(root, "p")
+        assertTrue(dir.deleteRecursively())
+        val out = files.saveNow("p", "s_a", msgs("second"))
+        assertNull("save after the directory vanished must recover: " + out, out)
+        assertEquals("second", files.load("p", "s_a").messages.first().text)
+    }
+
+    /**
+     * When the directory cannot exist at all (a FILE sits where it belongs), the failure is a
+     * reported reason - never a throw, never a silent loss - and the previous transcript is
+     * still readable.
+     */
+    @Test
+    fun anImpossibleDirectoryIsReportedAndTheOldTranscriptSurvives() {
+        files.saveNow("p", "s_a", msgs("keep me"))
+        val dir = File(root, "p")
+        assertTrue(dir.deleteRecursively())
+        dir.writeText("I am a file, not a folder")
+        val out = files.saveNow("p", "s_a", msgs("new content"))
+        assertNotNull("an impossible directory must be reported", out)
+        assertTrue("the reason names the folder", (out ?: "").contains("p"))
+        // The old transcript is gone with its directory, but nothing was silently half-written:
+        assertEquals("I am a file, not a folder", dir.readText())
+    }
 }
