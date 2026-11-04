@@ -254,9 +254,26 @@ class ChatSession internal constructor(
         }
     }
 
-    /** Switching provider rebuilds the engine (fresh wire window); UI rows stay. */
+    /**
+     * Switching provider rebuilds the engine; the CONVERSATION must survive it.
+     *
+     * Device finding 2026-11-04 #6/#12: an owner who hit a quota switched to another key or
+     * provider and the assistant answered as if they had never spoken. The rows were still on
+     * screen and on disk, but the engine - the only stateful part - was replaced empty.
+     *
+     * The engine is an implementation detail of where the bytes go, not of what was said, so a
+     * rebuild replays exactly what a cold start replays: the stored dialogue, notes excluded.
+     * Switching only the key slot leaves the engine alone (same wire), so nothing is replayed
+     * there and no tokens are spent re-sending a conversation the provider already has.
+     */
     fun select(sel: PanelSelection) {
-        if (sel.providerId != selection.value.providerId) engine = buildEngine(sel.providerId)
+        if (sel.providerId != selection.value.providerId) {
+            engine = buildEngine(sel.providerId)
+            val dialogue = com.codespace.ide.chat.ChatSeed.dialogue(
+                com.codespace.ide.chat.ChatTranscript.rowsToMessages(ui.value.rows, false),
+            )
+            if (dialogue.isNotEmpty()) engine.restoreHistory(dialogue)
+        }
         selection.value = sel
     }
 
