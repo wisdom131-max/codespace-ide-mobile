@@ -66,7 +66,7 @@ data class PanelSelection(
     }
 }
 
-class ChatSession(
+class ChatSession internal constructor(
     private val projectId: String,
     private val keyFor: (slotName: String) -> String?,
     private val scope: CoroutineScope,
@@ -107,6 +107,18 @@ class ChatSession(
     val conversationId: String = "main",
     /** BATCH 4: persistence hooks; null means "this session keeps nothing" (JVM tests). */
     private val transcripts: com.codespace.ide.chat.TranscriptSink? = null,
+    /**
+     * 2026-11-04 (device finding #1) — the mode this session STARTS in.
+     *
+     * The session's mode used to be a hardcoded ASK and was only corrected when the owner
+     * touched the chip. After a reopen the panel restored its chip from disk (Agent) while the
+     * session - and therefore the request - stayed on ASK: the UI said "Agent", the engine sent
+     * Ask instructions with no write/execute tools, and the assistant answered that it had no
+     * access to tools. The manager now passes the STORED mode in at construction, so the chip
+     * and the request cannot start out disagreeing.
+     */
+    initialMode: com.codespace.ide.chat.session.SessionMode =
+        com.codespace.ide.chat.session.SessionMode.ASK,
 ) {
     private val streamBuf = StringBuilder()
 
@@ -358,8 +370,11 @@ class ChatSession(
      *  re-send them instead of silently dropping the attachments. */
     private var lastStaged: List<PanelAttachment> = emptyList()
 
-    /** U4-d conversation mode. Ask by default: least directive, no tools assumed. */
-    internal var mode: ChatMode = ChatMode.ASK
+    /**
+     * U4-d conversation mode. Initialised from the SESSION's stored mode (see [initialMode]),
+     * never assumed: a restored Agent session must send Agent tools on its very first message.
+     */
+    internal var mode: ChatMode = ChatModePersistence.toUi(initialMode)
 
     fun send(userText: String, confirmOverBudget: Boolean = false) =
         sendCore(userText, confirmOverBudget, reuseStaged = false)
@@ -943,6 +958,7 @@ class ChatSessionManager internal constructor(
             workspaceBlock = { WorkspaceContextSource.block(appContext, projectId) },
             conversationId = conversationId,
             transcripts = transcripts,
+            initialMode = sessionMode(projectId, conversationId),
         )
         sessions[sessionKey] = created
         return created
