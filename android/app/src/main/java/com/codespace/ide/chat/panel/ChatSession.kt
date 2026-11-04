@@ -130,6 +130,9 @@ class ChatSession internal constructor(
      */
     private val turnContext = ArrayList<String>()
 
+    /** The capability note is context, not a per-send nag. */
+    private var toolPlanNoted = false
+
     /**
      * Characters already shown to the user when the previous attempt failed and the user
      * pressed Retry. The resent request streams its own text from the beginning, so the
@@ -456,11 +459,18 @@ class ChatSession internal constructor(
         // AUDIT DEFECT D: resolve the endpoint the way it is configured NOW. The selection holds
         // a cache of the URL, and a stale cache must never decide where the request goes.
         val liveBaseUrl = baseUrlForProvider(sel.providerId, sel.baseUrl)
+        // Tri-state capability (advisor ruling 2026-11-04): unknown keeps today's behaviour,
+        // an explicit "no" withholds the wire and says so once, a tool-less mode never sends it.
+        val toolPlan = ToolOffering.plan(mode, resolveCapability(sel)?.supportsTools)
+        if (toolPlan.note != null && !toolPlanNoted) {
+            toolPlanNoted = true
+            appendRow(ChatRowModel.InfoNote(toolPlan.note))
+        }
         val cfg = EngineConfig(
             modelId = sel.modelId,
             // U4-d: the mode rides the provider's own system slot (see ChatModePrompts).
             systemInstruction = ChatModePrompts.instruction(mode) +
-                (if (AgentToolWire.modeRunsTools(mode)) AgentToolWire.protocol(mode) else "") +
+                (if (toolPlan.sendTools) AgentToolWire.protocol(mode) else "") +
                 (if (wsBlock.isEmpty()) "" else "\n\n" + wsBlock),
             providerId = sel.providerId,
             baseUrl = liveBaseUrl,

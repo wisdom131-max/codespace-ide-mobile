@@ -32,7 +32,15 @@ data class ModelCapability(
     val contextTokens: Int,
     val supportsImages: Boolean,
     val supportsPdf: Boolean,
-    val supportsTools: Boolean = false,
+    /**
+     * Tri-state (advisor ruling 2026-11-04). true = the model does native tool calling,
+     * false = it is known NOT to, null = unknown. Unknown is the default and means "offer the
+     * tool wire exactly as before": VN Code routes every request through user-supplied
+     * OpenAI-compatible endpoints, and a model the catalog has never heard of must not be
+     * silently stripped of its tools. Only an explicit false withholds them, and then the chat
+     * says so in an activity row instead of pretending the model refused.
+     */
+    val supportsTools: Boolean? = null,
     val supportsReasoning: Boolean = false,
 )
 
@@ -66,11 +74,11 @@ object ModelCatalog {
     // Verified 2026-10-28 from the live OpenRouter /models dump (context_length
     // + architecture.input_modalities). No entry here is from memory.
     val BUNDLED = listOf(
-        ModelCapability("gpt-6.1-terra-pro", 1_050_000, supportsImages = true, supportsPdf = true, supportsTools = false, supportsReasoning = true),
-        ModelCapability("gemini-3.8-flash", 1_048_576, supportsImages = true, supportsPdf = true, supportsTools = false, supportsReasoning = true),
-        ModelCapability("claude-sonnet-5.5", 1_000_000, supportsImages = true, supportsPdf = true, supportsTools = false, supportsReasoning = true),
-        ModelCapability("grok-4.7", 500_000, supportsImages = true, supportsPdf = true, supportsTools = false, supportsReasoning = true),
-        ModelCapability("deepseek-v4.1", 1_048_576, supportsImages = true, supportsPdf = false, supportsTools = false, supportsReasoning = false),
-        ModelCapability("llama-3.3-70b", 131_072, supportsImages = false, supportsPdf = false, supportsTools = false, supportsReasoning = false),
+        ModelCapability("gpt-6.1-terra-pro", 1_050_000, supportsImages = true, supportsPdf = true, supportsReasoning = true),
+        ModelCapability("gemini-3.8-flash", 1_048_576, supportsImages = true, supportsPdf = true, supportsReasoning = true),
+        ModelCapability("claude-sonnet-5.5", 1_000_000, supportsImages = true, supportsPdf = true, supportsReasoning = true),
+        ModelCapability("grok-4.7", 500_000, supportsImages = true, supportsPdf = true, supportsReasoning = true),
+        ModelCapability("deepseek-v4.1", 1_048_576, supportsImages = true, supportsPdf = false, supportsReasoning = false),
+        ModelCapability("llama-3.3-70b", 131_072, supportsImages = false, supportsPdf = false, supportsReasoning = false),
     )
 }
