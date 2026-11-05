@@ -142,7 +142,32 @@ internal class EditorChipHostState(
     var menuOpen by mutableStateOf(false)
         private set
 
-    fun setMenuVisible(open: Boolean) { menuOpen = open }
+    /**
+     * 2026-11-05, second defect on the same chip: "More actions" opened its DropdownMenu on a flag
+     * local to the popup content while the popup's `focusable` was keyed on [menuOpen] alone - and
+     * its own click path cleared menuOpen before setting that flag. So the language-server menu
+     * always opened inside a NON-focusable popup window, the exact condition the 2026-11-05 note on
+     * the AI menu describes as "the menu never appeared".
+     *
+     * One host, one truth: both menus live here now, and the popup is focusable while either is up.
+     */
+    var moreOpen by mutableStateOf(false)
+        private set
+
+    fun setMenuVisible(open: Boolean) {
+        menuOpen = open
+        // Closing the AI menu by picking "More actions" must not drop the popup's focus under the
+        // second menu; the caller sets moreOpen in the same turn.
+        if (open) moreOpen = false
+    }
+
+    fun setMoreVisible(open: Boolean) {
+        moreOpen = open
+        if (open) menuOpen = false
+    }
+
+    /** True while any of the chip's menus is up: the popup stays focusable and the chip stays drawn. */
+    val anyMenuOpen: Boolean get() = menuOpen || moreOpen
     val placement = EditorChipPlacement(stored ?: (maxX - 44f).coerceAtLeast(4f) to 8f, maxX, maxY)
 
     /**
@@ -187,7 +212,7 @@ internal class EditorChipHostState(
         hasSelection: Boolean,
         diagnostic: LintError?,
         imeHeightPx: Int,
-    ): Boolean = menuOpen || EditorActionMenuSpec.shouldShow(
+    ): Boolean = anyMenuOpen || EditorActionMenuSpec.shouldShow(
         state = state,
         hasSelection = hasSelection,
         hasWordUnderCursor = word != null && word.length >= 1,

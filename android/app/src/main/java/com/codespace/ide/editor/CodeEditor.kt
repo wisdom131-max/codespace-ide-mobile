@@ -3918,14 +3918,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     // the menu never appeared; making the window focusable all the time would steal
                     // focus from the text field and drop the keyboard.
                     properties = PopupProperties(
-                        focusable = chip.menuOpen,
+                        // Either menu makes the window focusable; a DropdownMenu inside a
+                        // non-focusable window cannot take the focus its list needs (see host note).
+                        focusable = chip.anyMenuOpen,
                         dismissOnClickOutside = false,
                     )
                 ) {
-                    var showLspMenu by remember { mutableStateOf(false) }
                     // P38-FIX: Auto-open LSP menu when long-press triggers
                     LaunchedEffect(longPressTrigger) {
-                        if (longPressTrigger > 0) showLspMenu = true
+                        if (longPressTrigger > 0) chip.setMoreVisible(true)
                     }
                     androidx.compose.material3.Surface(
                         color = colors.background,
@@ -3949,15 +3950,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     )
                                 )
                             },
-                            onOpenMore = { showLspMenu = true },
+                            onOpenMore = { chip.setMoreVisible(true) },
                             onCycleState = { chip.cycle() },
                             placement = chip.placement,
                             expanded = chip.menuOpen,
                             onExpandedChange = { chip.setMenuVisible(it) },
                         )
                         androidx.compose.material3.DropdownMenu(
-                            expanded = showLspMenu,
-                            onDismissRequest = { showLspMenu = false },
+                            expanded = chip.moreOpen,
+                            onDismissRequest = { chip.setMoreVisible(false) },
                             modifier = Modifier.background(colors.background)
                         ) {
                             // DONE-CURSOR-2: Compacted popup menu — constrained width + denser layout
@@ -3990,7 +3991,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             "Error: ${nearbyError.message}\n" +
                                             "Full context:\n${value.text.lines().drop((errLine - 3).coerceAtLeast(0)).take(10).joinToString("\n")}"
                                         )
-                                        showLspMenu = false
+                                        chip.setMoreVisible(false)
                                     }
                                 )
                             }
@@ -4103,7 +4104,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                             }
                                                         } catch (_: Exception) {}
                                                     }
-                                                    showLspMenu = false
+                                                    chip.setMoreVisible(false)
                                                 }
                                             )
                                         }
@@ -4157,7 +4158,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         }
                                         expandSelectionUsedLsp = false
                                     }
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                 }
                             )
 
@@ -4172,7 +4173,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onClick = {
                                     // BATCH4-P1a: shared with the F12 chord — same function, no separate code path.
                                     runGoToDefinition()
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                 }
                             )
 
@@ -4206,7 +4207,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 .map { CrossFileDefResult(it.name, it.kind, it.filePath, it.line, it.fileName) }
                                         } else null
                                     }
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                 }
                             )
                             // Peek Definition
@@ -4245,7 +4246,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         )
                                     }
                                     } // end if (!lspPeekSucceeded)
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                 }
                             )
 
@@ -4260,7 +4261,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     },
                                     onClick = {
                                         typeDefUsedLsp = onLspTypeDefinition.invoke()
-                                        showLspMenu = false
+                                        chip.setMoreVisible(false)
                                     }
                                 )
                             }
@@ -4288,7 +4289,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                             }
                                             gotoResults = found
                                         }
-                                        showLspMenu = false
+                                        chip.setMoreVisible(false)
                                     }
                                 )
                             }
@@ -4304,7 +4305,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 onClick = {
                                     // BATCH4-P1a: shared with the F2 chord — same function, no separate code path.
                                     runRenameSymbol()
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                 }
                             )
 
@@ -4317,7 +4318,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                     val pat = Regex("\\b" + Regex.escape(word) + "\\b", RegexOption.IGNORE_CASE)
                                     val matches = pat.findAll(value.text).toList()
                                     if (matches.isNotEmpty()) {
@@ -4346,7 +4347,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                     }
                                 },
                                 onClick = {
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                     val pat = Regex("\\b" + Regex.escape(word) + "\\b", RegexOption.IGNORE_CASE)
                                     val currentPos = value.selection.end
                                     val nextMatch = pat.find(value.text, currentPos) ?: pat.find(value.text)
@@ -4390,7 +4391,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         findRefLoading = false
                                         findRefUsedLsp = onFindReferences != null && refs.isNotEmpty()
                                     }
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                 }
                             )
                             // P41-H: Peek References — inline overlay
@@ -4409,7 +4410,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val cCol2 = cPos2.column
                                         val refs = try { onFindReferences.invoke(word, cLine2, cCol2) } catch (_: Exception) { emptyList<Triple<String, Int, String>>() }
                                         peekRefsResult = PeekRefsResult(word, refs, refs.isNotEmpty())
-                                        showLspMenu = false
+                                        chip.setMoreVisible(false)
                                     }
                                 )
                             }
@@ -4441,7 +4442,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 usedLsp = false,
                                             )
                                         }
-                                        showLspMenu = false
+                                        chip.setMoreVisible(false)
                                     }
                                 )
                             }
@@ -4474,7 +4475,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 }
                                             }
                                         }
-                                        showLspMenu = false
+                                        chip.setMoreVisible(false)
                                     }
                                 )
                             }
@@ -4507,7 +4508,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                                 }
                                             }
                                         }
-                                        showLspMenu = false
+                                        chip.setMoreVisible(false)
                                     }
                                 )
                             }
@@ -4532,7 +4533,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val prevCursor = (prevLineStart + column).coerceIn(prevLineStart, prevLineStart + prevLineLen)
                                         extraCursors = MultiCursorEngine.normalize(extraCursors + TextRange(prevCursor))
                                     }
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                 }
                             )
 
@@ -4557,7 +4558,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         val nextCursor = (nextLineStart + column).coerceIn(nextLineStart, nextLineStart + nextLineLen)
                                         extraCursors = MultiCursorEngine.normalize(extraCursors + TextRange(nextCursor))
                                     }
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                 }
                             )
 
@@ -4587,7 +4588,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         searchFrom = nextLineStart
                                     }
                                     extraCursors = MultiCursorEngine.normalize(extraCursors + newCursors)
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                 }
                             )
 
@@ -4615,7 +4616,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         if (prevLineStart == 0) break
                                     }
                                     extraCursors = MultiCursorEngine.normalize(extraCursors + newCursors)
-                                    showLspMenu = false
+                                    chip.setMoreVisible(false)
                                 }
                             )
                             // P41-I/U: Source Actions — with built-in fallback (no LSP needed)
@@ -4629,7 +4630,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             onClick = {
                                 // BATCH4-P1b: shared with the ORGANIZE_IMPORTS chord — same function.
                                 runOrganizeImports()
-                                showLspMenu = false
+                                chip.setMoreVisible(false)
                             }
                             )
                             DropdownMenuItem(
@@ -4649,7 +4650,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                         programmaticTextChange(result, value.selection, "remove_unused_imports")
                                     }
                                 }
-                                showLspMenu = false
+                                chip.setMoreVisible(false)
                             }
                             )
                             // P41-U: Remove Unused Code (built-in, no LSP needed)
@@ -4665,7 +4666,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 if (result != null) {
                                     programmaticTextChange(result, value.selection, "external_format")
                                 }
-                                showLspMenu = false
+                                chip.setMoreVisible(false)
                             }
                             )
                             if (onSourceAction != null) {
@@ -4676,7 +4677,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             Text("Fix All", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
-                            onClick = { onSourceAction!!.invoke("source.fixAll"); showLspMenu = false }
+                            onClick = { onSourceAction!!.invoke("source.fixAll"); chip.setMoreVisible(false) }
                             )
                             }
 
@@ -4684,7 +4685,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             RefactorSubmenu(
                                 onSourceAction = onSourceAction,
                                 onAiFixRequest = onAiFixRequest,
-                                onDismiss = { showLspMenu = false }
+                                onDismiss = { chip.setMoreVisible(false) }
                             )
 
                             // P41-L: Code Generation
@@ -4696,7 +4697,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             Text("Generate Constructor", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
-                            onClick = { onSourceAction!!.invoke("source.generate.constructor"); showLspMenu = false }
+                            onClick = { onSourceAction!!.invoke("source.generate.constructor"); chip.setMoreVisible(false) }
                             )
                             DropdownMenuItem(
                             text = {
@@ -4705,7 +4706,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             Text("Generate Getters/Setters", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
-                            onClick = { onSourceAction!!.invoke("source.generate.accessors"); showLspMenu = false }
+                            onClick = { onSourceAction!!.invoke("source.generate.accessors"); chip.setMoreVisible(false) }
                             )
                             DropdownMenuItem(
                             text = {
@@ -4714,7 +4715,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             Text("Implement Interface", color = Color(0xFFD4D4D4), fontSize = 12.sp)
                             }
                             },
-                            onClick = { onSourceAction!!.invoke("source.generate.implement"); showLspMenu = false }
+                            onClick = { onSourceAction!!.invoke("source.generate.implement"); chip.setMoreVisible(false) }
                             )
                             }
                             } // end scrollable Column
