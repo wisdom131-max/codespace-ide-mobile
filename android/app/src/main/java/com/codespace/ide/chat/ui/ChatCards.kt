@@ -5,7 +5,9 @@ package com.codespace.ide.chat.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,7 +48,7 @@ private val SenderShape = RoundedCornerShape(
 )
 
 /** One compact attachment chip's UI model (display name + human size text). */
-data class AttachmentChipModel(val name: String, val sizeText: String)
+data class AttachmentChipModel(val name: String, val sizeText: String, val index: Int = -1)
 
 /** Shared state-card frame: tinted title, optional detail, optional action. */
 @Composable
@@ -376,19 +378,42 @@ fun InfoNoteRow(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** One compact attachment chip; tapping removes it before sending. */
+/**
+ * One compact attachment chip with an explicit remove control.
+ *
+ * Owner item 5: "attachment chips have no individual remove control". Correct - the whole chip used
+ * to be one tap target whose only hint was a doc comment, so removal was invisible AND the chip
+ * itself was a destructive button. Removal now lives on a visible X with a 40dp touch target
+ * (the MANDATORY UI RULE's minimum tappable size) while the text stays inert, so tapping a file name
+ * to read it can never delete it. Multiple attachments removed one at a time: the X removes the row
+ * it belongs to, by index, so two files with the same name cannot vanish together.
+ */
 @Composable
 fun AttachmentChip(chip: AttachmentChipModel, onRemove: (AttachmentChipModel) -> Unit, modifier: Modifier = Modifier) {
     val c = ChatTokens.LocalChatColors.current
-    Text(
-        chip.name + " · " + chip.sizeText,
-        color = c.textSecondary,
-        fontSize = ChatTokens.FONT_MICRO.sp,
+    Row(
         modifier = modifier
             .background(c.surfaceAlt, ChipShape)
-            .clickable { onRemove(chip) }
-            .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.GAP_TIGHT.dp),
-    )
+            .padding(start = ChatTokens.PAD_HORIZONTAL.dp, end = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            chip.name + " · " + chip.sizeText,
+            color = c.textSecondary,
+            fontSize = ChatTokens.FONT_MICRO.sp,
+            modifier = Modifier.padding(vertical = ChatTokens.GAP_TIGHT.dp),
+        )
+        // 40dp of touch target around a small glyph, per the mandatory touch-size rule. The
+        // onClickLabel is what a screen reader announces; the glyph alone is decoration.
+        Box(
+            Modifier
+                .size(40.dp)
+                .clickable(onClickLabel = "Remove " + chip.name) { onRemove(chip) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("\u00D7", color = c.textSecondary, fontSize = 14.sp)
+        }
+    }
 }
 
 /** Compact chip row; FlowRow wraps so long names never clip off-screen. */

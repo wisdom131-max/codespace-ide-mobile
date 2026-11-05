@@ -385,10 +385,23 @@ class ChatSession internal constructor(
         pendingAttachments.value = pendingAttachments.value.filterNot { it.name == name }
     }
 
+    /**
+     * Remove exactly ONE pending attachment, by position.
+     *
+     * Owner item 5 requires that removing one chip leaves every other attachment and the draft text
+     * untouched. Filtering by name cannot promise that: the same file attached twice would lose both
+     * rows. The list is what the chips were built from, so an index addresses the row the user
+     * actually tapped. Out-of-range (a stale chip after a rebuild) removes nothing.
+     */
+    fun removePendingAt(index: Int) {
+        val next = PendingRemoval.withoutAt(pendingAttachments.value, index)
+        if (next.size != pendingAttachments.value.size) pendingAttachments.value = next
+    }
+
     /** WP8: chips for the pending row (name + size; the data itself never leaves memory). */
     fun pendingChips(): List<com.codespace.ide.chat.ui.AttachmentChipModel> =
-        pendingAttachments.value.map {
-            com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes))
+        pendingAttachments.value.mapIndexed { i, it ->
+            com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes), i)
         }
 
     /** Credential-shaped names are refused at attach (redaction rule). */
