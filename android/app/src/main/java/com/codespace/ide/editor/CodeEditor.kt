@@ -1722,6 +1722,42 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     SnapshotUndoInit(snapshotUndo, content, value, editorEvent)
     var undoRedoInProgress by remember { mutableStateOf(false) }
 
+    /**
+     * ONE undo/redo implementation with two callers (device finding #16).
+     *
+     * The keyboard path below and the Edit menu both run this, because in VS Code they are the
+     * same operation: undo belongs to the model, keyed by URI
+     * (src/vs/editor/common/model/textModel.ts:1604-1617), so a menu command and a keybinding hit
+     * one stack. Extracting it here also keeps the key handler from carrying two more inline
+     * bodies (JVM 64KB rule).
+     */
+    val performUndoRedo: (Boolean) -> Boolean = { redo ->
+        val available = if (redo) snapshotUndo.canRedo() else snapshotUndo.canUndo()
+        var moved = false
+        if (available) {
+            undoRedoInProgress = true
+            val current = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                value.text, value.selection, extraCursors
+            )
+            val next = if (redo) snapshotUndo.redo(current) else snapshotUndo.undo(current)
+            if (next != null) {
+                extraCursors = next.extraCursors
+                programmaticTextChange(next.text, next.selection, if (redo) "redo" else "undo")
+                moved = true
+            }
+            undoRedoInProgress = false
+        }
+        moved
+    }
+    // The shell's Edit menu holds no editor reference; it posts here (EditorInsertBus pattern).
+    // rememberUpdatedState keeps the registered lambda reading the CURRENT composable scope.
+    val undoRedoLatest = androidx.compose.runtime.rememberUpdatedState(performUndoRedo)
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        val fn: (Boolean) -> Boolean = { redo -> undoRedoLatest.value(redo) }
+        EditorUndoBus.register(fn)
+        onDispose { EditorUndoBus.unregister(fn) }
+    }
+
     // ── Keyboard toolbar insert handler ──────────────────────────────────────
     // Registers a function that the coding toolbar (Tab, Esc, {, }, etc.) can call
     // to insert text at the cursor position, as if the user typed it on a real keyboard.
@@ -3201,33 +3237,11 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 )
                                 when (kbAction) {
                                     EditorAction.UNDO -> {
-                                        if (snapshotUndo.canUndo()) {
-                                            undoRedoInProgress = true
-                                            val current = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                                                value.text, value.selection, extraCursors
-                                            )
-                                            val prev = snapshotUndo.undo(current)
-                                            if (prev != null) {
-                                                extraCursors = prev.extraCursors // snapshot coords already in prev.text space
-                                                programmaticTextChange(prev.text, prev.selection, "undo")
-                                            }
-                                            undoRedoInProgress = false
-                                        }
+                                        performUndoRedo(false)
                                         true
                                     }
                                     EditorAction.REDO -> {
-                                        if (snapshotUndo.canRedo()) {
-                                            undoRedoInProgress = true
-                                            val current = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
-                                                value.text, value.selection, extraCursors
-                                            )
-                                            val next = snapshotUndo.redo(current)
-                                            if (next != null) {
-                                                extraCursors = next.extraCursors // snapshot coords already in next.text space
-                                                programmaticTextChange(next.text, next.selection, "redo")
-                                            }
-                                            undoRedoInProgress = false
-                                        }
+                                        performUndoRedo(true)
                                         true
                                     }
                                     EditorAction.DUPLICATE_LINE -> {
