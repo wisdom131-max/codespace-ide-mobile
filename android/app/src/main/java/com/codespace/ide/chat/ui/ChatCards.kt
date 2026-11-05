@@ -193,7 +193,9 @@ fun ToolActivityRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(ChatTokens.RADIUS_CARD.dp))
             .background(c.surface)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            // Standing panel rule (2026-11-05 sweep): 12dp horizontal, 10dp vertical. This row was
+            // the last chat panel carrying its own 10/6, which made it look like a different card.
+            .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(

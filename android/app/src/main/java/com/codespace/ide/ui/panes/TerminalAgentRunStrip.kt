@@ -79,10 +79,12 @@ private fun AgentRunRow(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(Color(0xFF1E1E1E), RoundedCornerShape(6.dp))
-            .border(1.dp, Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
+            // Standing panel rule: 8-12dp radius, 12dp horizontal / 10dp vertical padding. Was 6dp
+            // with 6/4 padding, which read as a different component than the chat's own rows.
+            .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
+            .border(1.dp, Color(0xFF2A2A2A), RoundedCornerShape(8.dp))
             .clickable { onToggle() }
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(

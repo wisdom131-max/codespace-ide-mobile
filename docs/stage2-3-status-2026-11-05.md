@@ -40,7 +40,13 @@ run id is not a claim.
    list — the drift bug that produced a hand-maintained 30-name list must not come back.
 4. **Activity grouping.** Consecutive tool rows should collapse into one group with a chevron and no
    `x` (owner rule). Nothing renders as a group today: tool results come through as individual rows.
-5. **Stage 3 UI, four items.** Rounded 8-12dp corners and 12dp/10dp padding per the standing UI rule.
+5. **Stage 3 UI compliance.** NOTE (2026-11-05): nothing anywhere in the repo enumerates four
+   Stage 3 UI items - the row above was carried from an earlier session and the number was never
+   written down. Rather than invent four, the stage's own surfaces were audited against the standing
+   panel rule (8-12dp radius, 12dp horizontal / 10dp vertical). Two violations found and fixed
+   (`ToolActivityRow` on its own 10/6, the terminal agent strip on 6dp + 6/4); `ActivityGroupRow`,
+   `ThinkingCard` and the diff card were already on tokens. If the four items were something
+   specific, say which and they get done next.
 6. **Install target + device package.** One target, assembled after the above, then one device round
    carrying everything (device-round batching rule).
 
