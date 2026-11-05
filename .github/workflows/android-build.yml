@@ -123,6 +123,15 @@ jobs:
         working-directory: android
         run: python3 ci-test-report.py
 
+      # EDITOR-CEILING GUARD (advisor order 2026-11-05): CodeEditor reached 65,453 bytes of
+      # bytecode — 99.9% of the JVM's 65,535-byte method limit — and the only signal was a hard
+      # failure at :app:compileProdDebugKotlin that named the wrong thing. A dev-variant compile
+      # says nothing about it. This step measures every method the gradle build above just
+      # produced and fails at 90% of the limit, printing the five largest.
+      - name: Method size guard (JVM 65,535-byte limit, 90% threshold)
+        working-directory: android
+        run: python3 ../tools/check_method_size.py app/build/tmp/kotlin-classes/prodDebug --threshold-percent 90
+
 
       # UI SPIKE (advisor order 2026-10-27): separate debug APK (com.codespace.ide.spike,
       # label "VN Spike") that installs BESIDE the main app — own artifact, touches

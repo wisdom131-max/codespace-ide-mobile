@@ -66,5 +66,13 @@ run id is not a claim.
 
 - 64KB composable rule: the #16 work was moved out of CodeEditor after CI 3552 proved it
   (`Method too large: CodeEditorKt.CodeEditor(...)`).
+  **CORRECTION 2026-11-05 (measured, not assumed):** moving work out of that body did not produce
+  headroom, and this document previously implied it had. Measured on the `prodDebug` classes at
+  commit `ed44bf0`, `CodeEditorKt.CodeEditor` was **65,453 bytes — 99.9% of the 65,535-byte method
+  limit, about 82 bytes from a hard failure.** The refactors bought survivability, not room. The
+  ceiling was reached again on 2026-11-05 and the overlay stack was then moved into a composable
+  lambda, taking the method to **41,999 bytes (64.1%)**; the full top five is in
+  `docs/editor-method-ceiling-2026-11-05.md`. Any "there is room in CodeEditor" statement anywhere
+  in the docs is wrong and is retracted here.
 - One bug per commit, CI verdict before the next push, no pushing on a red base.
 - Research before each fix, against VS Code source, recorded in the commit message.

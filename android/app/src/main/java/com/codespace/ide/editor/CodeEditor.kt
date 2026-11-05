@@ -3466,6 +3466,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         }
 
         // ── P2-11 Inlay hint overlay ───────────────────────────────────
+        // EDITOR-CEILING (2026-11-05): this overlay stack used to be emitted inline, and CodeEditor
+        // measured 65,453 bytes of bytecode - 99.9% of the JVM's 65,535-byte method limit, about 80
+        // bytes from a hard compile failure. Emission code is what fills a Compose method: group
+        // bookkeeping plus argument evaluation at every call site. The stack is a composable LAMBDA
+        // now, so Kotlin compiles its body into its own class and method and captures the locals it
+        // reads automatically. Same calls, same order, same state objects, same tree - a different
+        // method owns the code.
+        val overlayStack: @Composable () -> Unit = {
         if (showInlayHints && inlayHints.isNotEmpty()) {
             val density = androidx.compose.ui.platform.LocalDensity.current
             val lineHeightDpInlay = lineHeightDp  // use the shared density-corrected value
@@ -5252,6 +5260,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             programmaticTextChange = { newText, selection, reason -> programmaticTextChange(newText, selection, reason) },
             lspLoading = lspCompletionLoading,
         )
+        }
+        overlayStack()
     }
 }
 

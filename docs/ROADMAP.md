@@ -107,7 +107,11 @@ Landed:
   selection or a nearby diagnostic is enough on its own.
 - `EditorActionMenuSpec` holds every decision, with 18 unit tests. The chip's state lives in
   `EditorQuickActionChip.kt` because wiring it inline pushed the `CodeEditor` composable past the
-  JVM 64KB method ceiling and the compiler silently failed to emit `CodeEditorKt`.
+  JVM 64KB method ceiling. **Corrected 2026-11-05:** the compiler does not fail silently - CI 3552
+  reported `Method too large: CodeEditorKt.CodeEditor(...)` at `:app:compileProdDebugKotlin`, and
+  the dev variant stayed green, which is why it read as silent. The measured size before the fix
+  was 65,453 bytes (99.9% of the limit); it is 41,999 bytes (64.1%) after it, and
+  `tools/check_method_size.py` now fails CI above 90%.
 
 Still pending (this entry lists all of it, per the continuity rule):
 1. Editor surface batch: selection toolbar (Ask / Edit / Fix), inline chat field under the
