@@ -128,6 +128,21 @@ internal class EditorChipHostState(
 ) {
     var state by mutableStateOf(initial)
         private set
+
+    /**
+     * 2026-11-05: whether the AI menu is open LIVES HERE, not inside the button.
+     *
+     * The owner reports the green chip "doesn't open". The menu state was a `remember` inside
+     * EditorChipButton, so anything that took the chip out of composition (the visibility gate
+     * flipping on a selection or IME change, a recomposition of the popup content) dropped the
+     * menu on the floor mid-tap. Held on the host, the state survives recomposition, the outer
+     * popup can stay focusable while the menu is open, and visibility can keep the chip alive for
+     * as long as the menu is up.
+     */
+    var menuOpen by mutableStateOf(false)
+        private set
+
+    fun setMenuVisible(open: Boolean) { menuOpen = open }
     val placement = EditorChipPlacement(stored ?: (maxX - 44f).coerceAtLeast(4f) to 8f, maxX, maxY)
 
     /**
@@ -172,7 +187,7 @@ internal class EditorChipHostState(
         hasSelection: Boolean,
         diagnostic: LintError?,
         imeHeightPx: Int,
-    ): Boolean = EditorActionMenuSpec.shouldShow(
+    ): Boolean = menuOpen || EditorActionMenuSpec.shouldShow(
         state = state,
         hasSelection = hasSelection,
         hasWordUnderCursor = word != null && word.length >= 1,
@@ -231,11 +246,13 @@ internal fun EditorChipButton(
     onOpenMore: () -> Unit,
     onCycleState: () -> Unit,
     placement: EditorChipPlacement,
+    /** Owned by the host so recomposition cannot close the menu mid-tap (2026-11-05). */
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     accent: Color = Color(0xFF4EC9B0),
     surface: Color = Color(0xFF1E1E1E),
 ) {
     val ctx = LocalContext.current
-    var expanded by remember { mutableStateOf(false) }
     val hidden = state == EditorChipState.HIDDEN
     val diameter = EditorActionMenuSpec.diameterDp(state)
 
@@ -251,7 +268,7 @@ internal fun EditorChipButton(
             // consumed the down first and the long-press detector - which requires an
             // unconsumed down - never started, so the chip could not be picked up at all. A tap
             // still works: clickable accepts an already-consumed down.
-            .clickable { expanded = true }
+            .clickable { onExpandedChange(true) }
             .pointerInput(Unit) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = { pos -> placement.beginDrag(pos.x, pos.y) },
@@ -306,7 +323,7 @@ internal fun EditorChipButton(
         hasDiagnostic = hasDiagnostic,
         onPick = onPick,
         onOpenMore = onOpenMore,
-        onDismiss = { expanded = false },
+        onDismiss = { onExpandedChange(false) },
     )
 }
 

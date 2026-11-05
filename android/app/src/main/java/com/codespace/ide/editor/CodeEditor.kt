@@ -3904,7 +3904,14 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 Popup(
                     alignment = androidx.compose.ui.Alignment.TopStart,
                     offset = chip.offsetInt(imeHeightPx),
-                    properties = PopupProperties(focusable = false, dismissOnClickOutside = false)
+                    // 2026-11-05: focusable ONLY while the AI menu is open. A DropdownMenu inside
+                    // a non-focusable popup window cannot take the input focus its list needs, so
+                    // the menu never appeared; making the window focusable all the time would steal
+                    // focus from the text field and drop the keyboard.
+                    properties = PopupProperties(
+                        focusable = chip.menuOpen,
+                        dismissOnClickOutside = false,
+                    )
                 ) {
                     var showLspMenu by remember { mutableStateOf(false) }
                     // P38-FIX: Auto-open LSP menu when long-press triggers
@@ -3936,6 +3943,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             onOpenMore = { showLspMenu = true },
                             onCycleState = { chip.cycle() },
                             placement = chip.placement,
+                            expanded = chip.menuOpen,
+                            onExpandedChange = { chip.setMenuVisible(it) },
                         )
                         androidx.compose.material3.DropdownMenu(
                             expanded = showLspMenu,
