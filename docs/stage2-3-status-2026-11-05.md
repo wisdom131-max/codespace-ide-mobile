@@ -76,3 +76,29 @@ run id is not a claim.
   in the docs is wrong and is retracted here.
 - One bug per commit, CI verdict before the next push, no pushing on a red base.
 - Research before each fix, against VS Code source, recorded in the commit message.
+
+## Rulings recorded 2026-11-05 (advisor, after the SCM and secrets findings)
+
+1. **Secrets in tool results: no code change.** VN Code matches VS Code here, and matching is the
+   decision, not an oversight. Evidence: VS Code redacts for *logging*, not for context
+   (`chatHookService.ts:45-47` names `['toolArgs','tool_input']` and `_redactForLogging` at `:71`
+   applies to hook logging only); `redacted_thinking` in `anthropicMessageConverter.ts:17-21` is
+   provider-side reasoning redaction and has nothing to do with secrets. There is no scrub of tool
+   output entering chat context in either product. VN Code's redaction stays where it already is:
+   `AttachmentSecrets.redact` (two tiers, `:99`) on the attachment send path, and the output-export
+   redaction. The known consequence is stated plainly: a secret the agent reads can reach the model.
+2. **SCM commit button: unchanged.** `CommitMessagePrompt.build` sends file *names* only (up to 20,
+   plus "and N more"), the staging scope and a "read the diffs yourself" instruction - no diff text,
+   so there is no diff cap, no binary exclusion and no redaction step to add. Compared with VS Code,
+   which does send real diffs (`gitCommitMessageServiceImpl.ts:97` calls `getChangeDiffs`, `:99-101`
+   refuses outright when content exclusion removed everything) and also sends branch name and recent
+   commit subjects. **Noted for later, not scheduled:** adding branch name and recent subjects is
+   the one parity gap worth closing, and it costs prompt budget rather than correctness.
+3. **Item 10 of the investigation file is the green floating control, not the chip's menu.** Quoted
+   from `VN_Code_Advisor_Full_Investigation_Prompt.txt`: "10. GREEN FLOATING EXPLORER MENU -
+   Observed: The green floating Explorer menu cannot currently be dragged, opened, or dismissed as
+   expected. Required: Inspect its gesture handling, z-order, hit targets, window/inset positioning,
+   and state wiring..." `9828264` (run 3569) is that fix: an invisible same-size sibling Box sat over
+   the chip and consumed every pointer event.
+4. **Workflow identity, corrected.** `.github/workflows/android-build.yml`, display name
+   "Build Android APK". There is no `build.yml` in this repository; the earlier report said there was.
