@@ -21,11 +21,21 @@ run id is not a claim.
 | Activity grouping | consecutive tool rows fold into one chevron row, no x; `ActivityGrouping` + 7 tests | 3562 |
 | Tool discovery | `/tools` answers from `AgentTools.toolNames()` + cached MCP; VS Code research recorded | 3563 |
 | Terminal dismiss x | x on FINISHED agent runs only, refuses unfinished, presentation-only | 3564 |
+| Chip root cause | invisible same-size overlay ate every tap and down: open + drag both dead | 3569 |
+| Chip second menu | language-server menu shared no focus flag; both menus on `anyMenuOpen` | 3570 |
 
 ## Remaining, in order
 
-1. **Chip drag.** No change made; the maths were rewritten once already and the failure has not been
-   reproduced. Device round decides: does a long-press pick the chip up, and does it follow?
+1. **Chip drag / chip menu — ROOT CAUSE FOUND AND FIXED 2026-11-05.** Not the drag maths, not the
+   popup focus flag, not the host menu state: those were three earlier attempts at a node that never
+   received input. `EditorChipButton` emitted a SECOND clickable Box of the same 36dp size (the
+   visibility dot) as a sibling of the chip; the caller's `Surface` lays siblings out in a Box, so
+   that control sat on top of the chip and took every down event. Tapping cycled Solid/Ghost/Hidden
+   instead of opening, long-press never started a drag, and HIDDEN shrank only the glyph so the dead
+   zone stayed 36dp. Fixed in 9828264 (run 3569): the dot is an indicator, cycling moved into the
+   menu. Second defect on the same surface fixed in 18191f9 (run 3570): the language-server menu
+   opened inside a non-focusable popup because its flag was separate from `focusable`; both menus now
+   share `anyMenuOpen` on the host. Device check is now "tap opens the list, long-press picks it up".
 2. **Undo/redo redo survival.** Verified at the STACK level (`RedoSurvivalTest`, 6 tests):
    `externalContentSync` never pushes, so the sync cannot consume redo; the only things that kill
    redo are a new edit and a force push, which is VS Code semantics. Two things still need the
