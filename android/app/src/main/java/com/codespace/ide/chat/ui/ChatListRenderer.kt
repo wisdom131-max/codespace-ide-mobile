@@ -42,8 +42,25 @@ object NativeChatListRenderer : ChatListRenderer {
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(ChatTokens.GAP.dp),
         ) {
-            state.rows.forEachIndexed { index, row ->
-                RenderRow(row, state, stepsAfter(state.rows, index))
+            // 2026-11-05: consecutive tool steps collapse into one row (ActivityGrouping).
+            var i = 0
+            val rows = state.rows
+            while (i < rows.size) {
+                val row = rows[i]
+                if (row is ChatRowModel.ToolActivity) {
+                    var j = i
+                    while (j < rows.size && rows[j] is ChatRowModel.ToolActivity) j++
+                    val run = rows.subList(i, j).map { it as ChatRowModel.ToolActivity }
+                    if (run.size == 1) {
+                        RenderRow(row, state, stepsAfter(rows, i))
+                    } else {
+                        ActivityGroupRow(run)
+                    }
+                    i = j
+                } else {
+                    RenderRow(row, state, stepsAfter(rows, i))
+                    i++
+                }
             }
         }
     }
@@ -85,7 +102,7 @@ object NativeChatListRenderer : ChatListRenderer {
             is ChatRowModel.OverBudget -> OverBudgetCard(row.estimate, state.onSendAnyway, state.onCancel)
             is ChatRowModel.InfoNote -> InfoNoteRow(row.text)
             is ChatRowModel.ToolActivity ->
-                ToolActivityRow(row.label, row.detail, onDismiss = { state.onDismissRow(row) })
+                ToolActivityRow(row.label, row.detail)
             is ChatRowModel.Attachments -> AttachmentChipRow(row.chips, state.onRemoveChip)
         }
     }

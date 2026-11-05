@@ -184,7 +184,6 @@ fun ThinkingCard(seconds: Int, steps: List<String> = emptyList(), modifier: Modi
 fun ToolActivityRow(
     label: String,
     detail: String,
-    onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val c = ChatTokens.LocalChatColors.current
@@ -213,17 +212,63 @@ fun ToolActivityRow(
                     .weight(1f)
                     .clickable { expanded = !expanded },
             )
-            Text(
-                "\u00d7",
-                color = c.textSecondary,
-                fontSize = ChatTokens.FONT_MICRO.sp,
-                modifier = Modifier
-                    .clickable(onClickLabel = "Dismiss this step", onClick = onDismiss)
-                    .padding(start = 8.dp),
-            )
+            // OWNER RULE (2026-11-05): an activity row collapses with its chevron and carries NO
+            // dismiss x. The x lived here and could silently drop a step from the record.
         }
         if (expanded) {
             Text(detail, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
+        }
+    }
+}
+
+/**
+ * 2026-11-05 (owner: "install the activity grouping"): ONE collapsed row for a run of tool steps.
+ *
+ * The header is the count and the tool names; the chevron opens the individual steps. Chevron only,
+ * no x - the owner's rule, and the reason the single-row version lost its dismiss glyph too. Corners
+ * and padding follow the standing panel rule (8-12dp radius, 12dp horizontal, 10dp vertical).
+ */
+@Composable
+fun ActivityGroupRow(
+    items: List<ChatRowModel.ToolActivity>,
+    modifier: Modifier = Modifier,
+) {
+    val c = ChatTokens.LocalChatColors.current
+    var expanded by remember { mutableStateOf(false) }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(ChatTokens.RADIUS_CARD.dp))
+            .background(c.surface)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (expanded) "\u25BE" else "\u25B8",
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+                modifier = Modifier
+                    .clickable { expanded = !expanded }
+                    .padding(end = 6.dp),
+            )
+            Text(
+                ActivityGrouping.summary(items),
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { expanded = !expanded },
+            )
+        }
+        if (expanded) {
+            items.forEach { item ->
+                Column(Modifier.padding(top = 6.dp)) {
+                    Text(item.label, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
+                    if (item.detail.isNotBlank()) {
+                        Text(item.detail, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
+                    }
+                }
+            }
         }
     }
 }
