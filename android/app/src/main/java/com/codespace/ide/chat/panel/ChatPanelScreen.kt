@@ -379,6 +379,15 @@ private fun ChatBody(
                 when (id) {
                     "clear" -> session.clearConversation()
                     "attach" -> showPicker = true
+                    // 2026-11-05 (tool discovery): answer from the execution registry, in the
+                    // transcript, so the list cannot drift from what the agent can really call.
+                    "tools" -> session.note(
+                        ToolDiscovery.describe(
+                            mcpCached = com.codespace.ide.agent.McpClientManager
+                                .cachedToolNames(ctx),
+                            modeLabel = chatMode.label,
+                        )
+                    )
                 }
             },
             onOpenModel = { showSelect = true },

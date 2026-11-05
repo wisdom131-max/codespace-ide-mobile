@@ -363,6 +363,17 @@ class ChatSession internal constructor(
     }
 
     /** The x on an activity row: drop that one line, nothing else in the transcript moves. */
+    /**
+     * 2026-11-05 (tool discovery): let the panel answer a `/` command in the transcript.
+     *
+     * A plain InfoNote, because that is what this is - something the user must be able to read, and
+     * deliberately NOT a ToolActivity row, which groups, collapses and is about work the assistant
+     * did rather than an answer to a question.
+     */
+    fun note(text: String) {
+        appendRow(ChatRowModel.InfoNote(text))
+    }
+
     fun dismissRow(row: ChatRowModel) {
         val st = ui.value
         val at = st.rows.indexOfFirst { it === row }

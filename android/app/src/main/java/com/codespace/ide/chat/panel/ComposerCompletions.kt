@@ -34,6 +34,8 @@ internal object ComposerCompletions {
     internal val commands = listOf(
         ComposerCompletion("/clear", "Clear this conversation", command = "clear"),
         ComposerCompletion("/attach", "Attach files from the project", command = "attach"),
+        // 2026-11-05 (tool discovery): ask what this chat can actually call.
+        ComposerCompletion("/tools", "List the tools this chat can call", command = "tools"),
     )
 
     internal val participants = listOf(
