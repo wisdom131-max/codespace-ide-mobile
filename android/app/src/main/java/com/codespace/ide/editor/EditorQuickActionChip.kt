@@ -295,13 +295,21 @@ internal fun EditorChipButton(
         }
     }
 
-    // The state control sits beside the chip, small but with a full-size touch target.
+    // THE "DOESN'T OPEN, DOESN'T DRAG" BUG (owner report 2026-11-05, root cause found 2026-11-05):
+    // this used to be a SECOND clickable Box of the same size as the chip, emitted as a sibling of
+    // it. Surface's content is a Box, so both children stacked at TopStart, the state control was
+    // drawn over the chip, and Compose hit-tests front to back - so every down landed on the state
+    // control's clickable. The chip's own clickable (open the menu) and its drag pointerInput never
+    // received a single event: the chip cycled Solid -> Ghost -> Hidden instead of opening, and the
+    // long-press drag never started. It read as "the menu is broken" because the control that owned
+    // the menu was underneath an invisible button covering it.
+    // It is an INDICATOR now, no gesture of its own; cycling moved into the menu, which is also
+    // where a user goes looking for it.
     Box(
         Modifier
             .size(diameter.dp)
             .clip(RoundedCornerShape(8.dp))
-            .alpha(EditorActionMenuSpec.alpha(state))
-            .clickable { onCycleState() },
+            .alpha(EditorActionMenuSpec.alpha(state)),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -324,6 +332,8 @@ internal fun EditorChipButton(
         onPick = onPick,
         onOpenMore = onOpenMore,
         onDismiss = { onExpandedChange(false) },
+        cycleLabel = EditorActionMenuSpec.nextLabel(state),
+        onCycle = onCycleState,
     )
 }
 
@@ -335,6 +345,9 @@ internal fun EditorAiMenu(
     onPick: (String) -> Unit,
     onOpenMore: () -> Unit,
     onDismiss: () -> Unit,
+    /** Next visibility state, e.g. "Ghost". Cycling used to live on an overlay button (see above). */
+    cycleLabel: String = "",
+    onCycle: () -> Unit = {},
 ) {
     val entries = EditorActionMenuSpec.entries(hasDiagnostic)
     DropdownMenu(
@@ -379,6 +392,21 @@ internal fun EditorAiMenu(
                         // The host owns both the prompt and the handoff, so a pick can never
                         // build a prompt that nowhere can send.
                         onPick(entry.kind)
+                    },
+                )
+            }
+            if (cycleLabel.isNotEmpty()) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            "Chip: " + cycleLabel,
+                            color = Color(0xFF858585),
+                            fontSize = 12.sp,
+                        )
+                    },
+                    onClick = {
+                        onDismiss()
+                        onCycle()
                     },
                 )
             }

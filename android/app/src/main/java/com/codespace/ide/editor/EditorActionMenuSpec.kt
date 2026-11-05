@@ -90,6 +90,13 @@ internal object EditorActionMenuSpec {
         EditorChipState.HIDDEN -> EditorChipState.SOLID
     }
 
+    /** Human label for the state the next tap would move the chip to. */
+    fun nextLabel(state: EditorChipState): String = when (nextState(state)) {
+        EditorChipState.SOLID -> "solid"
+        EditorChipState.GHOST -> "ghost"
+        EditorChipState.HIDDEN -> "hidden"
+    }
+
     fun alpha(state: EditorChipState): Float = when (state) {
         EditorChipState.SOLID -> 1f
         EditorChipState.GHOST -> 0.35f
