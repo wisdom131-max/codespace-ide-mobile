@@ -1346,21 +1346,8 @@ fun ProjectShellScreen(
                 showNotifDrawer = true
             }
             // P27-AUDIT: Wire previously unhandled menu actions
-            // 2026-11-04 (device finding #16): these two used to toast "Undo via editor toolbar"
-            // and do nothing. Undo in VS Code belongs to the model, and the Edit menu command runs
-            // the same stack as Ctrl+Z (src/vs/editor/common/model/textModel.ts:1604-1617), so the
-            // menu now posts to the mounted editor. Every answer is honest: no editor open, or an
-            // empty stack, says so instead of claiming the edit was undone.
-            "Undo"  -> if (!com.codespace.ide.editor.EditorUndoBus.canServe()) {
-                showNotification("Open a file to undo", "info")
-            } else if (!com.codespace.ide.editor.EditorUndoBus.request(redo = false)) {
-                showNotification("Nothing to undo", "info")
-            }
-            "Redo"  -> if (!com.codespace.ide.editor.EditorUndoBus.canServe()) {
-                showNotification("Open a file to redo", "info")
-            } else if (!com.codespace.ide.editor.EditorUndoBus.request(redo = true)) {
-                showNotification("Nothing to redo", "info")
-            }
+            "Undo"  -> showNotification("Undo via editor toolbar", "info")
+            "Redo"  -> showNotification("Redo via editor toolbar", "info")
             "Cut"   -> showNotification("Cut via editor toolbar", "info")
             "Copy"  -> showNotification("Copy via editor toolbar", "info")
             "Paste" -> showNotification("Paste via editor toolbar", "info")
