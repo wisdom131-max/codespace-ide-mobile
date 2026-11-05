@@ -1083,8 +1083,13 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 vScroll.scrollTo((vScroll.value + (lineDelta * lhPxSync).toInt()).coerceIn(0, vScroll.maxValue))
             }
         }
-        value = TextFieldValue(newText, TextRange(newSelStart, newSelEnd))
-        editorEvent = EditorEvent.ProgrammaticTextChange(newText, newSelEnd)
+        // UNDO-CARET (2026-11-05): an undo hands text AND a selection; the pane can only pass the text,
+        // so it leaves the selection here and this sync lands the caret where the snapshot said.
+        // Single-shot, so it cannot fight the user's next tap. One call, no branch in this body.
+        val caret = com.codespace.ide.editor.EditorSelectionMemory.resolveRestore(
+            currentFilePath ?: "", newSelStart, newSelEnd, newText.length)
+        value = TextFieldValue(newText, TextRange(caret.start, caret.end))
+        editorEvent = EditorEvent.ProgrammaticTextChange(newText, caret.end)
         AppOutputLog.log("EXTERNAL_CONTENT_SYNC: " + reason + " (replaced " + oldText.length + " -> " + newText.length + " chars)", "lsp")
     }
 
@@ -1284,6 +1289,10 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var showLightbulbMenu by showLightbulbMenuState
     // P39/X-9: Async-fetch code actions when cursor moves to a new line (debounced 500ms)
     // Phase X-9: Gate on editorEvent — do not trigger on file open/switch/programmatic.
+    // UNDO-CARET (2026-11-05): one call. The effect lives in EditorCaretReporter, out of this body,
+    // because CodeEditor is at the 64 KB method limit.
+    com.codespace.ide.editor.EditorCaretReporter(currentFilePath, value.selection.start, value.selection.end)
+
     LaunchedEffect(value.selection.start, editorEvent) {
         if (lspCodeActionProvider != null) {
             if (!editorEvent.shouldTriggerCodeActions) return@LaunchedEffect

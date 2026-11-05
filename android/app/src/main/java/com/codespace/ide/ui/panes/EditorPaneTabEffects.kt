@@ -119,6 +119,8 @@ internal fun EditorPaneTabRequests(
                 // canonical stores, breakpoints, cache
                 PerFileStateStore.rekey(oldPath, newPath)
                 SharedFileUndo.rekey(oldPath, newPath)
+                // The caret history follows the file for the same reason the undo stack does.
+                com.codespace.ide.editor.EditorSelectionMemory.rekey(oldPath, newPath)
                 FileCache.invalidate(oldPath)  // G07-style: never serve pre-rename content
                 udm?.rekeyBreakpoints(oldPath, newPath)
             }

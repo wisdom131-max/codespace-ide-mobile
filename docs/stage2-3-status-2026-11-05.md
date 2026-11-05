@@ -31,8 +31,10 @@ run id is not a claim.
    redo are a new edit and a force push, which is VS Code semantics. Two things still need the
    device: the two-edit undo/redo sequence, and the cursor - the pane's menu undo builds its snapshot
    with `TextRange.Zero`, so an undo jumps the caret to offset 0 instead of restoring the selection
-   that `EditorUndoHost` documents carrying. That is a real divergence from VS Code and needs the
-   editor's live selection plumbed to the pane.
+   that `EditorUndoHost` documents carrying. **Plumbed 2026-11-05** (`EditorSelectionMemory`,
+   `EditorCaretReporter`, `resolveRestore`; 9 tests): the editor reports its caret per file, the pane
+   builds its snapshot from it, and on apply it leaves a single-shot restore that the next content
+   sync consumes. Device check is now only "does the caret come back where it was".
 3. **Tool discovery.** `/tools`-style listing inside the app: what tools exist for the current mode,
    from `AgentTools.toolNames()` (already the execution registry) plus cached MCP names. No second
    list — the drift bug that produced a hand-maintained 30-name list must not come back.

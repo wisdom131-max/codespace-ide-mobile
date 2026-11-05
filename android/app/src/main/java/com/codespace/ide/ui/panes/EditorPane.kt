@@ -1667,15 +1667,29 @@ fun EditorPane(
             if (tab == null) {
                 false
             } else {
+                // UNDO-CARET (2026-11-05): the snapshot carries the caret the editor last reported.
+                // It used to be TextRange.Zero, so every menu undo jumped to offset 0 while
+                // EditorUndoHost promised the selection travelled with the snapshot.
+                val remembered = com.codespace.ide.editor.EditorSelectionMemory.selectionFor(tab.path)
+                val caret = if (remembered == null) {
+                    androidx.compose.ui.text.TextRange.Zero
+                } else {
+                    val c = com.codespace.ide.editor.EditorSelectionMemory.clamp(remembered, tab.content.length)
+                    androidx.compose.ui.text.TextRange(c.start, c.end)
+                }
                 val snap = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
                     text = tab.content,
-                    selection = androidx.compose.ui.text.TextRange.Zero,
+                    selection = caret,
                     extraCursors = emptyList(),
                 )
                 val next = com.codespace.ide.editor.EditorUndoHost.step(redo, tab.path, snap)
                 if (next == null) {
                     false
                 } else {
+                    // The editor can only receive text, so the snapshot's selection is left for its
+                    // next content sync to consume.
+                    com.codespace.ide.editor.EditorSelectionMemory.requestRestore(
+                        tab.path, next.selection.start, next.selection.end)
                     val idx = tabs.indexOfFirst { it.id == tab.id }
                     if (idx >= 0) tabs[idx] = tabs[idx].copy(content = next.text, isDirty = true)
                     if (tab.path.startsWith("/")) writeTabToDisk(tab.path, next.text)
