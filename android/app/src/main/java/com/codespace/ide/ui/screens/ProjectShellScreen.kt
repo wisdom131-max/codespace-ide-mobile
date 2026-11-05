@@ -5069,7 +5069,15 @@ private fun PssEditorColumn(
                     sessionStateStore  = sessionStateStore,
                     // P39: AI code actions (Explain/Optimize/etc) open the chat panel and
                     // auto-send the generated prompt.
-                    onAiFixRequest     = { prompt -> showChatPanel = true; pendingChatPrompt = prompt },
+                    onAiFixRequest     = { prompt ->
+                        showChatPanel = true
+                        // 2026-11-05: the sparkle's "Refactor with AI" sends a sentinel; the
+                        // transcript used to receive the literal "__refactor_ai__". Resolved here
+                        // because CodeEditor is at its 64KB method ceiling.
+                        pendingChatPrompt = com.codespace.ide.chat.panel.EditorAiPrompts.resolve(
+                            prompt, activeEditorTab,
+                        )
+                    },
                     formatOnSaveTrigger = formatOnSaveTrigger,
                     onFontSizeChange = onFontSizeChange,
                     // PAD-1: nav-history state for the relocated nav back/forward strip buttons
