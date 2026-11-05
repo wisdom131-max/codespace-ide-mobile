@@ -43,10 +43,12 @@ run id is not a claim.
 5. **Stage 3 UI compliance.** NOTE (2026-11-05): nothing anywhere in the repo enumerates four
    Stage 3 UI items - the row above was carried from an earlier session and the number was never
    written down. Rather than invent four, the stage's own surfaces were audited against the standing
-   panel rule (8-12dp radius, 12dp horizontal / 10dp vertical). Two violations found and fixed
-   (`ToolActivityRow` on its own 10/6, the terminal agent strip on 6dp + 6/4); `ActivityGroupRow`,
-   `ThinkingCard` and the diff card were already on tokens. If the four items were something
-   specific, say which and they get done next.
+   panel rule (8-12dp radius, 12dp horizontal / 10dp vertical). Two violations were found
+   (`ToolActivityRow` on its own 10/6, the terminal agent strip on 6dp + 6/4). The styling change was
+   committed as a020e3b and then REVERTED at the owner's request the same day (a020e3b stays the
+   audit, not the change): both surfaces are back on their original values and must not be restyled
+   again without an explicit ask. `ActivityGroupRow`, `ThinkingCard` and the diff card were already
+   on tokens. If the four items were something specific, say which and they get done next.
 6. **Install target + device package.** One target, assembled after the above, then one device round
    carrying everything (device-round batching rule).
 
