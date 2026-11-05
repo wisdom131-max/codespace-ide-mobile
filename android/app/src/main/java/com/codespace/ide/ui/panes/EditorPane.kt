@@ -1657,6 +1657,37 @@ fun EditorPane(
         }
 
         val active = resolveActiveTab(activeId, tabs) ?: tabs.firstOrNull()
+        // 2026-11-05 (device finding #16): the shell's Edit menu holds no editor reference, so it
+        // asks here. EditorUndoHost does the stack maths and the snapshot carries the selection;
+        // this only applies the result: the tab content (CodeEditor picks it up through its
+        // existing LaunchedEffect(content)) and the file on disk. Registered by the TAB HOST and
+        // not by CodeEditor, whose composable is at the JVM 64KB method ceiling (CI 3552).
+        val undoApplyLatest = rememberUpdatedState<(Boolean) -> Boolean> { redo ->
+            val tab = active
+            if (tab == null) {
+                false
+            } else {
+                val snap = com.codespace.ide.editor.undo.SnapshotUndoManager.TextSnapshot(
+                    text = tab.content,
+                    selection = androidx.compose.ui.text.TextRange.Zero,
+                    extraCursors = emptyList(),
+                )
+                val next = com.codespace.ide.editor.EditorUndoHost.step(redo, tab.path, snap)
+                if (next == null) {
+                    false
+                } else {
+                    val idx = tabs.indexOfFirst { it.id == tab.id }
+                    if (idx >= 0) tabs[idx] = tabs[idx].copy(content = next.text, isDirty = true)
+                    if (tab.path.startsWith("/")) writeTabToDisk(tab.path, next.text)
+                    true
+                }
+            }
+        }
+        DisposableEffect(Unit) {
+            val undoFn: (Boolean) -> Boolean = { redo -> undoApplyLatest.value(redo) }
+            com.codespace.ide.editor.EditorUndoBus.register(undoFn)
+            onDispose { com.codespace.ide.editor.EditorUndoBus.unregister(undoFn) }
+        }
         val lspSquiggles = active?.let { com.codespace.ide.editor.PerFileStateStore.stateFor(it.path).squiggles }
             ?: emptyList()
         // VS Code pattern: read THIS model's markers synchronously; cache pulls only update its store.

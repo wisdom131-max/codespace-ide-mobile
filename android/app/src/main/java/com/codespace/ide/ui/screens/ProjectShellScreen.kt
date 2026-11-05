@@ -1346,8 +1346,20 @@ fun ProjectShellScreen(
                 showNotifDrawer = true
             }
             // P27-AUDIT: Wire previously unhandled menu actions
-            "Undo"  -> showNotification("Undo via editor toolbar", "info")
-            "Redo"  -> showNotification("Redo via editor toolbar", "info")
+            // 2026-11-05 (device finding #16): these two used to toast "Undo via editor toolbar"
+            // and do nothing at all. Undo belongs to the file's stack, and the menu now runs the
+            // same stack the keyboard does. Every answer is honest: no editor, or an empty stack,
+            // says so instead of claiming an edit was undone.
+            "Undo"  -> if (!com.codespace.ide.editor.EditorUndoBus.canServe()) {
+                showNotification("Open a file to undo", "info")
+            } else if (!com.codespace.ide.editor.EditorUndoBus.request(redo = false)) {
+                showNotification("Nothing to undo", "info")
+            }
+            "Redo"  -> if (!com.codespace.ide.editor.EditorUndoBus.canServe()) {
+                showNotification("Open a file to redo", "info")
+            } else if (!com.codespace.ide.editor.EditorUndoBus.request(redo = true)) {
+                showNotification("Nothing to redo", "info")
+            }
             "Cut"   -> showNotification("Cut via editor toolbar", "info")
             "Copy"  -> showNotification("Copy via editor toolbar", "info")
             "Paste" -> showNotification("Paste via editor toolbar", "info")
