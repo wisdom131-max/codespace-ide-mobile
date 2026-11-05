@@ -199,11 +199,13 @@ object AgentApiServer {
                         try { JSONObject(body) } catch (_: Exception) { JSONObject() }
                     } else JSONObject()
 
-                    // Wrap args in the expected format: {"name":"...", "arguments":{...}}
-                    val _wrapped = JSONObject()
-                        .put("name", toolName)
-                        .put("arguments", args)
-
+                    // 2026-11-05: the wrapping object built here was never read - the executor
+                    // below takes (toolName, args) directly - and an unused local of a builder
+                    // chain is enough to crash the Kotlin JVM back end on this toolchain:
+                    // "Back-end (JVM) Internal error: Couldn't transform method nw ... Variable
+                    // '_wrapped' is never used" (AgentApiServer.kt:203). That ICE broke EVERY
+                    // local devDebug build while CI's prod build stayed green, which is why it
+                    // sat unnoticed. Removed: no behaviour change, the dispatch path is unchanged.
                     // P2c TrustState choke point (headless, fail closed — an HTTP
                     // caller cannot be shown the interactive prompt). Unattended
                     // tool execution rides PROJECT TRUST of the active project:
