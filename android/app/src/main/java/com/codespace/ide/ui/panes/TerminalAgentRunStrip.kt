@@ -116,10 +116,26 @@ private fun AgentRunRow(
                 fontSize = 9.sp,
                 maxLines = 1,
             )
-            // Owner ruling 2026-10-30: the rows carry the chevron ONLY. No X here, because a
-            // close glyph next to a running command reads as "cancel", which this strip must
-            // never do. AgentTerminalFeed.dismiss() is kept (and tested) so the capability is
-            // still there if it is ever asked for again.
+            // Owner request 2026-11-05: the X is back, to dismiss a FINISHED run from the terminal
+            // record. It reconciles with the 2026-10-30 ruling instead of undoing it: the glyph is
+            // drawn ONLY when the run has finished, so it can never be mistaken for a cancel, and it
+            // disappears the instant a run is still going. Dismissal is presentation only - the run
+            // object is a copy of what already happened, so the agent's work is untouched, and
+            // AgentTerminalFeed.dismiss() refuses unfinished runs anyway (belt and braces).
+            if (run.isFinished) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "\u00d7",
+                    color = Color(0xFF858585),
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .clickable(
+                            onClickLabel = "Dismiss this finished run from the terminal",
+                            onClick = { AgentTerminalFeed.dismiss(run.id) },
+                        )
+                        .padding(horizontal = 4.dp),
+                )
+            }
         }
         if (run.workdir != null && expanded) {
             Text(
