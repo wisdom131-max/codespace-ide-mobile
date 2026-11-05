@@ -462,9 +462,24 @@ fun SourceControlPane(
                 val staged = st?.staged?.map { it.path } ?: emptyList()
                 val unstaged = (st?.unstaged?.map { it.path } ?: emptyList()) +
                     (st?.untracked?.map { it.path } ?: emptyList())
+                // The answer comes BACK here (2026-11-05): the message box is filled from the
+                // reply, and only when the box is still what the user left it as - if they typed
+                // something meanwhile, their words win and the AI text is shown to them instead.
+                val boxAtAsk = commitMessage
                 val wrote = com.codespace.ide.chat.panel.ChatHandoff.ask(
-                    com.codespace.ide.scm.CommitMessagePrompt.build(staged, unstaged)
-                )
+                    prompt = com.codespace.ide.scm.CommitMessagePrompt.build(staged, unstaged),
+                    label = "scm.commitMessage",
+                ) { reply ->
+                    val message = com.codespace.ide.scm.CommitMessageReply.extract(reply)
+                    if (message.isBlank()) {
+                        snackbarMsg = "The chat answered without a commit message"
+                    } else if (commitMessage.isBlank() || commitMessage == boxAtAsk) {
+                        commitMessage = message
+                        snackbarMsg = "Commit message ready - review, then commit"
+                    } else {
+                        snackbarMsg = "Commit message ready in the chat; your draft was kept"
+                    }
+                }
                 if (!wrote) snackbarMsg = "Open the chat to generate a commit message"
             },
             onCommit = {

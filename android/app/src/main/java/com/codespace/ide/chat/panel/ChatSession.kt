@@ -710,7 +710,10 @@ class ChatSession internal constructor(
                 else st.rows + listOf(ChatRowModel.AssistantStream(shown, false))
                 ui.value = st.copy(rows = rows, streaming = false)
                 when (decision) {
-                    is ToolDecision.Answer -> Unit
+                    // 2026-11-05: a panel that asked a question (Source Control's commit message)
+                    // takes the answer back. Only a real ANSWER qualifies - a tool round is not a
+                    // reply to anyone, and delivering mid-loop would hand over half a turn.
+                    is ToolDecision.Answer -> ChatHandoff.deliverAnswer(decision.text)
                     is ToolDecision.Refused -> appendRow(ChatRowModel.InfoNote(decision.reason))
                     is ToolDecision.Run -> runTools(decision.calls, cfg, slotName, confirmOverBudget, gen)
                 }
