@@ -453,10 +453,19 @@ fun SourceControlPane(
             isBusy = operation !is ScmOperation.Idle,
             aiBusy = aiSuggestBusy,
             onAiSuggest = {
-                // REMOVAL 2026-10-27 (advisor ruling): the old chat provider layer
-                // is removed; the AI commit-message action is disabled with a plain
-                // message until the rebuilt chat re-registers it. No dead call.
-                if (!aiSuggestBusy) snackbarMsg = "AI commit messages return with the new chat"
+                // 2026-11-05 (owner: "the SCM too"): this was a stub that apologised. It now
+                // asks the rebuilt chat, through the same handoff the editor uses, and says so
+                // honestly when no chat is mounted. The prompt carries the change set only - the
+                // model can read the diff itself with its own tools, and pasting a diff into a
+                // message would spend the context budget twice.
+                val st = repoState
+                val staged = st?.staged?.map { it.path } ?: emptyList()
+                val unstaged = (st?.unstaged?.map { it.path } ?: emptyList()) +
+                    (st?.untracked?.map { it.path } ?: emptyList())
+                val wrote = com.codespace.ide.chat.panel.ChatHandoff.ask(
+                    com.codespace.ide.scm.CommitMessagePrompt.build(staged, unstaged)
+                )
+                if (!wrote) snackbarMsg = "Open the chat to generate a commit message"
             },
             onCommit = {
                 if (commitMessage.isNotBlank()) {

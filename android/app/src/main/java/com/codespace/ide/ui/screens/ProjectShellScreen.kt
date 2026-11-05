@@ -4898,6 +4898,18 @@ private fun PssEditorColumn(
     var showBottomPanel by showBottomPanelMs
     var showChatPanel by showChatPanelMs
     var pendingChatPrompt by pendingChatPromptMs
+    // 2026-11-05 (owner: "the scm too"): the Source Control pane has no chat reference, so it
+    // asks through ChatHandoff and lands in the SAME prompt channel the editor uses. Registered
+    // here because the shell is what owns showChatPanel + pendingChatPrompt.
+    val chatHandoffLatest = androidx.compose.runtime.rememberUpdatedState<(String) -> Unit> { prompt ->
+        showChatPanel = true
+        pendingChatPrompt = prompt
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        val fn: (String) -> Unit = { prompt -> chatHandoffLatest.value(prompt) }
+        com.codespace.ide.chat.panel.ChatHandoff.register(fn)
+        onDispose { com.codespace.ide.chat.panel.ChatHandoff.unregister(fn) }
+    }
     // C12-U6-b fix 2b: delegated gate state for the open routes in this column
     var binaryOpenRequest by binaryOpenRequestMs
     var pendingChatAttach by pendingChatAttachMs
