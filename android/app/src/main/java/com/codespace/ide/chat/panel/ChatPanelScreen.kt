@@ -289,7 +289,9 @@ private fun ChatBody(
                         onRetry = { session.retry() },
                         onSendAnyway = { session.sendAnyway() },
                         onCancel = { session.dismissOverBudget() },
-                        onRemoveChip = { chip -> session.removePending(chip.name) },
+                        // Owner item 5: per-row removal, so a duplicate filename cannot take a
+                        // sibling attachment with it.
+                        onRemoveChip = { chip -> session.removePendingAt(chip.index) },
                         onDismissRow = { row -> session.dismissRow(row) },
                         // BATCH 7: Insert goes to whatever editor is on screen right now;
                         // false (no editor) is reported by the card, not swallowed here.
@@ -300,7 +302,10 @@ private fun ChatBody(
             }
         }
             // Item 3: the way back, overlaid so it never consumes a row of the conversation.
-            if (!follow.following) {
+            // Owner item 4: hidden while at the bottom (VS Code parity) and, after arriving at the
+            // bottom, lingering 3s then hiding - instead of the old "visible for as long as the
+            // follow flag is false" which read as a permanently visible arrow.
+            if (rememberJumpButtonVisible(scroll)) {
                 androidx.compose.foundation.layout.Box(
                     Modifier
                         .align(androidx.compose.ui.Alignment.BottomEnd)

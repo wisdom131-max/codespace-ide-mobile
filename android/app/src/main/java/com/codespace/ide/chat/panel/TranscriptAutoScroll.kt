@@ -135,6 +135,82 @@ internal fun TranscriptAutoScroll(scroll: ScrollState, growthKey: Int, follow: F
 }
 
 /**
+ * Owner item 4 (chat scroll-to-bottom button): "after the user taps it or reaches the bottom, it
+ * should disappear after approximately three seconds; it should reappear when scrolling indicates
+ * the user is away from the bottom."
+ *
+ * VS CODE REFERENCE: vscode-src src/vs/workbench/contrib/chat/browser/widget/chatListWidget.ts:137
+ *   `computeScrollDownState(isScrolledToBottom, scrollLock)` -> `showButton: !isScrolledToBottom`,
+ * called from `onDidScroll` (same file, :684) and on content-height change. So VS Code's button is
+ * POSITION-driven and never permanently visible: it is hidden the instant the view is at the end.
+ * The owner's requirement is that rule PLUS a short linger, so a tap does not blink the control out
+ * from under the finger. Pure function so the behaviour is testable without a device.
+ */
+internal object JumpButtonPolicy {
+
+    /** How long the control stays after the view reaches the bottom, per the owner's spec. */
+    const val LINGER_MS = 3_000L
+
+    /**
+     * @param remainingPx distance to the bottom right now
+     * @param atBottomSinceMs uptime when the view ARRIVED at the bottom after being away, or null
+     *        while it is away / has never left
+     * @param wasAway whether the user has been away from the bottom at least once this session: a
+     *        fresh transcript sitting at the bottom must not flash the control at all
+     */
+    fun visible(
+        remainingPx: Int,
+        atBottomSinceMs: Long?,
+        nowMs: Long,
+        wasAway: Boolean,
+        slop: Int = AutoScrollPolicy.SLOP_PX,
+    ): Boolean {
+        if (remainingPx > slop) return true
+        if (!wasAway || atBottomSinceMs == null) return false
+        return nowMs - atBottomSinceMs < LINGER_MS
+    }
+}
+
+/**
+ * Drives [JumpButtonPolicy] from the transcript's real scroll state. Cheap: the ticker runs only
+ * while the linger is counting down and stops itself, so an idle chat costs nothing.
+ */
+@Composable
+internal fun rememberJumpButtonVisible(scroll: ScrollState): Boolean {
+    var atBottomSinceMs by remember { mutableStateOf<Long?>(null) }
+    var wasAway by remember { mutableStateOf(false) }
+    var nowMs by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(scroll) {
+        snapshotFlow { scroll.maxValue - scroll.value }.collect { remaining ->
+            val atBottom = remaining <= AutoScrollPolicy.SLOP_PX
+            if (atBottom) {
+                if (wasAway && atBottomSinceMs == null) atBottomSinceMs = android.os.SystemClock.uptimeMillis()
+            } else {
+                wasAway = true
+                atBottomSinceMs = null
+            }
+        }
+    }
+
+    LaunchedEffect(atBottomSinceMs) {
+        val start = atBottomSinceMs ?: return@LaunchedEffect
+        nowMs = android.os.SystemClock.uptimeMillis()
+        while (nowMs - start < JumpButtonPolicy.LINGER_MS) {
+            kotlinx.coroutines.delay(250)
+            nowMs = android.os.SystemClock.uptimeMillis()
+        }
+    }
+
+    return JumpButtonPolicy.visible(
+        remainingPx = scroll.maxValue - scroll.value,
+        atBottomSinceMs = atBottomSinceMs,
+        nowMs = nowMs,
+        wasAway = wasAway,
+    )
+}
+
+/**
  * Item 3: the visible way back. Shown only while the user is reading older messages, so it
  * never covers content they are actually following, and it disappears the moment it is used.
  */
