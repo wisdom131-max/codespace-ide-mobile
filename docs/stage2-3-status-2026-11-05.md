@@ -18,13 +18,21 @@ run id is not a claim.
 | SCM AI button | real handoff to the chat, prompt built from the change set | 3558 |
 | SCM reply channel | answer returns to the message box, extractor + draft protection | 3559 |
 | #16 completed | Edit menu Undo/Redo run the file's stack, honest answers | 3560 |
+| Activity grouping | consecutive tool rows fold into one chevron row, no x; `ActivityGrouping` + 7 tests | 3562 |
+| Tool discovery | `/tools` answers from `AgentTools.toolNames()` + cached MCP; VS Code research recorded | 3563 |
+| Terminal dismiss x | x on FINISHED agent runs only, refuses unfinished, presentation-only | 3564 |
 
 ## Remaining, in order
 
 1. **Chip drag.** No change made; the maths were rewritten once already and the failure has not been
    reproduced. Device round decides: does a long-press pick the chip up, and does it follow?
-2. **Undo/redo redo survival.** The external content sync on the tab may push its own snapshot,
-   which would consume redo after one step. Check on device: two edits, undo, redo.
+2. **Undo/redo redo survival.** Verified at the STACK level (`RedoSurvivalTest`, 6 tests):
+   `externalContentSync` never pushes, so the sync cannot consume redo; the only things that kill
+   redo are a new edit and a force push, which is VS Code semantics. Two things still need the
+   device: the two-edit undo/redo sequence, and the cursor - the pane's menu undo builds its snapshot
+   with `TextRange.Zero`, so an undo jumps the caret to offset 0 instead of restoring the selection
+   that `EditorUndoHost` documents carrying. That is a real divergence from VS Code and needs the
+   editor's live selection plumbed to the pane.
 3. **Tool discovery.** `/tools`-style listing inside the app: what tools exist for the current mode,
    from `AgentTools.toolNames()` (already the execution registry) plus cached MCP names. No second
    list — the drift bug that produced a hand-maintained 30-name list must not come back.
