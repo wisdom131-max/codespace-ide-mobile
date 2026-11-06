@@ -2238,6 +2238,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
 
         // P15-C: Sticky scroll header — shows current scope line pinned at top
         // R3-A: Disable sticky scroll when word wrap is enabled — line positions are unreliable
+        // EDITOR-ANR (owner order 2026-11-06, item 2): occurrences are derived off the draw pass,
+        // windowed to the visible lines plus one screen of overscan, capped, and cached as rects.
+        val wordHighlightRects = rememberWordHighlightRects(
+            textLayoutResult = textLayoutResult,
+            text = value.text,
+            selection = value.selection,
+            vScroll = vScroll,
+            lineHeight = lineHeightDp,
+            screenHeightDp = LocalConfiguration.current.screenHeightDp,
+        )
+
         if (toggles.showStickyScroll && stickyLine != null && !wordWrap) {
             Row(
                 modifier = Modifier
@@ -3393,10 +3404,8 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                             selection = value.selection,
                             cursorColor = colors.cursor,
                         ))
-                        .then(wordHighlightModifier(
-                            textLayoutResult = textLayoutResult,
-                            text = value.text,
-                            selection = value.selection,
+                        .then(wordHighlightRectsModifier(
+                            rects = wordHighlightRects,
                             highlightColor = colors.selection.copy(alpha = 0.3f),
                         ))
                         .then(bracketMatchModifier(

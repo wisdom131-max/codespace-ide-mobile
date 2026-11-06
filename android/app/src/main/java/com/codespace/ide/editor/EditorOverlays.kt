@@ -170,13 +170,32 @@ internal fun androidx.compose.foundation.layout.BoxScope.SearchMatchOverlay(
     textLayoutResult: androidx.compose.ui.text.TextLayoutResult? = null,
     vScrollPx: Int = 0,
 ) {
-    if (findReplaceOpen && matches.isNotEmpty() && matches.size <= 200) {
+    // EDITOR-ANR (owner order 2026-11-06, item 2): a Box per match is a COMPOSABLE per match, and
+    // each did two or three getHorizontalPosition calls while composing, so 1,000+ matches meant a
+    // thousand nodes and thousands of O(spans) lookups on the main thread. Only matches on screen
+    // (plus one screen either side) are composed now. The full "n of m" count is untouched: it comes
+    // from the match list, never from what is drawn. The old `matches.size <= 200` guard is gone on
+    // purpose, because past a cap we draw what is visible and never nothing.
+    val densityM = androidx.compose.ui.platform.LocalDensity.current.density
+    val lineHeightPxM2 = (lineHeightDp.value * densityM).coerceAtLeast(1f)
+    val firstVisibleLineM = (vScrollPx / lineHeightPxM2).toInt()
+    val screenLinesM = (2400f / lineHeightPxM2).toInt().coerceAtLeast(4)
+    // Index + range, so the CURRENT-match test stays O(1) per drawn box instead of searching the
+    // full match list once per box.
+    val visibleMatches = ArrayList<Pair<Int, IntRange>>(minOf(matches.size, 256))
+    matches.forEachIndexed { idx, range ->
+        val line = positionMapper.offsetToPosition(range.first).line
+        if (line in (firstVisibleLineM - screenLinesM)..(firstVisibleLineM + screenLinesM * 2)) {
+            visibleMatches.add(idx to range)
+        }
+    }
+    if (findReplaceOpen && visibleMatches.isNotEmpty()) {
         val lineHeightPxM = lineHeightDp.value
         val charWidthPxM  = fontSize * EditorMetrics.CHAR_WIDTH_MULTIPLIER
         val gutterDpM = GUTTER_WIDTH
         val scrollOffsetPxM = vScrollDp
         val density = androidx.compose.ui.platform.LocalDensity.current.density
-        matches.forEachIndexed { idx, range ->
+        visibleMatches.forEach { (idx, range) ->
             val matchStart = range.first
             val matchEnd = range.last
             val pos = positionMapper.offsetToPosition(matchStart)
@@ -295,4 +314,3 @@ internal fun androidx.compose.foundation.layout.BoxScope.MergeConflictOverlay(
         }
     }
 }
-
