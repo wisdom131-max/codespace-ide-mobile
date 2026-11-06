@@ -530,6 +530,10 @@ fun CodeEditor(
     /** I1: AI staged-edit review marks — buffer line numbers inside the pending region. */
     reviewMarkLines: Set<Int> = emptySet(),
     wordWrap: Boolean = false,
+    /** Read-only preview of a file too tall for one text field (see EditorLayoutLimits). */
+    readOnly: Boolean = false,
+    /** Thin non-blocking note shown above the text, e.g. why this tab is a preview. */
+    noticeText: String? = null,
     scrollToLine: Int = 0,
     /** D2 (advisor round 2026-10-19): 1-based COLUMN of the jump (0/negative =
      *  start of line). From a :line:col terminal link, diagnostics or go-to-def.
@@ -2528,6 +2532,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                 }
                 BasicTextField(
                     value = value,
+                    readOnly = readOnly,
                     onValueChange = { newValue ->
                         ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false  // P41-E: dismiss ghost on any keystroke
                         // Phase X-2: Tag the event source
@@ -3555,6 +3560,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // R3-2: Indent guide overlay
         val visibleStartLine = (vScrollDp / lineHeightDp.value).toInt().coerceAtLeast(0)
         val visibleEndLine = visibleStartLine + (LocalConfiguration.current.screenHeightDp / lineHeightDp.value).toInt() + 5
+        EditorNoticeBanner(noticeText)
         BlockLineOverlay(value.text, vScrollDp, lineHeightDp.value, fontSize, GUTTER_WIDTH.toFloat(), 4, visibleStartLine, visibleEndLine, colors, textLayoutResult, visualLineMapper, vScroll.value)
 
         SearchMatchOverlay(findReplaceOpen || externalFindBarOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, positionMapper, textLayoutResult, vScroll.value)

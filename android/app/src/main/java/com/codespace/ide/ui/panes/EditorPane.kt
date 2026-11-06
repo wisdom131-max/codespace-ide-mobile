@@ -997,25 +997,30 @@ fun EditorPane(
             } else {
                 val name = File(openFilePath).name
                 val content = loadFileContent(openFilePath)
-                if (!passesLayoutGuard(guardContext, openFilePath, content, fontSize)) {
-                    onFileOpened?.invoke()
-                    return@LaunchedEffect
-                }
-                if (FileCache.isLargeFile(openFilePath)) {
-                    // P9-4: Large file — content still loads but isLargeFile flag is available
-                    // for the editor to render in read-only/streamed mode
+                // Too tall for one Compose text field? Open what fits, read-only, and say so.
+                val decision = openDecision(guardContext, content, fontSize, wrap = false)
+                val openText = decision?.content ?: content
+                if (decision != null) {
+                    com.codespace.ide.diagnostics.AppOutputLog.log(
+                        "[guard] " + name + ": " + decision.totalLines + " lines, preview of first " +
+                            decision.shownLines + " lines (read-only)", "warn",
+                    )
                 }
                 val tab = EditorTab(
                     id = openFilePath,
                     path = openFilePath,
                     name = name,
-                    content = content,
+                    content = openText,
                     language = detectLanguage(name),
+                    readOnly = decision != null,
+                    previewNote = decision?.note,
                 )
                 tabs.add(tab)
                 activeId = tab.id
                 // Phase P: Publish initial lint diagnostics for newly opened file
-                DiagnosticPublisher.publishLintDiagnostics(openFilePath, content)
+                // A read-only preview holds only the first lines, so its diagnostics would
+                // describe a file that does not exist.
+                if (decision == null) DiagnosticPublisher.publishLintDiagnostics(openFilePath, openText)
             }
             onFileOpened?.invoke()
         }
@@ -2599,6 +2604,8 @@ fun EditorPane(
                         language = active.language,
                         fontSize = fontSize,
                         savedContent = active.savedContent,
+                        readOnly = active.readOnly,
+                        noticeText = active.previewNote,
                         testLineStates = remember(active.path, testResultItems) {
                             com.codespace.ide.testing.TestResultStore.statesForFile(active.path)
                         },
@@ -3644,31 +3651,36 @@ private data class TextEdit(
     val newText: String,
 )
 /**
- * Constraints guard (owner crash 2026-11-06, "Can't represent a size of 3000001 in Constraints").
- * A single Compose text field cannot be taller than 262,143 px, so a file with more lines than
- * that fits must not be opened into the editor at all - the layout would throw on the main thread
- * and take the process with it. Returns true when the caller should open, false when it refused.
+ * Decides how a file may be opened, in pixels rather than in a guessed line count.
+ *
+ * A single Compose text field cannot be taller than 262,143 px (Constraints), so a file whose
+ * predicted layout height exceeds 90% of that is opened as a READ-ONLY PREVIEW of the first lines
+ * that fit, with a thin note saying so. Refusing the open outright was the first version of this
+ * guard and it was too strict: 5,000-line files had always opened.
  */
-private fun passesLayoutGuard(
+private fun openDecision(
     context: android.content.Context,
-    path: String,
     content: String,
     fontSizeSp: Int,
-): Boolean {
-    val lines = 1 + content.count { it == '\n' }
+    wrap: Boolean,
+): com.codespace.ide.editor.EditorLayoutLimits.PreviewOrFull? {
     val dm = context.resources.displayMetrics
-    val density = dm.density
-    val fontScale = context.resources.configuration.fontScale
-    val lh = com.codespace.ide.editor.EditorLayoutLimits.lineHeightPx(
-        fontSizeSp = fontSizeSp.toFloat(), density = density, fontScale = fontScale,
+    val metrics = com.codespace.ide.editor.EditorLayoutLimits.Metrics(
+        fontSizeSp = fontSizeSp.toFloat(),
+        density = dm.density,
+        fontScale = context.resources.configuration.fontScale,
+        widthPx = dm.widthPixels,
     )
-    if (!com.codespace.ide.editor.EditorLayoutLimits.exceedsEditor(lines, lh)) return true
-    val msg = com.codespace.ide.editor.EditorLayoutLimits.refusalMessage(lines, lh)
-    com.codespace.ide.diagnostics.AppOutputLog.log(
-        "[guard] " + java.io.File(path).name + ": " + lines + " lines, refused (" + msg + ")", "warn",
+    val lines = 1 + content.count { it == '\n' }
+    val avg = com.codespace.ide.editor.EditorLayoutLimits.averageLineChars(content, lines)
+    if (com.codespace.ide.editor.EditorLayoutLimits.fits(lines, avg, metrics, wrap)) return null
+    val budget = com.codespace.ide.editor.EditorLayoutLimits.previewLineBudget(avg, metrics, wrap)
+    return com.codespace.ide.editor.EditorLayoutLimits.PreviewOrFull(
+        content = com.codespace.ide.editor.EditorLayoutLimits.previewOf(content, budget),
+        shownLines = budget,
+        totalLines = lines,
+        note = com.codespace.ide.editor.EditorLayoutLimits.previewMessage(budget, lines),
     )
-    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
-    return false
 }
 
 

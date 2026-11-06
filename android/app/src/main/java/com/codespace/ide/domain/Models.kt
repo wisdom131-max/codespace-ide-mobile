@@ -46,6 +46,14 @@ data class EditorTab(
     val isDirty: Boolean = false,
     val cursorOffset: Int = 0,
     val savedContent: String = content,  // snapshot when file was last saved — for diff gutter
+    /**
+     * True for the read-only preview of a file too tall for one Compose text field. The tab holds
+     * only the first lines that fit (see EditorLayoutLimits), so it must never be written back to
+     * disk - that would truncate the user's file.
+     */
+    val readOnly: Boolean = false,
+    /** Thin, non-blocking note shown above the text when [readOnly] is true. */
+    val previewNote: String? = null,
 )
 
 data class GitStatus(
