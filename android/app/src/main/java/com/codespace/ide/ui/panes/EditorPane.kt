@@ -970,6 +970,10 @@ fun EditorPane(
     // The old code here appended text to END of file; CodeEditor inserts at cursor.
 
     // Open a new tab when the explorer requests a file
+    // Captured OUTSIDE the effect: LocalContext.current is a composable read and cannot be used
+    // from inside LaunchedEffect. The guard needs it to read density and font scale.
+    val guardContext = androidx.compose.ui.platform.LocalContext.current
+
     LaunchedEffect(openFilePath) {
         if (openFilePath != null) {
             // TB08 (P4d): identity match, not raw equality — one physical file
@@ -993,6 +997,10 @@ fun EditorPane(
             } else {
                 val name = File(openFilePath).name
                 val content = loadFileContent(openFilePath)
+                if (!passesLayoutGuard(guardContext, openFilePath, content, fontSize)) {
+                    onFileOpened?.invoke()
+                    return@LaunchedEffect
+                }
                 if (FileCache.isLargeFile(openFilePath)) {
                     // P9-4: Large file — content still loads but isLargeFile flag is available
                     // for the editor to render in read-only/streamed mode
@@ -3635,4 +3643,32 @@ private data class TextEdit(
     val endChar: Int,
     val newText: String,
 )
+/**
+ * Constraints guard (owner crash 2026-11-06, "Can't represent a size of 3000001 in Constraints").
+ * A single Compose text field cannot be taller than 262,143 px, so a file with more lines than
+ * that fits must not be opened into the editor at all - the layout would throw on the main thread
+ * and take the process with it. Returns true when the caller should open, false when it refused.
+ */
+private fun passesLayoutGuard(
+    context: android.content.Context,
+    path: String,
+    content: String,
+    fontSizeSp: Int,
+): Boolean {
+    val lines = 1 + content.count { it == '\n' }
+    val dm = context.resources.displayMetrics
+    val density = dm.density
+    val fontScale = context.resources.configuration.fontScale
+    val lh = com.codespace.ide.editor.EditorLayoutLimits.lineHeightPx(
+        fontSizeSp = fontSizeSp.toFloat(), density = density, fontScale = fontScale,
+    )
+    if (!com.codespace.ide.editor.EditorLayoutLimits.exceedsEditor(lines, lh)) return true
+    val msg = com.codespace.ide.editor.EditorLayoutLimits.refusalMessage(lines, lh)
+    com.codespace.ide.diagnostics.AppOutputLog.log(
+        "[guard] " + java.io.File(path).name + ": " + lines + " lines, refused (" + msg + ")", "warn",
+    )
+    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+    return false
+}
+
 
