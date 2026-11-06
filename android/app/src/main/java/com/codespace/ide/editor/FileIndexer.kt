@@ -1,5 +1,6 @@
 package com.codespace.ide.editor
 
+import android.util.Log
 import java.io.File
 import kotlinx.coroutines.*
 
@@ -262,6 +263,15 @@ object FileIndexer {
     // ── P41-Q: File watcher integration ─────────────────────────────────────
 
     private var watcherJob: Job? = null
+
+    /** Caps: measured safety nets, each one reported by name when it stops work. */
+    private const val MAX_WATCHED_FILES = 8_000
+    private const val MAX_OBSERVED_DIRS = 256
+    private const val WATCH_BUDGET_MS = 1_500L
+    private const val SWEEP_INTERVAL_MS = 30_000L
+    private const val TAG = "FileIndexer"
+    private val observers = mutableListOf<android.os.FileObserver>()
+    private val dirtyDirs = java.util.concurrent.ConcurrentLinkedQueue<String>()
     private val fileTimestamps = mutableMapOf<String, Long>()
 
     /**
@@ -269,64 +279,135 @@ object FileIndexer {
      * When files are modified, added, or deleted outside the editor,
      * re-index only the changed files for efficient incremental updates.
      */
+    /**
+     * Watch the project for changes so the symbol index cannot go stale.
+     *
+     * FIX (2026-11-06, owner freeze on opening a project root): this function used to run
+     * `root.walkTopDown()` on the CALLER's thread for its first snapshot, and again on every
+     * 5-second tick, with no ignore list, no node cap and no time cap. The caller is
+     * `ProjectShellScreen.kt:1025-1037`, a `LaunchedEffect`, whose body runs on the composition
+     * dispatcher - the main thread. A root holding `.git` and `node_modules` therefore walked
+     * tens of thousands of files before the first frame.
+     *
+     * Now: every byte of file I/O happens inside this IO coroutine, the walk is bounded by
+     * [MAX_WATCHED_FILES] and [WATCH_BUDGET_MS] with the same ignore rule the indexer uses
+     * ([WatchScan.isIgnored], which also covers VS Code's files.watcherExclude defaults), the
+     * 5-second full-tree walk is gone in favour of directory [FileObserver]s (capped at
+     * [MAX_OBSERVED_DIRS]) plus a stat-only sweep of the FILES WE ALREADY KNOW about, and the
+     * whole loop is suspended while the app is not resumed.
+     */
     fun startFileWatcher(workspacePath: String, scope: CoroutineScope) {
         watcherJob?.cancel()
-        val root = File(workspacePath)
-        if (!root.exists()) return
+        closeWatchers()
+        watcherJob = scope.launch(Dispatchers.IO) {
+            val root = File(workspacePath)
+            if (!root.exists()) return@launch
+            try {
+                val scan = WatchScan.scan(
+                    root = root,
+                    maxFiles = MAX_WATCHED_FILES,
+                    budgetMs = WATCH_BUDGET_MS,
+                    accept = { it.extension.lowercase() in sourceExtensions },
+                )
+                synchronized(lock) {
+                    fileTimestamps.clear()
+                    fileTimestamps.putAll(scan.files)
+                }
+                if (scan.capped) {
+                    // Name-only, and honest: a cap that stops work must say so.
+                    Log.i(TAG, "[watch] capped: " + scan.files.size + " files, " +
+                        scan.dirsVisited + " dirs, " + scan.elapsedMs + "ms; deeper paths are not watched")
+                }
+                installDirectoryWatchers(root)
 
-        // Snapshot initial file timestamps
-        root.walkTopDown().forEach { file ->
-            if (file.isFile && file.extension.lowercase() in sourceExtensions) {
-                fileTimestamps[file.absolutePath] = file.lastModified()
+                while (isActive) {
+                    delay(SWEEP_INTERVAL_MS)
+                    if (!isActive) break
+                    // Suspended while backgrounded: the index can wait until the app is visible.
+                    if (!com.codespace.ide.AppForeground.resumed) continue
+                    drainDirtyDirs()
+                    sweepKnownFiles()
+                }
+            } finally {
+                closeWatchers()
             }
         }
+    }
 
-        watcherJob = scope.launch(Dispatchers.IO) {
-            while (isActive) {
-                delay(5000) // Check every 5 seconds
-                if (!isActive) break
-
-                val changed = mutableListOf<File>()
-                val seen = mutableSetOf<String>()
-
-                root.walkTopDown().forEach { file ->
-                    if (file.isFile && file.extension.lowercase() in sourceExtensions) {
-                        val path = file.absolutePath
-                        val mtime = file.lastModified()
-                        seen.add(path)
-                        val prev = fileTimestamps[path]
-                        if (prev == null || prev != mtime) {
-                            changed.add(file)
-                            fileTimestamps[path] = mtime
-                        }
+    /** A FileObserver per directory, capped: past [MAX_OBSERVED_DIRS] the sweep carries the load. */
+    private fun installDirectoryWatchers(root: File) {
+        val budget = 400L
+        val started = System.currentTimeMillis()
+        val dirs = ArrayDeque<File>()
+        dirs.add(root)
+        var count = 0
+        while (dirs.isNotEmpty() && count < MAX_OBSERVED_DIRS && System.currentTimeMillis() - started < budget) {
+            val dir = dirs.removeFirst()
+            val observer = try {
+                object : android.os.FileObserver(dir.absolutePath) {
+                    override fun onEvent(event: Int, name: String?) {
+                        // Structural change only; content edits are the sweep's job.
+                        dirtyDirs.add(dir.absolutePath)
                     }
-                }
+                }.also { it.startWatching() }
+            } catch (_: Throwable) {
+                null
+            }
+            if (observer != null) synchronized(lock) { observers.add(observer); count++ }
+            dir.listFiles()?.filter { it.isDirectory && !WatchScan.isIgnored(it) }?.forEach { dirs.add(it) }
+        }
+    }
 
-                // Remove deleted files from index
-                val deleted = fileTimestamps.keys.filter { it !in seen }
-                if (deleted.isNotEmpty()) {
-                    synchronized(lock) {
-                        symbols.removeAll { it.filePath in deleted }
-                        deleted.forEach { fileTimestamps.remove(it) }
-                    }
-                }
+    private fun closeWatchers() {
+        synchronized(lock) {
+            observers.forEach { try { it.stopWatching() } catch (_: Throwable) {} }
+            observers.clear()
+        }
+        dirtyDirs.clear()
+    }
 
-                // Re-index changed files
-                if (changed.isNotEmpty()) {
-                    for (file in changed) {
-                        if (!isActive) break
-                        try {
-                            // Remove old symbols for this file
-                            synchronized(lock) {
-                                symbols.removeAll { it.filePath == file.absolutePath }
-                            }
-                            indexFile(file)
-                        } catch (_: Exception) {}
-                    }
-                    // Save updated cache
-                    cacheFile?.let { /* cache is saved by caller via saveCache() */ }
+    /** Re-scan only the directories an observer flagged: one directory listing each, no recursion. */
+    private fun drainDirtyDirs() {
+        while (true) {
+            val path = dirtyDirs.poll() ?: return
+            val dir = File(path)
+            val children = dir.listFiles() ?: continue
+            for (child in children) {
+                if (child.isFile && child.extension.lowercase() in sourceExtensions) {
+                    val known = synchronized(lock) { fileTimestamps[child.absolutePath] }
+                    val mtime = child.lastModified()
+                    if (known != mtime) reindexFile(child, mtime)
                 }
             }
+        }
+    }
+
+    /** Stat only the files already in the index. Never walks the tree, so cost is bounded by the cap. */
+    private fun sweepKnownFiles() {
+        val known = synchronized(lock) { fileTimestamps.keys.toList() }
+        for (path in known) {
+            val file = File(path)
+            if (!file.exists()) {
+                synchronized(lock) {
+                    symbols.removeAll { it.filePath == path }
+                    fileTimestamps.remove(path)
+                }
+                continue
+            }
+            val mtime = file.lastModified()
+            val prev = synchronized(lock) { fileTimestamps[path] }
+            if (prev != mtime) reindexFile(file, mtime)
+        }
+    }
+
+    private fun reindexFile(file: File, mtime: Long) {
+        try {
+            synchronized(lock) {
+                symbols.removeAll { it.filePath == file.absolutePath }
+                fileTimestamps[file.absolutePath] = mtime
+            }
+            indexFile(file)
+        } catch (_: Exception) {
         }
     }
 
