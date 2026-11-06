@@ -1496,6 +1496,24 @@ fun ExplorerSidePanel(
         }
         HorizontalDivider(color = DividerColor, thickness = 1.dp)
 
+        // ── INDEX COVERAGE NOTE (2026-11-06, owner rule) ──────────────────────────────
+        // The symbol watcher caps its snapshot and its observer set. A cap that stops work is
+        // never silent: one plain sentence here says what is covered and what is not. Absent on
+        // every project small enough to fit, which is the normal case.
+        val indexNotice = com.codespace.ide.editor.IndexWatchNotice.text
+        if (indexNotice != null) {
+            Text(
+                text = indexNotice,
+                fontSize = 10.sp,
+                color = MutedColor,
+                lineHeight = 14.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF252526))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            )
+        }
+
         // ── OUTLINE section (collapsible, real LSP documentSymbol) — always visible,
         // independent of whether a folder is open (matches VS Code's Explorer layout). ──
         Column {

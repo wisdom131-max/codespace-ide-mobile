@@ -299,6 +299,7 @@ object FileIndexer {
     fun startFileWatcher(workspacePath: String, scope: CoroutineScope) {
         watcherJob?.cancel()
         closeWatchers()
+        IndexWatchNotice.clear()
         watcherJob = scope.launch(Dispatchers.IO) {
             val root = File(workspacePath)
             if (!root.exists()) return@launch
@@ -313,8 +314,24 @@ object FileIndexer {
                     fileTimestamps.clear()
                     fileTimestamps.putAll(scan.files)
                 }
+                // Name-only and measurable: the scan cost is always visible in Output, and a cap
+                // that stopped work says so in words the owner can act on.
+                Log.i(TAG, "[perf] watch scan " + scan.files.size + " files, " +
+                    scan.dirsVisited + " dirs, " + scan.elapsedMs + "ms, capped=" + scan.capped)
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[perf] watch scan: " + scan.files.size + " files, " +
+                        scan.dirsVisited + " dirs, " + scan.elapsedMs + " ms" +
+                        (if (scan.capped) " (cap reached)" else ""),
+                    "perf",
+                )
                 if (scan.capped) {
-                    // Name-only, and honest: a cap that stops work must say so.
+                    val why = if (scan.elapsedMs >= WATCH_BUDGET_MS)
+                        "the " + WATCH_BUDGET_MS + " ms budget" else "the " + MAX_WATCHED_FILES + " file cap"
+                    IndexWatchNotice.show(
+                        "Symbols cover the first " + scan.files.size + " files, stopping at " + why +
+                            ". Deeper folders are still browsable and editable; only symbol indexing and " +
+                            "live change tracking stop at that depth.",
+                    )
                     Log.i(TAG, "[watch] capped: " + scan.files.size + " files, " +
                         scan.dirsVisited + " dirs, " + scan.elapsedMs + "ms; deeper paths are not watched")
                 }
@@ -355,6 +372,22 @@ object FileIndexer {
             }
             if (observer != null) synchronized(lock) { observers.add(observer); count++ }
             dir.listFiles()?.filter { it.isDirectory && !WatchScan.isIgnored(it) }?.forEach { dirs.add(it) }
+        }
+        // The observer cap is the second limit that must not be silent: past it, changes in those
+        // directories still get picked up, but by the 30 s sweep instead of instantly.
+        if (dirs.isNotEmpty()) {
+            Log.i(TAG, "[watch] observer cap: " + count + " dirs watched, " +
+                dirs.size + "+ not observed; the sweep covers them")
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[watch] observer cap: " + count + " dirs watched instantly, " +
+                    dirs.size + "+ covered by the 30 s sweep",
+                "perf",
+            )
+            IndexWatchNotice.show(
+                "Live change tracking covers the first " + count +
+                    " folders; the rest update within about 30 seconds. Opening, editing and " +
+                    "saving are unaffected.",
+            )
         }
     }
 
