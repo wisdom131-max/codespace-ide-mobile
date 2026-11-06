@@ -2614,23 +2614,44 @@ private fun PssOverlays(
                             // scan now runs on Dispatchers.IO and publishes into state;
                             // LaunchedEffect keys make a newer keystroke supersede it.
                             var matchedFiles by remember { mutableStateOf<List<String>>(emptyList()) }
+                            var paletteScanCapped by remember { mutableStateOf(false) }
                             LaunchedEffect(commandQuery) {
                                 if (fileQuery.isBlank() || !projectDir.exists()) {
                                     matchedFiles = emptyList()
                                 } else {
-                                    matchedFiles = withContext(Dispatchers.IO) {
+                                    // 2026-11-06 (owner order 1(b)): a keystroke walk gets a time
+                                    // budget as well as a result count, and says when it ran out.
+                                    val scan = withContext(Dispatchers.IO) {
                                         try {
-                                            projectDir.walkTopDown()
-                                                .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") }
-                                                .filter { it.name.lowercase().contains(fileQuery) || it.path.substringAfter(projectDir.absolutePath).lowercase().contains(fileQuery) }
-                                                .take(50)
-                                                .map { it.absolutePath }
-                                                .toList()
-                                        } catch (_: Exception) { emptyList() }
+                                            com.codespace.ide.editor.WatchScan.scan(
+                                                root = projectDir,
+                                                maxFiles = 50,
+                                                budgetMs = 800L,
+                                                accept = { f ->
+                                                    f.name.lowercase().contains(fileQuery) ||
+                                                        f.path.substringAfter(projectDir.absolutePath)
+                                                            .lowercase().contains(fileQuery)
+                                                },
+                                            )
+                                        } catch (_: Exception) {
+                                            com.codespace.ide.editor.WatchScan.Result(emptyMap(), 0, false, 0L)
+                                        }
                                     }
+                                    paletteScanCapped = scan.capped
+                                    matchedFiles = scan.files.keys.toList()
                                 }
                             }
                             LazyColumn(Modifier.heightIn(max = 260.dp)) {
+                                if (paletteScanCapped) {
+                                    item {
+                                        Text(
+                                            "Showing the first matches found; keep typing to narrow the search.",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                        )
+                                    }
+                                }
                                 if (matchedFiles.isNotEmpty()) {
                                     items(matchedFiles) { path ->
                                         val fileName = path.substringAfterLast("/")

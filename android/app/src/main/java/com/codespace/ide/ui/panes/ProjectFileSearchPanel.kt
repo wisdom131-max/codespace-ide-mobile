@@ -39,6 +39,11 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.History
 
+/** Count and time ceiling for the "Files" scope walk: the count was already capped at 5,000;
+ *  800 ms is the point past which a filter change stops feeling like a keystroke. */
+private const val FILE_SCAN_CAP = 5000
+private const val FILE_SCAN_BUDGET_MS = 800L
+
 // ── Palette colours (VS Code-like dark) ─────────────────────────────────────
 private val SBg     = Color(0xFF1E1E1E)
 private val SCard   = Color(0xFF252526)
@@ -139,25 +144,29 @@ fun ProjectFileSearchPanel(
     // the sidebar) is now the SAME exclusion set as the sidebar SearchPanel — hits
     // differing between the two are a REAL scope difference (root/filters), not a bug.
     var allFiles by remember { mutableStateOf<List<FileResult>>(emptyList()) }
+    // 2026-11-06 (owner order 1(b)): the scope walk is bounded by TIME as well as by count, and a
+    // walk that ran out of time says so instead of quietly returning a shorter list.
+    var scanCapped by remember { mutableStateOf(false) }
     LaunchedEffect(projectRoot, includePattern, excludePattern) {
         allFiles = withContext(Dispatchers.IO) {
-            mutableListOf<FileResult>().also { list ->
-                val root = File(projectRoot)
-                if (root.exists()) {
-                    root.walkTopDown()
-                        .filter { it.isFile && !it.path.contains("/.git/") && !it.path.contains("/build/") && !it.path.contains("/node_modules/") && !it.path.contains("/.gradle/") && !it.path.substringAfterLast('/').startsWith(".") }
-                        .filter { f ->
-                            val rel = f.relativeTo(root).path
-                            val incOk = matchesGlob(includePattern, rel)
-                            val excOk = excludePattern.isBlank() || !matchesGlob(excludePattern, rel)
-                            incOk && excOk
-                        }
-                        .take(5000)
-                        .forEach { f ->
-                            list.add(FileResult(f.absolutePath, f.relativeTo(root).path))
-                        }
-                }
-            }.toList()
+            val root = File(projectRoot)
+            if (!root.exists()) {
+                scanCapped = false
+                return@withContext emptyList()
+            }
+            val scan = com.codespace.ide.editor.WatchScan.scan(
+                root = root,
+                maxFiles = FILE_SCAN_CAP,
+                budgetMs = FILE_SCAN_BUDGET_MS,
+                accept = { f ->
+                    val rel = f.relativeTo(root).path
+                    val incOk = matchesGlob(includePattern, rel)
+                    val excOk = excludePattern.isBlank() || !matchesGlob(excludePattern, rel)
+                    incOk && excOk
+                },
+            )
+            scanCapped = scan.capped
+            scan.files.keys.map { path -> FileResult(path, File(path).relativeTo(root).path) }
         }
     }
 
@@ -483,6 +492,17 @@ fun ProjectFileSearchPanel(
                             }
                         } else {
                             LazyColumn(Modifier.fillMaxSize()) {
+                                if (scanCapped) {
+                                    item {
+                                        Text(
+                                            "Searching the first " + FILE_SCAN_CAP + " files only; " +
+                                                "narrow the include pattern to reach the rest.",
+                                            color = SDim,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        )
+                                    }
+                                }
                                 items(fileResults) { f ->
                                     Row(
                                         Modifier
