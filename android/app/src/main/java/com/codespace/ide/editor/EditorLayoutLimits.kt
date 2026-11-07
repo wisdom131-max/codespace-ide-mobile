@@ -124,11 +124,22 @@ internal object EditorLayoutLimits {
 
     /** What to open when the file does not fit: the first [shownLines] lines and the note to show. */
     data class PreviewOrFull(
+        /** The real device numbers the decision was made with, for the [perf] line. */
+        val metricsText: String,
         val content: String,
         val shownLines: Int,
         val totalLines: Int,
         val note: String,
     )
+
+    /**
+     * The runtime numbers that decide the ceiling, in one line: density, system font scale, editor
+     * font size, screen width and the resulting line height. Printed whenever a preview opens so
+     * the owner's device values are never assumed again.
+     */
+    fun describe(m: Metrics): String =
+        "density=" + m.density + " fontScale=" + m.fontScale + " font=" + m.fontSizeSp +
+            "sp width=" + m.widthPx + "px lineHeight=" + String.format("%.1f", lineHeightPx(m)) + "px"
 
     /** The first [lineBudget] lines of [content], with a trailing marker so it cannot look whole. */
     fun previewOf(content: String, lineBudget: Int): String {

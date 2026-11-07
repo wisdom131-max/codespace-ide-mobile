@@ -1002,8 +1002,8 @@ fun EditorPane(
                 val openText = decision?.content ?: content
                 if (decision != null) {
                     com.codespace.ide.diagnostics.AppOutputLog.log(
-                        "[guard] " + name + ": " + decision.totalLines + " lines, preview of first " +
-                            decision.shownLines + " lines (read-only)", "warn",
+                        "[perf] guard " + name + ": " + decision.totalLines + " lines, preview of first " +
+                            decision.shownLines + " lines (read-only) | " + decision.metricsText, "warn",
                     )
                 }
                 val tab = EditorTab(
@@ -3676,6 +3676,7 @@ private fun openDecision(
     if (com.codespace.ide.editor.EditorLayoutLimits.fits(lines, avg, metrics, wrap)) return null
     val budget = com.codespace.ide.editor.EditorLayoutLimits.previewLineBudget(avg, metrics, wrap)
     return com.codespace.ide.editor.EditorLayoutLimits.PreviewOrFull(
+        metricsText = com.codespace.ide.editor.EditorLayoutLimits.describe(metrics),
         content = com.codespace.ide.editor.EditorLayoutLimits.previewOf(content, budget),
         shownLines = budget,
         totalLines = lines,
