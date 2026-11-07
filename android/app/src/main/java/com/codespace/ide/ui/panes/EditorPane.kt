@@ -1235,6 +1235,9 @@ fun EditorPane(
 
     // ── Autosave restore: offer recovery dialog on first open if stale saves exist ──
     var showAutosaveRestoreDialog by remember { mutableStateOf(false) }
+    // Autosaves that were REFUSED (looked like a slice) stay on disk untouched. They are offered
+    // here as separate read-only files so the owner can recover by hand instead of losing them.
+    var keptAutosaves by remember { mutableStateOf<List<File>>(emptyList()) }
     var autosaveFiles by remember { mutableStateOf<List<File>>(emptyList()) }
 
     LaunchedEffect(projectId) {
@@ -1295,6 +1298,15 @@ fun EditorPane(
                         // Now: decode, match by full path, delete ONLY verified restores,
                         // keep backups for files not open or failed, report typed counts.
                         val (restoredCount, noTabCount, failedCount) = restoreAutosaveFiles(autosaveFiles, tabs)
+                        // Anything still on disk was refused or not applied. Never delete it: it may
+                        // be the only copy, and a refusal is a judgement, not proof of uselessness.
+                        keptAutosaves = autosaveFiles.filter { it.exists() }
+                        if (keptAutosaves.isNotEmpty()) {
+                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                "[guard] " + keptAutosaves.size + " unsaved copy(ies) kept but not " +
+                                    "applied (they look like part of the file)", "warn",
+                            )
+                        }
                         autosaveFiles = emptyList()
                         val outcome = buildString {
                             append("Restored $restoredCount file(s)")
@@ -1310,11 +1322,39 @@ fun EditorPane(
                     }) { androidx.compose.material3.Text("Restore") }
                 },
                 dismissButton = {
-                    androidx.compose.material3.TextButton(onClick = {
-                        showAutosaveRestoreDialog = false
-                        autosaveFiles.forEach { it.delete() }
-                        autosaveFiles = emptyList()
-                    }) { androidx.compose.material3.Text("Discard") }
+                    androidx.compose.foundation.layout.Row {
+                        androidx.compose.material3.TextButton(onClick = {
+                            showAutosaveRestoreDialog = false
+                            autosaveFiles.forEach { it.delete() }
+                            autosaveFiles = emptyList()
+                        }) { androidx.compose.material3.Text("Discard") }
+                        androidx.compose.material3.TextButton(onClick = {
+                            // Recover by hand: open every kept copy as its OWN read-only file, so a
+                            // refused autosave is never a dead end and never touches the real file.
+                            showAutosaveRestoreDialog = false
+                            val kept = autosaveFiles.filter { it.exists() }
+                            kept.forEach { f ->
+                                val label = try {
+                                    java.net.URLDecoder.decode(f.name.removeSuffix(".autosave"), "UTF-8")
+                                } catch (_: Exception) { f.name.removeSuffix(".autosave") }
+                                val content = try { f.readText() } catch (_: Exception) { "" }
+                                val copy = EditorTab(
+                                    id = f.absolutePath + "::unsaved-copy",
+                                    path = f.absolutePath,
+                                    name = java.io.File(label).name + " (unsaved copy)",
+                                    content = content,
+                                    language = detectLanguage(java.io.File(label).name),
+                                    readOnly = true,
+                                    previewNote = "An unsaved copy of " + java.io.File(label).name +
+                                        " was kept but not applied: it looks like part of the file.",
+                                )
+                                if (tabs.none { it.id == copy.id }) tabs.add(copy)
+                            }
+                            if (kept.isNotEmpty()) activeId = kept.first().absolutePath + "::unsaved-copy"
+                            keptAutosaves = emptyList()
+                            autosaveFiles = emptyList()
+                        }) { androidx.compose.material3.Text("Open kept copies") }
+                    }
                 },
             )
         }
