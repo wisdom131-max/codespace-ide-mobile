@@ -141,6 +141,49 @@ internal object EditorLayoutLimits {
         "density=" + m.density + " fontScale=" + m.fontScale + " font=" + m.fontSizeSp +
             "sp width=" + m.widthPx + "px lineHeight=" + String.format("%.1f", lineHeightPx(m)) + "px"
 
+    /** The banner sentence for one preview page: absolute line numbers, plain words. */
+    fun pageNote(firstLine: Int, lastLine: Int, totalLines: Int): String =
+        "Large file: lines " + firstLine + "-" + lastLine + " of " + totalLines +
+            ", read-only. Use Previous / Next or Go to line."
+
+    /** Lines in [content]: a trailing newline does not invent an extra line. */
+    fun lineCount(content: String): Int {
+        if (content.isEmpty()) return 1
+        val breaks = content.count { it == '\n' }
+        return if (content.endsWith("\n")) breaks else breaks + 1
+    }
+
+    /**
+     * One read-only preview page: [pageLines] lines starting at 0-based [startLine].
+     *
+     * Names, not indices, in the caller: [startLine] 0 is the first line of the file. CRLF files
+     * are handled by splitting on the LF only, so a \r stays with its own line and cannot leak
+     * across a page boundary. Clamping lives here so a page request past the end returns the
+     * short last page instead of an empty editor.
+     */
+    fun previewSlice(content: String, startLine: Int, pageLines: Int): String {
+        if (pageLines <= 0) return ""
+        val total = lineCount(content)
+        val start = startLine.coerceIn(0, (total - 1).coerceAtLeast(0))
+        var line = 0
+        var from = 0
+        while (line < start && from < content.length) {
+            val nl = content.indexOf('\n', from)
+            if (nl < 0) break
+            from = nl + 1
+            line++
+        }
+        var to = from
+        var counted = 0
+        while (counted < pageLines && to < content.length) {
+            val nl = content.indexOf('\n', to)
+            if (nl < 0) { to = content.length; break }
+            to = nl + 1
+            counted++
+        }
+        return content.substring(from, to)
+    }
+
     /** The first [lineBudget] lines of [content], with a trailing marker so it cannot look whole. */
     fun previewOf(content: String, lineBudget: Int): String {
         var seen = 0

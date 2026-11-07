@@ -115,3 +115,79 @@ class EditorLayoutLimitsTest {
         assertTrue(EditorLayoutLimits.SAFE_MAX_PX < EditorLayoutLimits.MAX_DIMENSION_PX)
     }
 }
+
+/**
+ * Preview paging: every line of a too-tall file must stay reachable, and a page boundary must not
+ * invent, drop or duplicate a line. Owner order 2026-11-07, addition 2.
+ */
+class PreviewPagingTest {
+
+    private fun pages(totalLines: Int, per: Int): List<Pair<Int, String>> {
+        val text = (1..totalLines).joinToString("") { "line $it\n" }
+        val out = ArrayList<Pair<Int, String>>()
+        var start = 0
+        while (start < totalLines) {
+            out.add(start to EditorLayoutLimits.previewSlice(text, start, per))
+            start += per
+        }
+        return out
+    }
+
+    @Test
+    fun lineCountIgnoresATrailingNewline() {
+        assertEquals(1, EditorLayoutLimits.lineCount(""))
+        assertEquals(1, EditorLayoutLimits.lineCount("one"))
+        assertEquals(1, EditorLayoutLimits.lineCount("one\n"))
+        assertEquals(2, EditorLayoutLimits.lineCount("one\ntwo"))
+        assertEquals(2, EditorLayoutLimits.lineCount("one\ntwo\n"))
+    }
+
+    @Test
+    fun firstMiddleAndLastPagesHoldTheRightLines() {
+        val all = (1..10).joinToString("") { "line $it\n" }
+        assertEquals("line 1\nline 2\nline 3\nline 4\n", EditorLayoutLimits.previewSlice(all, 0, 4))
+        assertEquals("line 5\nline 6\nline 7\nline 8\n", EditorLayoutLimits.previewSlice(all, 4, 4))
+        // last page is short: 2 of the 4 requested lines
+        assertEquals("line 9\nline 10\n", EditorLayoutLimits.previewSlice(all, 8, 4))
+    }
+
+    @Test
+    fun aTotalThatIsNotDivisibleLeavesAShortLastPageAndNoLostLine() {
+        val joined = pages(totalLines = 13, per = 5)
+        assertEquals(3, joined.size)
+        assertEquals(5, joined[0].second.count { it == '\n' })
+        assertEquals(3, joined[2].second.count { it == '\n' })
+        val rebuilt = joined.joinToString("") { it.second }
+        assertEquals((1..13).joinToString("") { "line $it\n" }, rebuilt)
+    }
+
+    @Test
+    fun crlfKeepsItsCarriageReturnsInsideTheLine() {
+        val crlf = "a\r\nb\r\nc\r\n"
+        assertEquals("a\r\nb\r\n", EditorLayoutLimits.previewSlice(crlf, 0, 2))
+        assertEquals("c\r\n", EditorLayoutLimits.previewSlice(crlf, 2, 2))
+    }
+
+    @Test
+    fun oneHugeLineIsOnePageAndIsNotSplit() {
+        val huge = "x".repeat(500_000) + "\nsecond\n"
+        val slice = EditorLayoutLimits.previewSlice(huge, 0, 1)
+        assertEquals(500_001, slice.length)
+        assertTrue("the huge line is returned whole", slice.endsWith("\n"))
+        assertEquals("second\n", EditorLayoutLimits.previewSlice(huge, 1, 1))
+    }
+
+    @Test
+    fun aStartPastTheEndClampsToTheLastPageInsteadOfBlank() {
+        val all = (1..6).joinToString("") { "line $it\n" }
+        assertEquals("line 6\n", EditorLayoutLimits.previewSlice(all, 99, 2))
+    }
+
+    @Test
+    fun theBannerTextNamesAbsoluteLineNumbers() {
+        val note = EditorLayoutLimits.pageNote(5281, 10560, 13000)
+        assertTrue(note, note.contains("5281-10560"))
+        assertTrue(note, note.contains("13000"))
+        assertTrue(note, note.contains("read-only"))
+    }
+}

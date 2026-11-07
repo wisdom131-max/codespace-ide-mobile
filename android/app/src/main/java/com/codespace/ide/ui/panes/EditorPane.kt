@@ -973,6 +973,9 @@ fun EditorPane(
     // Captured OUTSIDE the effect: LocalContext.current is a composable read and cannot be used
     // from inside LaunchedEffect. The guard needs it to read density and font scale.
     val guardContext = androidx.compose.ui.platform.LocalContext.current
+    // Preview "Go to line": which tab is asking, and what line the user typed. Null = closed.
+    var previewGoToTarget by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var previewGoToLine by remember { androidx.compose.runtime.mutableStateOf("") }
 
     LaunchedEffect(openFilePath) {
         if (openFilePath != null) {
@@ -1014,6 +1017,9 @@ fun EditorPane(
                     language = detectLanguage(name),
                     readOnly = decision != null,
                     previewNote = decision?.note,
+                    previewStartLine = 0,
+                    previewPageLines = decision?.shownLines ?: 0,
+                    previewTotalLines = decision?.totalLines ?: 0,
                 )
                 tabs.add(tab)
                 activeId = tab.id
@@ -1024,6 +1030,74 @@ fun EditorPane(
             }
             onFileOpened?.invoke()
         }
+    }
+
+    /**
+     * Moves a read-only preview to another page and reports where it now is.
+     *
+     * Owner rule 2026-11-07: every line of a too-tall file must stay reachable until the viewer
+     * tier ships. This is the only place a preview page is swapped, so the slice, the start line
+     * and the note cannot disagree.
+     */
+    fun showPreviewPage(tabId: String, startLine: Int) {
+        val idx = tabs.indexOfFirst { it.id == tabId }
+        if (idx < 0) return
+        val tab = tabs[idx]
+        if (!tab.readOnly || tab.previewPageLines <= 0) return
+        val total = tab.previewTotalLines.coerceAtLeast(1)
+        val lastStart = ((total - 1) / tab.previewPageLines) * tab.previewPageLines
+        val start = startLine.coerceIn(0, lastStart.coerceAtLeast(0))
+        val full = try {
+            java.io.File(tab.path).readText()
+        } catch (_: Throwable) {
+            return
+        }
+        val slice = com.codespace.ide.editor.EditorLayoutLimits.previewSlice(full, start, tab.previewPageLines)
+        val endLine = (start + tab.previewPageLines).coerceAtMost(total)
+        tabs[idx] = tab.copy(
+            content = slice,
+            previewStartLine = start,
+            previewNote = com.codespace.ide.editor.EditorLayoutLimits.pageNote(
+                start + 1, endLine, total,
+            ),
+            isDirty = false,
+        )
+    }
+
+    // Preview "Go to line": picks the PAGE that holds the wanted line, because a preview only ever
+    // holds one page. Kept next to the state so the two cannot drift.
+    previewGoToTarget?.let { targetId ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { previewGoToTarget = null; previewGoToLine = "" },
+            title = { androidx.compose.material3.Text("Go to line") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = previewGoToLine,
+                    onValueChange = { typed -> previewGoToLine = typed.filter { it.isDigit() } },
+                    singleLine = true,
+                    label = { androidx.compose.material3.Text("Line number") },
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val wanted = previewGoToLine.toIntOrNull()
+                    val idx = tabs.indexOfFirst { it.id == targetId }
+                    if (wanted != null && idx >= 0) {
+                        val per = tabs[idx].previewPageLines.coerceAtLeast(1)
+                        val start = ((wanted - 1).coerceAtLeast(0) / per) * per
+                        showPreviewPage(targetId, start)
+                    }
+                    previewGoToTarget = null
+                    previewGoToLine = ""
+                }) { androidx.compose.material3.Text("Go") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    previewGoToTarget = null
+                    previewGoToLine = ""
+                }) { androidx.compose.material3.Text("Cancel") }
+            },
+        )
     }
 
     // B1 REACTIVE-SYNC: single observation point reporting the authoritative tab
@@ -2606,6 +2680,17 @@ fun EditorPane(
                         savedContent = active.savedContent,
                         readOnly = active.readOnly,
                         noticeText = active.previewNote,
+                        noticePrev = if (active.readOnly && active.previewStartLine > 0) {
+                            { showPreviewPage(active.id, active.previewStartLine - active.previewPageLines) }
+                        } else null,
+                        noticeNext = if (active.readOnly &&
+                            active.previewStartLine + active.previewPageLines < active.previewTotalLines
+                        ) {
+                            { showPreviewPage(active.id, active.previewStartLine + active.previewPageLines) }
+                        } else null,
+                        noticeGoToLine = if (active.readOnly && active.previewPageLines > 0) {
+                            { previewGoToTarget = active.id }
+                        } else null,
                         testLineStates = remember(active.path, testResultItems) {
                             com.codespace.ide.testing.TestResultStore.statesForFile(active.path)
                         },

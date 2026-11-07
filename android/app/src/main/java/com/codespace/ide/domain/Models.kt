@@ -54,6 +54,12 @@ data class EditorTab(
     val readOnly: Boolean = false,
     /** Thin, non-blocking note shown above the text when [readOnly] is true. */
     val previewNote: String? = null,
+    /** 0-based first line shown by a read-only preview page. */
+    val previewStartLine: Int = 0,
+    /** Lines per preview page (the height budget for the current density and font). */
+    val previewPageLines: Int = 0,
+    /** Lines in the whole file, so the banner can say "line X-Y of M". */
+    val previewTotalLines: Int = 0,
 )
 
 data class GitStatus(
