@@ -1157,6 +1157,9 @@ object UniversalDebugManager {
     }
 
     fun toggleBreakpoint(filePath: String, line: Int) {
+        // PREVIEW ISOLATION (owner order 2026-11-07): a preview shows a SLICE, so its line 40 is
+        // not the file's line 40. Refuse rather than set a breakpoint on the wrong real line.
+        if (com.codespace.ide.editor.PreviewRegistry.isPreview(filePath)) return
         val list = breakpoints.getOrPut(filePath) { mutableListOf() }
         if (list.any { it.line == line }) {
             list.removeAll { it.line == line }

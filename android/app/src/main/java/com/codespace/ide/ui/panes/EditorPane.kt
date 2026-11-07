@@ -970,6 +970,14 @@ fun EditorPane(
     // The old code here appended text to END of file; CodeEditor inserts at cursor.
 
     // Open a new tab when the explorer requests a file
+    // PREVIEW ISOLATION: the tab list is the single source of truth for which paths are previews.
+    // Recomputing the whole set on every tab change means a closed or promoted tab clears itself.
+    androidx.compose.runtime.LaunchedEffect(tabs) {
+        com.codespace.ide.editor.PreviewRegistry.replaceWith(
+            tabs.filter { it.readOnly }.map { it.path }.toSet(),
+        )
+    }
+
     // Captured OUTSIDE the effect: LocalContext.current is a composable read and cannot be used
     // from inside LaunchedEffect. The guard needs it to read density and font scale.
     val guardContext = androidx.compose.ui.platform.LocalContext.current

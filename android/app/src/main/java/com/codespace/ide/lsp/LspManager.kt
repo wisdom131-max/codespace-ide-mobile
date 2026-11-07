@@ -2971,6 +2971,16 @@ object LspManager {
 
     // ── Text document synchronization ──────────────────────────────
 
+    /**
+     * The host path a document URI refers to, for the preview registry. A preview only ever has
+     * a file: URI, so a non-file scheme resolves to the raw string, which matches nothing.
+     */
+    private fun previewPathOf(uri: String): String {
+        if (!uri.startsWith("file://")) return uri
+        val raw = uri.removePrefix("file://")
+        return try { java.net.URLDecoder.decode(raw, "UTF-8") } catch (_: Throwable) { raw }
+    }
+
     fun didOpen(
         language: Language,
         uri: String,
@@ -3033,6 +3043,9 @@ object LspManager {
     ): Boolean {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
+        // PREVIEW ISOLATION (owner order 2026-11-07): a preview holds part of the file. Sending it
+        // as the document's content would make the server reason about a file that does not exist.
+        if (com.codespace.ide.editor.PreviewRegistry.isPreview(previewPathOf(uri))) return false
         // LS04 (P4b): every didChange resent the WHOLE buffer — O(file size) per 150ms
         // typing window on-device. If the server declares incremental sync (change
         // kind 2) and we know what it last received, send ONE minimal range edit
@@ -4215,6 +4228,8 @@ object LspManager {
     fun didSave(language: Language, uri: String, content: String): Boolean {
         val server = servers[language] ?: return false
         if (!server.initialized) return false
+        // PREVIEW ISOLATION: a preview is never saved, so there is nothing to tell the server.
+        if (com.codespace.ide.editor.PreviewRegistry.isPreview(previewPathOf(uri))) return false
         val params = JSONObject().apply {
             put("textDocument", JSONObject().apply { put("uri", uri) })
             put("text", content)
