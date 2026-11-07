@@ -237,7 +237,17 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             //    reads this on next successful launch and shows a copy/paste dialog.
             try {
                 val dir = File(filesDir, "crash_logs").apply { mkdirs() }
-                val header = "Thread: " + thread.name + "\nTime: " + stamp + "\n\n"
+                // BUILD STAMP (owner order 2026-11-07): every crash log names the exact build it
+                // came from, so a report can never be matched to the wrong commit again.
+                val buildStamp = try {
+                    val info = packageManager.getPackageInfo(packageName, 0)
+                    val code = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+                    "Build: " + info.versionName + " (" + code + ") on " +
+                        android.os.Build.MODEL + " / Android " + android.os.Build.VERSION.RELEASE
+                } catch (_: Throwable) {
+                    "Build: unknown"
+                }
+                val header = "Thread: " + thread.name + "\nTime: " + stamp + "\n" + buildStamp + "\n\n"
                 File(dir, "crash_$stamp.txt").writeText(header + stackTrace)
                 dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(5)?.forEach { it.delete() }
             } catch (_: Throwable) { /* never let logging interfere with the real crash */ }

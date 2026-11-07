@@ -772,6 +772,10 @@ fun EditorPane(
     var suppressSplitFocus by remember { mutableStateOf(false) }
 
     // ── Workspace memory restore ──────────────────────────────────────────
+    // Files the restore guard refused to reopen. Shown as one line with a Reopen action; the
+    // project and every other tab still come back. Declared before the restore effect that fills it.
+    var restoreSkippedFiles by remember { mutableStateOf<List<String>>(emptyList()) }
+
     LaunchedEffect(Unit) {
         // TAB-RESURRECTION (2026-10-03): restore is a SESSION-START behavior
         // (VS Code restores a workspace once per window), NOT an empty-state
@@ -825,21 +829,56 @@ fun EditorPane(
                 restoredActive = legacyActive
                 restoredPinned = emptyList()
             }
+            // RESTORE CRASH-LOOP GUARD (owner report 2026-11-06): a file that crashed the app was
+            // reopened on the next launch, so every start crashed again and the only way back was
+            // deleting the file from the phone. The marker below is written BEFORE restoring and
+            // cleared after the first successful frame, which is how a crash DURING restore is
+            // detected even when it happens inside layout.
+            val guardStore = com.codespace.ide.data.RestoreGuardStore(context)
+            // Read the marker BEFORE writing it: after beginRestore() it is always true.
+            val guardDiedDuringRestore = guardStore.restoreWasInProgress()
+            val guardCrashedLastLaunch = guardStore.crashedSinceLastCleanStart(context.filesDir)
+            val guardPreviousExitBad = guardDiedDuringRestore || guardCrashedLastLaunch
+            val guardBadStarts = guardStore.consecutiveBadStarts()
+            guardStore.beginRestore()
+            val skippedByGuard = ArrayList<String>()
+
             restoredPaths.forEach { path ->
                 val file = File(path)
-                if (file.exists()) {
-                    val tab = EditorTab(
-                        id = path,
-                        path = path,
-                        name = file.name,
-                        content = loadFileContent(path),
-                        language = detectLanguage(file.name),
-                        isDirty = false,
-                        cursorOffset = tabCursorOffsets[path] ?: 0,
-                    )
-                    tabs.add(tab)
+                val decision = com.codespace.ide.data.RestoreGuard.decide(
+                    path = path,
+                    fileExists = file.exists(),
+                    previousExitBad = guardPreviousExitBad,
+                    crashDuringRestore = guardDiedDuringRestore,
+                    consecutiveBadStarts = guardBadStarts,
+                )
+                if (!decision.restore) {
+                    decision.note?.let { note ->
+                        skippedByGuard.add(path)
+                        com.codespace.ide.diagnostics.AppOutputLog.log("[restore] " + note, "warn")
+                    }
+                    return@forEach
                 }
+                // A file that cannot fit one Compose text field must never be restored INTO it:
+                // the restore path runs through the same height guard as an explicit open.
+                val content = loadFileContent(path)
+                val guarded = openDecision(context, content, fontSize, wrap = false)
+                val tab = EditorTab(
+                    id = path,
+                    path = path,
+                    name = file.name,
+                    content = guarded?.content ?: content,
+                    language = detectLanguage(file.name),
+                    isDirty = false,
+                    cursorOffset = tabCursorOffsets[path] ?: 0,
+                    readOnly = guarded != null,
+                    previewNote = guarded?.note,
+                    previewPageLines = guarded?.shownLines ?: 0,
+                    previewTotalLines = guarded?.totalLines ?: 0,
+                )
+                tabs.add(tab)
             }
+            restoreSkippedFiles = skippedByGuard
             // TB08 (P4d): identity match — restored spellings from an older
             // session can differ from the freshly-opened tab spellings.
             pinnedPaths.addAll(restoredPinned.filter { p ->
@@ -981,6 +1020,13 @@ fun EditorPane(
     // Captured OUTSIDE the effect: LocalContext.current is a composable read and cannot be used
     // from inside LaunchedEffect. The guard needs it to read density and font scale.
     val guardContext = androidx.compose.ui.platform.LocalContext.current
+    // The restore survived its first frame: clear the in-progress marker and reset the bad-start
+    // counter. This is what makes the guard self-healing after one clean launch.
+    androidx.compose.runtime.LaunchedEffect(projectId) {
+        androidx.compose.runtime.withFrameNanos { }
+        com.codespace.ide.data.RestoreGuardStore(guardContext).endRestore(cleanStart = true)
+    }
+
     // Preview "Go to line": which tab is asking, and what line the user typed. Null = closed.
     var previewGoToTarget by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var previewGoToLine by remember { androidx.compose.runtime.mutableStateOf("") }
@@ -1363,6 +1409,51 @@ fun EditorPane(
     // No sample tabs — editor starts empty, waiting for Explorer
 
     Column(Modifier.fillMaxSize()) {
+        // One line, with a way forward, when the restore guard held files back.
+        if (restoreSkippedFiles.isNotEmpty()) {
+            androidx.compose.foundation.layout.Row(
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .background(Color(0x33332B1A), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.Text(
+                    "VN Code closed unexpectedly while " +
+                        java.io.File(restoreSkippedFiles.first()).name +
+                        " was open; it was not reopened",
+                    color = Color(0xFFE8C07D),
+                    fontSize = 11.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                androidx.compose.material3.TextButton(onClick = {
+                    val toOpen = restoreSkippedFiles.toList()
+                    restoreSkippedFiles = emptyList()
+                    toOpen.forEach { path ->
+                        val file = java.io.File(path)
+                        if (!file.exists()) return@forEach
+                        val text = loadFileContent(path)
+                        val guarded = openDecision(guardContext, text, fontSize, wrap = false)
+                        tabs.add(
+                            EditorTab(
+                                id = path,
+                                path = path,
+                                name = file.name,
+                                content = guarded?.content ?: text,
+                                language = detectLanguage(file.name),
+                                readOnly = guarded != null,
+                                previewNote = guarded?.note,
+                                previewPageLines = guarded?.shownLines ?: 0,
+                                previewTotalLines = guarded?.totalLines ?: 0,
+                            ),
+                        )
+                        activeId = path
+                    }
+                }) {
+                    androidx.compose.material3.Text("Reopen", color = Color(0xFF7FB2E5), fontSize = 11.sp)
+                }
+            }
+        }
         // SPLIT-RELOCATE (2026-09-12): the toggle now lives in the SHELL's editor
         // toolbar (ProjectShellScreen) and flips the global SplitViewStore directly.
         // This effect keeps the ACTIVE view consistent no matter where the toggle was
