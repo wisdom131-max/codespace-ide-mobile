@@ -77,6 +77,18 @@ internal fun saveAllDirtyTabs(
  * only copy of the user's unsaved edits.
  * Returns (restored, keptNoMatchingTab, keptFailed).
  */
+/**
+ * True when [autosave] looks like a PREFIX of what is on disk right now, which is what a read-only
+ * preview's slice looks like: the first lines of the file and nothing else.
+ *
+ * Why this exists (owner order 2026-11-07): a preview can never go dirty, so it can never write an
+ * autosave - but a slice written by an older build, or by any future path that forgets the guard,
+ * must never be offered as "unsaved edits" for the whole file. Restoring it would replace the real
+ * content with a part of itself.
+ */
+internal fun isPartialSliceOfFile(autosave: String, onDisk: String): Boolean =
+    autosave.isNotEmpty() && onDisk.length > autosave.length && onDisk.startsWith(autosave)
+
 internal fun restoreAutosaveFiles(
     autosaveFiles: List<File>,
     tabs: SnapshotStateList<EditorTab>,
@@ -92,6 +104,18 @@ internal fun restoreAutosaveFiles(
             val originalPath = URLDecoder.decode(
                 autosave.name.removeSuffix(".autosave"), "UTF-8")
             val recoveredContent = autosave.readText()
+            // DEFENCE IN DEPTH: refuse an autosave that is only the head of the real file. It is not
+            // "unsaved edits", it is a partial copy, and applying it would truncate the file.
+            val onDisk = try { File(originalPath).takeIf { it.exists() }?.readText() } catch (_: Exception) { null }
+            if (onDisk != null && isPartialSliceOfFile(recoveredContent, onDisk)) {
+                Log.e(
+                    TAG,
+                    "AUTOSAVE REFUSED for $originalPath: content is a partial slice of the file " +
+                        "(${recoveredContent.length} of ${onDisk.length} chars), not unsaved edits",
+                )
+                failed++
+                continue
+            }
             val idx = tabs.indexOfFirst { it.path == originalPath }
             if (idx >= 0) {
                 tabs[idx] = tabs[idx].copy(content = recoveredContent, isDirty = true)

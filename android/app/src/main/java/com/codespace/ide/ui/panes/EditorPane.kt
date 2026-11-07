@@ -1210,7 +1210,9 @@ fun EditorPane(
         while (true) {
             delay(30_000L)
             val dir = autosaveDir ?: continue
-            val dirty = tabs.filter { it.isDirty && it.path.startsWith("/") }
+            // A preview cannot go dirty, so it can never be in this list - the readOnly term is
+            // belt and braces so a future path that makes a preview dirty cannot write a slice.
+            val dirty = tabs.filter { it.isDirty && !it.readOnly && it.path.startsWith("/") }
             withContext(Dispatchers.IO) {
                 dirty.forEach { tab ->
                     try {
