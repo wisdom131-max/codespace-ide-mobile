@@ -516,7 +516,7 @@ fun EditorPane(
                                 try {
                                     // LS02: honor didOpen's Boolean — a rejected send
                                     // must NOT leave lspOpenedFiles claiming it is open.
-                                    val accepted = LspManager.didOpen(lang, openUri, LspManager.languageId(lang), tab.content, openVersion)
+                                    val accepted = LspManager.didOpen(lang, openUri, LspManager.languageId(lang), tab.content, openVersion, previewTab = tab.readOnly)
                                     if (accepted) lspOpenedFiles[tab.path] = true else lspOpenedFiles.remove(tab.path)
                                 } catch (_: Exception) {}
                             }
@@ -1824,7 +1824,7 @@ fun EditorPane(
                         }
                         if (started && uri != null) {
                             delay(300)
-                            val accepted = LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(uri))  // FIX-B: monotonic version
+                            val accepted = LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(uri), previewTab = snap.readOnly)  // FIX-B: monotonic version
                             if (accepted) lspOpenedFiles[snap.path] = true  // LS02: mark only on an accepted send
                         }
                     }
@@ -1936,7 +1936,7 @@ fun EditorPane(
                     var accepted = false
                     var waitedMs = 0
                     while (!accepted && waitedMs < 30_000 && LspManager.isServerProcessAlive(snap.language)) {
-                        accepted = LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(uri))  // FIX-B: monotonic version
+                        accepted = LspManager.didOpen(snap.language, uri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(uri), previewTab = snap.readOnly)  // FIX-B: monotonic version
                         if (!accepted) { delay(500); waitedMs += 500 }
                     }
                     if (accepted) {
@@ -1981,7 +1981,7 @@ fun EditorPane(
                         if (restarted) {
                             val reopenUri = LspManager.fileUriFromHostPath(context, snap.path)
                             if (reopenUri != null) {
-                                val accepted = LspManager.didOpen(snap.language, reopenUri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(reopenUri))
+                                val accepted = LspManager.didOpen(snap.language, reopenUri, LspManager.languageId(snap.language), snap.content, LspManager.nextDocumentVersion(reopenUri), previewTab = snap.readOnly)
                                 if (accepted) lspOpenedFiles[snap.path] = true  // LS02: mark only on accept
                             }
                         }

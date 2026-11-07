@@ -2977,7 +2977,16 @@ object LspManager {
         languageId: String,
         text: String,
         version: Int = 1,
+        /** True when the tab is a read-only preview: the text is a SLICE, never the document. */
+        previewTab: Boolean = false,
     ): Boolean {
+        // Owner order 2026-11-07, addition 3. A preview holds only the lines that fit under the
+        // Compose Constraints ceiling, so sending it would index a document that does not exist
+        // and every diagnostic afterwards would point at the wrong line of the real file.
+        if (!com.codespace.ide.editor.PreviewPolicy.shouldSyncToLsp(previewTab)) {
+            AppOutputLog.log("[LSP] didOpen SKIPPED for $uri — preview tab holds only part of the file", "lsp")
+            return false
+        }
         val server = servers[language] ?: return false
         if (!server.initialized) return false
         // BATCH9-P1a: HOISTED OPEN-DOC REGISTRY. server.trackedDocuments is the
