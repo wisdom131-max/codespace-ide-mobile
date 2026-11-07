@@ -16,26 +16,26 @@ class PreviewRegistryTest {
 
     @Test
     fun aPathIsAPreviewOnlyWhileItsTabExists() {
-        PreviewRegistry.replaceWith(setOf("/tmp/big.js"))
+        PreviewRegistry.replaceWith(mapOf("/tmp/big.js" to "slice"))
         assertTrue(PreviewRegistry.isPreview("/tmp/big.js"))
         assertFalse(PreviewRegistry.isPreview("/tmp/other.js"))
 
-        PreviewRegistry.replaceWith(emptySet())
+        PreviewRegistry.replaceWith(emptyMap())
         assertFalse("closing the tab must clear the guard", PreviewRegistry.isPreview("/tmp/big.js"))
         assertTrue(PreviewRegistry.isEmpty())
     }
 
     @Test
     fun replacingTheSetDropsStalePaths() {
-        PreviewRegistry.replaceWith(setOf("/tmp/a.js", "/tmp/b.js"))
-        PreviewRegistry.replaceWith(setOf("/tmp/b.js"))
+        PreviewRegistry.replaceWith(mapOf("/tmp/a.js" to "a", "/tmp/b.js" to "b"))
+        PreviewRegistry.replaceWith(mapOf("/tmp/b.js" to "b"))
         assertFalse(PreviewRegistry.isPreview("/tmp/a.js"))
         assertTrue(PreviewRegistry.isPreview("/tmp/b.js"))
     }
 
     @Test
     fun twoPreviewsCoexist() {
-        PreviewRegistry.replaceWith(setOf("/tmp/a.js", "/tmp/b.js"))
+        PreviewRegistry.replaceWith(mapOf("/tmp/a.js" to "a", "/tmp/b.js" to "b"))
         assertEquals(2, listOf("/tmp/a.js", "/tmp/b.js").count { PreviewRegistry.isPreview(it) })
     }
 

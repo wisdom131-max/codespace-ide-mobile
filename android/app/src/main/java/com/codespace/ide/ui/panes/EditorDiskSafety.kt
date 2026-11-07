@@ -25,6 +25,17 @@ private const val TAG = "EditorDiskSafety"
 
 /** G01: typed editor-buffer write. true = verified on disk + cache invalidated. */
 internal fun writeTabToDisk(path: String, content: String): Boolean {
+    // LAST LINE OF DEFENCE (owner order 2026-11-07): if this content IS the slice a preview tab is
+    // showing, writing it would replace the real file with the part that fit under the Compose
+    // Constraints ceiling. Refuse and log. A full, real content for the same path is allowed,
+    // because that is what the agent writes when it edits the file from disk.
+    if (com.codespace.ide.editor.PreviewRegistry.isSliceOf(path, content)) {
+        Log.e(
+            TAG,
+            "WRITE REFUSED for $path: content is the read-only preview slice, not the file",
+        )
+        return false
+    }
     return try {
         File(path).writeText(content)
         FileCache.invalidate(path)

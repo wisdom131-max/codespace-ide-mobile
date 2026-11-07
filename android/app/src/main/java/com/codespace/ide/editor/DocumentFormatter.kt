@@ -159,6 +159,10 @@ object DocumentFormatter {
             val originalContent = file.readText()
             val formatted = FormatterConfig.fallbackFormat(originalContent)
             return if (formatted != originalContent) {
+                if (com.codespace.ide.editor.PreviewRegistry.isSliceOf(file.path, formatted)) {
+                    // Preview slice: formatting a PART of the file must never be written back.
+                    return FormatResult(false, null, "This tab shows part of the file (read-only preview); nothing was saved.")
+                }
                 file.writeText(formatted)
                 FormatResult(true, formatted, "Formatted with built-in formatter")
             } else {

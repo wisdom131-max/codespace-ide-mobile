@@ -3399,10 +3399,12 @@ private data class SearchResult(val file: String, val lineNum: Int, val lineText
                                         // pattern will apply, not the search's hit count.
                                         if (regex != null) {
                                             replaced += regex.findAll(content).count()
-                                            f.writeText(regex.replace(content, replaceQuery))
+                                            val newText = regex.replace(content, replaceQuery)
+                                            if (!com.codespace.ide.editor.PreviewRegistry.isSliceOf(f.path, newText)) f.writeText(newText)
                                         } else {
                                             replaced += content.split(searchQuery, ignoreCase = !caseSensitive).size - 1
-                                            f.writeText(content.replace(searchQuery, replaceQuery, !caseSensitive))
+                                            val newText = content.replace(searchQuery, replaceQuery, !caseSensitive)
+                                            if (!com.codespace.ide.editor.PreviewRegistry.isSliceOf(f.path, newText)) f.writeText(newText)
                                         }
                                         com.codespace.ide.editor.FileCache.invalidate(filePath)
                                     } catch (_: Exception) { failedFiles++ }

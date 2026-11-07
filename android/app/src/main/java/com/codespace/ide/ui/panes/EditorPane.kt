@@ -974,7 +974,7 @@ fun EditorPane(
     // Recomputing the whole set on every tab change means a closed or promoted tab clears itself.
     androidx.compose.runtime.LaunchedEffect(tabs) {
         com.codespace.ide.editor.PreviewRegistry.replaceWith(
-            tabs.filter { it.readOnly }.map { it.path }.toSet(),
+            tabs.filter { it.readOnly }.associate { it.path to it.content },
         )
     }
 
@@ -2853,7 +2853,7 @@ fun EditorPane(
                                 val resolved = MergeConflictParser.resolveHunk(active.content, hunk, resolution)
                                 tabs[idx] = active.copy(content = resolved, isDirty = true)
                                 if (active.path.startsWith("/")) {
-                                    try { File(active.path).writeText(resolved); FileCache.invalidate(active.path) } catch (_: Exception) {}
+                                    try { if (!com.codespace.ide.editor.PreviewRegistry.isSliceOf(active.path, resolved)) { File(active.path).writeText(resolved); FileCache.invalidate(active.path) } else com.codespace.ide.diagnostics.AppOutputLog.log("[guard] write REFUSED for ${active.path}: preview slice", "warn") } catch (_: Exception) {}
                                 }
                                 // Re-detect remaining conflicts
                                 conflictHunks = if (MergeConflictParser.hasConflicts(resolved)) {
@@ -3288,7 +3288,7 @@ fun EditorPane(
                                                     val idx = tabs.indexOfFirst { it.id == active.id }
                                                     if (idx >= 0) {
                                                         tabs[idx] = active.copy(content = newText, isDirty = true)
-                                                        try { java.io.File(active.path).writeText(newText) } catch (_: Exception) {}
+                                                        try { if (!com.codespace.ide.editor.PreviewRegistry.isSliceOf(active.path, newText)) java.io.File(active.path).writeText(newText) else com.codespace.ide.diagnostics.AppOutputLog.log("[guard] write REFUSED for ${active.path}: preview slice", "warn") } catch (_: Exception) {}
                                                     }
                                                 }
                                             } else if (command != null) {
