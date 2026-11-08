@@ -838,7 +838,24 @@ fun EditorPane(
             // Read the marker BEFORE writing it: after beginRestore() it is always true.
             val guardDiedDuringRestore = guardStore.restoreWasInProgress()
             val guardCrashedLastLaunch = guardStore.crashedSinceLastCleanStart(context.filesDir)
-            val guardPreviousExitBad = guardDiedDuringRestore || guardCrashedLastLaunch
+            // EXIT-REASON GUARD (owner/advisor order 2026-11-08, item 1): a death after the first
+            // successful frame leaves NO crash log if the system killed the app (ANR, low memory,
+            // native crash). The platform still remembers the reason, so the guard reads it once,
+            // here, and treats those as "do not reopen". Force-stop and a normal swipe-away are
+            // deliberately NOT crashes.
+            val guardExitKind = com.codespace.ide.data.ExitReasonReader(context).lastExitKind()
+            val guardExitWasBad = guardExitKind?.let {
+                com.codespace.ide.data.ExitReasonClassifier.isBad(it)
+            } ?: false
+            if (guardExitWasBad && guardExitKind != null) {
+                com.codespace.ide.diagnostics.AppOutputLog.log(
+                    "[restore] previous exit: " + guardExitKind +
+                        " (" + com.codespace.ide.data.ExitReasonClassifier.describe(guardExitKind) +
+                        ") - files that were open will not be reopened",
+                    "warn",
+                )
+            }
+            val guardPreviousExitBad = guardDiedDuringRestore || guardCrashedLastLaunch || guardExitWasBad
             val guardBadStarts = guardStore.consecutiveBadStarts()
             guardStore.beginRestore()
             val skippedByGuard = ArrayList<String>()
