@@ -2500,10 +2500,17 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                                 fontSize = fontSize,
                                 colors = colors,
                                 onToggle = {
-                                    bookmarkedLines = if (bookmarkedLines.contains(lineNum))
-                                        bookmarkedLines - lineNum
-                                    else
-                                        bookmarkedLines + lineNum
+                                    // PREVIEW ISOLATION (owner order 2026-11-07, item f): a preview
+                                    // numbers its page from 1, so a bookmark here would be filed
+                                    // against the wrong real line. Refuse instead.
+                                    if (!com.codespace.ide.editor.PreviewPolicy.shouldApplyLineKeyedEdits(readOnly)) {
+                                        gateRefusalNote = "Bookmarks are off in a read-only preview: its line numbers are page numbers."
+                                    } else {
+                                        bookmarkedLines = if (bookmarkedLines.contains(lineNum))
+                                            bookmarkedLines - lineNum
+                                        else
+                                            bookmarkedLines + lineNum
+                                    }
                                 },
                             )
                             Spacer(Modifier.width(2.dp))

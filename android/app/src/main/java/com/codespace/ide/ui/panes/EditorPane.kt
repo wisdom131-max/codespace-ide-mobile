@@ -1275,7 +1275,14 @@ fun EditorPane(
                 if (com.codespace.ide.editor.SplitViewStore.isSplitId(activeId)) activeId else null,
             )
             store.saveLocks(pid, com.codespace.ide.editor.ViewScrollLockStore.snapshot())
-            store.saveFolds(pid, tabFoldedRanges.mapValues { it.value.toList() })
+            // PREVIEW ISOLATION: a preview's fold ranges are PAGE lines. Persisting them would
+            // fold the wrong lines of the real file on the next open.
+            store.saveFolds(
+                pid,
+                tabFoldedRanges
+                    .filterKeys { path -> tabs.none { it.path == path && it.readOnly } }
+                    .mapValues { it.value.toList() },
+            )
             store.saveBlameEnabled(pid, showBlame)
         }
     }
@@ -2586,6 +2593,10 @@ fun EditorPane(
                     if (uri != null) {
                         val myServerGen = LspManager.getServerGeneration(active.language)
                         val myDocVersion = LspManager.getDocumentVersion(active.language, uri)
+                        // PREVIEW ISOLATION (owner order 2026-11-07, item f): a preview's document
+                        // was never sent to the server (didOpen refuses it), so lenses could only be
+                        // resolved against page lines. Skip the fetch entirely and say nothing.
+                        if (active.readOnly) return@LaunchedEffect
                         val lspLenses = withContext(Dispatchers.IO) {
                             LspManager.getCodeLens(active.language, uri)
                         }
@@ -2757,7 +2768,9 @@ fun EditorPane(
                 // Extracted here so BOTH the primary tab and split views get them.
                 // (Conflict detection needs no extraction: this branch has its own copy.)
                     // P20-A: Fetch git blame data
-                    if (showBlame && active != null) {
+                    // PREVIEW ISOLATION (owner order 2026-11-07, item f): blame is keyed to REAL
+                    // lines; a preview shows page lines, so the overlay would be a map of the wrong file.
+                    if (showBlame && active != null && !active.readOnly) {
                         val blamePath = active.path
                         LaunchedEffect(showBlame, blamePath) {
                             if (showBlame) {
