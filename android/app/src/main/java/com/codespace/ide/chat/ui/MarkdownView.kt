@@ -187,8 +187,12 @@ fun CodeBlockCard(
             // or tapping the reply's own copy icon covers the same need without a second
             // meaning for the same glyph.
         }
+        // CONSTRAINTS AUDIT (owner order 2026-11-07): a chat block can hold a pasted 13,000-line
+        // file, and ONE Text that tall throws in Constraints. Draw a capped head and say so;
+        // Copy still copies the WHOLE block.
+        val capped = remember(code) { com.codespace.ide.editor.TextRenderLimits.cap(code) }
         Text(
-            text = code,
+            text = capped.first,
             color = c.text,
             fontSize = ChatTokens.FONT_SMALL.sp,
             fontFamily = FontFamily.Monospace,
@@ -197,6 +201,9 @@ fun CodeBlockCard(
                 .padding(top = 4.dp)
                 .horizontalScroll(rememberScrollState()),
         )
+        capped.second?.let { note ->
+            Text(note, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
+        }
         outcome?.let {
             Text(it, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
         }

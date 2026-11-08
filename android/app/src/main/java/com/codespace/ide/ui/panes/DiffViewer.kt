@@ -151,18 +151,37 @@ fun DiffViewer(
         Column(
             Modifier.fillMaxWidth().heightIn(max = 350.dp).verticalScroll(scrollState).padding(start = 8.dp, end = 4.dp)
         ) {
+            // CONSTRAINTS AUDIT (owner order 2026-11-07): every hunk is composed into ONE Column,
+            // so a 100k-line diff builds a layout taller than Compose can represent and throws in
+            // Constraints. The viewport is already capped at 350dp; the CONTENT needs capping too.
+            var renderedLines = 0
+            val totalDiffLines = parsed.hunks.sumOf { it.lines.size }
             parsed.hunks.forEachIndexed { hunkIdx, hunk ->
                 val bg = if (hunkIdx == currentHunk) Color(0xFF1A1A2E) else Color.Transparent
                 Column(Modifier.fillMaxWidth().background(bg)) {
                     hunk.lines.forEach { diffLine ->
-                        DiffLineRow(diffLine)
+                        if (renderedLines < com.codespace.ide.editor.TextRenderLimits.MAX_RENDERED_LINES) {
+                            DiffLineRow(diffLine)
+                            renderedLines++
+                        }
                     }
                 }
-                if (hunkIdx < parsed.hunks.size - 1) {
+                if (hunkIdx < parsed.hunks.size - 1 &&
+                    renderedLines < com.codespace.ide.editor.TextRenderLimits.MAX_RENDERED_LINES
+                ) {
                     Spacer(Modifier.height(4.dp))
                     HorizontalDivider(color = Color(0xFF333333), thickness = 0.5.dp)
                     Spacer(Modifier.height(4.dp))
                 }
+            }
+            if (totalDiffLines > renderedLines) {
+                Text(
+                    com.codespace.ide.editor.TextRenderLimits.truncatedNote(renderedLines, totalDiffLines),
+                    fontSize = 10.sp,
+                    color = Color(0xFF858585),
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                )
             }
         }
     }
