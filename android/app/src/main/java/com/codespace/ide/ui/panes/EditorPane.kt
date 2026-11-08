@@ -1043,6 +1043,9 @@ fun EditorPane(
     // Preview "Go to line": which tab is asking, and what line the user typed. Null = closed.
     var previewGoToTarget by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var previewGoToLine by remember { androidx.compose.runtime.mutableStateOf("") }
+    // Finds across the WHOLE file, not just the page the preview holds.
+    var previewFindSummary by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    val previewFindScope = androidx.compose.runtime.rememberCoroutineScope()
 
     LaunchedEffect(openFilePath) {
         if (openFilePath != null) {
@@ -1184,19 +1187,53 @@ fun EditorPane(
     previewGoToTarget?.let { targetId ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { previewGoToTarget = null; previewGoToLine = "" },
-            title = { androidx.compose.material3.Text("Go to line") },
+            title = { androidx.compose.material3.Text("Go to line or find") },
             text = {
                 androidx.compose.material3.OutlinedTextField(
                     value = previewGoToLine,
-                    onValueChange = { typed -> previewGoToLine = typed.filter { it.isDigit() } },
+                    // A number means "go to line"; anything else means "find this in the whole file".
+                    onValueChange = { typed -> previewGoToLine = typed },
                     singleLine = true,
                     label = { androidx.compose.material3.Text("Line number") },
                 )
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
-                    val wanted = previewGoToLine.toIntOrNull()
+                    val typed = previewGoToLine.trim()
+                    val wanted = typed.toIntOrNull()
                     val idx = tabs.indexOfFirst { it.id == targetId }
+                    if (wanted == null && typed.isNotEmpty() && idx >= 0) {
+                        // FIND ACROSS THE WHOLE FILE. The editor's own Find only sees the page the
+                        // preview holds, so a 13,000-line file was searched 5,280 lines deep.
+                        val path = tabs[idx].path
+                        val per = tabs[idx].previewPageLines.coerceAtLeast(1)
+                        previewGoToTarget = null
+                        previewGoToLine = ""
+                        previewFindScope.launch {
+                            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                val whole = try { java.io.File(path).readText() } catch (_: Throwable) { null }
+                                if (whole == null) null
+                                else com.codespace.ide.editor.PreviewSearch.find(whole, typed)
+                            }
+                            if (result == null) {
+                                previewFindSummary = "Could not read the file to search it."
+                                return@launch
+                            }
+                            previewFindSummary = com.codespace.ide.editor.PreviewSearch.summary(result)
+                            val first = result.hits.firstOrNull()
+                            if (first != null) {
+                                val plan = com.codespace.ide.editor.PreviewJump.plan(
+                                    requestedLine = first.line,
+                                    pageLines = per,
+                                    isPreview = true,
+                                    currentPageStart = tabs.getOrNull(idx)?.previewStartLine ?: 0,
+                                )
+                                showPreviewPage(targetId, plan.pageStart)
+                                ownedJump.request(path, plan.pageLine)
+                            }
+                        }
+                        return@TextButton
+                    }
                     if (wanted != null && idx >= 0) {
                         val per = tabs[idx].previewPageLines.coerceAtLeast(1)
                         // One conversion, shared with every other navigation route: the page is
@@ -2904,7 +2941,7 @@ fun EditorPane(
                         fontSize = fontSize,
                         savedContent = active.savedContent,
                         readOnly = active.readOnly,
-                        noticeText = active.previewNote,
+                        noticeText = previewFindSummary ?: active.previewNote,
                         noticePrev = if (active.readOnly && active.previewStartLine > 0) {
                             { showPreviewPage(active.id, active.previewStartLine - active.previewPageLines) }
                         } else null,
