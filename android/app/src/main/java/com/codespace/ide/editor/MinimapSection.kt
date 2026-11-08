@@ -53,6 +53,10 @@ fun androidx.compose.foundation.layout.BoxScope.MinimapSection(
     positionMapper: com.codespace.ide.editor.PositionMapper,
     lintErrors: List<LintError>,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
+    // PREVIEW ISOLATION (owner order 2026-11-08): a preview holds ONE PAGE and numbers it from 1.
+    // The map still maps the page it holds - that is the only document on screen - but the ruler
+    // must not claim page line 1 is file line 1. Zero for an editable tab.
+    absoluteLineOffset: Int = 0,
 ) {
     val textLines = remember(value.text) { value.text.split("\n") }
     val lineCountTotal = textLines.size
@@ -68,6 +72,8 @@ fun androidx.compose.foundation.layout.BoxScope.MinimapSection(
     val miniWidthPx = with(density) { 60.dp.toPx() }
     val lineHeightPx = lineHeightDp.value
     val viewportTopLine = (vScroll.value / lineHeightPx).toInt()
+    // What the ruler says the top visible line is: absolute for a preview, page-relative otherwise.
+    val absoluteTopLine = viewportTopLine + absoluteLineOffset + 1
     val visibleLineCount = with(density) {
         ((maxOf(1, vScroll.viewportSize) / lineHeightPx).toInt())
     }
@@ -84,7 +90,12 @@ fun androidx.compose.foundation.layout.BoxScope.MinimapSection(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = if (showMinimapState) "\u25A3" else "\u25A2",
+            text = when {
+                // A preview says where the reader actually is in the FILE, not in the page.
+                absoluteLineOffset > 0 && showMinimapState -> absoluteTopLine.toString()
+                showMinimapState -> "\u25A3"
+                else -> "\u25A2"
+            },
             color = colors.gutter,
             fontSize = 8.sp,
             fontFamily = FontFamily.Monospace,

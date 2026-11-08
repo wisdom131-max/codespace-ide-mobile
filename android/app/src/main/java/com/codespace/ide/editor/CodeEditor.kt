@@ -539,6 +539,8 @@ fun CodeEditor(
     noticeNext: (() -> Unit)? = null,
     noticeGoToLine: (() -> Unit)? = null,
     scrollToLine: Int = 0,
+    /** First line of the file that this text field starts at (0 for an editable tab). */
+    previewAbsoluteOffset: Int = 0,
     /** D2 (advisor round 2026-10-19): 1-based COLUMN of the jump (0/negative =
      *  start of line). From a :line:col terminal link, diagnostics or go-to-def.
      *  Keyed with the line so a same-line different-column jump re-fires. */
@@ -3965,6 +3967,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
             positionMapper = positionMapper,
             lintErrors = lintErrors,
             coroutineScope = coroutineScope,
+            absoluteLineOffset = previewAbsoluteOffset,
         )
         
         // ── Rename Symbol Dialog ──────────────────────────────────────────────

@@ -3679,6 +3679,9 @@ fun EditorPane(
                         scrollToLine = jumpPreviewTarget?.pageLine ?: ownedJump.lineFor(active.path),
                         // D2 (advisor round 2026-10-19): the owned jump's column.
                         scrollToColumn = ownedJump.colFor(active.path),
+                        // A preview's text field starts at a line of the FILE, not at line 1, so the
+                        // minimap ruler can name where the reader really is.
+                        previewAbsoluteOffset = if (active.readOnly) active.previewStartLine else 0,
                     )
                 }
                 // P38: Hover popup now rendered inside CodeEditor as a compact overlay
