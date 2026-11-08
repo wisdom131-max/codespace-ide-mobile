@@ -115,7 +115,9 @@ class ChatSessionMappingTest {
         s.send("hi")
         awaitIdle(s)
         val last = s.ui.value.rows.last() as ChatRowModel.Failed
-        assertTrue(last.verdict.startsWith("No key stored"))
+        // P0-1: the local case is now "No key found for <provider> (looked for slot ai_X)" so it can
+        // never be mistaken for a provider rejection. Same test, updated to the split wording.
+        assertTrue(last.verdict.startsWith("No key found for"))
         assertTrue("no network without a key", t.payloads.isEmpty())
     }
 }

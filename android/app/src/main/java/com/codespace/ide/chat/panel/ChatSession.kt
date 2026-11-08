@@ -468,9 +468,10 @@ class ChatSession internal constructor(
             com.codespace.ide.diagnostics.AppOutputLog.log(
                 "[keys] send: no key in slot " + effectiveSlot + " for provider " + sel.providerId, "warn")
             appendRow(ChatRowModel.Failed(
-                "No key found",
                 com.codespace.ide.engine.ChatError.Auth.missingKeyVerdict(
-                    sel.providerId, effectiveSlot), false))
+                    sel.providerId, effectiveSlot),
+                "The chat reads the key slot named above. Settings > AI keys lists every slot and " +
+                    "shows which ones hold a key.", false))
             return
         }
         // WP3 reasoning control: bounded 1024 for native thinking providers,
