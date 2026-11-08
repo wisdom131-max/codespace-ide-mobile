@@ -1009,6 +1009,7 @@ fun EditorPane(
     // The old code here appended text to END of file; CodeEditor inserts at cursor.
 
     // Open a new tab when the explorer requests a file
+
     // PREVIEW ISOLATION: the tab list is the single source of truth for which paths are previews.
     // Recomputing the whole set on every tab change means a closed or promoted tab clears itself.
     androidx.compose.runtime.LaunchedEffect(tabs) {
@@ -1116,6 +1117,48 @@ fun EditorPane(
             ),
             isDirty = false,
         )
+    }
+
+    // STALE PREVIEW (owner order 2026-11-07, item d): a preview shows a slice read at open time, so
+    // the file changing underneath it must be noticed. Scoped to the active PREVIEW tab only - it
+    // does no work at all when no preview is open, and never runs at Application startup.
+    androidx.compose.runtime.LaunchedEffect(activeId, tabs.count { it.readOnly }) {
+        val previewTab = tabs.firstOrNull { it.id == activeId && it.readOnly } ?: return@LaunchedEffect
+        val path = previewTab.path
+        var shown = com.codespace.ide.editor.PreviewStaleness.Stamp(
+            lastModified = java.io.File(path).lastModified(),
+            length = java.io.File(path).length(),
+        )
+        while (true) {
+            kotlinx.coroutines.delay(3_000L)
+            val file = java.io.File(path)
+            if (!file.exists()) continue
+            val now = com.codespace.ide.editor.PreviewStaleness.Stamp(file.lastModified(), file.length())
+            val current = tabs.firstOrNull { it.id == previewTab.id } ?: break
+            val onDiskLines = com.codespace.ide.editor.EditorLayoutLimits.lineCount(
+                try { file.readText() } catch (_: Throwable) { return@LaunchedEffect },
+            )
+            when (com.codespace.ide.editor.PreviewStaleness.decide(
+                shownStamp = shown, currentStamp = now,
+                pageStartLine = current.previewStartLine, currentLineCount = onDiskLines,
+            )) {
+                com.codespace.ide.editor.PreviewStaleness.Action.RELOAD -> {
+                    shown = now
+                    showPreviewPage(previewTab.id, current.previewStartLine)
+                }
+                com.codespace.ide.editor.PreviewStaleness.Action.NOTIFY -> {
+                    shown = now
+                    val idx = tabs.indexOfFirst { it.id == previewTab.id }
+                    if (idx >= 0) {
+                        tabs[idx] = tabs[idx].copy(
+                            previewNote = com.codespace.ide.editor.PreviewStaleness
+                                .staleMessage(java.io.File(path).name),
+                        )
+                    }
+                }
+                com.codespace.ide.editor.PreviewStaleness.Action.NOTHING -> Unit
+            }
+        }
     }
 
     // Preview "Go to line": picks the PAGE that holds the wanted line, because a preview only ever
