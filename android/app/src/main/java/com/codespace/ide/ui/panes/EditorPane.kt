@@ -1093,7 +1093,7 @@ fun EditorPane(
                 val name = File(openFilePath).name
                 val content = loadFileContent(openFilePath)
                 // Too tall for one Compose text field? Open what fits, read-only, and say so.
-                val decision = openDecision(guardContext, content, fontSize, wrap = false)
+                val decision = openDecision(guardContext, content, fontSize, wrap = false, fileName = name)
                 val openText = decision?.content ?: content
                 if (decision != null) {
                     com.codespace.ide.diagnostics.AppOutputLog.log(
@@ -4108,6 +4108,7 @@ private fun openDecision(
     content: String,
     fontSizeSp: Int,
     wrap: Boolean,
+    fileName: String = "",
 ): com.codespace.ide.editor.EditorLayoutLimits.PreviewOrFull? {
     val dm = context.resources.displayMetrics
     val metrics = com.codespace.ide.editor.EditorLayoutLimits.Metrics(
@@ -4118,7 +4119,50 @@ private fun openDecision(
     )
     val lines = 1 + content.count { it == '\n' }
     val avg = com.codespace.ide.editor.EditorLayoutLimits.averageLineChars(content, lines)
-    if (com.codespace.ide.editor.EditorLayoutLimits.fits(lines, avg, metrics, wrap)) return null
+    val fitsHeight = com.codespace.ide.editor.EditorLayoutLimits.fits(lines, avg, metrics, wrap)
+
+    // SPAN BUDGET (owner's ANR 2026-11-08, anr_...14-13-07-236): height alone declared a 5,000-line
+    // .txt editable and the TEXT PAINT then walked its whole span array per drawn line and ANR'd.
+    // The span count is measured ONCE here, on a buffer that already fits the height ceiling, so the
+    // cost of measuring is bounded; plain text measures near zero.
+    val visibleLines = com.codespace.ide.editor.EditorLayoutLimits.visibleLineEstimate(metrics)
+    val spanMeasurement = com.codespace.ide.editor.EditorSpanCounter.measure(
+        content, com.codespace.ide.editor.EditorSpanCounter.languageOf(fileName),
+    )
+    val spanPlan = com.codespace.ide.editor.EditorSpanBudget.plan(
+        lineCount = lines,
+        visibleLines = visibleLines,
+        totalSpans = spanMeasurement.cappedTotal,
+        fitsHeight = fitsHeight,
+        averageLineChars = avg,
+        sampledSpansPerLine = spanMeasurement.spansPerLine,
+    )
+    if (fileName.isNotEmpty()) {
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            com.codespace.ide.editor.EditorSpanBudget.describe(spanPlan, lines, fileName), "info",
+        )
+    }
+    if (spanPlan.tier == com.codespace.ide.editor.EditorSpanBudget.Tier.EDIT) return null
+    if (!fitsHeight) {
+        val budget = com.codespace.ide.editor.EditorLayoutLimits.previewLineBudget(avg, metrics, wrap)
+        return com.codespace.ide.editor.EditorLayoutLimits.PreviewOrFull(
+            metricsText = com.codespace.ide.editor.EditorLayoutLimits.describe(metrics),
+            content = com.codespace.ide.editor.EditorLayoutLimits.previewOf(content, budget),
+            shownLines = budget,
+            totalLines = lines,
+            note = com.codespace.ide.editor.EditorLayoutLimits.previewMessage(budget, lines),
+        )
+    }
+    // Height fits but the DRAW COST does not: page it so a page's own spans stay under budget.
+    val pageLines = spanPlan.pageLines.coerceAtLeast(1)
+    return com.codespace.ide.editor.EditorLayoutLimits.PreviewOrFull(
+        metricsText = com.codespace.ide.editor.EditorLayoutLimits.describe(metrics),
+        content = com.codespace.ide.editor.EditorLayoutLimits.previewOf(content, pageLines),
+        shownLines = pageLines,
+        totalLines = lines,
+        note = com.codespace.ide.editor.EditorSpanBudget.temporaryNote() +
+            " (highlighting this file would freeze the editor)",
+    )
     val budget = com.codespace.ide.editor.EditorLayoutLimits.previewLineBudget(avg, metrics, wrap)
     return com.codespace.ide.editor.EditorLayoutLimits.PreviewOrFull(
         metricsText = com.codespace.ide.editor.EditorLayoutLimits.describe(metrics),

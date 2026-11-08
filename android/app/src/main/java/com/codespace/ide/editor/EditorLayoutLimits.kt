@@ -58,6 +58,15 @@ internal object EditorLayoutLimits {
     )
 
     /** Line height in px, exactly as the editor computes it (fontSize x multiplier, sp -> px). */
+    /** How many lines fit on one screen at these metrics. Drives the span-cost model. */
+    fun visibleLineEstimate(m: Metrics): Int {
+        val lh = lineHeightPx(m).coerceAtLeast(1f)
+        // A phone shows roughly 70% of its height as editor text once toolbars and the keyboard are
+        // in play; the estimate is clamped so a nonsense window never yields 0 or 10,000 lines.
+        val editorHeight = (900f * m.density * 0.7f)
+        return (editorHeight / lh).toInt().coerceIn(8, 200)
+    }
+
     fun lineHeightPx(m: Metrics): Float {
         val heightSp = m.fontSizeSp * EditorMetrics.LINE_HEIGHT_MULTIPLIER
         return heightSp * m.density * m.fontScale.coerceAtLeast(0.5f)
