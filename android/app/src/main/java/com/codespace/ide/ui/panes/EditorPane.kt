@@ -1045,6 +1045,11 @@ fun EditorPane(
     var previewGoToLine by remember { androidx.compose.runtime.mutableStateOf("") }
     // Finds across the WHOLE file, not just the page the preview holds.
     var previewFindSummary by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    // Every match, so the reader can pick one instead of only ever reaching the first.
+    var previewFindHits by remember {
+        androidx.compose.runtime.mutableStateOf<List<com.codespace.ide.editor.PreviewSearch.Hit>>(emptyList())
+    }
+    var previewFindPath by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     val previewFindScope = androidx.compose.runtime.rememberCoroutineScope()
 
     LaunchedEffect(openFilePath) {
@@ -1182,6 +1187,72 @@ fun EditorPane(
         }
     }
 
+    // THE HIT LIST (owner order 2026-11-08): a find that could only reach its first match made the
+    // reader page through a 13,000-line file by hand. Every hit is one tap from here.
+    if (previewFindHits.isNotEmpty()) {
+        val hitsList = previewFindHits
+        val hitsPath = previewFindPath
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { previewFindHits = emptyList(); previewFindPath = null },
+            title = {
+                androidx.compose.material3.Text(
+                    previewFindSummary ?: (hitsList.size.toString() + " matches"),
+                    fontSize = 13.sp,
+                )
+            },
+            text = {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                ) {
+                    items(hitsList.size) { i ->
+                        val hit = hitsList[i]
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val tab = tabs.firstOrNull { it.path == hitsPath }
+                                    if (tab != null) {
+                                        val per = tab.previewPageLines.coerceAtLeast(1)
+                                        val plan = com.codespace.ide.editor.PreviewJump.plan(
+                                            requestedLine = hit.line, pageLines = per,
+                                            isPreview = true, currentPageStart = tab.previewStartLine,
+                                        )
+                                        showPreviewPage(tab.id, plan.pageStart)
+                                        ownedJump.request(tab.path, plan.pageLine)
+                                    }
+                                    previewFindHits = emptyList()
+                                    previewFindPath = null
+                                }
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            androidx.compose.material3.Text(
+                                hit.line.toString(),
+                                color = androidx.compose.ui.graphics.Color(0xFF7FB2E5),
+                                fontSize = 11.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                modifier = Modifier.width(56.dp),
+                            )
+                            androidx.compose.material3.Text(
+                                hit.text,
+                                color = androidx.compose.ui.graphics.Color(0xFFCFCFCF),
+                                fontSize = 11.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    previewFindHits = emptyList(); previewFindPath = null
+                }) { androidx.compose.material3.Text("Close") }
+            },
+        )
+    }
+
     // Preview "Go to line": picks the PAGE that holds the wanted line, because a preview only ever
     // holds one page. Kept next to the state so the two cannot drift.
     previewGoToTarget?.let { targetId ->
@@ -1220,6 +1291,8 @@ fun EditorPane(
                                 return@launch
                             }
                             previewFindSummary = com.codespace.ide.editor.PreviewSearch.summary(result)
+                            previewFindHits = result.hits
+                            previewFindPath = path
                             val first = result.hits.firstOrNull()
                             if (first != null) {
                                 val plan = com.codespace.ide.editor.PreviewJump.plan(
