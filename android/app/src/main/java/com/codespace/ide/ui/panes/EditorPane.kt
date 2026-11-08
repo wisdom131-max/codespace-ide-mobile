@@ -1199,8 +1199,18 @@ fun EditorPane(
                     val idx = tabs.indexOfFirst { it.id == targetId }
                     if (wanted != null && idx >= 0) {
                         val per = tabs[idx].previewPageLines.coerceAtLeast(1)
-                        val start = ((wanted - 1).coerceAtLeast(0) / per) * per
-                        showPreviewPage(targetId, start)
+                        // One conversion, shared with every other navigation route: the page is
+                        // chosen by PreviewJump and the reader is then SCROLLED to the line inside
+                        // it. Before this, "go to line 9000" opened the right page and left the
+                        // reader at the top of it.
+                        val plan = com.codespace.ide.editor.PreviewJump.plan(
+                            requestedLine = wanted,
+                            pageLines = per,
+                            isPreview = true,
+                            currentPageStart = tabs[idx].previewStartLine,
+                        )
+                        showPreviewPage(targetId, plan.pageStart)
+                        ownedJump.request(tabs[idx].path, plan.pageLine)
                     }
                     previewGoToTarget = null
                     previewGoToLine = ""
