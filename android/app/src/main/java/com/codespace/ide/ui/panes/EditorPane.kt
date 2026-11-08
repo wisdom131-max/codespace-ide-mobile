@@ -1010,6 +1010,18 @@ fun EditorPane(
 
     // Open a new tab when the explorer requests a file
 
+    // NAVIGATION INTO A PREVIEW (owner order 2026-11-07, item e): one conversion for every route.
+    val jumpPreviewTarget = run {
+        val tab = tabs.firstOrNull { it.id == activeId } ?: return@run null
+        if (!tab.readOnly || tab.previewPageLines <= 0) return@run null
+        com.codespace.ide.editor.PreviewJump.plan(
+            requestedLine = ownedJump.lineFor(tab.path),
+            pageLines = tab.previewPageLines,
+            isPreview = true,
+            currentPageStart = tab.previewStartLine,
+        )
+    }
+
     // PREVIEW ISOLATION: the tab list is the single source of truth for which paths are previews.
     // Recomputing the whole set on every tab change means a closed or promoted tab clears itself.
     androidx.compose.runtime.LaunchedEffect(tabs) {
@@ -1117,6 +1129,12 @@ fun EditorPane(
             ),
             isDirty = false,
         )
+    }
+
+    androidx.compose.runtime.LaunchedEffect(activeId, jumpPreviewTarget?.pageStart) {
+        val target = jumpPreviewTarget ?: return@LaunchedEffect
+        val id = activeId ?: return@LaunchedEffect
+        if (target.needsPageSwap) showPreviewPage(id, target.pageStart)
     }
 
     // STALE PREVIEW (owner order 2026-11-07, item d): a preview shows a slice read at open time, so
@@ -3630,7 +3648,12 @@ fun EditorPane(
                         // P41-W: LSP Semantic Tokens
                         semanticTokens = lspSemanticRanges,
                         // Resource-filtered at render time, before any asynchronous effect can run.
-                        scrollToLine = ownedJump.lineFor(active.path),
+                        // NAVIGATION INTO A PREVIEW (owner order 2026-11-07, item e): search results,
+                        // go to definition, terminal file:line links, Source Control open-at-line,
+                        // Problems and agent/Files Changed links all arrive as this owned jump. A
+                        // preview holds one page and numbers it from 1, so the absolute line is
+                        // converted to (page, page line) here.
+                        scrollToLine = jumpPreviewTarget?.pageLine ?: ownedJump.lineFor(active.path),
                         // D2 (advisor round 2026-10-19): the owned jump's column.
                         scrollToColumn = ownedJump.colFor(active.path),
                     )
