@@ -727,6 +727,34 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var value by remember { mutableStateOf(TextFieldValue(content)) }
+    // THE EDIT GATE (owner order 2026-11-07, defect 2): every text-changing path ends here.
+    // Metrics come from the real density, system font scale and screen width, so the prediction
+    // matches the layout that would actually be built.
+    val gateContext = androidx.compose.ui.platform.LocalContext.current
+    var gateRefusalNote by remember { mutableStateOf<String?>(null) }
+    val gateMetrics = remember(fontSize) {
+        val dm = gateContext.resources.displayMetrics
+        com.codespace.ide.editor.EditorLayoutLimits.Metrics(
+            fontSizeSp = fontSize.toFloat(),
+            density = dm.density,
+            fontScale = gateContext.resources.configuration.fontScale,
+            widthPx = dm.widthPixels,
+        )
+    }
+    // Keep the zoom clamp in the shell honest: it asks about the document that is open now.
+    LaunchedEffect(value.text, fontSize, wordWrap, gateMetrics) {
+        val lines = com.codespace.ide.editor.EditorLayoutLimits.lineCount(value.text)
+        com.codespace.ide.editor.LayoutZoomMemory.record(
+            lineCount = lines,
+            avgLineChars = com.codespace.ide.editor.EditorLayoutLimits.averageLineChars(value.text, lines),
+            wrap = wordWrap,
+            fontSizeSp = gateMetrics.fontSizeSp,
+            density = gateMetrics.density,
+            fontScale = gateMetrics.fontScale,
+            widthPx = gateMetrics.widthPx,
+        )
+    }
+
     // Phase X-2: EditorEvent — tags the source of every value change.
     // Only UserTyping/UserCursorMove/UserSelection have trigger authority.
     var editorEvent by remember { mutableStateOf<EditorEvent>(EditorEvent.InitialCursorPlacement(0)) }
@@ -826,6 +854,15 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
     var measuredScrollWidth by remember { mutableStateOf(0f) }
     // Initialize + re-measure when content changes (file load / tab switch)
     LaunchedEffect(content) {
+        // DEFECT 2 (external sync): content arriving from disk, the agent or an LSP workspace edit
+        // can also cross the ceiling. Refuse to adopt it and say so instead of crashing in layout.
+        if (content != value.text &&
+            com.codespace.ide.editor.LayoutEditGate.verdictForText(content, gateMetrics, wrap = wordWrap) ==
+            com.codespace.ide.editor.LayoutEditGate.Verdict.REFUSE
+        ) {
+            gateRefusalNote = com.codespace.ide.editor.LayoutEditGate.REFUSAL_MESSAGE
+            return@LaunchedEffect
+        }
         lineMeasurer.measureAll(content)
         measuredScrollWidth = lineMeasurer.getScrollWidth()
     }
@@ -2538,6 +2575,18 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
                     value = value,
                     readOnly = readOnly,
                     onValueChange = { newValue ->
+                        // DEFECT 2: refuse a change that would push the layout past the ceiling.
+                        // Typing, paste, cut, undo/redo, multi-cursor, replace-all, format, AI
+                        // apply, rename, LSP edits and snippets ALL arrive here as a new value.
+                        if (newValue.text != value.text &&
+                            com.codespace.ide.editor.LayoutEditGate.verdictForText(
+                                newValue.text, gateMetrics, wrap = wordWrap,
+                            ) == com.codespace.ide.editor.LayoutEditGate.Verdict.REFUSE
+                        ) {
+                            gateRefusalNote = com.codespace.ide.editor.LayoutEditGate.REFUSAL_MESSAGE
+                            return@BasicTextField
+                        }
+                        gateRefusalNote = null
                         ghostText = null; ghostTextLines = emptyList(); ghostTextIsAi = false  // P41-E: dismiss ghost on any keystroke
                         // Phase X-2: Tag the event source
                         val insertedChars = newValue.text.length - value.text.length
@@ -3564,7 +3613,7 @@ lspCodeActionProvider: ((line: Int) -> List<LspCodeAction>)? = null,
         // R3-2: Indent guide overlay
         val visibleStartLine = (vScrollDp / lineHeightDp.value).toInt().coerceAtLeast(0)
         val visibleEndLine = visibleStartLine + (LocalConfiguration.current.screenHeightDp / lineHeightDp.value).toInt() + 5
-        EditorNoticeBanner(noticeText, noticePrev, noticeNext, noticeGoToLine)
+        EditorNoticeBanner(gateRefusalNote ?: noticeText, noticePrev, noticeNext, noticeGoToLine)
         BlockLineOverlay(value.text, vScrollDp, lineHeightDp.value, fontSize, GUTTER_WIDTH.toFloat(), 4, visibleStartLine, visibleEndLine, colors, textLayoutResult, visualLineMapper, vScroll.value)
 
         SearchMatchOverlay(findReplaceOpen || externalFindBarOpen, matches, matchIndex, lineHeightDp, fontSize, GUTTER_WIDTH, vScrollDp, value, positionMapper, textLayoutResult, vScroll.value)

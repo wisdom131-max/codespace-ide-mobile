@@ -2003,7 +2003,26 @@ fun ProjectShellScreen(
                     buildProblemsMs = buildProblemsMs,
                     editorReloadTriggerMs = editorReloadTriggerMs,
                     formatOnSaveTrigger = formatOnSaveTrigger,
-                    onFontSizeChange = { editorFontSize = it.coerceIn(8, 32) },
+                    // DEFECT 2 (zoom): a bigger font makes the same lines taller, so a zoom can
+                    // cross the ceiling without any text changing. Clamp to the largest size that
+                    // still fits the active document instead of letting layout throw.
+                    onFontSizeChange = { requested ->
+                        val cap = com.codespace.ide.editor.LayoutEditGate.clampFontSize(
+                            requested = requested.coerceIn(8, 32),
+                            min = 8,
+                            lineCount = com.codespace.ide.editor.LayoutZoomMemory.lineCount,
+                            avgLineChars = com.codespace.ide.editor.LayoutZoomMemory.avgLineChars,
+                            metrics = com.codespace.ide.editor.LayoutZoomMemory.metrics(),
+                            wrap = com.codespace.ide.editor.LayoutZoomMemory.wrap,
+                        )
+                        if (cap < requested) {
+                            com.codespace.ide.diagnostics.AppOutputLog.log(
+                                "[perf] zoom clamped to " + cap + "sp (requested " + requested +
+                                    "sp): the file would pass the editor height limit", "warn",
+                            )
+                        }
+                        editorFontSize = cap
+                    },
                     udm = com.codespace.ide.debug.UniversalDebugManager,
                     fullScreen = fullScreen,
                 )
