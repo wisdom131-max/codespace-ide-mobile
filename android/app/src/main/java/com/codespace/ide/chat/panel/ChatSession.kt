@@ -463,10 +463,14 @@ class ChatSession internal constructor(
         val effectiveSlot = sel.keySlot
         val key = if (needsKey) keyFor(effectiveSlot) else null
         if (needsKey && key.isNullOrBlank()) {
+            // P0-1: this is the LOCAL case and it must never look like a provider rejection.
+            // It names the slot that was read, so a misattributed slot is visible immediately.
+            com.codespace.ide.diagnostics.AppOutputLog.log(
+                "[keys] send: no key in slot " + effectiveSlot + " for provider " + sel.providerId, "warn")
             appendRow(ChatRowModel.Failed(
-                "No key stored for this provider",
-                "The rebuilt chat uses your existing stored keys (read-only WP1 migration). " +
-                    "Key management returns to Settings in WP7.", false))
+                "No key found",
+                com.codespace.ide.engine.ChatError.Auth.missingKeyVerdict(
+                    sel.providerId, effectiveSlot), false))
             return
         }
         // WP3 reasoning control: bounded 1024 for native thinking providers,
@@ -499,6 +503,7 @@ class ChatSession internal constructor(
             providerId = sel.providerId,
             baseUrl = liveBaseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
+            keySlotName = effectiveSlot,   // P0-1: the NAME travels with the config, never the value
             reasoningBudget = reasoningBudget,
             // WP5: the send budget scales with the model's context window (estimate);
             // WP7: the user override replaces the bundled row (estimate either way).
@@ -511,6 +516,11 @@ class ChatSession internal constructor(
         toolRound = 0
         keySlotsSeen.clear()
         keySlotsSeen.add(effectiveSlot)
+        // P0-1 debug line: which slot answered, MEMORY-ONLY, name only. This is the line that
+        // tells a misattributed slot apart from a provider rejection in one glance.
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[keys] send: provider=" + sel.providerId + " slot=" + effectiveSlot +
+                " keyPresent=" + !key.isNullOrBlank() + " model=" + sel.modelId, "info")
         // WP8: staged attachments ride THIS send (and its failover retries).
         // Retry / Send anyway REUSE the staged copies; history keeps text
         // only, so nothing attachment-shaped persists anywhere.
@@ -755,7 +765,10 @@ class ChatSession internal constructor(
                     appendRow(ChatRowModel.InfoNote(
                         "Key rejected - switching to the next stored key (visible, opt-in, not silent)"))
                     val key2 = keyFor(nextSlot)
-                    attemptSend(cfg.copy(apiKey = key2 ?: ""), nextSlot, userText, attachments, confirmOverBudget, gen)
+                    attemptSend(
+                        cfg.copy(apiKey = key2 ?: "", keySlotName = nextSlot),
+                        nextSlot, userText, attachments, confirmOverBudget, gen,
+                    )
                     return
                 }
                 // Owner ruling 2026-11-01: no automatic retry ladder, no invented wait cap.

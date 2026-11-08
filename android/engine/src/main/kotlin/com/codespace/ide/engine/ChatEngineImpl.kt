@@ -89,8 +89,13 @@ class ChatEngineImpl(
             state.update(responseMsg.id) { it.copy(state = MessageState.ERROR) }
             // The requested path rides the 404 verdict so "wrong model" and "wrong base
             // URL" stop sharing one misleading sentence. Path only: never the query.
+            // P0-1: a 401/403 verdict must name WHO rejected the key and WHICH slot was read,
+            // otherwise a provider-side rejection reads like the app refusing (owner report
+            // 2026-11-08). Names only - the config carries no key value here.
             emit(EngineEvent.Failed(ErrorTaxonomy.classify(
-                t.status, t.headers, t.body, EndpointUrls.redactedPath(requestUrl))))
+                t.status, t.headers, t.body, EndpointUrls.redactedPath(requestUrl),
+                providerLabel = config.providerId,
+                keySlotName = config.keySlotName)))
         } catch (t: kotlinx.coroutines.CancellationException) {
             state.update(responseMsg.id) {
                 it.copy(text = builder.toString(), state = MessageState.DONE)

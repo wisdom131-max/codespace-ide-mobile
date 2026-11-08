@@ -26,8 +26,43 @@ sealed class ChatError(val userVerdict: String, val retryable: Boolean) {
     class OutOfCredits(val providerHint: String) :
         ChatError("AI provider out of credits. $providerHint", false)
 
-    class Auth :
-        ChatError("AI key rejected. Check the key in Settings.", false)
+    /**
+     * 401/403. P0-1 (owner report 2026-11-08: "AI key rejected. Check the key in the settings" on
+     * EVERY message, while Settings > Test listed the models fine): the shipped verdict named
+     * neither the provider nor the slot, so a provider-side rejection was indistinguishable from
+     * the app refusing a key it never sent, and the one sentence covered both.
+     *
+     * Split, per owner ruling: this class is ONLY for "the request carried a key and the provider
+     * answered 401/403". [providerLabel] is the provider or endpoint the request went to,
+     * [slotName] the slot that was read (a NAME, never a value), [detail] the provider's own
+     * sanitized message. A missing or blank key never reaches here - ChatSession returns
+     * [MISSING_KEY_VERDICT] before any request is made.
+     */
+    class Auth(
+        val providerLabel: String = "",
+        val slotName: String = "",
+        val detail: String = "",
+    ) : ChatError(
+        buildString {
+            if (providerLabel.isNotBlank()) append(providerLabel) else append("The provider")
+            append(" rejected the key (HTTP 401)")
+            if (detail.isNotBlank()) append(": ").append(detail)
+            if (slotName.isNotBlank()) append(" [slot ").append(slotName).append("]")
+        },
+        false,
+    ) {
+        companion object {
+            /**
+             * The local case: no request was sent at all. Deliberately a different sentence from
+             * [Auth], because the fix is different (add a key vs fix a key).
+             */
+            fun missingKeyVerdict(providerLabel: String, slotName: String): String {
+                val who = if (providerLabel.isNotBlank()) providerLabel else "this provider"
+                val slot = if (slotName.isNotBlank()) " (looked for slot $slotName)" else ""
+                return "No key found for $who$slot. Add one in Settings > AI keys."
+            }
+        }
+    }
 
     /**
      * 404. Two very different causes share this status: the model id is not served by this
@@ -110,11 +145,18 @@ object ErrorTaxonomy {
         headers: Map<String, String> = emptyMap(),
         body: String = "",
         endpointPath: String? = null,
+        providerLabel: String = "",
+        keySlotName: String = "",
     ): ChatError {
         return when {
             status == 429 -> ChatError.RateLimited(retryAfterSec(headers))
             status == 402 -> ChatError.OutOfCredits(providerHint(body))
-            status == 401 || status == 403 -> ChatError.Auth()
+            // P0-1: name the provider and the slot, and carry the provider's own sanitized words.
+            status == 401 || status == 403 -> ChatError.Auth(
+                providerLabel = providerLabel,
+                slotName = keySlotName,
+                detail = authDetail(body),
+            )
             status == 404 -> ChatError.ModelNotFound(modelIdHint(body), endpointPath)
             status in 400..499 -> ChatError.BadRequest(brief(body))
             else -> ChatError.Server(status)
@@ -123,6 +165,18 @@ object ErrorTaxonomy {
 
     /** Network-layer failures (connect/read timeouts, mid-stream EOF). */
     fun network(detail: String): ChatError = ChatError.Network(brief(detail))
+
+    /**
+     * The provider's own sentence for a 401/403, sanitized. OpenRouter-shaped bodies carry
+     * {"error":{"message":"..."}}; OpenAI and Groq use {"error":{"message":"..."}} too, Anthropic
+     * {"error":{"message":"..."}}, so one regex covers them. Anything that looks like a key is
+     * redacted before the text can reach a card, a log, or a screenshot.
+     */
+    private fun authDetail(body: String): String {
+        val m = Regex(""""(?:message|detail)"\s*:\s*"([^"]{1,200})"""").find(body)?.groupValues?.get(1)
+        if (m.isNullOrBlank()) return ""
+        return brief(redactSecrets(m))
+    }
 
     private fun providerHint(body: String): String {
         val m = Regex("""(out of credits|quota|balance|insufficient[^"{}]*)""", RegexOption.IGNORE_CASE)
@@ -137,6 +191,19 @@ object ErrorTaxonomy {
         val m = Regex("""model["']?\s*[:=]?\s*["']?([A-Za-z0-9._\-/]+)""", RegexOption.IGNORE_CASE)
             .find(body)?.groupValues?.get(1) ?: return "the selected model"
         return m
+    }
+
+    /**
+     * P0-1 SECURITY: a provider's error body can quote the key it disliked. Nothing that looks
+     * like a credential survives this, so the sentence is safe in a card, a log line, a crash
+     * dump or a screenshot.
+     */
+    internal fun redactSecrets(s: String): String {
+        var out = s
+        out = out.replace(Regex("""(?i)(sk|gsk|pk|org)[-_][A-Za-z0-9_\-]{8,}"""), "[redacted]")
+        out = out.replace(Regex("""(?i)bearer\s+[A-Za-z0-9._\-]{8,}"""), "Bearer [redacted]")
+        out = out.replace(Regex("""AIza[0-9A-Za-z_\-]{20,}"""), "[redacted]")
+        return out
     }
 
     private fun brief(s: String): String {

@@ -62,10 +62,34 @@ object LegacyKeyShapes {
      * Returns null for non-ai_ entries (proj_*, github, pin are not provider keys)
      * and for the 'ai_active' marker (not a key).
      */
-    fun parseSlot(slotName: String): Pair<String, Int?>? {
+    fun parseSlot(slotName: String): Pair<String, Int?>? = parseSlot(slotName, emptyList())
+
+    /**
+     * P0-1 (owner report 2026-11-08): a trailing _N is NOT always a pool index.
+     *
+     * The defect this fixes: a custom endpoint whose id itself ends in digits
+     * ("grok_3", "grok_custom_2") stores its key as ai_CUSTOM_GROK_3 / ai_CUSTOM_GROK_CUSTOM_2
+     * (SlotNaming.customStoreKey uppercases the provider id). The old rule read the trailing
+     * "_3" as a POOL index, so that key was attributed to provider "custom_grok" instead of
+     * endpoint "custom_grok_3": the endpoint looked keyless, the slot picker mislabelled it, and a
+     * selection could carry the wrong slot name.
+     *
+     * THE RULE (owner ruling): resolve against the KNOWN ENDPOINT IDS, longest match first, then
+     * fall back to the pool suffix. Nothing is renamed and nothing is rewritten: this is a READ
+     * interpretation of the same strings, so the read-only migration keeps working and existing
+     * entries stay byte-identical. An endpoint id is written as ai_<CUSTOM_<ID>> with pool keys
+     * appended as _N, so both shapes are still recognised for a real endpoint.
+     */
+    fun parseSlot(slotName: String, endpointIds: Collection<String>): Pair<String, Int?>? {
         if (!slotName.startsWith(SLOT_PREFIX)) return null
         val rest = slotName.removePrefix(SLOT_PREFIX)
         if (rest.isBlank() || rest.equals("active", ignoreCase = true)) return null
+
+        // 1. Longest known endpoint first: an exact endpoint id beats a pool suffix.
+        val byEndpoint = matchEndpoint(rest, endpointIds)
+        if (byEndpoint != null) return byEndpoint
+
+        // 2. Fall back to the shipped rule: a trailing _N (N >= 2) is a pool index.
         val idx = rest.lastIndexOf('_')
         if (idx > 0) {
             val suffix = rest.substring(idx + 1)
@@ -76,14 +100,47 @@ object LegacyKeyShapes {
     }
 
     /**
+     * Slot part -> endpoint provider id, or null when no endpoint owns this name.
+     *
+     * Candidates are tried LONGEST FIRST: "ai_CUSTOM_GROK_CUSTOM_2" must belong to endpoint
+     * "custom_grok_custom_2" and not to "custom_grok_custom" with pool 2. A pool key for an
+     * endpoint ("ai_CUSTOM_GROK_2" = second key of endpoint grok) is still recognised, because
+     * the endpoint base without the suffix is itself a candidate.
+     */
+    private fun matchEndpoint(rest: String, endpointIds: Collection<String>): Pair<String, Int?>? {
+        if (endpointIds.isEmpty()) return null
+        val bases = ArrayList<Pair<String, String>>(endpointIds.size) // base slot part -> provider id
+        for (id in endpointIds) {
+            if (id.isBlank()) continue
+            val providerId = if (id == "default") "custom" else "custom_" + id
+            bases.add(Pair(providerId.uppercase(), providerId))
+        }
+        bases.sortByDescending { it.first.length }
+        for ((base, providerId) in bases) {
+            if (rest == base) return Pair(providerId, null)
+            if (rest.startsWith(base + "_")) {
+                val tail = rest.removePrefix(base + "_")
+                val n = tail.toIntOrNull()
+                // A numeric tail here is THIS endpoint's pool index; a non-numeric tail belongs
+                // to a longer endpoint id, which the longest-first order has already tried.
+                if (n != null && n >= 2) return Pair(providerId, n)
+            }
+        }
+        return null
+    }
+
+    /**
      * Normalize raw secure-pref entries (slotName -> value). Empty values are
      * KEPT with hasKey=false. Values are read only to test presence - they are
      * never copied, logged, or stored in the result.
      */
-    fun normalizeKeySlots(raw: Map<String, String>): List<StoredKeySlot> {
+    fun normalizeKeySlots(
+        raw: Map<String, String>,
+        endpointIds: Collection<String> = emptyList(),
+    ): List<StoredKeySlot> {
         val out = ArrayList<StoredKeySlot>()
         for ((slot, value) in raw) {
-            val parsed = parseSlot(slot) ?: continue
+            val parsed = parseSlot(slot, endpointIds) ?: continue
             val (provider, pool) = parsed
             out.add(StoredKeySlot(provider, pool, slot, !value.isNullOrBlank()))
         }
@@ -160,7 +217,14 @@ class StoredCredentialsReader(
     fun readSnapshot(): SnapshotRead {
         val slotsRaw = try { rawSlots() } catch (_: Exception) { null }
         val endpointsRead = endpoints.readEndpoints()
-        val slots = LegacyKeyShapes.normalizeKeySlots(slotsRaw ?: emptyMap())
+        // P0-1: the endpoint ids come first so the slot reader can tell an endpoint id that ends
+        // in digits ("grok_3") from a pool suffix (_3). Read-only: nothing is rewritten.
+        val endpointIds = if (endpointsRead is CustomEndpointStore.EndpointsRead.Loaded) {
+            endpointsRead.endpoints.map { it.id }
+        } else {
+            emptyList()
+        }
+        val slots = LegacyKeyShapes.normalizeKeySlots(slotsRaw ?: emptyMap(), endpointIds)
         val providersWithKeys = slots.filter { it.hasKey }.map { it.providerId }.toSet()
         val eps = when (endpointsRead) {
             is CustomEndpointStore.EndpointsRead.Loaded ->

@@ -55,6 +55,12 @@ data class EngineConfig(
     val confirmOverBudget: Boolean = false,
     /** Provider wire format id — selects the ProviderAdapter at engine construction. */
     val providerId: String = "openai",
+    /**
+     * P0-1: the SLOT NAME the key in [apiKey] was read from ("ai_GEMINI", "ai_CUSTOM_GROK_3").
+     * A name only - it is what a 401 verdict quotes so the owner can tell which key was used.
+     * Never a value: nothing here may be logged with the key next to it.
+     */
+    val keySlotName: String = "",
     /** Full endpoint URL for the provider's wire format (adapter shapes the final path). */
     val baseUrl: String = "https://example.invalid/chat/completions",
     /** Provider API key — sent via adapter headers, NEVER in the URL. */

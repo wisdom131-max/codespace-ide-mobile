@@ -51,6 +51,10 @@ fun KeysManagerDialog(
 
     fun write(slotSuffix: String, value: String?) {
         tokenStore.setAiKey(slotSuffix, value)
+        // P0-1: the slot NAME is logged, the value never is. This is the other half of the pair:
+        // one line at save, one at send, so a mismatch is provable instead of guessed.
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            "[keys] save: slot ai_" + slotSuffix + " " + (if (value == null) "cleared" else "written"), "info")
         bump++
     }
 
