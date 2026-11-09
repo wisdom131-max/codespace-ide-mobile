@@ -729,10 +729,53 @@ internal object ToolRegistry {
         sb.append("\n\nYou can act on this project. To use a tool, emit exactly one block:\n")
         sb.append("<tool>{\"name\":\"<tool>\",\"arguments\":{...}}</tool>\n")
         sb.append("Tools available in this mode:\n")
+        // TOKEN BUDGET (measurement 2026-11-09): the tool count was never the problem, the VERBOSITY
+        // was. Ask already exposes a curated read-only wave, yet its block was 7,119 characters
+        // because every entry carried a full JSON schema and a multi-sentence description. The
+        // schema a model needs in order to CALL a tool is the field name and its type; the rest is
+        // ballast. Compact form first, full schema only when compacting fails, so no tool can ever
+        // become uncallable through tidiness.
         for (s in specs) {
-            sb.append("- ").append(s.name).append(": ").append(s.description.trim()).append('\n')
-            sb.append("  arguments: ").append(s.schema).append('\n')
+            sb.append("- ").append(s.name).append(": ").append(oneLine(s.description)).append('\n')
+            sb.append("  args: ").append(compactArgs(s.schema)).append('\n')
         }
         return sb.toString()
+    }
+
+    /** First sentence, clipped. The model needs the shape of the job, not the essay. */
+    internal fun oneLine(description: String, max: Int = 110): String {
+        val flat = description.trim().replace(Regex("\\s+"), " ")
+        val cut = flat.indexOf(". ")
+        val head = if (cut in 1 until flat.length - 1) flat.substring(0, cut + 1) else flat
+        return if (head.length <= max) head else head.take(max - 1).trimEnd() + "\u2026"
+    }
+
+    /**
+     * JSON schema -> "path: string, line: integer?" style. Optional fields carry a trailing '?'
+     * taken from the schema's own "required" array, never guessed. Anything this cannot parse is
+     * returned VERBATIM: a tool the model cannot read is worse than a tool that costs tokens.
+     */
+    internal fun compactArgs(schema: String): String {
+        val propsIdx = schema.indexOf("\"properties\"")
+        if (propsIdx < 0) return schema
+        val required = Regex("\"required\"\\s*:\\s*\\[([^\\]]*)]").find(schema)
+            ?.groupValues?.get(1)?.let { r -> Regex("\"([^\"]+)\"").findAll(r).map { it.groupValues[1] }.toSet() }
+            ?: emptySet()
+        val pairs = Regex("\"([A-Za-z0-9_]+)\"\\s*:\\s*\\{\\s*\"type\"\\s*:\\s*\"([a-z]+)\"").findAll(schema)
+        val out = ArrayList<String>()
+        for (m in pairs) {
+            val name = m.groupValues[1]
+            val type = m.groupValues[2]
+            if (name == "type" && type == "object") continue
+            out.add(name + ": " + type + (if (name in required) "" else "?"))
+        }
+        if (out.isEmpty()) return schema
+        // FIDELITY GUARD: compacting must never cost a model the information it needs to CALL the
+        // tool. Enums, arrays of objects and deep nesting do not survive a flat arg list, so those
+        // schemas travel VERBATIM. Compaction is an optimisation, not a translation.
+        if (schema.contains("\"enum\"") || schema.contains("\"items\"") ||
+            Regex("\\{").findAll(schema).count() > 4
+        ) return schema
+        return out.joinToString(", ")
     }
 }
