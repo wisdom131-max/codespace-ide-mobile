@@ -3,8 +3,11 @@ package com.codespace.ide.engine
 /**
  * A(b) WP3: Anthropic native Messages API adapter.
  * POST {config.baseUrl} (the panel passes https://api.anthropic.com/v1/messages).
- * Headers: x-api-key + anthropic-version (official SDK default, verified
- * 2026-10-28 from anthropic-sdk-python _constants.py ANTHROPIC_API_VERSION).
+ * Headers: x-api-key + anthropic-version. The version value is the DOCUMENTED LATEST, read
+ * from https://docs.anthropic.com/en/api/versioning on 2026-11-09: the page's own example is
+ * "anthropic-version: 2026-10-21" and the version history lists 2026-10-21 as the current one
+ * (2023-06-01 is the older stable version). It is NOT derived from the build date. A per-endpoint
+ * override exists because an endpoint may legitimately be pinned to an older version.
  * Body: model, max_tokens (REQUIRED per SDK MessageCreateParams), messages[]
  * roles user/assistant with string content, stream: true, optional
  * thinking {type: "enabled", budget_tokens} — bounded like Gemini; 0 = off.
@@ -28,8 +31,20 @@ class AnthropicAdapter : ProviderAdapter {
     override fun endpoint(config: EngineConfig): String =
         EndpointUrls.messages(config.baseUrl)
 
+    /**
+     * The one place the Anthropic API version lives. Verified against the official versioning
+     * page on 2026-11-09 (see the class doc); an endpoint may override it, never invent it.
+     */
+    internal companion object {
+        const val ANTHROPIC_VERSION = "2026-10-21"
+    }
+
     override fun headers(config: EngineConfig): Map<String, String> =
-        mapOf("x-api-key" to config.apiKey, "anthropic-version" to "2026-10-21")
+        mapOf(
+            "x-api-key" to config.apiKey,
+            "anthropic-version" to (config.apiVersionOverride?.takeIf { it.isNotBlank() }
+                ?: ANTHROPIC_VERSION),
+        )
 
     override fun payload(window: List<ChatMessage>, userText: String, config: EngineConfig): String {
         val msgs = StringBuilder()

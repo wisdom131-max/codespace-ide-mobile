@@ -53,6 +53,12 @@ data class EngineConfig(
      * BudgetGuard refusal ONCE. Default false = refusal stands.
      */
     val confirmOverBudget: Boolean = false,
+    /**
+     * Per-endpoint API version override. Anthropic is the only provider that versions its API
+     * this way: the header is REQUIRED and an endpoint pinned to an older version must be able to
+     * say so. Null = the adapter's documented default.
+     */
+    val apiVersionOverride: String? = null,
     /** Provider wire format id — selects the ProviderAdapter at engine construction. */
     val providerId: String = "openai",
     /**
