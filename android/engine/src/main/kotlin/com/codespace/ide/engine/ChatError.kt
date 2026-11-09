@@ -70,6 +70,42 @@ sealed class ChatError(val userVerdict: String, val retryable: Boolean) {
      * classic one). The verdict names the requested PATH so the user can tell which -
      * path only, never the query string, because a key can live there.
      */
+    /**
+     * The request itself was too big - a 413, or a 400 that says so - split from a generic
+     * BadRequest because the fix is completely different: nothing about the key, the model name or
+     * the body SHAPE is wrong, the payload is simply larger than the account or the model allows.
+     *
+     * Six providers say it six ways, and all of them put the numbers in the text:
+     *  - Groq / OpenAI TPM:  "Request too large for model `m` in organization `o` on tokens per
+     *                         minute (TPM): Limit 6000, Requested 6980"
+     *  - OpenAI context:     "This model's maximum context length is 128000 tokens. However, your
+     *                         messages resulted in 130000 tokens"
+     *  - Anthropic:          "prompt is too long: 210000 tokens > 200000 maximum"
+     *  - Gemini:             "The input token count (1048577) exceeds the maximum number of tokens
+     *                         allowed (1048576)"
+     *  - OpenRouter:         "This endpoint's maximum context length is N tokens"
+     *  - Cloudflare / misc:  HTTP 413 without numbers
+     * The numbers are lifted out and shown; the provider's own sentence stays as the detail.
+     */
+    class PromptTooLarge(
+        val limit: Int?,
+        val requested: Int?,
+        val scope: String,
+        val providerDetail: String,
+    ) : ChatError(
+        buildString {
+            append("This request is bigger than the ").append(scope).append(" allows.")
+            if (limit != null && requested != null) {
+                append(" Limit ").append(limit).append(" tokens, request is ").append(requested)
+                append(" (about ").append((requested - limit).coerceAtLeast(0)).append(" over).")
+            } else if (limit != null) {
+                append(" Limit ").append(limit).append(" tokens.")
+            }
+            append(" Start a new session, or switch to a model with a bigger window.")
+        },
+        false,
+    )
+
     class ModelNotFound(val modelId: String, val endpointPath: String? = null) :
         ChatError(
             if (endpointPath.isNullOrBlank())
@@ -158,6 +194,19 @@ object ErrorTaxonomy {
                 detail = authDetail(body),
             )
             status == 404 -> ChatError.ModelNotFound(modelIdHint(body), endpointPath)
+            // A limit complaint is not a shape complaint: split it before the generic 400.
+            status == 413 -> ChatError.PromptTooLarge(
+                limit = tokensAfter(body, LIMIT_MARKERS),
+                requested = tokensAfter(body, REQUESTED_MARKERS),
+                scope = scopeOf(body),
+                providerDetail = brief(redactSecrets(body)),
+            )
+            status in 400..422 && looksLikeTooLarge(body) -> ChatError.PromptTooLarge(
+                limit = tokensAfter(body, LIMIT_MARKERS),
+                requested = tokensAfter(body, REQUESTED_MARKERS),
+                scope = scopeOf(body),
+                providerDetail = brief(redactSecrets(body)),
+            )
             status in 400..499 -> ChatError.BadRequest(brief(body))
             else -> ChatError.Server(status)
         }
@@ -172,6 +221,55 @@ object ErrorTaxonomy {
      * {"error":{"message":"..."}}, so one regex covers them. Anything that looks like a key is
      * redacted before the text can reach a card, a log, or a screenshot.
      */
+    /**
+     * Only phrases the providers actually use. Deliberately tight: "too large" alone would catch a
+     * complaint about one field, and a wrong split here sends the owner to the wrong fix.
+     */
+    private fun looksLikeTooLarge(body: String): Boolean {
+        val b = body.lowercase()
+        return b.contains("request too large") ||
+            b.contains("context_length_exceeded") ||
+            b.contains("maximum context length") ||
+            b.contains("prompt is too long") ||
+            b.contains("exceeds the maximum number of tokens") ||
+            b.contains("too many tokens") ||
+            b.contains("context length exceeded") ||
+            b.contains("token limit") ||
+            (b.contains("tokens per minute") && b.contains("limit"))
+    }
+
+    /** "tokens per minute" is a rate budget; anything else here is the model's window. */
+    private fun scopeOf(body: String): String {
+        val b = body.lowercase()
+        return when {
+            b.contains("tokens per minute") || b.contains("tpm") -> "account's per-minute token budget"
+            b.contains("output") && b.contains("max") -> "model's output limit"
+            else -> "model's context window"
+        }
+    }
+
+    private val LIMIT_MARKERS = listOf(
+        Regex("""limit[^0-9]{0,12}([0-9][0-9,]{2,})""", RegexOption.IGNORE_CASE),
+        Regex("""maximum (?:context length|number of tokens(?: allowed)?) is ([0-9][0-9,]{2,})""", RegexOption.IGNORE_CASE),
+        Regex("""exceeds the maximum number of tokens allowed \(([0-9][0-9,]{2,})\)""", RegexOption.IGNORE_CASE),
+        Regex(""">\s*([0-9][0-9,]{2,})\s*maximum""", RegexOption.IGNORE_CASE),
+    )
+
+    private val REQUESTED_MARKERS = listOf(
+        Regex("""requested[^0-9]{0,12}([0-9][0-9,]{2,})""", RegexOption.IGNORE_CASE),
+        Regex("""resulted in ([0-9][0-9,]{2,}) tokens""", RegexOption.IGNORE_CASE),
+        Regex("""(?:prompt is too long|input token count)\D{0,12}([0-9][0-9,]{2,})""", RegexOption.IGNORE_CASE),
+        Regex("""request is ([0-9][0-9,]{2,})""", RegexOption.IGNORE_CASE),
+    )
+
+    private fun tokensAfter(body: String, markers: List<Regex>): Int? {
+        for (r in markers) {
+            val v = r.find(body)?.groupValues?.getOrNull(1)?.replace(",", "")?.toIntOrNull()
+            if (v != null && v > 0) return v
+        }
+        return null
+    }
+
     private fun authDetail(body: String): String {
         val m = Regex(""""(?:message|detail)"\s*:\s*"([^"]{1,200})"""").find(body)?.groupValues?.get(1)
         if (m.isNullOrBlank()) return ""
