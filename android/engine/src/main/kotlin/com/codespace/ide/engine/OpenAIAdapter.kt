@@ -34,7 +34,7 @@ class OpenAIAdapter : ProviderAdapter {
         val effort = reasoningEffort(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
             "\"max_tokens\":" + config.maxResponseTokens + ",\"messages\":[" + systemMsg(config) + msgs + "]" +
-            (if (effort != null) ",\"reasoning_effort\":\"" + effort + "\"" else "") + "}"
+            reasoningJson(config) + "}"
     }
 
     /**
@@ -74,7 +74,7 @@ class OpenAIAdapter : ProviderAdapter {
         val effort = reasoningEffort(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
             "\"max_tokens\":" + config.maxResponseTokens + ",\"messages\":[" + systemMsg(config) + msgs + "]" +
-            (if (effort != null) ",\"reasoning_effort\":\"" + effort + "\"" else "") + "}"
+            reasoningJson(config) + "}"
     }
 
     internal fun attachmentSupported(mimeType: String): Boolean = mimeType.startsWith("image/")
@@ -87,6 +87,29 @@ class OpenAIAdapter : ProviderAdapter {
      * reasoning_effort to a non-reasoning model is a 400, so the panel sets 0
      * unless the owner opts in (WP7 Settings reasoning control).
      */
+    /**
+     * Reasoning travels in a DIFFERENT field depending on who receives it.
+     *
+     * - OpenRouter documents one consolidated object, `reasoning: { effort | max_tokens | enabled,
+     *   exclude }`, for both Chat Completions and Responses, with effort values
+     *   max|xhigh|high|medium|low|minimal|none. Source: openrouter.ai/docs/use-cases/reasoning-tokens,
+     *   read 2026-11-09. Its Chat Completions page keeps max_tokens/max_completion_tokens as the
+     *   same shared budget.
+     * - OpenAI-compatible endpoints take the flat `reasoning_effort` string.
+     *
+     * Sending the flat field to OpenRouter is the kind of mismatch that comes back as a parameter
+     * error on a request that otherwise looks fine, so the host decides the shape, not the preset.
+     */
+    internal fun reasoningJson(config: EngineConfig): String {
+        val effort = reasoningEffort(config) ?: return ""
+        val host = config.baseUrl.lowercase()
+        return if (host.contains("openrouter.ai")) {
+            ",\"reasoning\":{\"effort\":\"" + effort + "\"}"
+        } else {
+            ",\"reasoning_effort\":\"" + effort + "\""
+        }
+    }
+
     internal fun reasoningEffort(config: EngineConfig): String? {
         if (ProviderPresets.byId(config.providerId)?.reasoningKind != "effort") return null
         val b = config.reasoningBudget
