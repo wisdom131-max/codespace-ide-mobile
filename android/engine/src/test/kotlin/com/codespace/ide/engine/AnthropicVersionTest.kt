@@ -39,4 +39,52 @@ class AnthropicVersionTest {
         val h = AnthropicAdapter().headers(cfg("   "))
         assertEquals("2026-10-21", h["anthropic-version"])
     }
+
+    @Test
+    fun theAnswerCeilingAlwaysExceedsTheThinkingBudget() {
+        // The bug this pins: budget == max_tokens is a hard 400 from Anthropic, and a reasoning
+        // provider is exactly where a small answer ceiling is tempting.
+        val tight = EngineConfig(
+            modelId = "claude-test",
+            providerId = "anthropic",
+            baseUrl = "https://api.anthropic.com/v1/messages",
+            apiKey = "fake-key-for-tests-only",
+            maxResponseTokens = 1024,
+            reasoningBudget = 1024,
+        )
+        val adapter = AnthropicAdapter()
+        val body = adapter.payload(emptyList(), "hi", tight)
+        assertTrue("the ceiling must clear the budget: " + body, body.contains("\"max_tokens\":2048"))
+        assertTrue(body.contains("\"budget_tokens\":1024"))
+        assertTrue("no temperature under API 2026-10-21", !body.contains("temperature"))
+    }
+
+    @Test
+    fun aRoomyCeilingIsLeftAlone() {
+        val roomy = EngineConfig(
+            modelId = "claude-test",
+            providerId = "anthropic",
+            baseUrl = "https://api.anthropic.com/v1/messages",
+            apiKey = "fake-key-for-tests-only",
+            maxResponseTokens = 8192,
+            reasoningBudget = 1024,
+        )
+        val body = AnthropicAdapter().payload(emptyList(), "hi", roomy)
+        assertTrue(body.contains("\"max_tokens\":8192"))
+    }
+
+    @Test
+    fun thinkingOffKeepsThePlainCeiling() {
+        val off = EngineConfig(
+            modelId = "claude-test",
+            providerId = "anthropic",
+            baseUrl = "https://api.anthropic.com/v1/messages",
+            apiKey = "fake-key-for-tests-only",
+            maxResponseTokens = 512,
+            reasoningBudget = 0,
+        )
+        val body = AnthropicAdapter().payload(emptyList(), "hi", off)
+        assertTrue(body.contains("\"max_tokens\":512"))
+        assertTrue("no thinking block when off", !body.contains("thinking"))
+    }
 }

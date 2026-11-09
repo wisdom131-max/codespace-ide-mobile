@@ -55,7 +55,7 @@ class AnthropicAdapter : ProviderAdapter {
         }
         val thinking = thinkingJson(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"max_tokens\":" +
-            config.maxResponseTokens + ",\"stream\":true,\"messages\":[" + msgs + "]" + systemField(config) +
+            maxTokensFor(config, thinking) + ",\"stream\":true,\"messages\":[" + msgs + "]" + systemField(config) +
             (if (thinking != null) ",\"thinking\":" + thinking else "") + "}"
     }
 
@@ -100,7 +100,7 @@ class AnthropicAdapter : ProviderAdapter {
         msgs.append("{\"role\":\"user\",\"content\":[").append(blocks).append("]}")
         val thinking = thinkingJson(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"max_tokens\":" +
-            config.maxResponseTokens + ",\"stream\":true,\"messages\":[" + msgs + "]" + systemField(config) +
+            maxTokensFor(config, thinking) + ",\"stream\":true,\"messages\":[" + msgs + "]" + systemField(config) +
             (if (thinking != null) ",\"thinking\":" + thinking else "") + "}"
     }
 
@@ -110,6 +110,23 @@ class AnthropicAdapter : ProviderAdapter {
             mimeType == "application/pdf"
 
     /** One reasoning control: bounded budget_tokens, floor 1024; 0 = thinking off (field omitted). */
+    /**
+     * max_tokens must EXCEED thinking.budget_tokens, or Anthropic 400s the request. Raise the
+     * answer ceiling to budget + 1024 rather than shrinking the budget: a cut budget silently
+     * degrades reasoning, while a raised ceiling costs nothing unless the tokens are used.
+     * The reference client defends this the same way (endpoint-lab.html:470-475).
+     *
+     * No temperature/top_p/top_k is ever sent: API version 2026-10-21 removed them and 400s if
+     * they appear (docs.anthropic.com/en/api/versioning, read 2026-11-09).
+     */
+    internal fun maxTokensFor(config: EngineConfig, thinkingJson: String?): Int {
+        val asked = config.maxResponseTokens
+        if (thinkingJson == null) return asked
+        val budget = Regex("\"budget_tokens\":([0-9]+)").find(thinkingJson)
+            ?.groupValues?.get(1)?.toIntOrNull() ?: return asked
+        return if (asked <= budget) budget + 1024 else asked
+    }
+
     internal fun thinkingJson(config: EngineConfig): String? {
         if (config.reasoningBudget <= 0) return null
         val budget = if (config.reasoningBudget < 1024) 1024 else config.reasoningBudget
