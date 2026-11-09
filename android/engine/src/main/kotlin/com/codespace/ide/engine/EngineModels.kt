@@ -59,6 +59,12 @@ data class EngineConfig(
      * say so. Null = the adapter's documented default.
      */
     val apiVersionOverride: String? = null,
+    /**
+     * Which answer-ceiling field this model accepts: "max_tokens" or "max_completion_tokens".
+     * Newer OpenAI reasoning models reject the old name with 400 unsupported_parameter, so the
+     * CATALOG decides (ModelCatalog.maxTokensField) instead of one name being assumed for all.
+     */
+    val maxTokensField: String = "max_tokens",
     /** Provider wire format id — selects the ProviderAdapter at engine construction. */
     val providerId: String = "openai",
     /**

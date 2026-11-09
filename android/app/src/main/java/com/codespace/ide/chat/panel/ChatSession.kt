@@ -504,6 +504,9 @@ class ChatSession internal constructor(
             providerId = sel.providerId,
             baseUrl = liveBaseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
+            // Capability row, not a guess: newer OpenAI reasoning models refuse max_tokens.
+            maxTokensField = com.codespace.ide.engine.MaxTokensField.forModel(
+                sel.providerId, liveBaseUrl, sel.modelId),
             keySlotName = effectiveSlot,   // P0-1: the NAME travels with the config, never the value
             reasoningBudget = reasoningBudget,
             // WP5: the send budget scales with the model's context window (estimate);
