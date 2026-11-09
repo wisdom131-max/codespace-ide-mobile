@@ -22,6 +22,29 @@ class ChatEngineImpl(
 
     private val state = SessionState(sessionId)
 
+    /**
+     * LEARNED LIMITS: a limit the provider stated about itself, remembered per model+host.
+     *
+     * We never guess one. A PromptTooLarge verdict carries the number the provider printed, and from
+     * the next send onward the history window is fitted to 85% of it, so the same wall is met once
+     * instead of every time. Engine-scoped on purpose: the number belongs to the endpoint the owner
+     * chose, and a different provider must not inherit it.
+     */
+    private val learnedLimitChars = mutableMapOf<String, Int>()
+
+    /** Last send's drop count, for diagnostics. Never rendered as a transcript row. */
+    var lastFitDroppedMessages: Int = 0
+        private set
+    var lastFitDroppedChars: Int = 0
+        private set
+
+    private fun limitKey(config: EngineConfig): String =
+        config.baseUrl.lowercase() + "|" + config.modelId.lowercase()
+
+    /** Hard character budget for this send, or 0 when nothing has been learned yet. */
+    internal fun learnedBudgetChars(config: EngineConfig): Int =
+        learnedLimitChars[limitKey(config)] ?: 0
+
     fun transcript(): List<ChatMessage> = state.snapshot()
 
     /**
@@ -33,7 +56,21 @@ class ChatEngineImpl(
     override fun send(userText: String, attachments: List<ChatAttachment>, config: EngineConfig): Flow<EngineEvent> = flow {
         state.append(ChatRole.USER, userText, MessageState.DONE)
         val eligible = state.snapshot().filter { it.state == MessageState.DONE && it.text.isNotEmpty() }
-        val window = HistoryBudget.select(eligible, HistoryMode.parse(config.historyMode))
+        val mode = HistoryMode.parse(config.historyMode)
+        // Fit to a LEARNED limit when we have one; systemChars 0 because the prompt rides outside
+        // the window and the 85% headroom is the allowance for it.
+        val fit = HistoryBudget.fit(
+            eligible, mode,
+            systemChars = 0,
+            budgetChars = if (config.requestCharsBudget > 0) config.requestCharsBudget
+                          else learnedBudgetChars(config),
+        )
+        val window = fit.messages
+        // Deliberately NOT an event: HistoryTrimmed was removed on 2026-11-02 because a transcript
+        // row narrating an engine decision gives the owner nothing to act on (see EngineModels).
+        // The count is kept for the Chat Log, where it is diagnostic data rather than chat noise.
+        lastFitDroppedMessages = fit.droppedMessages
+        lastFitDroppedChars = fit.droppedChars
         val payload = adapter.payload(window, userText, attachments, config)
         val overBudget = BudgetGuard.checkPayload(payload.length, config.maxPayloadChars)
         if (overBudget != null && !config.confirmOverBudget) {
@@ -114,10 +151,16 @@ class ChatEngineImpl(
             // P0-1: a 401/403 verdict must name WHO rejected the key and WHICH slot was read,
             // otherwise a provider-side rejection reads like the app refusing (owner report
             // 2026-11-08). Names only - the config carries no key value here.
-            emit(EngineEvent.Failed(ErrorTaxonomy.classify(
+            val err = ErrorTaxonomy.classify(
                 t.status, t.headers, t.body, EndpointUrls.redactedPath(requestUrl),
                 providerLabel = attemptCfg.providerId,
-                keySlotName = attemptCfg.keySlotName)))
+                keySlotName = attemptCfg.keySlotName)
+            if (err is ChatError.PromptTooLarge && err.limit != null) {
+                // 85% headroom: the reply needs room too, and re-hitting the wall by one token is
+                // how an owner concludes the app is broken.
+                learnedLimitChars[limitKey(attemptCfg)] = (err.limit * 4 * 85) / 100
+            }
+            emit(EngineEvent.Failed(err))
         } catch (t: kotlinx.coroutines.CancellationException) {
             state.update(responseMsg.id) {
                 it.copy(text = builder.toString(), state = MessageState.DONE)
