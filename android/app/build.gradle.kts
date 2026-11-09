@@ -32,15 +32,27 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
+    // Keep this at or above any versionCode an owner device may already have installed.
+    val VERSION_CODE_FLOOR = 3_680
+
     defaultConfig {
         applicationId = "com.codespace.ide"
         minSdk = 26
         targetSdk = 28
         // Auto-increments on every commit so Android always accepts the APK as a
         // newer version — no "downgrade blocked" or "version already installed" errors.
-        versionCode = providers.exec {
-            commandLine("git", "rev-list", "--count", "HEAD")
-        }.standardOutput.asText.get().trim().toInt()
+        // FLOOR (owner report 2026-11-08): his installed build reports Build 3679 while this
+        // repository's commit count for that same build was 859, so the APK's code is NOT
+        // explained by this scheme alone - that discrepancy is still UNVERIFIED at the APK
+        // level. What is certain is the install rule: Android refuses a versionCode lower than
+        // the installed one. The floor makes every future APK installable over 3679 no matter
+        // which scheme produced it, and the count still drives it upward from there.
+        versionCode = maxOf(
+            providers.exec {
+                commandLine("git", "rev-list", "--count", "HEAD")
+            }.standardOutput.asText.get().trim().toIntOrNull() ?: 0,
+            VERSION_CODE_FLOOR,
+        )
         versionName = "1.0.0"
         // P32: Expose git commit hash for Settings/About display — identifies exact build
         val gitHash = providers.exec {
