@@ -43,15 +43,20 @@ class ChatEngineImpl(
         }
         val responseMsg = state.append(ChatRole.ASSISTANT, "", MessageState.STREAMING)
         val builder = StringBuilder()
-        val parser = SseParser()
+        var parser = SseParser()
         var done = false
         // Resolved ONCE: the same URL is requested and, on failure, named in the verdict.
         val requestUrl = adapter.endpoint(config)
+        var attemptCfg = config
+        var attemptPayload = payload
+        var retriedCeilingField = false
         try {
+          while (true) {
+            try {
             transport.stream(
-                requestUrl,
-                adapter.headers(config),
-                payload
+                adapter.endpoint(attemptCfg),
+                adapter.headers(attemptCfg),
+                attemptPayload
             ).collect { chunk ->
                 if (done) return@collect
                 for (data in parser.feed(chunk)) {
@@ -85,6 +90,23 @@ class ChatEngineImpl(
             // Stream ended without [DONE]: treat as completed (honest, no
             // invented failure); the parser finish() case is covered by the
             // transport ending the chunk flow.
+            break   // the attempt finished; the retry loop may only re-run on a named refusal
+            } catch (inner: TransportHttpException) {
+                // ONE retry, and only when the provider's own 400/422 NAMES the answer-ceiling
+                // field it refuses (MaxTokensField.retryWith). Safe because that rejection lands
+                // before any delta, so nothing has been rendered and nothing can render twice.
+                // Never a loop: the second rejection falls straight through to the outer handler.
+                val flip = if (!retriedCeilingField && builder.isEmpty())
+                    MaxTokensField.retryWith(attemptCfg.maxTokensField, inner.status, inner.body)
+                else null
+                if (flip == null) throw inner
+                retriedCeilingField = true
+                attemptCfg = attemptCfg.copy(maxTokensField = flip)
+                attemptPayload = adapter.payload(window, userText, attachments, attemptCfg)
+                parser = SseParser()
+                done = false
+            }
+          }
         } catch (t: TransportHttpException) {
             state.update(responseMsg.id) { it.copy(state = MessageState.ERROR) }
             // The requested path rides the 404 verdict so "wrong model" and "wrong base
@@ -94,8 +116,8 @@ class ChatEngineImpl(
             // 2026-11-08). Names only - the config carries no key value here.
             emit(EngineEvent.Failed(ErrorTaxonomy.classify(
                 t.status, t.headers, t.body, EndpointUrls.redactedPath(requestUrl),
-                providerLabel = config.providerId,
-                keySlotName = config.keySlotName)))
+                providerLabel = attemptCfg.providerId,
+                keySlotName = attemptCfg.keySlotName)))
         } catch (t: kotlinx.coroutines.CancellationException) {
             state.update(responseMsg.id) {
                 it.copy(text = builder.toString(), state = MessageState.DONE)
