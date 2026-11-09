@@ -57,6 +57,28 @@ jobs:
         working-directory: android
         run: ./gradlew assembleProdDebug --stacktrace --no-build-cache
 
+      - name: Read the APK's real versionCode and fail if it cannot install
+        # MEASURED FACT (2026-11-08/09): the owner's installed build reports 3679 while a
+        # history-truncated local clone reports ~862 commits, so the commit count is only
+        # trustworthy from a full CI checkout - the number a device actually sees is the one
+        # baked into the APK. aapt2 reads it from the built manifest, so this step reports the
+        # truth and refuses to publish an APK that Android would reject as a downgrade.
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          APK="android/app/build/outputs/apk/prod/debug/app-prod-arm64-v8a-debug.apk"
+          ls -l "$APK"
+          BADGING="$("$BT"/aapt2 dump badging "$APK")"
+          VC="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)"
+          VN="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)"
+          echo "APK versionCode=$VC versionName=$VN"
+          echo "versionCode=$VC versionName=$VN" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$VC" ]; then echo "::error::could not read versionCode from the APK"; exit 1; fi
+          if [ "$VC" -le 3679 ]; then
+            echo "::error::versionCode $VC is not above the owner's installed 3679 - Android would refuse this APK"
+            exit 1
+          fi
+
       - name: Verify pinned pdfbox-android checksum
         # C12 Stage 3 U4: the pdfbox-android dependency is PINNED. Gradle
         # resolved the exact AAR during the build above; this step re-verifies
