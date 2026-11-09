@@ -1,6 +1,7 @@
 package com.codespace.ide.engine
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -54,5 +55,25 @@ class MaxTokensFieldTest {
             MaxTokensField.flip(MaxTokensField.MAX_COMPLETION_TOKENS))
         assertEquals(MaxTokensField.MAX_COMPLETION_TOKENS,
             MaxTokensField.flip(MaxTokensField.MAX_TOKENS))
+    }
+
+    @Test
+    fun a400ThatNamesTheOtherFieldFlipsOnce() {
+        val body = """{"error":{"message":"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.","type":"invalid_request_error"}}"""
+        assertEquals("max_completion_tokens", MaxTokensField.retryWith("max_tokens", 400, body))
+        assertEquals("max_tokens", MaxTokensField.retryWith("max_completion_tokens", 400, body))
+    }
+
+    @Test
+    fun aBareOrUnrelated400DoesNotFlip() {
+        assertNull(MaxTokensField.retryWith("max_tokens", 400, "invalid request body"))
+        assertNull(MaxTokensField.retryWith("max_tokens", 400, "temperature is not supported"))
+        assertNull("auth is not a field problem", MaxTokensField.retryWith("max_tokens", 401, "unsupported max_tokens"))
+        assertNull("rate limits are not a field problem", MaxTokensField.retryWith("max_tokens", 429, "unsupported"))
+    }
+
+    @Test
+    fun a422WithoutTheFieldNamedDoesNotFlip() {
+        assertNull(MaxTokensField.retryWith("max_tokens", 422, "tools are not supported"))
     }
 }

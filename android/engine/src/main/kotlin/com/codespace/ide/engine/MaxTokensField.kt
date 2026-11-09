@@ -36,4 +36,23 @@ object MaxTokensField {
     /** The other name, for the one retry after a 400 that names the field it refuses. */
     fun flip(field: String): String =
         if (field == MAX_COMPLETION_TOKENS) MAX_TOKENS else MAX_COMPLETION_TOKENS
+
+    /**
+     * The ONE retry the owner ruled: when the provider answers 400 and its own words name the
+     * ceiling field it will not accept, answer with the other name exactly once. Returns the field
+     * to retry with, or null when this is not that case.
+     *
+     * Deliberately narrow: 400 only (422 is a shape problem, 401/403/404/429 are not about this
+     * field), the body must NAME the field, and the caller retries at most once. No loop, no
+     * guessing from a bare 400.
+     */
+    fun retryWith(currentField: String, status: Int, body: String): String? {
+        if (status != 400 && status != 422) return null
+        val lower = body.lowercase()
+        if (!lower.contains("unsupported") && !lower.contains("not supported") &&
+            !lower.contains("unknown parameter") && !lower.contains("unrecognized")
+        ) return null
+        val other = flip(currentField)
+        return if (lower.contains(other.lowercase())) other else null
+    }
 }
