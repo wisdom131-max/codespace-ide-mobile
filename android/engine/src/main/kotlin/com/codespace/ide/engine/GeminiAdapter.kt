@@ -26,8 +26,7 @@ class GeminiAdapter : ProviderAdapter {
             contents.append("{\"role\":\"").append(roleJson(m.role)).append("\",\"parts\":[{\"text\":\"")
                 .append(escapeJson(m.text)).append("\"}]}")
         }
-        return "{" + systemField(config) + "\"contents\":[" + contents + "],\"generationConfig\":{\"maxOutputTokens\":" +
-            config.maxResponseTokens + ",\"thinkingConfig\":{\"thinkingBudget\":" + thinkingBudget(config) + "}}}"
+        return "{" + systemField(config) + "\"contents\":[" + contents + "],\"generationConfig\":" + generationConfigJson(config) + "}"
     }
 
     /**
@@ -62,14 +61,30 @@ class GeminiAdapter : ProviderAdapter {
         }
         if (contents.isNotEmpty()) contents.append(',')
         contents.append("{\"role\":\"user\",\"parts\":[").append(parts).append("]}")
-        return "{" + systemField(config) + "\"contents\":[" + contents + "],\"generationConfig\":{\"maxOutputTokens\":" +
-            config.maxResponseTokens + ",\"thinkingConfig\":{\"thinkingBudget\":" + thinkingBudget(config) + "}}}"
+        return "{" + systemField(config) + "\"contents\":[" + contents + "],\"generationConfig\":" + generationConfigJson(config) + "}"
     }
 
     internal fun attachmentSupported(mimeType: String): Boolean =
         mimeType.startsWith("image/") || mimeType == "application/pdf"
 
     /** One reasoning control, bounded: 0 = off is allowed; -1 (dynamic) never sent. */
+    /**
+     * thinkingConfig is sent ONLY when thinking is actually on. Gemini rejects out-of-range budgets
+     * per model (a 0 disables thinking on models that allow it, but several models cannot disable
+     * thinking at all, and a 0 on those is a 400), so "off" must mean the field is ABSENT rather
+     * than zero. The reference client omits the block the same way (endpoint-lab.html:470-475).
+     * Source read 2026-11-09: https://ai.google.dev/gemini-api/docs/thinking — the per-model
+     * thinkingBudget ranges and thinkingLevel (3.x) table is UNVERIFIED here and must be read
+     * before any per-model rule is coded.
+     */
+    internal fun generationConfigJson(config: EngineConfig): String {
+        val head = "{\"maxOutputTokens\":" + config.maxResponseTokens
+        // 0 is the app's "thinking off". A NEGATIVE value means "unknown", which the existing
+        // contract maps to the bounded default 1024, so it still travels.
+        if (config.reasoningBudget == 0) return head + "}"
+        return head + ",\"thinkingConfig\":{\"thinkingBudget\":" + thinkingBudget(config) + "}}"
+    }
+
     internal fun thinkingBudget(config: EngineConfig): Int =
         if (config.reasoningBudget < 0) 1024 else config.reasoningBudget
 
