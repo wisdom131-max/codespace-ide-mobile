@@ -29,16 +29,20 @@ class OpenAIAdapterTest {
     fun endpointAndHeadersComeFromConfig() {
         val c = EngineConfig("m1").copy(baseUrl = "https://api.example/v1/chat/completions", apiKey = "k-1")
         assertEquals("https://api.example/v1/chat/completions", a.endpoint(c))
-        assertEquals(mapOf("Authorization" to "Bearer k-1"), a.headers(c))
+        assertEquals(mapOf("Accept" to "application/json, text/event-stream", "Authorization" to "Bearer k-1"), a.headers(c))
     }
 
     @Test
     fun blankKeySendsNoAuthorizationHeader() {
         val a = OpenAIAdapter()
         val noKey = a.headers(cfg("apiKey" to ""))
-        org.junit.Assert.assertTrue(noKey.isEmpty())
+        // A blank key still sends Accept and still sends NO Authorization: the header must be
+        // absent, not empty, so a keyless endpoint (Ollama) is not asked to authenticate.
+        org.junit.Assert.assertFalse(noKey.containsKey("Authorization"))
+        org.junit.Assert.assertEquals(
+            "application/json, text/event-stream", noKey["Accept"])
         val withKey = a.headers(cfg("apiKey" to "sk-1"))
-        org.junit.Assert.assertEquals(mapOf("Authorization" to "Bearer sk-1"), withKey)
+        org.junit.Assert.assertEquals(mapOf("Accept" to "application/json, text/event-stream", "Authorization" to "Bearer sk-1"), withKey)
     }
 
     @Test

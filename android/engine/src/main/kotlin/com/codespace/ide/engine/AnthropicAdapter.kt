@@ -41,6 +41,7 @@ class AnthropicAdapter : ProviderAdapter {
 
     override fun headers(config: EngineConfig): Map<String, String> =
         mapOf(
+            "Accept" to "application/json, text/event-stream",
             "x-api-key" to config.apiKey,
             "anthropic-version" to (config.apiVersionOverride?.takeIf { it.isNotBlank() }
                 ?: ANTHROPIC_VERSION),

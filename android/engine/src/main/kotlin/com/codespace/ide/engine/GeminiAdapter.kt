@@ -17,7 +17,10 @@ class GeminiAdapter : ProviderAdapter {
         EndpointUrls.geminiStream(config.baseUrl, config.modelId)
 
     override fun headers(config: EngineConfig): Map<String, String> =
-        mapOf("x-goog-api-key" to config.apiKey)
+        mapOf(
+            "Accept" to "application/json, text/event-stream",
+            "x-goog-api-key" to config.apiKey,
+        )
 
     override fun payload(window: List<ChatMessage>, userText: String, config: EngineConfig): String {
         val contents = StringBuilder()

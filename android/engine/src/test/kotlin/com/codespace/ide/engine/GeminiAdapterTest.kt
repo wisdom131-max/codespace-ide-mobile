@@ -35,7 +35,7 @@ class GeminiAdapterTest {
     @Test
     fun apiKeyGoesInTheHeaderNeverTheUrl() {
         val c = EngineConfig("m", apiKey = "gk-1")
-        assertEquals(mapOf("x-goog-api-key" to "gk-1"), a.headers(c))
+        assertEquals(mapOf("Accept" to "application/json, text/event-stream", "x-goog-api-key" to "gk-1"), a.headers(c))
         assertFalse(a.endpoint(c).contains("gk-1"))
     }
 

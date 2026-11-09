@@ -15,8 +15,14 @@ class OpenAIAdapter : ProviderAdapter {
 
     /** Blank key = no Authorization header at all (Ollama/local presets). */
     override fun headers(config: EngineConfig): Map<String, String> =
-        if (config.apiKey.isBlank()) emptyMap()
-        else mapOf("Authorization" to "Bearer " + config.apiKey)
+        // Accept advertises SSE on every request (the reference client sends the same pair on
+        // every send, endpoint-lab.html:1675): a proxy that only sees application/json may buffer
+        // or rewrite a stream, and some gateways answer differently.
+        if (config.apiKey.isBlank()) mapOf("Accept" to "application/json, text/event-stream")
+        else mapOf(
+            "Accept" to "application/json, text/event-stream",
+            "Authorization" to "Bearer " + config.apiKey,
+        )
 
     override fun payload(window: List<ChatMessage>, userText: String, config: EngineConfig): String {
         val msgs = StringBuilder()
