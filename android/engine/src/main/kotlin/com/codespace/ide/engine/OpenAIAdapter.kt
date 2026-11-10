@@ -15,9 +15,13 @@ class OpenAIAdapter : ProviderAdapter {
 
     /** Blank key = no Authorization header at all (Ollama/local presets). */
     override fun headers(config: EngineConfig): Map<String, String> =
-        // Accept advertises SSE on every request (the reference client sends the same pair on
-        // every send, endpoint-lab.html:1675): a proxy that only sees application/json may buffer
-        // or rewrite a stream, and some gateways answer differently.
+        // Accept advertises SSE on every request: a proxy that only sees application/json may
+        // buffer or rewrite a stream, and some gateways answer differently.
+        //
+        // CITATION STATUS: UNVERIFIED as a vendor requirement. No OpenAI/Anthropic/Google page was
+        // found stating that a client MUST send this pair; the justification is our own reference
+        // client (endpoint-lab.html:1675), which sends it on every send and works. Marked UNVERIFIED
+        // rather than dressed up as documented.
         if (config.apiKey.isBlank()) mapOf("Accept" to "application/json, text/event-stream")
         else mapOf(
             "Accept" to "application/json, text/event-stream",
@@ -115,6 +119,18 @@ class OpenAIAdapter : ProviderAdapter {
         val b = config.reasoningBudget
         if (b <= 0) return null
         return if (b < 4096) "low" else if (b < 16384) "medium" else "high"
+    }
+
+    /** "finish_reason":"length" arrives in the last chunk before [DONE]. */
+    override fun endReason(data: String): String? {
+        val key = "\"finish_reason\":\""
+        val i = data.indexOf(key)
+        if (i < 0) return null
+        val rest = data.substring(i + key.length)
+        val end = rest.indexOf('"')
+        if (end <= 0) return null
+        val v = rest.substring(0, end)
+        return if (v == "null" || v.isBlank()) null else v.lowercase()
     }
 
     override fun extractDelta(data: String): String? {

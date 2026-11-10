@@ -104,6 +104,14 @@ sealed class EngineEvent {
     data class Completed(val totalChars: Int) : EngineEvent()
     /** Send failed with a classified error from the taxonomy. */
     data class Failed(val error: ChatError) : EngineEvent()
+    /**
+     * The reply ENDED EARLY - the provider's own end reason says the ceiling was hit, or the stream
+     * was cut. The text already streamed is kept and shown; this is one line saying it is partial.
+     *
+     * It is NOT the removed HistoryTrimmed: that narrated an engine decision the owner could not act
+     * on. This one says "what you are reading is not the whole answer", which is actionable.
+     */
+    data class Truncated(val reason: String, val visibleText: String) : EngineEvent()
     // 2026-11-02: HistoryTrimmed was deleted, not silenced. The window is still narrowed by
     // HistoryBudget before each send - VS Code narrows its own (summarizedConversationHistory.tsx
     // exists precisely for "when the context window is exceeded") - but neither product narrates

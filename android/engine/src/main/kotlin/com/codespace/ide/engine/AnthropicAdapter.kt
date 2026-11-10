@@ -117,8 +117,23 @@ class AnthropicAdapter : ProviderAdapter {
      * degrades reasoning, while a raised ceiling costs nothing unless the tokens are used.
      * The reference client defends this the same way (endpoint-lab.html:470-475).
      *
-     * No temperature/top_p/top_k is ever sent: API version 2026-10-21 removed them and 400s if
-     * they appear (docs.anthropic.com/en/api/versioning, read 2026-11-09).
+     * BUDGET RULE CITATION (corrected 2026-11-10): "budget_tokens must be less than max_tokens" is
+     * Anthropic's extended-thinking rule, documented at
+     * https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking (page read 2026-11-10;
+     * the rule is stated there, the exact sentence was beyond the fetched excerpt - UNVERIFIED as a
+     * quotation, verified as the behaviour our 400s showed). The VERSIONING page is the wrong source
+     * for it and is no longer cited for this rule.
+     *
+     * No temperature/top_p/top_k is ever sent. Two separate facts, both from
+     * platform.claude.com/docs/en/api/versioning (owner re-checked 2026-11-10):
+     *  (a) at version 2026-10-21 these three sampling parameters are REMOVED and any of them 400s on
+     *      every model;
+     *  (b) at the same version a document block inside an ASSISTANT message, and a text block
+     *      carrying non-empty citations in a USER message, also 400.
+     * Checked against our own payload builder, not assumed: document/image blocks are emitted only
+     * into the final USER turn (payload() below appends them after the window loop), and we never
+     * emit a citations field at all. The guard test asserts the payload contains none of the three
+     * sampling keys, so wiring temperature into a shared settings port cannot silently break Anthropic.
      */
     internal fun maxTokensFor(config: EngineConfig, thinkingJson: String?): Int {
         val asked = config.maxResponseTokens
@@ -144,6 +159,18 @@ class AnthropicAdapter : ProviderAdapter {
 
     /** No [DONE] sentinel; the server closes after message_stop. */
     override fun isDoneSentinel(data: String): Boolean = false
+
+    /** "delta":{"stop_reason":"max_tokens"} arrives in the message_delta event. */
+    override fun endReason(data: String): String? {
+        val key = "\"stop_reason\":\""
+        val i = data.indexOf(key)
+        if (i < 0) return null
+        val rest = data.substring(i + key.length)
+        val end = rest.indexOf('"')
+        if (end <= 0) return null
+        val v = rest.substring(0, end)
+        return if (v == "null" || v.isBlank()) null else v.lowercase()
+    }
 
     internal fun roleJson(role: ChatRole): String =
         if (role == ChatRole.USER) "user" else "assistant"

@@ -29,6 +29,16 @@ object MaxTokensField {
         val model = modelId.lowercase()
         // HOST decides, never the preset id: a custom endpoint can be labelled 'openai' and still
         // be Groq, OpenRouter or a local server, and only api.openai.com itself enforces the split.
+//
+// CITATION CORRECTION (owner ruling 2026-11-10): the OpenRouter reasoning page was the wrong source
+// for WHICH models require the new name - it documents OpenRouter's reasoning object, not OpenAI's
+// parameter split. The authority is OpenAI's own Chat Completions reference:
+// https://platform.openai.com/docs/api-reference/chat/create ("Chat | OpenAI API Reference", read
+// 2026-11-10), where max_completion_tokens is the completion-ceiling parameter and max_tokens the
+// legacy one. The o1/reasoning-family REQUIREMENT (max_tokens rejected, max_completion_tokens
+// accepted) is corroborated by OpenAI Community and client-library issue threads; the parameter
+// table itself was beyond the fetched excerpt, so the precise sentence is UNVERIFIED here while the
+// behaviour it describes is what our own 400 retry rule keys on.
         if (!host.contains("api.openai.com")) return MAX_TOKENS
         return if (OPENAI_NEW_FAMILIES.any { model.startsWith(it) }) MAX_COMPLETION_TOKENS else MAX_TOKENS
     }

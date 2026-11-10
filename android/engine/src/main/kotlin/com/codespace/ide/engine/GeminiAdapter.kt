@@ -91,6 +91,17 @@ class GeminiAdapter : ProviderAdapter {
     internal fun thinkingBudget(config: EngineConfig): Int =
         if (config.reasoningBudget < 0) 1024 else config.reasoningBudget
 
+    /** "finishReason":"MAX_TOKENS" arrives on the candidate, not the part. */
+    override fun endReason(data: String): String? {
+        val key = "\"finishReason\":\""
+        val i = data.indexOf(key)
+        if (i < 0) return null
+        val rest = data.substring(i + key.length)
+        val end = rest.indexOf('"')
+        if (end <= 0) return null
+        return rest.substring(0, end).lowercase()
+    }
+
     override fun extractDelta(data: String): String? {
         if (data.length < 2 || data[0] != '{') return null
         if (!data.contains("\"parts\"")) return null

@@ -33,6 +33,18 @@ interface ProviderAdapter {
 
     /** True when this payload is the provider's stream-end sentinel. */
     fun isDoneSentinel(data: String): Boolean
+
+    /**
+     * The provider's own END REASON from one SSE payload, lowercased and normalised, or null.
+     *
+     * Three providers state it three ways and all three matter to the owner:
+     *  - OpenAI-compatible: choices[0].finish_reason ("length", "stop", "content_filter")
+     *  - Anthropic:         message_delta -> delta.stop_reason ("max_tokens", "end_turn")
+     *  - Gemini:            candidates[0].finishReason ("MAX_TOKENS", "STOP", "SAFETY")
+     * A reply that ended because the ceiling was hit is a CUT REPLY, not a finished one, and saying
+     * so is the difference between "the model was terse" and "you were charged for a partial answer".
+     */
+    fun endReason(data: String): String? = null
 }
 
 /**

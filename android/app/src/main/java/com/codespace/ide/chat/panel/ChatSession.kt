@@ -726,6 +726,12 @@ class ChatSession internal constructor(
                 ui.value = st.copy(rows = rows,
                     firstDeltaMs = if (st.firstDeltaMs == 0L) System.currentTimeMillis() else st.firstDeltaMs)
             }
+            is EngineEvent.Truncated -> {
+                // One line, after the reply, saying what the reader has is partial. The streamed
+                // text is untouched: a cut answer is still evidence, and deleting it helps nobody.
+                val st = ui.value
+                ui.value = st.copy(rows = st.rows + listOf(ChatRowModel.InfoNote(ev.visibleText)))
+            }
             is EngineEvent.Completed -> {
                 val st = ui.value
                 // Section 6: a finished reply is either an ANSWER or an ACTION request. The

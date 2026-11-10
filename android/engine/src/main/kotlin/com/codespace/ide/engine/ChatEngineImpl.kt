@@ -48,6 +48,30 @@ class ChatEngineImpl(
     fun transcript(): List<ChatMessage> = state.snapshot()
 
     /**
+     * Which end reasons mean "the answer was CUT", not "the answer is complete".
+     * "stop"/"end_turn"/"STOP" are ordinary completions; anything naming a length ceiling, a filter
+     * or a refusal means the owner is looking at a partial reply.
+     */
+    internal fun isCutOff(reason: String): Boolean = when (reason.lowercase()) {
+        "length", "max_tokens", "max_output_tokens", "max_tokens_reached",
+        "model_length", "content_filter", "safety", "blocklist", "recitation", "refusal" -> true
+        else -> false
+    }
+
+    /** The single visible line. Named numbers, no jargon, and it never claims the text was lost. */
+    internal fun truncatedNote(reason: String): String {
+        val why = when (reason.lowercase()) {
+            "length", "max_tokens", "max_output_tokens", "max_tokens_reached" ->
+                "the answer hit this model's output ceiling"
+            "content_filter", "safety", "blocklist", "recitation" ->
+                "the provider's safety filter stopped generation"
+            "refusal" -> "the model refused and stopped"
+            else -> "the provider ended the reply early"
+        }
+        return "Reply was cut off: " + why + ". What you see above is everything it sent."
+    }
+
+    /**
      * MEMORY CONTINUITY: hand a restored conversation to a brand-new engine so the first
      * question after reopening the panel is answered with the same context as before.
      */
@@ -80,6 +104,7 @@ class ChatEngineImpl(
         }
         val responseMsg = state.append(ChatRole.ASSISTANT, "", MessageState.STREAMING)
         val builder = StringBuilder()
+        var endReason: String = ""
         var parser = SseParser()
         var done = false
         // Resolved ONCE: the same URL is requested and, on failure, named in the verdict.
@@ -97,6 +122,9 @@ class ChatEngineImpl(
             ).collect { chunk ->
                 if (done) return@collect
                 for (data in parser.feed(chunk)) {
+                    // END REASON: recorded BEFORE the delta check, because the chunk that carries
+                    // "finish_reason":"length" often carries no text at all.
+                    adapter.endReason(data)?.let { endReason = it }
                     val delta = adapter.extractDelta(data)
                     if (delta != null) {
                         builder.append(delta)
@@ -113,6 +141,7 @@ class ChatEngineImpl(
             }
             if (!done) {
                 for (data in parser.finish()) {
+                    adapter.endReason(data)?.let { endReason = it }
                     val delta = adapter.extractDelta(data)
                     if (delta != null) {
                         builder.append(delta)
@@ -124,6 +153,7 @@ class ChatEngineImpl(
                 }
                 emit(EngineEvent.Completed(builder.length))
             }
+            val cut = isCutOff(endReason)
             ChatLog.record(
                 ChatLogEntry(
                     at = System.currentTimeMillis(),
@@ -133,8 +163,9 @@ class ChatEngineImpl(
                     endpointPath = EndpointUrls.redactedPath(requestUrl),
                     requestChars = attemptPayload.length,
                     httpStatus = 200,
-                    outcome = "Completed",
+                    outcome = if (cut) "Completed (cut off)" else "Completed",
                     providerMessage = "",
+                    endReason = endReason,
                     toolsOffered = config.toolsOffered,
                     historyDropped = lastFitDroppedMessages,
                     learnedLimitChars = learnedBudgetChars(attemptCfg),
@@ -144,6 +175,10 @@ class ChatEngineImpl(
             // Stream ended without [DONE]: treat as completed (honest, no
             // invented failure); the parser finish() case is covered by the
             // transport ending the chunk flow.
+            if (cut) {
+                // The text stays exactly as streamed; this row only says it is not the whole answer.
+                emit(EngineEvent.Truncated(endReason, truncatedNote(endReason)))
+            }
             break   // the attempt finished; the retry loop may only re-run on a named refusal
             } catch (inner: TransportHttpException) {
                 // ONE retry, and only when the provider's own 400/422 NAMES the answer-ceiling

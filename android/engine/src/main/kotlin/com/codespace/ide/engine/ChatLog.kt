@@ -58,6 +58,8 @@ data class ChatLogEntry(
     val historyDropped: Int,
     val learnedLimitChars: Int,
     val retriedCeilingField: Boolean,
+    /** The provider's own end reason ("length", "max_tokens", "MAX_TOKENS"), or "" when clean. */
+    val endReason: String = "",
 ) {
     val estTokens: Int get() = requestChars / 4
 
@@ -72,6 +74,7 @@ data class ChatLogEntry(
         if (learnedLimitChars > 0) appendLine("learned limit: " + learnedLimitChars + " chars")
         if (retriedCeilingField) appendLine("retry: resent once with the other answer-ceiling field")
         appendLine("result: " + outcome + (httpStatus?.let { " (HTTP " + it + ")" } ?: ""))
+        if (endReason.isNotBlank()) appendLine("end reason: " + endReason + " (reply ended early)")
         if (providerMessage.isNotBlank()) {
             appendLine("provider says:")
             appendLine(ChatLogSanitizer.redact(providerMessage).trim().take(1200))
