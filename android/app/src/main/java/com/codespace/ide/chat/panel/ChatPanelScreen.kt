@@ -223,6 +223,7 @@ private fun ChatBody(
     }
     var showSelect by remember { mutableStateOf(false) }
     var showKeys by remember { mutableStateOf(false) }
+    var showChatLog by remember { mutableStateOf(false) }
     val c = ChatTokens.LocalChatColors.current
     val scroll = rememberScrollState()
     // Item 3: shared follow flag + a scope for the one-tap jump back to the newest message.
@@ -529,11 +530,17 @@ private fun ChatBody(
             },
             onClearConversation = { session.clearConversation(); showSelect = false },
             onManageKeys = { showKeys = true; showSelect = false },
+            onOpenChatLog = { showChatLog = true; showSelect = false },
             onDismiss = { showSelect = false },
         )
     }
     if (showKeys) {
         KeysManagerDialog(tokenStore = tokenStore, onDismiss = { showKeys = false })
+    }
+    // Chat Log: the door the owner asked for. Reachable from the picker sheet, because that is
+    // where someone lands after a failure, and it costs no new screen.
+    if (showChatLog) {
+        ChatLogDialog(onDismiss = { showChatLog = false })
     }
 }
 
@@ -550,6 +557,7 @@ private fun ProviderModelDialog(
     onApply: (PanelSelection) -> Unit,
     onClearConversation: () -> Unit,
     onManageKeys: () -> Unit,
+    onOpenChatLog: () -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     var refresh by remember { mutableStateOf(0) }
@@ -682,6 +690,15 @@ private fun ProviderModelDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onManageKeys() }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+                Text(
+                    "Chat log",
+                    color = c.accent,
+                    fontSize = ChatTokens.FONT_SMALL.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenChatLog() }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                 )
                 Text(
