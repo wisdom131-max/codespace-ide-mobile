@@ -124,6 +124,23 @@ class ChatEngineImpl(
                 }
                 emit(EngineEvent.Completed(builder.length))
             }
+            ChatLog.record(
+                ChatLogEntry(
+                    at = System.currentTimeMillis(),
+                    mode = config.historyMode ?: "balanced",
+                    providerId = attemptCfg.providerId,
+                    modelId = attemptCfg.modelId,
+                    endpointPath = EndpointUrls.redactedPath(requestUrl),
+                    requestChars = attemptPayload.length,
+                    httpStatus = 200,
+                    outcome = "Completed",
+                    providerMessage = "",
+                    toolsOffered = config.toolsOffered,
+                    historyDropped = lastFitDroppedMessages,
+                    learnedLimitChars = learnedBudgetChars(attemptCfg),
+                    retriedCeilingField = retriedCeilingField,
+                ),
+            )
             // Stream ended without [DONE]: treat as completed (honest, no
             // invented failure); the parser finish() case is covered by the
             // transport ending the chunk flow.
@@ -160,6 +177,23 @@ class ChatEngineImpl(
                 // how an owner concludes the app is broken.
                 learnedLimitChars[limitKey(attemptCfg)] = (err.limit * 4 * 85) / 100
             }
+            ChatLog.record(
+                ChatLogEntry(
+                    at = System.currentTimeMillis(),
+                    mode = config.historyMode ?: "balanced",
+                    providerId = attemptCfg.providerId,
+                    modelId = attemptCfg.modelId,
+                    endpointPath = EndpointUrls.redactedPath(requestUrl),
+                    requestChars = attemptPayload.length,
+                    httpStatus = t.status,
+                    outcome = err.javaClass.simpleName,
+                    providerMessage = ChatLogSanitizer.redact(t.body),
+                    toolsOffered = config.toolsOffered,
+                    historyDropped = lastFitDroppedMessages,
+                    learnedLimitChars = learnedBudgetChars(attemptCfg),
+                    retriedCeilingField = retriedCeilingField,
+                ),
+            )
             emit(EngineEvent.Failed(err))
         } catch (t: kotlinx.coroutines.CancellationException) {
             state.update(responseMsg.id) {

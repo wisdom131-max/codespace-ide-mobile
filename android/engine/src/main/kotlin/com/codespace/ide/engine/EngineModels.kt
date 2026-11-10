@@ -58,6 +58,8 @@ data class EngineConfig(
      * Set by the engine from a LEARNED provider limit, or explicitly by an owner who knows one.
      */
     val requestCharsBudget: Int = 0,
+    /** Tools advertised in this send, recorded in the Chat Log so size can be attributed. */
+    val toolsOffered: Int = 0,
     /**
      * Per-endpoint API version override. Anthropic is the only provider that versions its API
      * this way: the header is REQUIRED and an endpoint pinned to an older version must be able to
