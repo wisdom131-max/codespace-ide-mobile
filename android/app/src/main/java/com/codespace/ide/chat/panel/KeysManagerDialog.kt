@@ -44,13 +44,27 @@ fun KeysManagerDialog(
     var bump by remember { mutableStateOf(0) }
     var editingSlot by remember { mutableStateOf<String?>(null) }
     var editValue by remember { mutableStateOf("") }
+    var notice by remember { mutableStateOf<String?>(null) }
     val slots: List<StoredKeySlot> = remember(bump) {
         StoredCredentialsReader(tokenStore, com.codespace.ide.chat.CustomEndpointStore)
             .snapshot().keySlots
     }
 
     fun write(slotSuffix: String, value: String?) {
-        tokenStore.setAiKey(slotSuffix, value)
+        // KEY SAFE: normalise the paste BEFORE it is stored. A quoted key, a doubled 'Bearer', an
+        // 'Authorization:' prefix or a wrapped line all look fine on screen and are rejected by the
+        // provider - which reads as "the key is wrong" and sends the owner hunting for a new one.
+        if (value != null) {
+            val clean = com.codespace.ide.chat.keys.KeySanitizer.sanitize(value)
+            if (!clean.usable) {
+                notice = clean.problem
+                return
+            }
+            notice = if (clean.cleaned) "Adjusted the key: " + clean.changes.joinToString(", ") else null
+            tokenStore.setAiKey(slotSuffix, clean.key)
+        } else {
+            tokenStore.setAiKey(slotSuffix, null)
+        }
         // P0-1: the slot NAME is logged, the value never is. This is the other half of the pair:
         // one line at save, one at send, so a mismatch is provable instead of guessed.
         com.codespace.ide.diagnostics.AppOutputLog.log(
@@ -67,6 +81,14 @@ fun KeysManagerDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
+                notice?.let { msg ->
+                    Text(
+                        msg,
+                        color = c.warning,
+                        fontSize = ChatTokens.FONT_SMALL.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
                 ProviderPresets.ALL.filter { it.requiresKey }.forEach { p ->
                     KeyProviderSection(
                         label = p.label,
