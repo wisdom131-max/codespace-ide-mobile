@@ -33,7 +33,9 @@ android {
     }
 
     // Keep this at or above any versionCode an owner device may already have installed.
-    val VERSION_CODE_FLOOR = 3_680
+    // Owner ruling 2026-11-10: every APK must be ABOVE 3684. 3,685 is the floor, so even a
+    // truncated checkout that cannot count commits produces an installable build.
+    val VERSION_CODE_FLOOR = 3_685
 
     defaultConfig {
         applicationId = "com.codespace.ide"

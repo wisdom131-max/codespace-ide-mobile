@@ -74,10 +74,13 @@ jobs:
           echo "APK versionCode=$VC versionName=$VN"
           echo "versionCode=$VC versionName=$VN" >> "$GITHUB_STEP_SUMMARY"
           if [ -z "$VC" ]; then echo "::error::could not read versionCode from the APK"; exit 1; fi
-          if [ "$VC" -le 3679 ]; then
-            echo "::error::versionCode $VC is not above the owner's installed 3679 - Android would refuse this APK"
+          # Owner ruling 2026-11-10: the bar is ABOVE 3684, not merely above the last build he
+          # happened to install. Anything at or below 3684 is refused here rather than at install.
+          if [ "$VC" -le 3684 ]; then
+            echo "::error::versionCode $VC is not above 3684 - this APK must not be published"
             exit 1
           fi
+          echo "versionCode $VC passes the >3684 bar"
 
       - name: Verify pinned pdfbox-android checksum
         # C12 Stage 3 U4: the pdfbox-android dependency is PINNED. Gradle
