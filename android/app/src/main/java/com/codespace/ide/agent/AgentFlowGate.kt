@@ -60,6 +60,41 @@ object AgentFlowGate {
      * caller's deferred forever-incomplete = a chat stuck loading). */
     private val approvalSlot = Mutex()
 
+    /**
+     * Wave 0.2 (owner approval 2026-11-11): connector use asks, always.
+     *
+     * IG15 wrote this intent in the KDoc above and no caller ever passed `forceApproval`, so under
+     * AUTO_ALL a `use_connector` call went straight to the network holding the user's stored token.
+     * That is the one place where a level-based shortcut is not convenience but egress, so the rule
+     * lives here rather than in one call site: a caller can be rewritten, the gate cannot forget.
+     */
+    fun requiresForcedApproval(toolName: String): Boolean = toolName == "use_connector"
+
+    /**
+     * The gate's decision as a PURE function, so the policy is asserted without Android prefs.
+     *
+     * Identical to the old behaviour for every other tool: auto-approved or session-allowed means
+     * no card. A forced tool asks even when BOTH say yes, which is what stops "Always allow" and
+     * AUTO_ALL from turning connector consent into a setting nobody remembers agreeing to.
+     */
+    fun mustAsk(toolName: String, autoApproved: Boolean, sessionAllowed: Boolean): Boolean {
+        if (requiresForcedApproval(toolName)) return true
+        return !(autoApproved || sessionAllowed)
+    }
+
+    /**
+     * The card's answer, mapped to the verdict the chat acts on - pure, so "declining prevents the
+     * call" is asserted as a rule rather than inferred from a UI.
+     */
+    fun verdictFor(answer: Boolean?): ApprovalVerdict = when (answer) {
+        true -> ApprovalVerdict.APPROVED
+        false -> ApprovalVerdict.REJECTED
+        null -> ApprovalVerdict.TIMEOUT
+    }
+
+    /** A tool that always asks must not be offered "Always allow": that is a promise it breaks. */
+    fun offersAlwaysAllow(toolName: String): Boolean = !requiresForcedApproval(toolName)
+
     suspend fun awaitApproval(
         context: android.content.Context,
         toolName: String,
@@ -67,25 +102,57 @@ object AgentFlowGate {
         forceApproval: Boolean = false,
         onTrust: (() -> Unit)? = null,
     ): ApprovalVerdict {
-        if (!forceApproval && ChatPermissionStore.isAutoApproved(context, toolName)) return ApprovalVerdict.APPROVED
+        val forced = forceApproval || requiresForcedApproval(toolName)
+        // A forced tool never consults the level or the session set: reading them would only
+        // create a chance to honour them.
+        val autoApproved = !forced && ChatPermissionStore.isAutoApproved(context, toolName)
         // Section 6: an explicit "allow for this session" answer is honoured WITHOUT
         // touching the persisted permission level - it dies with the process.
-        if (!forceApproval && isSessionAllowed(toolName)) return ApprovalVerdict.APPROVED
+        val sessionAllowed = !forced && isSessionAllowed(toolName)
+        return awaitDecision(
+            toolName = toolName,
+            argsSummary = argsSummary,
+            autoApproved = autoApproved,
+            sessionAllowed = sessionAllowed,
+            onTrust = onTrust,
+            persistAlways = { ChatPermissionStore.allowTool(context, toolName) },
+        )
+    }
+
+    /**
+     * The suspending half, context-free so the card machinery itself can be tested on the JVM.
+     *
+     * Internal on purpose: [awaitApproval] is the only entry a caller should use, because it owns
+     * the forced-tool rule. This half only knows the two answers it was given.
+     */
+    internal suspend fun awaitDecision(
+        toolName: String,
+        argsSummary: String,
+        autoApproved: Boolean,
+        sessionAllowed: Boolean,
+        onTrust: (() -> Unit)? = null,
+        /** How a non-forced tool remembers "Always allow"; owned by the caller, which has the Context. */
+        persistAlways: (() -> Unit)? = null,
+    ): ApprovalVerdict {
+        if (!mustAsk(toolName, autoApproved, sessionAllowed)) return ApprovalVerdict.APPROVED
         return approvalSlot.withLock {
             val deferred = CompletableDeferred<Boolean>()
-            pending.value = PendingApproval(toolName, argsSummary, deferred, onAlwaysAllow = {
-                ChatPermissionStore.allowTool(context, toolName)
+            // A forced tool asks again next time, so offering "Always allow" would promise
+            // something this gate will not honour. The card shows Approve / Decline only.
+            val alwaysAllow: (() -> Unit)? = if (!offersAlwaysAllow(toolName)) null else ({
+                persistAlways?.invoke()
                 deferred.complete(true)
-            }, onTrust = onTrust)
+            })
             // CH09 (P4h): the old await() suspended FOREVER — a lost card left the
             // chat loading with Stop as the only escape. 10 minutes with no response
             // = the call is abandoned with an honest TIMEOUT verdict.
-            val outcome = withTimeoutOrNull(600_000L) { deferred.await() }
-            pending.value = null
-            when (outcome) {
-                true -> ApprovalVerdict.APPROVED
-                false -> ApprovalVerdict.REJECTED
-                null -> ApprovalVerdict.TIMEOUT
+            // The clear runs in a finally: a cancelled wait (chat stopped, process winding down)
+            // must not leave a card on screen for an operation nobody is waiting for any more.
+            try {
+                val outcome = withTimeoutOrNull(600_000L) { deferred.await() }
+                verdictFor(outcome)
+            } finally {
+                pending.value = null
             }
         }
     }

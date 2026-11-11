@@ -979,7 +979,14 @@ class ChatSession internal constructor(
                     results.append("\n\n")
                     continue
                 }
-                val verdict = com.codespace.ide.agent.AgentFlowGate.awaitApproval(ctx, call.name, summary)
+                // Wave 0.2 (owner approval 2026-11-11): a connector call egresses to a third
+                // party with the user's stored token, so it asks even under AUTO_ALL. The rule is
+                // the gate's own (requiresForcedApproval); passing it here keeps the intent visible
+                // at the call site without letting this call site define the policy.
+                val verdict = com.codespace.ide.agent.AgentFlowGate.awaitApproval(
+                    ctx, call.name, summary,
+                    forceApproval = com.codespace.ide.agent.AgentFlowGate.requiresForcedApproval(call.name),
+                )
                 if (verdict != com.codespace.ide.agent.AgentFlowGate.ApprovalVerdict.APPROVED) {
                     val why =
                         if (verdict == com.codespace.ide.agent.AgentFlowGate.ApprovalVerdict.TIMEOUT)
