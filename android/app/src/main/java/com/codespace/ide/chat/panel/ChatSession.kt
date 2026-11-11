@@ -735,8 +735,12 @@ class ChatSession internal constructor(
         wsBlock: String,
         offered: List<String>,
     ): String {
+        // 2026-11-11 (Wave 1 Group A budget fix): this used to append AgentToolWire.protocol(mode)
+        // - which advertised the ENTIRE mode catalogue - and then the filtered block on top, so the
+        // prompt carried both (Agent 13,170 chars, Ask 5,848, measured). Composition now lives in
+        // ChatInstructions, which the budget tests exercise directly, and definitions enter the
+        // prompt in exactly one place: the offer plus whatever was loaded.
         val loaded = ToolLoadout.extra()
-        val visible = (offered.toSet() + loaded)
         val mcpLoaded = loaded.filter { it.startsWith("mcp_") }
         val mcpDocs = if (sendTools && mcpLoaded.isNotEmpty() && appContext != null) {
             try {
@@ -745,19 +749,7 @@ class ChatSession internal constructor(
                 ""
             }
         } else ""
-        // Observable and explainable: the model is told how many tools exist beyond what it has,
-        // so "I do not have a tool for that" becomes "I can look for one".
-        val total = ToolRegistry.exposedNames(mode).size
-        val toolsetLine = if (!sendTools) "" else if (visible.size < total) {
-            "\nTool set for this task: " + visible.size + " of " + total +
-                " mode-allowed tools are described below. The rest exist and can be loaded.\n"
-        } else ""
-        return ChatModePrompts.instruction(mode) +
-            (if (sendTools) AgentToolWire.protocol(mode) else "") +
-            toolsetLine +
-            (if (sendTools) ToolRegistry.promptBlock(mode, visible) else "") +
-            (if (mcpDocs.isBlank()) "" else "\n\n## EXTERNAL MCP TOOLS (loaded for this task)\n" + mcpDocs) +
-            (if (wsBlock.isEmpty()) "" else "\n\n" + wsBlock)
+        return ChatInstructions.build(mode, sendTools, offered, wsBlock, mcpDocs, loaded)
     }
 
     private fun appendRow(row: ChatRowModel) {

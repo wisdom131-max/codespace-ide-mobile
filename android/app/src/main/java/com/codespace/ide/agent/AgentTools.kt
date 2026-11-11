@@ -191,6 +191,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         "checksum", "diff_files", "move_path", "journal_write", "git_stash", "git_tag",
         // Wave 0.1 (owner approval 2026-11-11): cross-file replacement.
         "grep_replace_all",
+        // Wave 1 Group A (owner approval 2026-11-11): data in, answer out.
+        "json_query", "csv_parse", "base64_codec",
     )
 
     /** Builtin tool names for the /tools chat command (see BUILTIN_TOOL_NAMES). */
@@ -335,6 +337,11 @@ You can use multiple tools in sequence. When done, give a final summary.
                 // EDIT mode never reaches this branch with a write - ChatSession stages the same
                 // plan instead, so the model cannot bypass the proposal strip.
                 "grep_replace_all" -> grepReplaceAll(args, context)
+                // Wave 1 Group A (owner approval 2026-11-11): data in, answer out. All three are
+                // READ: they compute over bytes the caller already has and write nothing.
+                "json_query" -> jsonQueryTool(args, context)
+                "csv_parse" -> csvParseTool(args, context)
+                "base64_codec" -> base64Tool(args, context)
                 "move_path" -> {
                     val moved = FileInsightTools.move(
                         guestPath(args.getString("from"), context),
@@ -1214,6 +1221,88 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     /** get_terminal_output: the agent's own command record, not the user's interactive shell. */
+    // ── Wave 1 Group A: data tools ─────────────────────────────────────────
+
+    /**
+     * `json_query`: the document arrives either inline or as a path. The parse and the query are
+     * DataTools' job so a preview and a real call cannot disagree; this only does the file part and
+     * refuses an oversized file BEFORE reading it.
+     */
+    private fun jsonQueryTool(args: org.json.JSONObject, context: Context): String {
+        val expr = args.optString("expr")
+        if (expr.isBlank()) return "Give an expression, for example: $.items[*].name"
+        val inline = args.optString("json")
+        if (inline.isNotBlank()) return DataTools.jsonQuery(inline, expr)
+        val path = args.optString("path")
+        if (path.isBlank()) return "Give either a path to a JSON file or the JSON itself (json)."
+        val file = File(resolveToolPath(context, path))
+        if (!file.exists()) return "No such file: " + path
+        if (file.isDirectory) return path + " is a directory. Point at a .json file."
+        if (file.length() > DataTools.MAX_JSON_CHARS) {
+            return "Refusing: " + path + " is " + file.length() + " bytes; the limit for one call is " +
+                DataTools.MAX_JSON_CHARS + "."
+        }
+        return try {
+            DataTools.jsonQuery(file.readText(), expr)
+        } catch (e: Exception) {
+            "Could not read " + path + ": " + (e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    /** `csv_parse`: same split - this resolves the input, DataTools parses it. */
+    private fun csvParseTool(args: org.json.JSONObject, context: Context): String {
+        val inline = args.optString("text")
+        val text = if (inline.isNotBlank()) inline else {
+            val path = args.optString("path")
+            if (path.isBlank()) return "Give either a path to a .csv file or the CSV text (text)."
+            val file = File(resolveToolPath(context, path))
+            if (!file.exists()) return "No such file: " + path
+            if (file.isDirectory) return path + " is a directory. Point at a .csv file."
+            if (file.length() > DataTools.MAX_CSV_CHARS) {
+                return "Refusing: " + path + " is " + file.length() + " bytes; the limit for one call is " +
+                    DataTools.MAX_CSV_CHARS + "."
+            }
+            try {
+                file.readText()
+            } catch (e: Exception) {
+                return "Could not read " + path + ": " + (e.message ?: e.javaClass.simpleName)
+            }
+        }
+        val delimiter = args.optString("delimiter").ifBlank { "," }.first()
+        val columns = args.optString("columns").split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        return DataTools.csvParse(
+            text = text,
+            delimiter = delimiter,
+            hasHeader = if (args.has("header")) args.optBoolean("header") else true,
+            offset = args.optInt("offset", 0),
+            limit = args.optInt("limit", 50),
+            columns = columns,
+        )
+    }
+
+    /** `base64_codec`: text first, then a file path, then a clear refusal. */
+    private fun base64Tool(args: org.json.JSONObject, context: Context): String {
+        val op = args.optString("op")
+        if (op.isBlank()) return "Give op=encode or op=decode."
+        val inline = args.optString("text")
+        val text = if (inline.isNotBlank()) inline else {
+            val path = args.optString("path")
+            if (path.isBlank()) return "Give either the text (text) or a file (path)."
+            val file = File(resolveToolPath(context, path))
+            if (!file.exists()) return "No such file: " + path
+            if (file.length() > DataTools.MAX_CODEC_CHARS) {
+                return "Refusing: " + path + " is " + file.length() + " bytes; the limit for one call is " +
+                    DataTools.MAX_CODEC_CHARS + "."
+            }
+            try {
+                file.readText()
+            } catch (e: Exception) {
+                return "Could not read " + path + ": " + (e.message ?: e.javaClass.simpleName)
+            }
+        }
+        return DataTools.base64Codec(op, text)
+    }
+
     private fun terminalOutput(runs: Int): String {
         val wanted = runs.coerceIn(1, 10)
         val all = AgentTerminalFeed.runs

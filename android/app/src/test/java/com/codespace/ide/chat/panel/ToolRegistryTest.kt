@@ -31,6 +31,8 @@ class ToolRegistryTest {
         "terminal_selection", "vncode_askQuestions", "web_search",
         // S1 (owner approval 2026-11-11): both are read-only, so both belong to the read wave.
         "checksum", "diff_files",
+        // Wave 1 Group A (2026-11-11): the data tools compute over bytes and write nothing.
+        "json_query", "csv_parse", "base64_codec",
     )
 
     // --- registration parity -------------------------------------------------------
@@ -47,8 +49,9 @@ class ToolRegistryTest {
         // 2026-11-11: 89 = 82 at the dynamic-loading baseline, plus the six S1 tools (checksum,
         // diff_files, move_path, journal_write, git_stash, git_tag) and grep_replace_all (Wave 0.1).
         // allowlisted dispatcher that replaces the hidden run_vscode_command concept.
-        assertEquals("every registered tool is listed exactly once", 89, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 89, ToolRegistry.names().toSet().size)
+        // 2026-11-11 (Wave 1 Group A): 92 = 89 + json_query, csv_parse, base64_codec.
+        assertEquals("every registered tool is listed exactly once", 92, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 92, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -168,6 +171,10 @@ class ToolRegistryTest {
             "git_tag" to (emptyList<String>() to listOf("action", "name", "message", "repo_dir")),
             // Wave 0.1: the executor reads root, paths and dry_run besides the two required strings.
             "grep_replace_all" to (listOf("search", "replace") to listOf("paths", "dry_run", "root")),
+            // Wave 1 Group A: expr is required; the document comes from path or json.
+            "json_query" to (listOf("expr") to listOf("path", "json")),
+            "csv_parse" to (emptyList<String>() to listOf("path", "text", "delimiter", "header", "offset", "limit", "columns")),
+            "base64_codec" to (listOf("op") to listOf("text", "path")),
             "read_memory" to (emptyList<String>() to emptyList<String>()),
             "list_tasks" to (emptyList<String>() to emptyList<String>()),
             "read_entities" to (listOf("entity") to listOf("filter")),

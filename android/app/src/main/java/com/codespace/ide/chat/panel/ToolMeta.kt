@@ -43,6 +43,10 @@ internal object ToolMetaIndex {
         "list_files" to ToolMeta(ToolCategory.FILES, listOf("list", "files", "folder", "directory")),
         "list_dir" to ToolMeta(ToolCategory.FILES, listOf("list", "directory", "ls", "folder")),
         "create_directory" to ToolMeta(ToolCategory.FILES, listOf("mkdir", "folder", "create"), destructive = true),
+        // Wave 1 Group A: the answer instead of the payload.
+        "json_query" to ToolMeta(ToolCategory.DATA, listOf("json", "jsonpath", "query", "field", "extract", "jq", "key"), cost = ToolCost.CHEAP),
+        "csv_parse" to ToolMeta(ToolCategory.DATA, listOf("csv", "spreadsheet", "rows", "columns", "table", "parse", "dataset"), cost = ToolCost.CHEAP),
+        "base64_codec" to ToolMeta(ToolCategory.DATA, listOf("base64", "b64", "encode", "decode", "binary", "blob"), cost = ToolCost.CHEAP),
         "grep_replace_all" to ToolMeta(
             ToolCategory.EDIT,
             listOf("replace all", "bulk replace", "across files", "everywhere", "refactor", "rename string", "find and replace"),
@@ -218,6 +222,10 @@ internal object ToolMetaIndex {
         "diff_files", "checksum",
     )
     private val AGENT_CORE = EDIT_CORE + listOf(
+        // 2026-11-11 (Wave 1 Group A): write_file was only ever advertised because the protocol
+        // used to ignore the offer. Agent's job includes whole-file writes, so it is core, not a
+        // relevance lottery entry. Edit keeps replace/create, which is what its job needs.
+        "write_file",
         "run_command", "run_in_terminal", "get_terminal_output", "git_status", "git_diff",
         "git_commit_push", "git_branch", "apply_patch",
     )

@@ -717,6 +717,38 @@ internal object ToolRegistry {
             schema = OBJ + ",\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\"}}}",
             modes = WRITE_MODES,
         ),
+        // --- Wave 1 Group A (owner approval 2026-11-11): data in, answer out ---
+        ToolSpec(
+            name = "json_query",
+            displayName = "Querying JSON",
+            description = "Query a JSON document with a JSONPath subset (\$ , .key , ['key'] , [0] , [*] , " +
+                "[0,2] , ..key , ..*) and get the matching paths and values. Cheaper than reading the " +
+                "whole file: a 3,000-line document becomes the two fields you asked for.",
+            schema = OBJ + ",\"required\":[\"expr\"],\"properties\":{\"expr\":{\"type\":\"string\"}" +
+                ",\"path\":{\"type\":\"string\"},\"json\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "csv_parse",
+            displayName = "Reading CSV",
+            description = "Parse a CSV file or text: quoted fields, commas and newlines inside quotes, " +
+                "headers, row/column counts and a bounded row range. Handles ragged rows and says so.",
+            schema = OBJ + ",\"properties\":{\"path\":{\"type\":\"string\"}" +
+                ",\"text\":{\"type\":\"string\"},\"delimiter\":{\"type\":\"string\"}" +
+                ",\"header\":{\"type\":\"boolean\"},\"offset\":{\"type\":\"integer\"}" +
+                ",\"limit\":{\"type\":\"integer\"},\"columns\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "base64_codec",
+            displayName = "Encoding or decoding Base64",
+            description = "Encode text as Base64 or decode Base64 back. Decoding is strict: an invalid " +
+                "character is reported with its position instead of being skipped.",
+            schema = OBJ + ",\"required\":[\"op\"],\"properties\":{\"op\":{\"type\":\"string\"" +
+                ",\"enum\":[\"encode\",\"decode\"]},\"text\":{\"type\":\"string\"}" +
+                ",\"path\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
         // --- S1 (owner approval 2026-11-11): capabilities that were missing, not duplications ---
         ToolSpec(
             name = "checksum",

@@ -13,16 +13,48 @@ import org.junit.Test
  */
 class ToolDocBudgetTest {
 
+    /**
+     * THE GATE: the bytes the provider actually receives.
+     *
+     * 2026-11-11 (Wave 1 Group A): this test used to measure `AgentToolWire.protocol(mode)`, i.e. the
+     * WHOLE mode catalogue, on the assumption that it was the prompt. It was not - production sent
+     * the whole catalogue AND a filtered block beside it, so the guard passed while the real prompt
+     * was larger than the guard's own number. The measurement now goes through
+     * [ChatInstructions.build], the single composition path ChatSession uses, with the offer Lean
+     * Tool Mode would produce for this mode. Limits are unchanged: Ask 5,000, Agent 12,500. Edit has
+     * no separate historical limit and shares the agent ceiling.
+     */
     @Test
-    fun theAgentDocBlockIsUnderHalfOfWhatItWas() {
-        val agent = AgentToolWire.protocol(ChatMode.AGENT).length
-        val ask = AgentToolWire.protocol(ChatMode.ASK).length
-        println("[comp] toolWire ask=" + ask + " agent=" + agent)
-        // 2026-11-11: the cap moves from 11,000 to 12,500 because the registry grew by six real
-        // tools (S1). The guard still means something: it is 25% below the pre-compaction 16,712
-        // and Lean Tool Mode now sends roughly a third of it per turn (ToolPromptBudgetTest).
-        assertTrue("agent docs must stay under 12.5k chars (was 16,712): " + agent, agent < 12500)
-        assertTrue("ask docs must stay under 5k chars (was 7,119): " + ask, ask < 5000)
+    fun theRealPromptForEachModeFitsItsBudget() {
+        ChatMode.entries.forEach { mode ->
+            val offer = ToolOffer.plan(mode, "")
+            val prompt = ChatInstructions.build(mode, sendTools = true, offered = offer.names, wsBlock = "", mcpDocs = "")
+            println("[comp] " + mode + " offered=" + offer.names.size + "/" + offer.total +
+                " prompt=" + prompt.length)
+            val cap = if (mode == ChatMode.ASK) 5000 else 12500
+            assertTrue(mode.label + " prompt must stay under " + cap + " chars: " + prompt.length,
+                prompt.length < cap)
+            // A prompt that quietly grew to the whole catalogue is the exact defect this guards.
+            assertTrue(mode.label + " must advertise fewer tools than it exposes",
+                offer.names.size < offer.total)
+        }
+    }
+
+    /**
+     * Catalogue growth is watched SEPARATELY, and it is not the prompt.
+     *
+     * The full registry block is never sent (it is documentation and the /tools view), so it must not
+     * be guarded by the prompt limit - but a registry that doubles unnoticed is still a problem for
+     * the lean offer's quality, so it keeps a generous tripwire of its own.
+     */
+    @Test
+    fun theCatalogueItselfIsWatchedButIsNotThePrompt() {
+        val catalogue = ToolRegistry.promptBlock(ChatMode.AGENT).length
+        val agentOffer = ChatInstructions.build(ChatMode.AGENT, true, ToolOffer.plan(ChatMode.AGENT, "").names, "", "")
+        println("[comp] catalogue=" + catalogue + " agentPrompt=" + agentOffer.length)
+        assertTrue("the registry catalogue has grown unexpectedly: " + catalogue, catalogue < 18000)
+        assertTrue("the prompt must be smaller than the catalogue it is drawn from",
+            agentOffer.length < catalogue)
     }
 
     @Test

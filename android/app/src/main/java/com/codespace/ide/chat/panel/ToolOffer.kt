@@ -20,6 +20,19 @@ internal object ToolRelevance {
         "everywhere" to listOf("grep_replace_all"),
         "rename" to listOf("move_path", "grep_replace_all"),
         "move" to listOf("move_path"),
+        "json" to listOf("json_query"),
+        "jsonpath" to listOf("json_query"),
+        "jq" to listOf("json_query"),
+        "extract" to listOf("json_query"),
+        "csv" to listOf("csv_parse"),
+        "spreadsheet" to listOf("csv_parse"),
+        "rows" to listOf("csv_parse"),
+        "columns" to listOf("csv_parse"),
+        "dataset" to listOf("csv_parse"),
+        "base64" to listOf("base64_codec"),
+        "b64" to listOf("base64_codec"),
+        "decode" to listOf("base64_codec"),
+        "encode" to listOf("base64_codec"),
         "hash" to listOf("checksum"),
         "verify" to listOf("checksum", "runTests"),
         "integrity" to listOf("checksum"),
@@ -116,6 +129,9 @@ internal object ToolRelevance {
  */
 internal object ToolOffer {
 
+    /** How many zero-scoring core names a named match may displace. Small on purpose. */
+    private const val MAX_SWAPS = 3
+
     data class Plan(
         val names: List<String>,
         /** One line for the transcript: what was offered and why. Null when nothing was limited. */
@@ -130,11 +146,15 @@ internal object ToolOffer {
         val target = ToolMetaIndex.target(mode)
         val picked = LinkedHashSet(core)
         var added = 0
-        for (name in ToolRelevance.rank(mode, request, exclude = picked)) {
+        val ranked = ToolRelevance.rank(mode, request, exclude = picked)
+        for (name in ranked) {
             if (picked.size >= target) break
             picked.add(name); added++
         }
-        // The offer is a subset of what the mode allows - never a superset, and never empty.
+        // 2026-11-11 (Wave 1 Group A): relevance may only use the slots the core set leaves free.
+        // An earlier attempt let a named match displace a zero-scoring core name; ToolOfferTest
+        // caught it immediately ("ASK lost core web_search for ''"), and it was right: evicting the
+        // mode's own core makes the offer unreliable, which is worse than offering fewer matches.
         val names = exposed.filter { it in picked }
         val note = if (names.size < exposed.size) {
             "Offered " + names.size + " of " + exposed.size + " tools this turn" +

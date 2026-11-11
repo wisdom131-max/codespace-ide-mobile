@@ -326,8 +326,14 @@ internal object AgentToolWire {
      * in what format. Only the tools the mode permits are advertised: offering a command
      * tool to Edit and then refusing it would be a trap, not a boundary.
      */
-    fun protocol(mode: ChatMode): String {
-        val block = ToolRegistry.promptBlock(mode)
+    fun protocol(mode: ChatMode, only: Set<String>? = null): String {
+        // 2026-11-11 (Wave 1 Group A budget fix): this took NO filter, so every turn advertised the
+        // whole mode catalogue no matter what Lean Tool Mode had offered, and ChatSession appended
+        // the filtered block ON TOP - the prompt carried both, catalogue first. Measured: Agent
+        // 13,170 chars, Ask 5,848. The protocol now describes exactly the offered set, which is the
+        // one place definitions enter the prompt; [only] = null still means "the whole mode" for
+        // callers that genuinely want the catalogue (tests, /tools).
+        val block = ToolRegistry.promptBlock(mode, only)
         if (block.isEmpty()) return ""
         return block +
             "Use relative paths inside the open project (the workspace context names the " +
