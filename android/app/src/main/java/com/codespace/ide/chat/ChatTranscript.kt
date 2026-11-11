@@ -85,6 +85,9 @@ internal object ChatTranscript {
                 is ChatRowModel.User -> mapped.add(StoredMessage("user", row.text, true, nowMs))
                 is ChatRowModel.AssistantStream -> mapped.add(StoredMessage("assistant", row.text, true, nowMs))
                 is ChatRowModel.InfoNote -> mapped.add(StoredMessage("note", row.text, true, nowMs))
+                // Sources are rebuilt from the answer's own "Sources:" block on restore; writing
+                // them as messages as well would show every source twice after a reopen.
+                is ChatRowModel.Sources -> Unit
                 is ChatRowModel.Attachments -> {
                     // Names only — the bytes are never persisted (WP8 redaction rule).
                     val names = row.chips.joinToString(", ") { it.name }
@@ -127,6 +130,10 @@ internal object ChatTranscript {
                         // cursorOn=false: nothing is streaming on a restored row, and a
                         // blinking cursor on old text would be a lie.
                         rows.add(ChatRowModel.AssistantStream(m.text, cursorOn = false))
+                        // Sources survive a reopen by being read back out of the answer text, so a
+                        // conversation written before this row existed restores them too.
+                        val src = com.codespace.ide.agent.research.ResearchSources.parse(m.text)
+                        if (src.isNotEmpty()) rows.add(ChatRowModel.Sources(src))
                     }
                     if (!m.complete) rows.add(ChatRowModel.InfoNote(INTERRUPTED_NOTE))
                 }

@@ -547,6 +547,10 @@ class ChatSession internal constructor(
         val chips = staged.map { com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes)) }
         sendGeneration++
         val gen = sendGeneration
+        // Every send marks the ledger: a source recorded during this turn is shown under THIS
+        // answer. Reading the size (not clearing) keeps a source from an earlier turn intact for
+        // the answer that already cites it.
+        ledgerMark = com.codespace.ide.agent.research.SourceLedger.all().size
         val newRows = ArrayList<ChatRowModel>(2)
         // BATCH 5: status cards from the PREVIOUS attempt ("provider is rate limiting",
         // "offline") describe a moment that has passed; a new attempt must not inherit
@@ -697,6 +701,13 @@ class ChatSession internal constructor(
         if (t.isNotBlank() && !ui.value.streaming) sendCore(t, confirmOverBudget = true, reuseStaged = true)
     }
 
+    /**
+     * 2026-11-11: the ledger index at the moment this turn began. Sources recorded after it belong
+     * to THIS answer, which is what keeps a source attached to the turn that fetched it instead of
+     * to whichever turn happens to finish last.
+     */
+    @Volatile private var ledgerMark: Int = 0
+
     private fun appendRow(row: ChatRowModel) {
         ui.value = ui.value.copy(rows = ui.value.rows + listOf(row))
     }
@@ -756,7 +767,13 @@ class ChatSession internal constructor(
                 val rows = if (st.rows.lastOrNull() is ChatRowModel.AssistantStream)
                     st.rows.dropLast(1) + listOf(ChatRowModel.AssistantStream(shown, false, kind))
                 else st.rows + listOf(ChatRowModel.AssistantStream(shown, false, kind))
-                ui.value = st.copy(rows = rows, streaming = false)
+                val allSources = com.codespace.ide.agent.research.SourceLedger.all()
+                val turnSources = if (decision is ToolDecision.Answer && allSources.size > ledgerMark)
+                    com.codespace.ide.agent.research.ResearchSources
+                        .fromLedger(allSources.drop(ledgerMark)) else emptyList()
+                val rowsWithSources =
+                    if (turnSources.isEmpty()) rows else rows + listOf(ChatRowModel.Sources(turnSources))
+                ui.value = st.copy(rows = rowsWithSources, streaming = false)
                 when (decision) {
                     // 2026-11-05: a panel that asked a question (Source Control's commit message)
                     // takes the answer back. Only a real ANSWER qualifies - a tool round is not a

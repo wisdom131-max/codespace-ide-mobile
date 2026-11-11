@@ -43,5 +43,12 @@ sealed interface ChatRowModel {
      */
     data class ToolActivity(val label: String, val detail: String, val id: String = "") : ChatRowModel
 
+    /**
+     * 2026-11-11: the sources a research answer used, as tappable rows. Additive: it sits AFTER the
+     * answer it belongs to and never inside the Thinking Tree, so the tree's grouping rules are
+     * untouched (a Sources row ends an activity run exactly like an answer row does).
+     */
+    data class Sources(val items: List<com.codespace.ide.agent.research.ResearchSources.Item>) : ChatRowModel
+
     data class Attachments(val chips: List<AttachmentChipModel>) : ChatRowModel
 }

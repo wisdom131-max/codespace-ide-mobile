@@ -40,7 +40,9 @@ object UrlTools {
             .filter { it.isNotBlank() && !it.startsWith("utm_") && !it.startsWith("ref=") }
             .joinToString("&")
         val path = uri.path.orEmpty().trimEnd('/')
-        val scheme = uri.scheme ?: "https"
+        // Schemes are case-insensitive in RFC 3986 and servers do hand out "HTTPS://"; without
+        // this the same page arrived twice under two keys and the sources row showed it twice.
+        val scheme = (uri.scheme ?: "https").lowercase()
         val host = (uri.host ?: "").removePrefix("www.").lowercase()
         return scheme + "://" + host + path + (if (kept.isNotEmpty()) "?" + kept else "")
     }

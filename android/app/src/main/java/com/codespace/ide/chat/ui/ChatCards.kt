@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
@@ -231,6 +233,70 @@ fun ToolActivityRow(
  * no x - the owner's rule, and the reason the single-row version lost its dismiss glyph too. Corners
  * and padding follow the standing panel rule (8-12dp radius, 12dp horizontal, 10dp vertical).
  */
+/**
+ * 2026-11-11 (owner): research sources, tappable. Compact by design: one line per source, title
+ * then domain, no card chrome - it belongs to the answer above it, not to the Thinking Tree.
+ * The URL is validated before it is handed to the platform handler: http and https only.
+ */
+@Composable
+fun SourcesRow(
+    items: List<com.codespace.ide.agent.research.ResearchSources.Item>,
+    modifier: Modifier = Modifier,
+) {
+    if (items.isEmpty()) return
+    val c = ChatTokens.LocalChatColors.current
+    val opener = androidx.compose.ui.platform.LocalUriHandler.current
+    // Sanitising here as well as in the model: this composable is the last gate before an Intent.
+    val safe = remember(items) { com.codespace.ide.agent.research.ResearchSources.sanitise(items) }
+    if (safe.isEmpty()) return
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .background(c.surfaceAlt)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = if (safe.size == 1) "1 source" else safe.size.toString() + " sources",
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textSecondary,
+        )
+        safe.forEach { s ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .clickable {
+                        if (com.codespace.ide.agent.research.ResearchSources.isOpenable(s.url)) {
+                            runCatching { opener.openUri(s.url) }
+                        }
+                    }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = s.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Text(
+                    text = s.domain,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun ActivityGroupRow(
     id: String,

@@ -50,7 +50,12 @@ object NativeChatListRenderer : ChatListRenderer {
             ActivityGrouping.group(rows).forEach { display ->
                 when (display) {
                     is ChatDisplayRow.Single -> {
-                        RenderRow(display.row, state, stepsAfter(rows, consumed))
+                        val row = display.row
+                        if (row is ChatRowModel.Sources) {
+                            if (row.items.isNotEmpty()) SourcesRow(row.items)
+                        } else {
+                            RenderRow(row, state, stepsAfter(rows, consumed))
+                        }
                         consumed++
                     }
                     is ChatDisplayRow.ActivityGroup -> {
@@ -101,6 +106,8 @@ object NativeChatListRenderer : ChatListRenderer {
             is ChatRowModel.ToolActivity ->
                 ToolActivityRow(row.label, row.detail)
             is ChatRowModel.Attachments -> AttachmentChipRow(row.chips, state.onRemoveChip)
+            // Drawn by the Single branch before it reaches here; this arm keeps the when total.
+            is ChatRowModel.Sources -> SourcesRow(row.items)
         }
     }
 }
