@@ -105,13 +105,28 @@ object ChatPermissionStore {
      * True when [toolName] may execute WITHOUT pausing for approval under the
      * current level + allowlist. Consulted by AgentFlowGate.awaitApproval.
      */
-    fun isAutoApproved(context: Context, toolName: String): Boolean {
+    fun isAutoApproved(context: Context, toolName: String): Boolean =
+        decideAutoApproved(level(context), toolName, autoApprovedTools(context))
+
+    /**
+     * The same rule as a PURE function, so the policy can be tested without Android prefs.
+     *
+     * Order matters and is preserved exactly: MCP tools never inherit AUTO_ALL; AUTO_ALL approves
+     * everything else; an explicit per-tool allow wins next; AUTO_SAFE only its own list.
+     * `run_vncode_command` is therefore approved under AUTO_ALL (no extra prompt, as the owner
+     * required) and gated under MANUAL / AUTO_SAFE, because it is not in SAFE_TOOLS.
+     */
+    fun decideAutoApproved(
+        lvl: ChatFlowLevel,
+        toolName: String,
+        autoApproved: Set<String>,
+        safeTools: Set<String> = SAFE_TOOLS,
+    ): Boolean {
         if (toolName.startsWith("mcp_")) return false // external MCP tools always respect the level
-        val lvl = level(context)
         return when {
             lvl == ChatFlowLevel.AUTO_ALL -> true
-            toolName in autoApprovedTools(context) -> true
-            lvl == ChatFlowLevel.AUTO_SAFE && toolName in SAFE_TOOLS -> true
+            toolName in autoApproved -> true
+            lvl == ChatFlowLevel.AUTO_SAFE && toolName in safeTools -> true
             else -> false
         }
     }

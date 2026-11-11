@@ -31,6 +31,12 @@ internal data class ToolSpec(
     val hiddenReason: String? = null,
 )
 
+/** The allowlist as a JSON array, derived from the enum so a new command cannot be forgotten. */
+internal object VnCommandList {
+    val ENUM_JSON: String =
+        com.codespace.ide.editor.VnCommand.ids.joinToString(",") { "\"" + it + "\"" }
+}
+
 internal object ToolRegistry {
 
     private val READ_ALL: Set<ChatMode> = setOf(ChatMode.ASK, ChatMode.EDIT, ChatMode.AGENT)
@@ -600,6 +606,20 @@ internal object ToolRegistry {
         ),
 
         // --- Hidden: present in VS Code, and why each is not offered here ---
+        ToolSpec(
+            name = "run_vncode_command",
+            displayName = "Running an editor command",
+            // Short on purpose: this block is charged to every Agent send (baseline 9,780 chars).
+            description = "Run one allowlisted editor command: save, saveAll, format, find, goToLine.",
+            schema = OBJ + ",\"required\":[\"command\"],\"properties\":{" +
+                "\"command\":{\"type\":\"string\",\"enum\":[" +
+                VnCommandList.ENUM_JSON + "]}," +
+                "\"query\":{\"type\":\"string\"}," +
+                "\"line\":{\"type\":\"integer\"}}}",
+            // Edit + Agent: every one of these writes to disk or moves the user's cursor, which Ask
+            // never does. The mode check is still ToolRegistry.allows, not this list alone.
+            modes = WRITE_MODES,
+        ),
         ToolSpec(
             name = "run_vscode_command",
             displayName = "Running an editor command",

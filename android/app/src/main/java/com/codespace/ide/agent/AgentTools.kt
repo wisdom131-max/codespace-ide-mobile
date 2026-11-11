@@ -171,7 +171,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "search_workspace_symbols", "read_project_structure",
         "apply_patch", "manage_todo_list", "create_new_jupyter_notebook",
         "copilot_getNotebookSummary", "read_notebook_cell_output", "edit_notebook_file",
-        "run_notebook_cell", "get_terminal_output", "terminal_last_command",
+        "run_notebook_cell", "get_terminal_output", "terminal_last_command", "run_vncode_command",
         "runTests", "test_search", "test_failure", "create_and_run_task", "run_task",
         "get_task_output", "get_project_setup_info",
         "get_search_view_results", "github_repo", "view_image", "tool_search",
@@ -225,6 +225,22 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "search_workspace_symbols" -> workspaceSymbols(args.getString("query"), args.optString("path").ifBlank { null }, context)
                 "read_project_structure" -> projectStructure(args.optString("path").ifBlank { null }, args.optInt("depth", 2), context)
                 "run_in_terminal" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
+                // Native replacement for VS Code's run_vscode_command: an ALLOWLISTED id, parsed
+                // and validated before anything is dispatched (EditorCommandBus). The action is
+                // the editor's own, reached through its mounted pane - never a re-implementation.
+                "run_vncode_command" -> when (
+                    val parsed = com.codespace.ide.editor.VncodeCommands.parse(
+                        args.optString("command"),
+                        args.optString("query").ifBlank { null },
+                        args.optInt("line", 0),
+                    )
+                ) {
+                    is com.codespace.ide.editor.VncodeCommands.Parse.Rejected -> parsed.reason
+                    is com.codespace.ide.editor.VncodeCommands.Parse.Ready -> {
+                        val outcome = com.codespace.ide.editor.EditorCommandBus.run(parsed.request)
+                        (if (outcome.ok) "OK: " else "FAILED: ") + outcome.message
+                    }
+                }
                 // --- notebooks, patches, todos, and the agent's own terminal record ---
                 "apply_patch" -> applyPatch(args.getString("path"), args.getString("patch"), context)
                 "manage_todo_list" -> manageTodoList(args.optString("todos"), context)

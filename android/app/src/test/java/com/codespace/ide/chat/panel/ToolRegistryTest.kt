@@ -42,8 +42,10 @@ class ToolRegistryTest {
         // registry would be invisible to the mode gate, which is the real defect to catch.
         val missing = executable.toSet() - ToolRegistry.names().toSet()
         assertTrue("executor tool missing from the registry: " + missing, missing.isEmpty())
-        assertEquals("every registered tool is listed exactly once", 81, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 81, ToolRegistry.names().toSet().size)
+        // 2026-11-11: 82 = the 81 tools this file documented plus run_vncode_command, the
+        // allowlisted dispatcher that replaces the hidden run_vscode_command concept.
+        assertEquals("every registered tool is listed exactly once", 82, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 82, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -172,6 +174,9 @@ class ToolRegistryTest {
             "insert_edit_into_file" to (listOf("path", "old_string", "new_string") to listOf("replace_all")),
             "multi_replace_string_in_file" to (listOf("path", "replacements") to listOf("replace_all")),
             "run_in_terminal" to (listOf("command") to listOf("workdir")),
+            // VN Code command dispatcher (2026-11-11): command is required; query and line are the
+            // only optional inputs, and the parser refuses them for commands that take neither.
+            "run_vncode_command" to (listOf("command") to listOf("query", "line")),
             "apply_patch" to (listOf("path", "patch") to emptyList<String>()),
             "manage_todo_list" to (emptyList<String>() to listOf("todos")),
             "create_new_jupyter_notebook" to (listOf("path") to emptyList<String>()),

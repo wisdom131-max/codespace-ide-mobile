@@ -316,6 +316,24 @@ fun EditorPane(
     // BATCH4-P1b: Format Document — ONE function shared by the toolbar button
     // AND the Ctrl+Shift+I chord (CodeEditor's onFormatDocument param calls it):
     // same function, no separate code path. Body is the button's verbatim logic.
+    /**
+     * Save the ACTIVE tab exactly the way Ctrl+S does when format-on-save is off: typed write,
+     * clean flag only after the disk write is verified. Extracted so the command dispatcher and the
+     * key handler share one implementation instead of two that can drift.
+     */
+    fun saveActiveTabNow(): Boolean {
+        val current = resolveActiveTab(activeId, tabs) ?: return false
+        if (!writeTabToDisk(current.path, current.content)) {
+            if (current.path !in diskWriteFailedPaths.value) diskWriteFailedPaths.value += current.path
+            return false
+        }
+        if (current.path in diskWriteFailedPaths.value) diskWriteFailedPaths.value -= current.path
+        val idx = tabs.indexOfFirst { it.id == current.id }
+        if (idx >= 0) tabs[idx] = current.copy(isDirty = false)
+        FileCache.invalidate(current.path)
+        return true
+    }
+
     fun runFormatDocument() {
         val activeTab = resolveActiveTab(activeId, tabs)
         if (activeTab != null && !formatting) {
@@ -742,6 +760,67 @@ fun EditorPane(
         }
     }
     var goToLineOpen by remember { mutableStateOf(false) }
+
+    // VN CODE COMMANDS (owner request 2026-11-11): the mounted pane serves the allowlisted
+    // dispatcher. Each branch calls the SAME action the toolbar and keyboard use; nothing is
+    // re-implemented, and the answer names the file so the model can report it truthfully.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        com.codespace.ide.editor.EditorCommandBus.serve { req ->
+            when (req.command) {
+                com.codespace.ide.editor.VnCommand.SAVE -> {
+                    val name = resolveActiveTab(activeId, tabs)?.name
+                    if (name == null) {
+                        com.codespace.ide.editor.CommandOutcome.failed("No file is open to save.")
+                    } else if (saveActiveTabNow()) {
+                        com.codespace.ide.editor.CommandOutcome.ok("Saved " + name + ".")
+                    } else {
+                        com.codespace.ide.editor.CommandOutcome.failed("Could not write " + name + " to disk.")
+                    }
+                }
+                com.codespace.ide.editor.VnCommand.SAVE_ALL -> {
+                    val (saved, failed) = saveAllDirtyTabs(tabs)
+                    if (saved == 0 && failed == 0) {
+                        com.codespace.ide.editor.CommandOutcome.ok("Nothing to save: no modified files.")
+                    } else if (failed == 0) {
+                        com.codespace.ide.editor.CommandOutcome.ok("Saved " + saved + " file(s).")
+                    } else {
+                        com.codespace.ide.editor.CommandOutcome.failed(
+                            "Saved " + saved + " file(s); " + failed + " failed to write.",
+                        )
+                    }
+                }
+                com.codespace.ide.editor.VnCommand.FORMAT -> {
+                    val name = resolveActiveTab(activeId, tabs)?.name
+                    if (name == null) {
+                        com.codespace.ide.editor.CommandOutcome.failed("No file is open to format.")
+                    } else {
+                        runFormatDocument()
+                        com.codespace.ide.editor.CommandOutcome.ok("Formatting " + name + ".")
+                    }
+                }
+                com.codespace.ide.editor.VnCommand.FIND -> {
+                    findReplaceOpen = true
+                    onFindBarOpenChanged?.invoke(true)
+                    val q = req.query
+                    if (q == null) {
+                        com.codespace.ide.editor.CommandOutcome.ok("Find opened.")
+                    } else {
+                        com.codespace.ide.editor.CommandOutcome.ok("Find opened for '" + q + "'.")
+                    }
+                }
+                com.codespace.ide.editor.VnCommand.GO_TO_LINE -> {
+                    goToLineOpen = true
+                    val l = req.line
+                    if (l == null) {
+                        com.codespace.ide.editor.CommandOutcome.ok("Go to Line opened.")
+                    } else {
+                        com.codespace.ide.editor.CommandOutcome.ok("Go to Line opened at line " + l + ".")
+                    }
+                }
+            }
+        }
+    }
+
     // CW3: long-pressed gutter line -> breakpoint condition editor (null = closed)
     var condBpLine by remember { mutableStateOf<Int?>(null) }
     // REFRESH-FAMILY (2026-10-03): UDM's breakpoint store is a plain singleton —
