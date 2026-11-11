@@ -40,10 +40,16 @@ class ActivityGroupingTest {
     }
 
     @Test
-    fun aNoteIsNeverAbsorbedIntoAGroup() {
+    fun aNoteBetweenStepsBelongsToTheSameTask() {
+        // CHANGED 2026-11-11 (owner: related work renders OUTSIDE the tree). This test used to assert
+        // that a note SPLIT a run, and that rule is exactly what pushed status text and the results
+        // after it out of the tree on the device. A note produced between two steps of one task is
+        // part of that task; only a turn-level row (answer, failure, user) ends the run.
         val rows = listOf(step("a: 1"), ChatRowModel.InfoNote("key switched"), step("b: 2"))
         val out = ActivityGrouping.group(rows)
-        assertEquals(3, out.size)
+        assertEquals(1, out.size)
+        assertTrue(out[0] is ChatDisplayRow.ActivityGroup)
+        assertEquals(3, (out[0] as ChatDisplayRow.ActivityGroup).items.size)
     }
 
     @Test

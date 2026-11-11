@@ -42,24 +42,21 @@ object NativeChatListRenderer : ChatListRenderer {
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(ChatTokens.GAP.dp),
         ) {
-            // 2026-11-05: consecutive tool steps collapse into one row (ActivityGrouping).
-            var i = 0
+            // 2026-11-11: ONE grouping implementation. This loop used to re-derive the runs
+            // itself while ActivityGrouping.group() existed beside it, so a change in the rules
+            // could disagree with what was drawn. The renderer now consumes the pure model.
             val rows = state.rows
-            while (i < rows.size) {
-                val row = rows[i]
-                if (row is ChatRowModel.ToolActivity) {
-                    var j = i
-                    while (j < rows.size && rows[j] is ChatRowModel.ToolActivity) j++
-                    val run = rows.subList(i, j).map { it as ChatRowModel.ToolActivity }
-                    if (run.size == 1) {
-                        RenderRow(row, state, stepsAfter(rows, i))
-                    } else {
-                        ActivityGroupRow(run)
+            var consumed = 0
+            ActivityGrouping.group(rows).forEach { display ->
+                when (display) {
+                    is ChatDisplayRow.Single -> {
+                        RenderRow(display.row, state, stepsAfter(rows, consumed))
+                        consumed++
                     }
-                    i = j
-                } else {
-                    RenderRow(row, state, stepsAfter(rows, i))
-                    i++
+                    is ChatDisplayRow.ActivityGroup -> {
+                        ActivityGroupRow(display.id, display.items)
+                        consumed += display.items.size
+                    }
                 }
             }
         }

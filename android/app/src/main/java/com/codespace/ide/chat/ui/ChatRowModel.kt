@@ -6,7 +6,22 @@ package com.codespace.ide.chat.ui
  */
 sealed interface ChatRowModel {
     data class User(val text: String) : ChatRowModel
-    data class AssistantStream(val text: String, val cursorOn: Boolean) : ChatRowModel
+
+    /**
+     * What a stream row IS, which the tree needs and the transcript did not say before.
+     *
+     * PROGRESS is the narration a model writes before it acts ("Reading the manifest"). ANSWER is
+     * the reply. They looked identical, so grouping treated mid-task narration as the end of the
+     * turn and everything after it escaped the tree. Default ANSWER keeps every existing call site
+     * honest: a stream that does not say it is progress IS the answer.
+     */
+    enum class StreamKind { PROGRESS, ANSWER }
+
+    data class AssistantStream(
+        val text: String,
+        val cursorOn: Boolean,
+        val kind: StreamKind = StreamKind.ANSWER,
+    ) : ChatRowModel
     data class Thinking(val seconds: Int) : ChatRowModel
     data class Failed(val verdict: String, val detail: String, val canRetry: Boolean) : ChatRowModel
     object NoCredits : ChatRowModel
@@ -21,7 +36,12 @@ sealed interface ChatRowModel {
      * activity in the transcript. Kept apart from InfoNote so a note the user must read can
      * never be dismissed by the same gesture.
      */
-    data class ToolActivity(val label: String, val detail: String) : ChatRowModel
+    /**
+     * One step the assistant took. [id] is assigned once, when the step is created, so the tree can
+     * collapse and expand by identity instead of by position — the old behaviour reset the group on
+     * every streaming update because the key was an index.
+     */
+    data class ToolActivity(val label: String, val detail: String, val id: String = "") : ChatRowModel
 
     data class Attachments(val chips: List<AttachmentChipModel>) : ChatRowModel
 }

@@ -749,9 +749,13 @@ class ChatSession internal constructor(
                     is ToolDecision.Refused -> decision.visibleText
                     is ToolDecision.Run -> decision.visibleText
                 }
+                // PROGRESS when the turn is about to run tools: that narration is part of the
+                // task's work, so it belongs INSIDE the tree. An answer stays a turn-level row.
+                val kind = if (decision is ToolDecision.Run) ChatRowModel.StreamKind.PROGRESS
+                else ChatRowModel.StreamKind.ANSWER
                 val rows = if (st.rows.lastOrNull() is ChatRowModel.AssistantStream)
-                    st.rows.dropLast(1) + listOf(ChatRowModel.AssistantStream(shown, false))
-                else st.rows + listOf(ChatRowModel.AssistantStream(shown, false))
+                    st.rows.dropLast(1) + listOf(ChatRowModel.AssistantStream(shown, false, kind))
+                else st.rows + listOf(ChatRowModel.AssistantStream(shown, false, kind))
                 ui.value = st.copy(rows = rows, streaming = false)
                 when (decision) {
                     // 2026-11-05: a panel that asked a question (Source Control's commit message)
@@ -845,7 +849,10 @@ class ChatSession internal constructor(
             val results = StringBuilder()
             for (call in calls) {
                 val summary = AgentToolWire.summary(call)
-                appendRow(ChatRowModel.ToolActivity(AgentToolWire.stepLabel(call), summary))
+                // Stable id: the tree collapses by identity, so a streaming update cannot reset it.
+                appendRow(ChatRowModel.ToolActivity(
+                    AgentToolWire.stepLabel(call), summary,
+                    id = "r" + toolRound + "c" + (calls.indexOf(call) + 1)))
                 // Batch 2: EDIT-mode writes are PROPOSALS. Staging cannot touch the
                 // user's files (it writes a private pending record), so it needs no
                 // approval prompt - the user's Apply in the editor strip IS the

@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -232,11 +233,14 @@ fun ToolActivityRow(
  */
 @Composable
 fun ActivityGroupRow(
-    items: List<ChatRowModel.ToolActivity>,
+    id: String,
+    items: List<ChatRowModel>,
     modifier: Modifier = Modifier,
 ) {
     val c = ChatTokens.LocalChatColors.current
-    var expanded by remember { mutableStateOf(false) }
+    // Keyed by the task id, not by list position: a streaming update must not collapse a tree the
+    // user opened. saveable so it also survives the list recycling while scrolling.
+    var expanded by rememberSaveable(id) { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -263,14 +267,33 @@ fun ActivityGroupRow(
             )
         }
         if (expanded) {
+            // The tree proper: steps and the notes they produced are children of the task, with
+            // one indent and no extra containers.
             items.forEach { item ->
-                Column(Modifier.padding(top = 6.dp)) {
-                    Text(item.label, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
-                    if (item.detail.isNotBlank()) {
-                        Text(item.detail, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
-                    }
+                when (item) {
+                    is ChatRowModel.ToolActivity -> TreeChild(item.label, item.detail, c, false)
+                    is ChatRowModel.InfoNote -> TreeChild("", item.text, c, true)
+                    is ChatRowModel.AssistantStream -> TreeChild("", item.text, c, true)
+                    else -> Unit
                 }
             }
+        }
+    }
+}
+
+/** One child line of a task tree. Notes and narration are muted; steps carry their result under. */
+@Composable
+private fun TreeChild(label: String, detail: String, c: com.codespace.ide.chat.ui.ChatColors, muted: Boolean) {
+    Column(Modifier.padding(start = 14.dp, top = 6.dp)) {
+        if (label.isNotBlank()) {
+            Text(label, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
+        }
+        if (detail.isNotBlank()) {
+            Text(
+                detail,
+                color = if (muted) c.textSecondary else c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+            )
         }
     }
 }
