@@ -189,6 +189,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         "create_skill", "list_skills", "read_skill", "delete_skill",
         // S1 (owner approval 2026-11-11): executable from the day they are advertised.
         "checksum", "diff_files", "move_path", "journal_write", "git_stash", "git_tag",
+        // Wave 0.1 (owner approval 2026-11-11): cross-file replacement.
+        "grep_replace_all",
     )
 
     /** Builtin tool names for the /tools chat command (see BUILTIN_TOOL_NAMES). */
@@ -329,6 +331,10 @@ You can use multiple tools in sequence. When done, give a final summary.
                     args.optString("algorithm", "sha256"))
                 "diff_files" -> diffFiles(args.getString("path_a"), args.getString("path_b"),
                     args.optInt("context", 3), context)
+                // Wave 0.1 (owner approval 2026-11-11): one operation across many files.
+                // EDIT mode never reaches this branch with a write - ChatSession stages the same
+                // plan instead, so the model cannot bypass the proposal strip.
+                "grep_replace_all" -> grepReplaceAll(args, context)
                 "move_path" -> {
                     val moved = FileInsightTools.move(
                         guestPath(args.getString("from"), context),
@@ -1239,6 +1245,60 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     /** VS Code's multi_replace_string_in_file: several edits, applied all or nothing. */
+    /**
+     * Wave 0.1: replace exact text across the workspace.
+     *
+     * The plan is built by [MultiFileReplace] first, so a dry run and a real run share one code path
+     * and a refusal costs nothing. Writes happen here, one file at a time, and a failure is reported
+     * as a PARTIAL FAILURE that names the file rather than as a success.
+     */
+    private fun grepReplaceAll(args: JSONObject, context: android.content.Context): String {
+        val dryRun = args.optBoolean("dry_run", false)
+        val plan = planGrepReplaceAll(args.toString(), context)
+        plan.refused?.let { return "REFUSED: " + it }
+        if (plan.changes.isEmpty()) return MultiFileReplace.noMatches(plan, args.optString("paths", ""))
+        if (dryRun) return MultiFileReplace.report(plan, dryRun = true)
+
+        val failures = ArrayList<String>()
+        var applied = 0
+        for (change in plan.changes) {
+            val updated = change.updated ?: continue
+            try {
+                change.file.writeText(updated)
+                applied++
+            } catch (t: Throwable) {
+                failures.add(change.rel + " (" + (t.message ?: "write failed") + ")")
+            }
+        }
+        if (failures.isNotEmpty()) {
+            return "PARTIAL FAILURE: wrote " + applied + " of " + plan.changes.size + " file(s). " +
+                "Failed: " + failures.joinToString(", ") + "\n" + MultiFileReplace.report(plan, dryRun = false)
+        }
+        return MultiFileReplace.report(plan, dryRun = false)
+    }
+
+    /**
+     * The plan behind grep_replace_all, shared with EDIT-mode staging in ChatSession.
+     *
+     * Internal rather than private so the staging path can reuse it: staging must describe exactly
+     * the changes the agent would have made, not a second implementation of the same idea.
+     */
+    internal fun planGrepReplaceAll(argumentsJson: String, context: android.content.Context): MultiFileReplace.Plan {
+        val args = try {
+            JSONObject(argumentsJson)
+        } catch (t: Throwable) {
+            return MultiFileReplace.Plan(emptyList(), emptyList(), 0, 0, "arguments are not valid JSON")
+        }
+        val root = File(resolveToolPath(context, args.optString("root", ".")))
+        return MultiFileReplace.plan(
+            root = root,
+            search = args.optString("search", ""),
+            replace = args.optString("replace", ""),
+            filter = args.optString("paths", ""),
+            dryRun = true,
+        )
+    }
+
     private fun multiReplaceFile(
         path: String,
         replacementsJson: String,

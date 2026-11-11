@@ -746,6 +746,18 @@ internal object ToolRegistry {
             modes = WRITE_MODES,
         ),
         ToolSpec(
+            name = "grep_replace_all",
+            displayName = "Replacing across files",
+            description = "Replace exact text in every matching workspace file in one operation. Reports " +
+                "the total and per-file counts; dry_run previews without writing. Use it when a change " +
+                "belongs in many files, not one.",
+            schema = OBJ + ",\"required\":[\"search\",\"replace\"],\"properties\":{\"search\":{\"type\":\"string\"}" +
+                ",\"replace\":{\"type\":\"string\"},\"paths\":{\"type\":\"string\"}" +
+                ",\"root\":{\"type\":\"string\"}" +
+                ",\"dry_run\":{\"type\":\"boolean\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
             name = "journal_write",
             displayName = "Noting progress",
             description = "Append a short note about the current task to the project journal, so a " +

@@ -44,10 +44,11 @@ class ToolRegistryTest {
         // registry would be invisible to the mode gate, which is the real defect to catch.
         val missing = executable.toSet() - ToolRegistry.names().toSet()
         assertTrue("executor tool missing from the registry: " + missing, missing.isEmpty())
-        // 2026-11-11: 88 = 82 at the dynamic-loading baseline plus the six S1 tools (checksum,
+        // 2026-11-11: 89 = 82 at the dynamic-loading baseline, plus the six S1 tools (checksum,
+        // diff_files, move_path, journal_write, git_stash, git_tag) and grep_replace_all (Wave 0.1).
         // allowlisted dispatcher that replaces the hidden run_vscode_command concept.
-        assertEquals("every registered tool is listed exactly once", 88, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 88, ToolRegistry.names().toSet().size)
+        assertEquals("every registered tool is listed exactly once", 89, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 89, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -165,6 +166,8 @@ class ToolRegistryTest {
             "journal_write" to (listOf("note") to emptyList<String>()),
             "git_stash" to (emptyList<String>() to listOf("action", "message", "repo_dir")),
             "git_tag" to (emptyList<String>() to listOf("action", "name", "message", "repo_dir")),
+            // Wave 0.1: the executor reads root, paths and dry_run besides the two required strings.
+            "grep_replace_all" to (listOf("search", "replace") to listOf("paths", "dry_run", "root")),
             "read_memory" to (emptyList<String>() to emptyList<String>()),
             "list_tasks" to (emptyList<String>() to emptyList<String>()),
             "read_entities" to (listOf("entity") to listOf("filter")),

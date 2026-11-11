@@ -43,6 +43,11 @@ internal object ToolMetaIndex {
         "list_files" to ToolMeta(ToolCategory.FILES, listOf("list", "files", "folder", "directory")),
         "list_dir" to ToolMeta(ToolCategory.FILES, listOf("list", "directory", "ls", "folder")),
         "create_directory" to ToolMeta(ToolCategory.FILES, listOf("mkdir", "folder", "create"), destructive = true),
+        "grep_replace_all" to ToolMeta(
+            ToolCategory.EDIT,
+            listOf("replace all", "bulk replace", "across files", "everywhere", "refactor", "rename string", "find and replace"),
+            destructive = true,
+        ),
         "move_path" to ToolMeta(ToolCategory.FILES, listOf("move", "rename", "relocate"), destructive = true),
         "checksum" to ToolMeta(ToolCategory.FILES, listOf("hash", "sha256", "md5", "verify", "integrity", "digest")),
         "diff_files" to ToolMeta(ToolCategory.FILES, listOf("diff", "compare", "difference", "changes", "versus")),

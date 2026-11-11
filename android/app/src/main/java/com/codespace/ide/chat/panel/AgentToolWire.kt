@@ -116,7 +116,7 @@ internal object AgentToolWire {
      * behind the approval gate exactly as before.
      */
     fun isStagedWrite(mode: ChatMode, toolName: String): Boolean =
-        mode == ChatMode.EDIT && toolName == "write_file"
+        mode == ChatMode.EDIT && (toolName == "write_file" || toolName == "grep_replace_all")
 
     /** Human line for a staged proposal: the file and the size, never "applied". */
     fun stagedNote(relPath: String, chars: Int): String =
@@ -364,6 +364,7 @@ internal object AgentToolWire {
     fun stepLabel(call: ParsedToolCall): String = when (call.name) {
         "run_command" -> "Running a command"
         "write_file" -> "Writing a file"
+        "grep_replace_all" -> "Replacing across files"
         "read_file" -> "Reading a file"
         "list_files" -> "Listing files"
         "search_files" -> "Searching the project"

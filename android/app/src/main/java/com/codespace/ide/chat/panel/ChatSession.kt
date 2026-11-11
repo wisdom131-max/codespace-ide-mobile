@@ -875,6 +875,7 @@ class ChatSession internal constructor(
      * session, and a project switch cannot leak proposals between projects.
      */
     private fun stageProposal(ctx: android.content.Context, call: ParsedToolCall): String {
+        if (call.name == "grep_replace_all") return stageGrepReplace(ctx, call)
         val args = org.json.JSONObject(call.argumentsJson)
         val rawPath = args.optString("path", "")
         val content = args.optString("content", "")
@@ -887,6 +888,43 @@ class ChatSession internal constructor(
         val rel = WorkspaceContext.relativeTo(
             com.codespace.ide.security.TrustState.activeProjectRoot(ctx), rawPath) ?: rawPath
         return if (staged.startsWith("staged:")) AgentToolWire.stagedNote(rel, content.length) else staged
+    }
+
+    /**
+     * Wave 0.1: a multi-file replace becomes N proposals, never a write.
+     *
+     * PendingChangesStore is keyed by session and path, so several proposals for one operation are
+     * representable without new machinery: each file is staged on its own, applied on its own, and
+     * the user keeps the same Apply/Discard strip they already trust. The plan is the SAME one the
+     * Agent-mode executor uses, so what is proposed is exactly what would have been written.
+     */
+    private fun stageGrepReplace(ctx: android.content.Context, call: ParsedToolCall): String {
+        val plan = com.codespace.ide.agent.AgentTools.planGrepReplaceAll(call.argumentsJson, ctx)
+        plan.refused?.let { return "FAILED: " + it }
+        if (plan.changes.isEmpty()) return "No matches, so nothing was staged."
+        com.codespace.ide.chat.PendingChangesStore.activeSessionId = projectId
+        com.codespace.ide.chat.PendingChangesStore.activate(
+            ctx, com.codespace.ide.security.TrustState.activeProjectRoot(ctx))
+        var staged = 0
+        val failures = ArrayList<String>()
+        for (change in plan.changes) {
+            val updated = change.updated
+            if (updated == null) {
+                failures.add(change.rel + " (no content to stage)")
+                continue
+            }
+            val outcome = try {
+                com.codespace.ide.chat.PendingChangesStore.stage(
+                    change.file.absolutePath, updated, ctx)
+            } catch (t: Throwable) {
+                "FAILED: " + (t.message ?: "could not stage")
+            }
+            if (outcome.startsWith("staged:")) staged++ else failures.add(change.rel + " (" + outcome + ")")
+        }
+        val head = "staged:" + staged + " file(s), " + plan.total + " replacement(s). Nothing has been " +
+            "written to disk. Review each proposal in the editor strip and Apply or Discard there."
+        return if (failures.isEmpty()) head
+        else head + " Not staged: " + failures.joinToString(", ")
     }
 
     /**
