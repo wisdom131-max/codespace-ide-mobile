@@ -135,7 +135,7 @@ internal object ToolRegistry {
             name = "git_commit_push",
             displayName = "Committing and pushing",
             description = "Stage everything and commit with this message. Pushes to the remote when one is configured.",
-            schema = OBJ + ",\"required\":[\"message\"],\"properties\":{,\"message\":{\"type\":\"string\"},\"repo_dir\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"message\"],\"properties\":{\"message\":{\"type\":\"string\"},\"repo_dir\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
         ToolSpec(
@@ -149,7 +149,7 @@ internal object ToolRegistry {
             name = "git_branch",
             displayName = "Managing branches",
             description = "List, create, switch, rename, merge or delete branches with one action argument.",
-            schema = OBJ + ",\"required\":[\"action\"],\"properties\":{,\"action\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"repo_dir\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"action\"],\"properties\":{\"action\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"repo_dir\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
 
@@ -176,14 +176,14 @@ internal object ToolRegistry {
             name = "save_secret",
             displayName = "Saving a secret",
             description = "Store a credential in the encrypted store. The value is written, never echoed back.",
-            schema = OBJ + ",\"required\":[\"key\", \"value\"],\"properties\":{,\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"key\", \"value\"],\"properties\":{\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "get_secret",
             displayName = "Reading a secret",
             description = "Read one stored secret by key so it can be used in a command you are about to run.",
-            schema = OBJ + ",\"required\":[\"key\"],\"properties\":{,\"key\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"key\"],\"properties\":{\"key\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
 
@@ -211,7 +211,7 @@ internal object ToolRegistry {
             name = "web_search",
             displayName = "Searching the web",
             description = "Search the web and return titles, links and snippets.",
-            schema = OBJ + ",\"required\":[\"query\"],\"properties\":{,\"query\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"query\"],\"properties\":{\"query\":{\"type\":\"string\"}}}",
             modes = READ_ALL,
         ),
 
@@ -237,7 +237,7 @@ internal object ToolRegistry {
             name = "delete_memory",
             displayName = "Deleting a memory",
             description = "Delete one saved memory by key. There is no undo, so say what is being removed.",
-            schema = OBJ + ",\"required\":[\"key\"],\"properties\":{,\"key\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"key\"],\"properties\":{\"key\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
 
@@ -393,14 +393,14 @@ internal object ToolRegistry {
             name = "connect_service",
             displayName = "Connecting a service",
             description = "Start the OAuth flow for a service. The user still approves in the consent sheet.",
-            schema = OBJ + ",\"required\":[\"service\"],\"properties\":{,\"service\":{\"type\":\"string\"},\"scopes\":{\"type\":\"array\"}}}",
+            schema = OBJ + ",\"required\":[\"service\"],\"properties\":{\"service\":{\"type\":\"string\"},\"scopes\":{\"type\":\"array\"}}}",
             modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "use_connector",
             displayName = "Using a connection",
             description = "Call an authorized service's API through its connector after per-call consent.",
-            schema = OBJ + ",\"required\":[\"service\", \"method\", \"endpoint\"],\"properties\":{,\"service\":{\"type\":\"string\"},\"method\":{\"type\":\"string\"},\"endpoint\":{\"type\":\"string\"},\"body\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"service\", \"method\", \"endpoint\"],\"properties\":{\"service\":{\"type\":\"string\"},\"method\":{\"type\":\"string\"},\"endpoint\":{\"type\":\"string\"},\"body\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
         ToolSpec(
@@ -419,7 +419,7 @@ internal object ToolRegistry {
             name = "create_entity",
             displayName = "Creating a record",
             description = "Create a record in an app entity from a JSON object.",
-            schema = OBJ + ",\"required\":[\"entity\", \"data\"],\"properties\":{,\"entity\":{\"type\":\"string\"},\"data\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"entity\", \"data\"],\"properties\":{\"entity\":{\"type\":\"string\"},\"data\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
         ToolSpec(
@@ -435,14 +435,14 @@ internal object ToolRegistry {
             name = "update_entity",
             displayName = "Updating records",
             description = "Update records matching a filter with the given fields.",
-            schema = OBJ + ",\"required\":[\"entity\", \"filter\", \"data\"],\"properties\":{,\"entity\":{\"type\":\"string\"},\"filter\":{\"type\":\"string\"},\"data\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"entity\", \"filter\", \"data\"],\"properties\":{\"entity\":{\"type\":\"string\"},\"filter\":{\"type\":\"string\"},\"data\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
         ToolSpec(
             name = "delete_entity",
             displayName = "Deleting records",
             description = "Delete records matching a filter. No undo.",
-            schema = OBJ + ",\"required\":[\"entity\", \"filter\"],\"properties\":{,\"entity\":{\"type\":\"string\"},\"filter\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"entity\", \"filter\"],\"properties\":{\"entity\":{\"type\":\"string\"},\"filter\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
 
@@ -451,7 +451,7 @@ internal object ToolRegistry {
             name = "schedule_task",
             displayName = "Scheduling a task",
             description = "Schedule a recurring command with cron syntax in the current project.",
-            schema = OBJ + ",\"required\":[\"name\", \"cron\", \"command\"],\"properties\":{,\"name\":{\"type\":\"string\"},\"cron\":{\"type\":\"string\"},\"command\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"name\", \"cron\", \"command\"],\"properties\":{\"name\":{\"type\":\"string\"},\"cron\":{\"type\":\"string\"},\"command\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
         ToolSpec(
@@ -465,7 +465,7 @@ internal object ToolRegistry {
             name = "cancel_task",
             displayName = "Cancelling a scheduled task",
             description = "Cancel a scheduled task by name.",
-            schema = OBJ + ",\"required\":[\"name\"],\"properties\":{,\"name\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
 
@@ -474,7 +474,7 @@ internal object ToolRegistry {
             name = "upload_file",
             displayName = "Uploading a file",
             description = "Upload a project file and return a link. This sends bytes out, so it is Agent-only.",
-            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{,\"path\":{\"type\":\"string\"}}}",
+            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{\"path\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
         ToolSpec(
