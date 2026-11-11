@@ -717,6 +717,61 @@ internal object ToolRegistry {
             schema = OBJ + ",\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\"}}}",
             modes = WRITE_MODES,
         ),
+        // --- S1 (owner approval 2026-11-11): capabilities that were missing, not duplications ---
+        ToolSpec(
+            name = "checksum",
+            displayName = "Hashing a file",
+            description = "Hash a file (sha256 by default; sha1, md5, sha512 available). " +
+                "Use it to prove a download or an edit matches an expected value.",
+            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{\"path\":{\"type\":\"string\"}" +
+                ",\"algorithm\":{\"type\":\"string\",\"enum\":[\"sha256\",\"sha1\",\"md5\",\"sha512\"]}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "diff_files",
+            displayName = "Comparing files",
+            description = "Compare two files line by line and report added/removed lines with context. " +
+                "Cheaper and more reliable than reading both files to compare them by eye.",
+            schema = OBJ + ",\"required\":[\"path_a\",\"path_b\"],\"properties\":{\"path_a\":{\"type\":\"string\"}" +
+                ",\"path_b\":{\"type\":\"string\"},\"context\":{\"type\":\"integer\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "move_path",
+            displayName = "Moving a file",
+            description = "Move or rename a file or directory. Refuses to overwrite an existing " +
+                "destination unless overwrite is true.",
+            schema = OBJ + ",\"required\":[\"from\",\"to\"],\"properties\":{\"from\":{\"type\":\"string\"}" +
+                ",\"to\":{\"type\":\"string\"},\"overwrite\":{\"type\":\"boolean\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "journal_write",
+            displayName = "Noting progress",
+            description = "Append a short note about the current task to the project journal, so a " +
+                "later turn or the user can see what was found. Never write secrets here.",
+            schema = OBJ + ",\"required\":[\"note\"],\"properties\":{\"note\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "git_stash",
+            displayName = "Stashing changes",
+            description = "Temporarily set aside uncommitted changes, list stashes, or restore them " +
+                "(push, list, pop, apply, drop).",
+            schema = OBJ + ",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[" +
+                "\"push\",\"list\",\"pop\",\"apply\",\"drop\"]},\"message\":{\"type\":\"string\"}" +
+                ",\"repo_dir\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "git_tag",
+            displayName = "Tagging a release",
+            description = "List, create, delete or show git tags. Annotated tags take a message.",
+            schema = OBJ + ",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[" +
+                "\"list\",\"create\",\"delete\",\"show\"]},\"name\":{\"type\":\"string\"}" +
+                ",\"message\":{\"type\":\"string\"},\"repo_dir\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
     )
 
     /** Every registered name, in registry order. */
@@ -742,8 +797,16 @@ internal object ToolRegistry {
      * Names alone were the Phase 0 defect: the model could see a tool existed but not
      * what it took, so it guessed argument names.
      */
-    fun promptBlock(mode: ChatMode): String {
-        val specs = exposed(mode)
+    /**
+     * L2 (owner approval 2026-11-11): [only] narrows the block to the tools this turn OFFERS.
+     * Null keeps the historical behaviour (everything the mode allows) so existing tests and the
+     * "show me every tool" path are unchanged.
+     *
+     * A subset never becomes a permission: [AgentToolWire.decide] and [ToolLoadout.load] both check
+     * the registry and the mode independently of what was advertised.
+     */
+    fun promptBlock(mode: ChatMode, only: Set<String>? = null): String {
+        val specs = if (only == null) exposed(mode) else exposed(mode).filter { it.name in only }
         if (specs.isEmpty()) return ""
         val sb = StringBuilder()
         sb.append("\n\nYou can act on this project. To use a tool, emit exactly one block:\n")
@@ -759,6 +822,10 @@ internal object ToolRegistry {
             sb.append("- ").append(s.name).append(": ").append(oneLine(s.description)).append('\n')
             sb.append("  args: ").append(compactArgs(s.schema)).append('\n')
         }
+        // L4: the model must know that this list is not the whole story, and how to widen it.
+        sb.append("\nNot every tool is listed. When you need a capability that is not above, call ")
+        sb.append("tool_search with a plain description of the capability; add \"load\":[...] to ")
+        sb.append("make the matches callable, and they will be available from your next step.\n")
         return sb.toString()
     }
 

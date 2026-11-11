@@ -187,6 +187,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         "schedule_task", "list_tasks", "cancel_task", "upload_file", "install_package",
         "plan",
         "create_skill", "list_skills", "read_skill", "delete_skill",
+        // S1 (owner approval 2026-11-11): executable from the day they are advertised.
+        "checksum", "diff_files", "move_path", "journal_write", "git_stash", "git_tag",
     )
 
     /** Builtin tool names for the /tools chat command (see BUILTIN_TOOL_NAMES). */
@@ -267,7 +269,10 @@ You can use multiple tools in sequence. When done, give a final summary.
                     args.optString("repo"), args.optString("what", "overview"),
                     args.optString("path"), args.optString("state"), context)
                 "view_image" -> viewImage(args.getString("path"), context)
-                "tool_search" -> toolSearch(args.getString("query"))
+                "tool_search" -> toolSearch(
+                    args.getString("query"),
+                    args.optJSONArray("load")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                    context)
                 "terminal_selection" -> terminalSelection()
                 "vncode_askQuestions" -> askQuestions(args)
                 "vncode_get_confirmation" -> getConfirmation(args.optString("message"), emptyList())
@@ -318,6 +323,36 @@ You can use multiple tools in sequence. When done, give a final summary.
                 // instructions once, then loads them by name instead of carrying them in every
                 // prompt. No non-local returns here: Kotlin turns those into a synthetic class
                 // that D8 refuses to dex.
+                // S1 (owner approval 2026-11-11): structured file insight instead of shelling out.
+                "checksum" -> FileInsightTools.checksum(
+                    guestPath(args.getString("path"), context),
+                    args.optString("algorithm", "sha256"))
+                "diff_files" -> diffFiles(args.getString("path_a"), args.getString("path_b"),
+                    args.optInt("context", 3), context)
+                "move_path" -> {
+                    val moved = FileInsightTools.move(
+                        guestPath(args.getString("from"), context),
+                        guestPath(args.getString("to"), context),
+                        args.optBoolean("overwrite", false))
+                    if (!moved.startsWith("Moved")) moved else moved
+                }
+                "journal_write" -> FileInsightTools.journalWrite(
+                    journalFile(context), args.getString("note"),
+                    java.time.Instant.ofEpochMilli(System.currentTimeMillis()).toString().replace("T", " ").take(19))
+                "git_stash" -> GitExtraTools.stash(
+                    args.optString("action", "push").ifBlank { "push" },
+                    args.optString("message", ""),
+                    getRepoDir(args.optString("repo_dir").ifBlank { null }, context),
+                ) { list -> gitRun(*list.toTypedArray(), repo = getRepoDir(args.optString("repo_dir").ifBlank { null }, context), context = context) }
+                "git_tag" -> {
+                    val repo = getRepoDir(args.optString("repo_dir").ifBlank { null }, context)
+                    GitExtraTools.tag(
+                        args.optString("action", "list").ifBlank { "list" },
+                        args.optString("name", ""),
+                        args.optString("message", ""),
+                        repo,
+                    ) { list -> gitRun(*list.toTypedArray(), repo = repo, context = context) }
+                }
                 "create_skill" -> runCatching {
                     val path = com.codespace.ide.data.SkillStore.save(
                         context,
@@ -764,23 +799,83 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     /** tool_search: search this registry, so the model can find a tool it was not handed. */
-    private fun toolSearch(query: String): String {
+    /**
+     * tool_search: the discovery entry point (L1 index + L4 loading).
+     *
+     * Returns matches with their ARGUMENTS, not just names, because a name the model cannot call
+     * is noise. `load` moves the ones it wants into this task's loadout, which the session then
+     * includes in the next continuation's instruction.
+     */
+    private fun toolSearch(query: String, load: List<String>, context: Context): String {
         val q = query.trim()
-        val all = com.codespace.ide.chat.panel.ToolRegistry.names()
-        if (q.isEmpty()) return "Give a query. " + all.size + " tools are registered."
-        val hits = all.mapNotNull { name ->
-            val spec = com.codespace.ide.chat.panel.ToolRegistry.spec(name) ?: return@mapNotNull null
-            val text = spec.name + " " + spec.displayName + " " + spec.description
-            if (!text.contains(q, ignoreCase = true)) return@mapNotNull null
-            val modeText = if (spec.modes.isEmpty()) {
-                "not offered: " + (spec.hiddenReason ?: "no reason recorded")
-            } else {
-                "modes " + spec.modes.joinToString("/") { it.name }
-            }
-            spec.name + " - " + spec.displayName + " (" + modeText + ")"
+        val loadedForThisMode = com.codespace.ide.chat.panel.ToolLoadout.extra().toList()
+        if (q.isEmpty() && load.isEmpty()) {
+            val mode = com.codespace.ide.chat.panel.ToolLoadout.mode()
+            return "Give a query, or a list of tool names to load. " +
+                com.codespace.ide.chat.panel.ToolRegistry.exposedNames(mode).size +
+                " tools are registered for this mode; " + loadedForThisMode.size + " already loaded."
         }
-        if (hits.isEmpty()) return "No tool matches '" + q + "'."
-        return hits.take(20).joinToString("\n")
+        val mode = com.codespace.ide.chat.panel.ToolLoadout.mode()
+        val mcpNames = try {
+            com.codespace.ide.agent.McpClientManager.cachedToolNames(context)
+        } catch (e: Exception) {
+            emptyList()
+        }
+        val sb = StringBuilder()
+        if (q.isNotEmpty()) {
+            val hits = com.codespace.ide.chat.panel.ToolMetaIndex.search(q, mode, 8, mcpNames)
+            if (hits.isEmpty()) {
+                sb.append("No tool matches \"").append(q).append("\".\n")
+                sb.append("This is a gap in the tool set, not a reason to give up: say what you ")
+                sb.append("would need, or do it with a tool you already have (").append(loadedForThisMode.joinToString(", "))
+                    .append(").\n")
+            } else {
+                sb.append(hits.size).append(" match(es) for \"").append(q).append("\":\n")
+                for (h in hits) {
+                    val spec = h.spec
+                    sb.append("- ").append(spec.name).append(": ").append(
+                        com.codespace.ide.chat.panel.ToolRegistry.oneLine(spec.description)).append('\n')
+                    if (spec.schema.isNotBlank()) {
+                        sb.append("  args: ").append(com.codespace.ide.chat.panel.ToolRegistry.compactArgs(spec.schema))
+                            .append('\n')
+                    } else {
+                        sb.append("  external MCP tool: load it to see its arguments.\n")
+                    }
+                }
+                sb.append("To use any of these, call tool_search again with ")
+                sb.append("\"load\":[\"name\",...] and they become callable from your next step.\n")
+            }
+        }
+        if (load.isNotEmpty()) {
+            val result = com.codespace.ide.chat.panel.ToolLoadout.load(mode, load, mcpNames)
+            if (result.accepted.isNotEmpty()) {
+                sb.append("Loaded for this task: ").append(result.accepted.joinToString(", ")).append("\n")
+                // Give the model the callable shape immediately: the next step may be the call.
+                for (n in result.accepted) {
+                    val spec = com.codespace.ide.chat.panel.ToolRegistry.spec(n)
+                    if (spec != null) {
+                        sb.append("- ").append(spec.name).append(": ").append(
+                            com.codespace.ide.chat.panel.ToolRegistry.oneLine(spec.description)).append('\n')
+                        sb.append("  args: ").append(com.codespace.ide.chat.panel.ToolRegistry.compactArgs(spec.schema))
+                            .append('\n')
+                    } else {
+                        val docs = try {
+                            com.codespace.ide.agent.McpClientManager.docsFor(context, listOf(n))
+                        } catch (e: Exception) {
+                            ""
+                        }
+                        if (docs.isNotBlank()) sb.append(docs.trim()).append('\n')
+                        else sb.append("- ").append(n).append(": (no schema available yet)\n")
+                    }
+                }
+            }
+            if (result.rejected.isNotEmpty()) {
+                sb.append("Not loaded: ").append(result.rejected.joinToString(", "))
+                sb.append(if (result.atCap) " (limit of " + com.codespace.ide.chat.panel.ToolLoadout.MAX_EXTRA +
+                    " extra tools per task reached)" else " (not available in this mode)").append('\n')
+            }
+        }
+        return sb.toString().trim()
     }
 
     /**
@@ -1402,6 +1497,41 @@ You can use multiple tools in sequence. When done, give a final summary.
             "delete" -> { gitRun("branch", "-d", name, repo = repo, context = context); "Deleted branch '$name'" }
             else -> "Unknown branch action: $action. Use: create, switch, list, merge, delete"
         }
+    }
+
+    /** S1: a guest path joined onto the host filesystem the app can actually read. */
+    private fun guestPath(path: String, context: Context): String {
+        if (path.startsWith("/") && !path.startsWith("/root/") && !path.startsWith("/data/")) {
+            val host = com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, path)
+            if (host.exists()) return host.path
+        }
+        val direct = java.io.File(path)
+        if (direct.exists()) return direct.path
+        val mapped = com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, path)
+        return if (mapped.exists()) mapped.path else path
+    }
+
+    /** S1: the per-project journal `journal_write` appends to. */
+    private fun journalFile(context: Context): java.io.File {
+        val root = com.codespace.ide.security.TrustState.activeProjectRoot(context) ?: "/root"
+        val name = root.trim('/').replace('/', '_').ifBlank { "root" }
+        return java.io.File(context.filesDir, "chat/journal/$name.md")
+    }
+
+    private fun diffFiles(pathA: String, pathB: String, contextLines: Int, context: Context): String {
+        val a = java.io.File(guestPath(pathA, context))
+        val b = java.io.File(guestPath(pathB, context))
+        if (!a.exists()) return "No such file: $pathA"
+        if (!b.exists()) return "No such file: $pathB"
+        if (a.length() > FileInsightTools.MAX_READ || b.length() > FileInsightTools.MAX_READ) {
+            return "One of these files is too large to compare in one call (" + a.length() + " / " + b.length() + " bytes)."
+        }
+        val result = try {
+            FileInsightTools.diff(a.readText(), b.readText(), contextLines.coerceIn(0, 20))
+        } catch (e: Exception) {
+            return "Could not read the files: " + (e.message ?: e.javaClass.simpleName)
+        }
+        return com.codespace.ide.util.ToolOutputBounds.bound(result.render(pathA, pathB))
     }
 
     private fun gitStatus(repoDir: String?, context: Context): String {

@@ -495,12 +495,20 @@ class ChatSession internal constructor(
             toolPlanNoted = true
             appendRow(ChatRowModel.InfoNote(toolPlan.note))
         }
+        // L2/L4 (owner approval 2026-11-11): a fresh task starts with a lean offer. The loadout is
+        // per TASK, so tools discovered for the previous message are not silently still there.
+        ToolLoadout.beginTask(mode)
+        val offer = ToolOffer.plan(mode, userText)
+        // 2026-11-11: the offer note does NOT become a chat row. One note per message is noise the
+        // user learns to ignore; the toolset line lives in the instruction (below), and every load
+        // is already visible as a tool_search activity row.
+        offeredAtSend = offer.names
+        wsBlockForRefresh = wsBlock
+        loadoutVersionAtSend = ToolLoadout.version()
         val cfg = EngineConfig(
             modelId = sel.modelId,
             // U4-d: the mode rides the provider's own system slot (see ChatModePrompts).
-            systemInstruction = ChatModePrompts.instruction(mode) +
-                (if (toolPlan.sendTools) AgentToolWire.protocol(mode) else "") +
-                (if (wsBlock.isEmpty()) "" else "\n\n" + wsBlock),
+            systemInstruction = buildInstruction(mode, toolPlan.sendTools, wsBlock, offer.names),
             providerId = sel.providerId,
             baseUrl = liveBaseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
@@ -707,6 +715,50 @@ class ChatSession internal constructor(
      * to whichever turn happens to finish last.
      */
     @Volatile private var ledgerMark: Int = 0
+
+    /** L4: what this turn was offered, and the loadout version it was built from. */
+    private var offeredAtSend: List<String> = emptyList()
+    private var wsBlockForRefresh: String = ""
+    private var loadoutVersionAtSend: Int = 0
+
+    /**
+     * L2/L4: the system instruction for a turn.
+     *
+     * Rebuilt (not mutated) whenever the loadout changes, which is exactly what makes a discovered
+     * tool usable on the NEXT continuation: the wire protocol, the mode rules and the approval gate
+     * are untouched, only the advertised list grows. A provider that never supported function
+     * calling still sees plain text, so nothing here is provider-specific.
+     */
+    private fun buildInstruction(
+        mode: ChatMode,
+        sendTools: Boolean,
+        wsBlock: String,
+        offered: List<String>,
+    ): String {
+        val loaded = ToolLoadout.extra()
+        val visible = (offered.toSet() + loaded)
+        val mcpLoaded = loaded.filter { it.startsWith("mcp_") }
+        val mcpDocs = if (sendTools && mcpLoaded.isNotEmpty() && appContext != null) {
+            try {
+                com.codespace.ide.agent.McpClientManager.docsFor(appContext, mcpLoaded)
+            } catch (e: Exception) {
+                ""
+            }
+        } else ""
+        // Observable and explainable: the model is told how many tools exist beyond what it has,
+        // so "I do not have a tool for that" becomes "I can look for one".
+        val total = ToolRegistry.exposedNames(mode).size
+        val toolsetLine = if (!sendTools) "" else if (visible.size < total) {
+            "\nTool set for this task: " + visible.size + " of " + total +
+                " mode-allowed tools are described below. The rest exist and can be loaded.\n"
+        } else ""
+        return ChatModePrompts.instruction(mode) +
+            (if (sendTools) AgentToolWire.protocol(mode) else "") +
+            toolsetLine +
+            (if (sendTools) ToolRegistry.promptBlock(mode, visible) else "") +
+            (if (mcpDocs.isBlank()) "" else "\n\n## EXTERNAL MCP TOOLS (loaded for this task)\n" + mcpDocs) +
+            (if (wsBlock.isEmpty()) "" else "\n\n" + wsBlock)
+    }
 
     private fun appendRow(row: ChatRowModel) {
         ui.value = ui.value.copy(rows = ui.value.rows + listOf(row))
@@ -922,7 +974,13 @@ class ChatSession internal constructor(
                 streamStartedMs = System.currentTimeMillis(),
                 firstDeltaMs = 0L,
             )
-            attemptSend(cfg, slotName, results.toString().trim(), emptyList(), confirmOverBudget, gen)
+            // L4: if a tool_search loaded something, the next continuation must SEE it. Rebuilding
+            // the config is the whole mechanism - nothing about the engine call changes.
+            val refreshed = if (ToolLoadout.version() != loadoutVersionAtSend) {
+                loadoutVersionAtSend = ToolLoadout.version()
+                cfg.copy(systemInstruction = buildInstruction(mode, true, wsBlockForRefresh, offeredAtSend))
+            } else cfg
+            attemptSend(refreshed, slotName, results.toString().trim(), emptyList(), confirmOverBudget, gen)
         }
     }
 }

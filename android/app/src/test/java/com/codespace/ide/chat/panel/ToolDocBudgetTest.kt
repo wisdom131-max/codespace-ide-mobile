@@ -18,7 +18,10 @@ class ToolDocBudgetTest {
         val agent = AgentToolWire.protocol(ChatMode.AGENT).length
         val ask = AgentToolWire.protocol(ChatMode.ASK).length
         println("[comp] toolWire ask=" + ask + " agent=" + agent)
-        assertTrue("agent docs must stay under 11k chars (was 16,712): " + agent, agent < 11000)
+        // 2026-11-11: the cap moves from 11,000 to 12,500 because the registry grew by six real
+        // tools (S1). The guard still means something: it is 25% below the pre-compaction 16,712
+        // and Lean Tool Mode now sends roughly a third of it per turn (ToolPromptBudgetTest).
+        assertTrue("agent docs must stay under 12.5k chars (was 16,712): " + agent, agent < 12500)
         assertTrue("ask docs must stay under 5k chars (was 7,119): " + ask, ask < 5000)
     }
 

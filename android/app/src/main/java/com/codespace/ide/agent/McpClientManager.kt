@@ -449,6 +449,41 @@ object McpClientManager {
     fun cachedToolsFor(server: String): List<ExternalTool> =
         toolsCache.values.filter { it.server == server }.sortedBy { it.name }
 
+    /**
+     * P6 (owner approval 2026-11-11): the docs for a SPECIFIC subset of tools.
+     *
+     * Discovery asks for one MCP tool at a time, so the chat can learn its arguments without the
+     * whole server's schema landing in the prompt. Enabled servers and per-tool disables are still
+     * enforced by [cachedToolNames], so this can never describe a tool that cannot run.
+     */
+    fun docsFor(context: Context, names: List<String>): String {
+        val enabled = cachedToolNames(context).toSet()
+        val wanted = names.filter { it in enabled }
+        if (wanted.isEmpty()) {
+            val disabled = names.filter { it.startsWith("mcp_") }
+            return if (disabled.isEmpty()) ""
+            else "Not available: " + disabled.joinToString(", ") +
+                " (the server is disabled, the tool is disabled, or it has not been discovered yet)"
+        }
+        val sb = StringBuilder()
+        for (fullName in wanted) {
+            val t = toolsCache[fullName] ?: continue
+            sb.append("\n### ").append(fullName).append("\n")
+            val desc = t.description.trim()
+            sb.append(if (desc.length > 300) desc.take(300) + "..." else desc.ifBlank { "(no description)" }).append("\n")
+            val props = t.inputSchema.optJSONObject("properties")
+            if (props != null && props.length() > 0) {
+                sb.append("Arguments (JSON object): ")
+                for (k in props.keys()) {
+                    val type = props.optJSONObject(k)?.optString("type") ?: "any"
+                    sb.append(k).append(": ").append(type).append("; ")
+                }
+                sb.append("\n")
+            }
+        }
+        return sb.toString()
+    }
+
     fun toolDocs(context: Context): String {
         val names = cachedToolNames(context)
         if (names.isEmpty()) return ""
