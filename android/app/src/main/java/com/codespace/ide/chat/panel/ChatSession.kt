@@ -868,6 +868,10 @@ class ChatSession internal constructor(
      */
     private fun stageProposal(ctx: android.content.Context, call: ParsedToolCall): String {
         if (call.name == "grep_replace_all") return stageGrepReplace(ctx, call)
+        // Wave 1 Group B: a copy is a multi-file write, so in EDIT mode it becomes N proposals -
+        // one per text file - through the same store and the same Apply/Discard strip. A binary
+        // makes planStagedCopy refuse the whole operation instead of half-writing a tree.
+        if (call.name == "copy_path") return stageCopyPath(ctx, call)
         val args = org.json.JSONObject(call.argumentsJson)
         val rawPath = args.optString("path", "")
         val content = args.optString("content", "")
@@ -880,6 +884,20 @@ class ChatSession internal constructor(
         val rel = WorkspaceContext.relativeTo(
             com.codespace.ide.security.TrustState.activeProjectRoot(ctx), rawPath) ?: rawPath
         return if (staged.startsWith("staged:")) AgentToolWire.stagedNote(rel, content.length) else staged
+    }
+
+    /** Wave 1 Group B: EDIT-mode copy_path. Nothing here writes to the workspace. */
+    private fun stageCopyPath(ctx: android.content.Context, call: ParsedToolCall): String {
+        com.codespace.ide.chat.PendingChangesStore.activeSessionId = projectId
+        com.codespace.ide.chat.PendingChangesStore.activate(
+            ctx, com.codespace.ide.security.TrustState.activeProjectRoot(ctx))
+        val out = com.codespace.ide.agent.AgentTools.planStagedCopy(call.argumentsJson, ctx)
+        if (!out.startsWith("staged:")) return out
+        val count = out.removePrefix("staged:").substringBefore('|').toIntOrNull() ?: 0
+        val to = out.substringAfter('|')
+        return "Proposed copy staged: " + count + " file" + (if (count == 1) "" else "s") +
+            " -> " + to + ". Nothing has been written to disk. Review and Apply or Discard " +
+            "each proposal in the editor strip."
     }
 
     /**

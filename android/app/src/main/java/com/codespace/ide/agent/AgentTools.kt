@@ -193,6 +193,10 @@ You can use multiple tools in sequence. When done, give a final summary.
         "grep_replace_all",
         // Wave 1 Group A (owner approval 2026-11-11): data in, answer out.
         "json_query", "csv_parse", "base64_codec",
+        // Wave 1 Groups B/C/D (owner approval 2026-11-11).
+        "file_stat", "disk_usage", "copy_path",
+        "terminal_list", "terminal_kill", "job_status",
+        "coverage_read", "entity_schema_read", "memory_search",
     )
 
     /** Builtin tool names for the /tools chat command (see BUILTIN_TOOL_NAMES). */
@@ -342,6 +346,25 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "json_query" -> jsonQueryTool(args, context)
                 "csv_parse" -> csvParseTool(args, context)
                 "base64_codec" -> base64Tool(args, context)
+                // Wave 1 Groups B/C/D (owner approval 2026-11-11). Each one delegates to a typed
+                // module so a tool result and a UI preview cannot disagree.
+                "file_stat" -> fileStatTool(args, context)
+                "disk_usage" -> diskUsageTool(args, context)
+                "copy_path" -> copyPathTool(args, context)
+                "terminal_list" -> JobTools.terminalList()
+                "terminal_kill" -> JobTools.terminalKill(args.optString("id"))
+                    .render()
+                "job_status" -> JobTools.jobStatus(
+                    context, args.optString("id").takeIf { it.isNotBlank() },
+                    args.optInt("limit", 10))
+                "coverage_read" -> coverageReadTool(args, context)
+                "entity_schema_read" -> InsightTools.entitySchema(
+                    context, args.optString("entity"), args.optInt("sample", 5))
+                // The session is whatever the chat host registered, so a search can never look
+                // past the scope read_memory would show.
+                "memory_search" -> InsightTools.memorySearch(
+                    context, args.optString("query"),
+                    MemoryScopeState.activeSessionId, args.optInt("limit", 10))
                 "move_path" -> {
                     val moved = FileInsightTools.move(
                         guestPath(args.getString("from"), context),
@@ -505,6 +528,13 @@ You can use multiple tools in sequence. When done, give a final summary.
 
     private fun resolveToolPath(context: Context, path: String): String =
         ToolPathResolver.resolve(context, path)
+
+    /**
+     * The workspace boundary these tools enforce. It is the resolver's OWN root, so a path that
+     * resolves inside the project is by construction the thing that is checked for containment.
+     */
+    private fun workspaceRoot(context: Context): String? =
+        com.codespace.ide.security.TrustState.activeProjectRoot(context)
 
     private fun readFile(path: String, context: android.content.Context): String {
         // CH02: resolve either dialect first, then look up the staged overlay under
@@ -1221,6 +1251,141 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     /** get_terminal_output: the agent's own command record, not the user's interactive shell. */
+    // ── Wave 1 Groups B/C/D: filesystem, jobs and project insight ──────────
+
+    /**
+     * `file_stat` / `disk_usage` / `copy_path` share one boundary decision: resolve to a host path,
+     * refuse traversal outright, then check containment AFTER canonicalisation. The root is the
+     * resolver's own workspace root, so these agree with every other file tool by construction.
+     */
+    private fun fileStatTool(args: org.json.JSONObject, context: Context): String {
+        val raw = args.optString("path").ifBlank { "." }
+        if (FileSystemTools.hasTraversal(raw)) {
+            return "Refusing: '" + raw + "' contains '..', which leaves the workspace. Use a path inside the project."
+        }
+        val resolved = resolveToolPath(context, raw)
+        val root = workspaceRoot(context)
+        val stat = FileSystemTools.stat(resolved, root)
+        return stat.render(raw, root)
+    }
+
+    private fun diskUsageTool(args: org.json.JSONObject, context: Context): String {
+        val raw = args.optString("path").ifBlank { "." }
+        if (FileSystemTools.hasTraversal(raw)) {
+            return "Refusing: '" + raw + "' contains '..', which leaves the workspace. Use a path inside the project."
+        }
+        val resolved = resolveToolPath(context, raw)
+        return FileSystemTools.diskUsage(
+            path = resolved,
+            root = workspaceRoot(context),
+            excludeGit = !args.optBoolean("include_git", false),
+            maxEntries = args.optInt("max_entries", FileSystemTools.MAX_DISK_ENTRIES)
+                .coerceIn(100, FileSystemTools.MAX_DISK_ENTRIES),
+        ).render()
+    }
+
+    /**
+     * EDIT mode stages, Agent mode writes - the same split every other write tool uses. Staging is
+     * text-only (PendingChangesStore carries strings), so a binary or a whole tree in EDIT mode is
+     * REFUSED with the reason rather than silently written to disk behind the proposal strip.
+     */
+    private fun copyPathTool(args: org.json.JSONObject, context: Context): String {
+        val fromRaw = args.optString("from")
+        val toRaw = args.optString("to")
+        if (fromRaw.isBlank() || toRaw.isBlank()) return "Give both from and to."
+        if (FileSystemTools.hasTraversal(fromRaw) || FileSystemTools.hasTraversal(toRaw)) {
+            return "Refusing: a path contains '..', which leaves the workspace."
+        }
+        val from = resolveToolPath(context, fromRaw)
+        val to = resolveToolPath(context, toRaw)
+        // EDIT mode never reaches here: ChatSession routes copy_path to planStagedCopy via
+        // AgentToolWire.isStagedWrite, the same one decision point write_file uses. So this is the
+        // Agent-mode write, after the flow gate has already asked.
+        return FileSystemTools.copy(from, to, workspaceRoot(context)).render()
+    }
+
+    /**
+     * EDIT-mode copy: every text file becomes ONE pending change, and a single binary or an
+     * unreadable file refuses the whole operation BEFORE anything is staged, so the proposal the
+     * user reviews is always the whole copy or none of it. Public because ChatSession drives
+     * staging - the same split as planGrepReplaceAll.
+     */
+    fun planStagedCopy(argsJson: String, context: Context): String {
+        val args = try { org.json.JSONObject(argsJson) } catch (_: Exception) { return "FAILED: unreadable arguments" }
+        val fromRaw = args.optString("from")
+        val toRaw = args.optString("to")
+        if (fromRaw.isBlank() || toRaw.isBlank()) return "FAILED: copy_path needs from and to"
+        if (FileSystemTools.hasTraversal(fromRaw) || FileSystemTools.hasTraversal(toRaw)) {
+            return "FAILED: a path contains '..', which leaves the workspace"
+        }
+        val root = workspaceRoot(context)
+        val from = resolveToolPath(context, fromRaw)
+        val to = resolveToolPath(context, toRaw)
+        if (!FileSystemTools.isInside(root, from) || !FileSystemTools.isInside(root, to)) {
+            return "FAILED: both paths must stay inside the workspace"
+        }
+        val src = File(from)
+        if (!src.exists()) return "FAILED: no such path: " + fromRaw
+        val files = ArrayList<File>()
+        if (src.isFile) {
+            files.add(src)
+        } else {
+            val stack = ArrayDeque<File>()
+            stack.addLast(src)
+            var n = 0
+            while (stack.isNotEmpty()) {
+                val dir = stack.removeLast()
+                for (child in dir.listFiles() ?: emptyArray()) {
+                    if (child.isDirectory) stack.addLast(child) else files.add(child)
+                    n++
+                    if (n > FileSystemTools.MAX_COPY_ENTRIES) {
+                        return "FAILED: more than " + FileSystemTools.MAX_COPY_ENTRIES + " files"
+                    }
+                }
+            }
+            if (files.isEmpty()) return "FAILED: " + fromRaw + " is an empty directory, so there is nothing to stage"
+        }
+        val binary = files.firstOrNull { FileSystemTools.looksBinary(it) }
+        if (binary != null) {
+            return "FAILED: copying \"" + binary.name + "\" needs a binary write, which the EDIT-mode " +
+                "proposal path cannot represent. Switch to Agent mode, or copy the text files individually."
+        }
+        var bytes = 0L
+        for (f in files) bytes += f.length()
+        if (bytes > FileSystemTools.MAX_COPY_BYTES) {
+            return "FAILED: " + bytes + " bytes exceeds the " + FileSystemTools.MAX_COPY_BYTES +
+                "-byte limit for a staged copy"
+        }
+        var staged = 0
+        for (f in files) {
+            val target = if (src.isFile) to else File(to, f.toRelativeString(src)).path
+            val content = try { f.readText() } catch (e: Exception) {
+                return "FAILED: could not read " + f.path + ": " + (e.message ?: e.javaClass.simpleName)
+            }
+            val outcome = try {
+                com.codespace.ide.chat.PendingChangesStore.stage(target, content, context, root)
+            } catch (t: Throwable) {
+                "FAILED: " + (t.message ?: "could not stage")
+            }
+            if (!outcome.startsWith("staged:")) return "FAILED: could not stage " + f.path + ": " + outcome
+            staged++
+        }
+        return "staged:" + staged + "|" + toRaw
+    }
+
+    private fun coverageReadTool(args: org.json.JSONObject, context: Context): String {
+        val raw = args.optString("path")
+        val dir = if (raw.isNotBlank()) File(resolveToolPath(context, raw)) else moduleDir(context)
+        return InsightTools.coverage(dir, args.optString("filter").takeIf { it.isNotBlank() })
+    }
+
+    /** The Gradle module a coverage report would belong to: the open project, else the app module. */
+    private fun moduleDir(context: Context): File {
+        val root = workspaceRoot(context)
+        val candidate = root?.let { File(it, "android/app") }
+        return if (candidate != null && candidate.isDirectory) candidate else File(root ?: ".", "app")
+    }
+
     // ── Wave 1 Group A: data tools ─────────────────────────────────────────
 
     /**

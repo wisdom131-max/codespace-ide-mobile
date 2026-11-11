@@ -33,6 +33,10 @@ class ToolRegistryTest {
         "checksum", "diff_files",
         // Wave 1 Group A (2026-11-11): the data tools compute over bytes and write nothing.
         "json_query", "csv_parse", "base64_codec",
+        // Wave 1 Groups B/C/D (2026-11-11): inspection only. copy_path and terminal_kill are
+        // deliberately absent - one writes, the other stops a live process.
+        "file_stat", "disk_usage", "coverage_read", "entity_schema_read", "memory_search",
+        "terminal_list", "job_status",
     )
 
     // --- registration parity -------------------------------------------------------
@@ -50,8 +54,9 @@ class ToolRegistryTest {
         // diff_files, move_path, journal_write, git_stash, git_tag) and grep_replace_all (Wave 0.1).
         // allowlisted dispatcher that replaces the hidden run_vscode_command concept.
         // 2026-11-11 (Wave 1 Group A): 92 = 89 + json_query, csv_parse, base64_codec.
-        assertEquals("every registered tool is listed exactly once", 92, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 92, ToolRegistry.names().toSet().size)
+        // 2026-11-11 (Wave 1 Groups B/C/D): 101 = 92 + the nine filesystem/job/insight tools.
+        assertEquals("every registered tool is listed exactly once", 101, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 101, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -175,6 +180,16 @@ class ToolRegistryTest {
             "json_query" to (listOf("expr") to listOf("path", "json")),
             "csv_parse" to (emptyList<String>() to listOf("path", "text", "delimiter", "header", "offset", "limit", "columns")),
             "base64_codec" to (listOf("op") to listOf("text", "path")),
+            // Wave 1 Groups B/C/D.
+            "file_stat" to (listOf("path") to emptyList<String>()),
+            "disk_usage" to (emptyList<String>() to listOf("path", "include_git", "max_entries")),
+            "copy_path" to (listOf("from", "to") to emptyList<String>()),
+            "terminal_list" to (emptyList<String>() to emptyList<String>()),
+            "terminal_kill" to (listOf("id") to emptyList<String>()),
+            "job_status" to (emptyList<String>() to listOf("id", "limit")),
+            "coverage_read" to (emptyList<String>() to listOf("filter", "path")),
+            "entity_schema_read" to (emptyList<String>() to listOf("entity", "sample")),
+            "memory_search" to (emptyList<String>() to listOf("query", "limit")),
             "read_memory" to (emptyList<String>() to emptyList<String>()),
             "list_tasks" to (emptyList<String>() to emptyList<String>()),
             "read_entities" to (listOf("entity") to listOf("filter")),

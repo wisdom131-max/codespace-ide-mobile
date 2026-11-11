@@ -47,6 +47,11 @@ object ChatPermissionStore {
         "git_status", "git_diff",
         "read_memory", "read_entities", "list_tasks", "list_connectors",
         "detect_secrets",
+        // Wave 1 Group B/D (2026-11-11): read-only and bounded, so they need no approval gate.
+        // Deliberately NOT here: copy_path (writes) and terminal_kill (executes a stop).
+        "file_stat", "disk_usage", "coverage_read", "entity_schema_read", "memory_search",
+        // Wave 1 Group C: listing and reporting only - neither starts nor stops anything.
+        "terminal_list", "job_status",
     )
 
     private fun prefs(context: Context): SharedPreferences =

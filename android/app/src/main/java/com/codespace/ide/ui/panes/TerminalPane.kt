@@ -1108,6 +1108,20 @@ internal fun TerminalPane(
 
     val active = tabs.firstOrNull { it.id == activeId } ?: tabs.firstOrNull()
 
+    // U-W1c (Wave 1 Group C, 2026-11-11): publish THIS pane's tabs so terminal_list / terminal_kill
+    // have a real source of truth. The registry is a view of state the pane already owns - the tab
+    // id, whether its shell is running, its cwd and pid - and the stopper is the same teardown a
+    // tab close uses (expectedTeardown, then finishIfRunning), minus removing the row. Extracted to
+    // a top-level helper so nothing inline is added to this composable body.
+    val registryKey = tabs.joinToString("|") { it.id + ":" + it.session.isRunning + ":" + it.session.cwd } +
+        "|active=" + activeId
+    LaunchedEffect(registryKey) {
+        publishTerminalSessions(tabs, activeId)
+    }
+    DisposableEffect(Unit) {
+        onDispose { com.codespace.ide.terminal.TerminalSessionRegistry.clear() }
+    }
+
     // I2 — TERMINAL BRIDGE: expose the live active-tab transcript to the chat
     // attach picker (screen.getTranscriptText is the full scrollback buffer).
     DisposableEffect(Unit) {
@@ -3489,3 +3503,51 @@ private val TAP_URL_REGEX: Regex = Regex(
     """((?:\S+(?::\S*)?@)?(?:(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|(?:(?:[\p{L}0-9]-*)*[\p{L}0-9]+)(?:(?:\.(?:[\p{L}0-9]-*)*[\p{L}0-9]+)*(?:\.(?:[\p{L}0-9]-*){1,}[\p{L}0-9]{1,}))?|/(?:(?:[\p{L}0-9]-*)*[\p{L}0-9]+))(?::\d{1,5})?(?:/[a-zA-Z0-9:@%\-._~!${'$'}&()*+,;=?/]*)?(?:#[a-zA-Z0-9:@%\-._~!${'$'}&()*+,;=?/]*)?)""",
     setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
 )
+
+/**
+ * U-W1c (Wave 1 Group C): hand the terminal pane's own sessions to the tool registry.
+ *
+ * Deliberately top-level and free of Compose: the pane's bytecode budget is a standing constraint,
+ * and this body is logic, not layout. Only what the pane truly knows is published - no /proc scan,
+ * no invented pids, no session the app did not start.
+ */
+private fun publishTerminalSessions(
+    tabs: List<TabSession>,
+    activeId: String?,
+): Unit {
+    val now = System.currentTimeMillis()
+    val rows = ArrayList<com.codespace.ide.terminal.TerminalSessionRegistry.Session>(tabs.size)
+    for (tab in tabs) {
+        val running = try { tab.session.isRunning } catch (_: Exception) { false }
+        val cwd = try { tab.session.cwd } catch (_: Exception) { null }
+        val pid = try { tab.session.pid } catch (_: Exception) { -1 }
+        rows.add(
+            com.codespace.ide.terminal.TerminalSessionRegistry.Session(
+                id = tab.id,
+                name = tab.name,
+                running = running,
+                cwd = cwd,
+                pid = pid,
+                lockedRoot = tab.lockedRootPath,
+                isActive = tab.id == activeId,
+                updatedAtMs = now,
+            )
+        )
+    }
+    com.codespace.ide.terminal.TerminalSessionRegistry.publish(rows) { id ->
+        val tab = tabs.firstOrNull { it.id == id }
+        if (tab == null) {
+            false
+        } else {
+            try {
+                // Same intentional-teardown labelling as performCloseTab, so the SIGKILL of a
+                // tool-stopped session is never reported as a crash.
+                tab.client.expectedTeardown = true
+                tab.session.finishIfRunning()
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+}

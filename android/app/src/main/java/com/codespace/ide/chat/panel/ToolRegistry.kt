@@ -749,6 +749,86 @@ internal object ToolRegistry {
                 ",\"path\":{\"type\":\"string\"}}}",
             modes = READ_ALL,
         ),
+        // --- Wave 1 Group B/D (owner approval 2026-11-11): filesystem and project inspection ---
+        ToolSpec(
+            name = "file_stat",
+            displayName = "Inspecting a path",
+            description = "Report a file or directory's type, size, last-modified time, read and write " +
+                "permission, and its first children. Metadata only: file contents are never read.",
+            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{\"path\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "disk_usage",
+            displayName = "Measuring directory size",
+            description = "Total bytes, file and directory counts for a directory. Bounded by depth, " +
+                "entries and time; .git is excluded and an incomplete result says it is a lower bound.",
+            schema = OBJ + ",\"properties\":{\"path\":{\"type\":\"string\"}" +
+                ",\"include_git\":{\"type\":\"boolean\"},\"max_entries\":{\"type\":\"integer\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "copy_path",
+            displayName = "Copying a path",
+            description = "Copy a file or a whole tree to a new path. Refuses to overwrite, refuses a " +
+                "destination inside the source, and reports files, directories, bytes and errors.",
+            schema = OBJ + ",\"required\":[\"from\",\"to\"],\"properties\":{\"from\":{\"type\":\"string\"}" +
+                ",\"to\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "coverage_read",
+            displayName = "Reading code coverage",
+            description = "Read the newest JaCoCo XML/CSV or LCOV report for the module: line and branch " +
+                "coverage, worst files and missed lines. Says when no report exists instead of guessing.",
+            schema = OBJ + ",\"properties\":{\"filter\":{\"type\":\"string\"}" +
+                ",\"path\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "entity_schema_read",
+            displayName = "Inspecting an entity schema",
+            description = "List the app's stored entities, or describe one entity's fields, types and " +
+                "which fields appear in every record. Reads the real stored records.",
+            schema = OBJ + ",\"properties\":{\"entity\":{\"type\":\"string\"}" +
+                ",\"sample\":{\"type\":\"integer\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "memory_search",
+            displayName = "Searching Copilot memory",
+            description = "Search saved memories for a word or phrase and rank the matches. Only " +
+                "memories visible in the current scope are searched; read_memory lists them all.",
+            schema = OBJ + ",\"properties\":{\"query\":{\"type\":\"string\"}" +
+                ",\"limit\":{\"type\":\"integer\"}}}",
+            modes = READ_ALL,
+        ),
+        // --- Wave 1 Group C (owner approval 2026-11-11): terminals and jobs ---
+        ToolSpec(
+            name = "terminal_list",
+            displayName = "Listing terminals",
+            description = "List this app's open terminal sessions with their stable id, running state, " +
+                "working directory and pid. Ids are what terminal_kill takes.",
+            schema = OBJ + ",\"properties\":{}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "terminal_kill",
+            displayName = "Stopping a terminal",
+            description = "Stop one of the app's terminal sessions by its id from terminal_list. An id " +
+                "the app did not start is refused; an already-stopped session reports as such.",
+            schema = OBJ + ",\"required\":[\"id\"],\"properties\":{\"id\":{\"type\":\"string\"}}}",
+            modes = EXEC_MODES,
+        ),
+        ToolSpec(
+            name = "job_status",
+            displayName = "Checking job status",
+            description = "Status of commands this session ran and the last run of each scheduled task: " +
+                "running, completed, failed or cancelled, with timings, exit code and output tail.",
+            schema = OBJ + ",\"properties\":{\"id\":{\"type\":\"string\"}" +
+                ",\"limit\":{\"type\":\"integer\"}}}",
+            modes = READ_ALL,
+        ),
         // --- S1 (owner approval 2026-11-11): capabilities that were missing, not duplications ---
         ToolSpec(
             name = "checksum",

@@ -111,6 +111,27 @@ object AgentMemory {
         return "Deleted memory: '$key'"
     }
 
+    /**
+     * U-W1d (Wave 1 Group D, 2026-11-11): typed, scope-filtered entries for `memory_search`.
+     *
+     * `readAll` returns prose for the model, which a search cannot rank. This returns the visible
+     * pairs using the SAME scope filter, so a memory hidden from `read_memory` is also hidden from
+     * a search - the boundary is enforced once, in MemoryScopeFilter, not twice.
+     */
+    fun visibleEntries(
+        context: Context,
+        sessionId: String = "",
+        scope: MemoryScope = MemoryScope.ALL_SESSIONS,
+    ): Map<String, String> {
+        val map = readMap(context)
+        if (map.length() == 0) return emptyMap()
+        val attr = MemoryAttribution.read(context)
+        val visible = MemoryScopeFilter.visibleKeys(map.keys().asSequence().toList(), attr, scope, sessionId)
+        val out = LinkedHashMap<String, String>()
+        for (key in visible) out[key] = map.optString(key)
+        return out
+    }
+
     fun get(
         key: String,
         context: Context,

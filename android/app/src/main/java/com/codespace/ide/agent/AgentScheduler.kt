@@ -75,14 +75,14 @@ object AgentScheduler {
         when {
             cron == "@once" -> {
                 val future = executor.schedule({
-                    runCommand(command, projectPath, context)
+                    runCommand(command, projectPath, context, name)
                 }, 5, TimeUnit.SECONDS)
                 scheduledFutures[name] = future
             }
             cron.startsWith("*/") && cron.contains("* * * *") -> {
                 val minutes = cron.substringAfter("*/").substringBefore(" ").toIntOrNull() ?: 5
                 val future = executor.scheduleAtFixedRate({
-                    runCommand(command, projectPath, context)
+                    runCommand(command, projectPath, context, name)
                 }, minutes.toLong(), minutes.toLong(), TimeUnit.MINUTES)
                 scheduledFutures[name] = future
             }
@@ -98,7 +98,7 @@ object AgentScheduler {
                 }
                 val delay = (target.timeInMillis - now.timeInMillis) / 1000
                 val future = executor.scheduleAtFixedRate({
-                    runCommand(command, projectPath, context)
+                    runCommand(command, projectPath, context, name)
                 }, delay, TimeUnit.DAYS.toSeconds(1), TimeUnit.SECONDS)
                 scheduledFutures[name] = future
             }
@@ -149,7 +149,7 @@ object AgentScheduler {
         val task = readTasks(context).optJSONObject(name) ?: return "No scheduled task named \"" + name + "\"."
         val command = task.optString("command")
         if (command.isBlank()) return "Task \"" + name + "\" has no command."
-        runCommand(command, task.optString("projectPath").takeIf { it.isNotBlank() }, context)
+        runCommand(command, task.optString("projectPath").takeIf { it.isNotBlank() }, context, name)
         return "Ran \"" + name + "\" once."
     }
 
@@ -174,6 +174,64 @@ object AgentScheduler {
         return "Cancelled task: '$name'"
     }
 
+    /**
+     * U-W1c: the ONE place a scheduled run's outcome is written. Kept inside the task's own record
+     * so there is no second job table to drift from the schedule itself.
+     */
+    private fun recordLastRun(
+        context: android.content.Context,
+        name: String,
+        startedAt: Long,
+        endedAt: Long,
+        exitCode: Int?,
+        failed: Boolean,
+        timedOut: Boolean,
+    ) {
+        val tasks = readTasks(context)
+        val task = tasks.optJSONObject(name) ?: return
+        val last = JSONObject()
+            .put("started", startedAt)
+            .put("ended", endedAt)
+            .put("failed", failed)
+            .put("timedOut", timedOut)
+        if (exitCode != null) last.put("exitCode", exitCode)
+        task.put("lastRun", last)
+        tasks.put(name, task)
+        writeTasks(tasks, context)
+    }
+
+    /** One task's recorded last run, for `job_status`. Null when it has never fired. */
+    data class LastRun(
+        val name: String,
+        val cron: String,
+        val startedAt: Long,
+        val endedAt: Long,
+        val failed: Boolean,
+        val timedOut: Boolean,
+        val exitCode: Int?,
+    )
+
+    fun lastRuns(context: android.content.Context): List<LastRun> {
+        val tasks = readTasks(context)
+        val out = ArrayList<LastRun>()
+        for (name in tasks.keys()) {
+            val task = tasks.optJSONObject(name) ?: continue
+            val last = task.optJSONObject("lastRun") ?: continue
+            out.add(
+                LastRun(
+                    name = name,
+                    cron = task.optString("cron"),
+                    startedAt = last.optLong("started"),
+                    endedAt = last.optLong("ended"),
+                    failed = last.optBoolean("failed"),
+                    timedOut = last.optBoolean("timedOut"),
+                    exitCode = if (last.has("exitCode")) last.optInt("exitCode") else null,
+                )
+            )
+        }
+        return out.sortedByDescending { it.startedAt }
+    }
+
     /** Re-schedule all persisted tasks on app start */
     fun restoreAll(context: Context) {
         val tasks = readTasks(context)
@@ -189,8 +247,8 @@ object AgentScheduler {
         }
     }
 
-    private fun runCommand(command: String, ctx: android.content.Context? = null) =
-        runCommand(command, projectPath = null, ctx)
+    private fun runCommand(command: String, ctx: android.content.Context? = null, label: String = "task") =
+        runCommand(command, projectPath = null, ctx, label)
 
     /**
      * IG02 (P2c): the unattended run rides PROJECT TRUST — creation was already
@@ -199,7 +257,7 @@ object AgentScheduler {
      * failing silently. The task is NOT deleted — trusting the project lets it
      * fire again on the next occurrence.
      */
-    private fun runCommand(command: String, projectPath: String?, ctx: android.content.Context?) {
+    private fun runCommand(command: String, projectPath: String?, ctx: android.content.Context?, taskLabel: String = "task") {
         try {
             if (ctx == null) return
             if (projectPath != null &&
@@ -213,7 +271,37 @@ object AgentScheduler {
                 )
                 return
             }
-            com.codespace.ide.terminal.ProotInstaller.execOnce(ctx, command, timeoutSeconds = 60L)
-        } catch (_: Exception) {}
+            // U-W1c (Wave 1 Group C, 2026-11-11): a scheduled run was INVISIBLE - it executed and
+            // swallowed its result, so nothing could answer "did last night's task work?".
+            // The smallest honest integration: record the run on the task's own record (same
+            // tasks.json, no second table) and publish it to the terminal feed, which is already
+            // the app's real command history. Exit code and a bounded output tail come from the
+            // executor's typed result, so the status is observed, never inferred.
+            val startedAt = System.currentTimeMillis()
+            val runId = com.codespace.ide.agent.AgentTerminalFeed.begin(
+                "[" + taskLabel + "] " + command, projectPath, startedAt)
+            val r = com.codespace.ide.terminal.ProotInstaller.execTyped(
+                ctx, command, workdir = null, timeoutSeconds = 60L, logToOutput = false,
+                maxLines = 400, logTag = "scheduled-task")
+            val failed = r.launchError != null || r.timedOut || (r.exitCode ?: 1) != 0
+            val endedAt = System.currentTimeMillis()
+            com.codespace.ide.agent.AgentTerminalFeed.finish(
+                runId,
+                output = (r.launchError ?: (if (r.timedOut) "Timed out after 60s." else r.stdout)),
+                failed = failed,
+                exitCode = r.exitCode,
+                nowMs = endedAt,
+            )
+            recordLastRun(ctx, taskLabel, startedAt, endedAt, r.exitCode, failed, r.timedOut)
+        } catch (e: Exception) {
+            // A thrown run is still a real outcome: record it rather than leaving the task
+            // looking as if it never fired.
+            if (ctx != null) {
+                try {
+                    val now = System.currentTimeMillis()
+                    recordLastRun(ctx, taskLabel, now, now, null, true, false)
+                } catch (_: Exception) {}
+            }
+        }
     }
 }
