@@ -40,6 +40,8 @@ class SyntaxTransformation(
     // rebuilding syntax highlighting for a 5000-line file on every frame would cause jank.
     private var cachedText: String? = null
     private var cachedResult: TransformedText? = null
+    /** The censused copy of [cachedResult]; same object, so a cache hit costs one reference read. */
+    private var censusedCached: TransformedText? = null
 
 
     // ── Per-line span offset helpers ─────────────────────────────────────
@@ -167,10 +169,27 @@ class SyntaxTransformation(
         return TransformedText(sanitized, result.offsetMapping)
     }
 
+    /**
+     * The census is logged ONCE per distinct text, not per frame: filter() runs on every
+     * recomposition and a logging call inside it would itself become the jank it is measuring.
+     */
+    private var censusedText: String? = null
+
+    private fun censusOnce(result: TransformedText, label: String): TransformedText {
+        if (censusedText == result.text.text) return result
+        censusedText = result.text.text
+        val report = SpanCensus.count(result.text)
+        com.codespace.ide.diagnostics.AppOutputLog.log(
+            SpanCensus.perfLine(report, label + " " + language.name.lowercase() +
+                (if (foldedLineIndices.isEmpty()) "" else " folded")), "info",
+        )
+        return result
+    }
+
     override fun filter(text: AnnotatedString): TransformedText {
         // Return cached result if text hasn't changed
         if (cachedText == text.text && cachedResult != null) {
-            return cachedResult!!
+            return censusedCached ?: cachedResult!!
         }
         // ── Step 1: build folding map ─────────────────────────────────────
         if (foldedLineIndices.isEmpty()) {
@@ -181,7 +200,8 @@ class SyntaxTransformation(
                 val safeResult = sanitizeResult(result, text, isIdentityMapping = true)
                 cachedText = text.text
                 cachedResult = safeResult
-                return safeResult
+                censusedCached = censusOnce(safeResult, "precomputed")
+                return censusedCached!!
             }
             // Fallback: synchronous highlighting (small files or precomputed not ready yet)
             // Use incremental highlighter if available to avoid O(n) full re-highlight
@@ -194,7 +214,8 @@ class SyntaxTransformation(
             val safeResult = sanitizeResult(result, text, isIdentityMapping = true)
             cachedText = text.text
             cachedResult = safeResult
-            return safeResult
+            censusedCached = censusOnce(safeResult, "incremental")
+            return censusedCached!!
         }
 
         val raw = text.text
