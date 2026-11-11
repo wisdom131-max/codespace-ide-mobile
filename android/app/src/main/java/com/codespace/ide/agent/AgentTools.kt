@@ -1467,33 +1467,191 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     // ── Web ──────────────────────────────────────────────────────────────
+    /**
+     * R1-R6 (owner approval 2026-11-11): fetch a page and hand back something readable.
+     *
+     * The old body returned `"HTTP $code" + raw.take(8000)`: markup, scripts and CSS, cut mid-tag.
+     * That is why research ended with "I could not find it". Now: refuse unsafe targets, read a
+     * bounded number of bytes with the declared charset, pick a site adapter, extract readable text,
+     * fence it as untrusted data, and record it in the source ledger.
+     */
     private fun webFetch(url: String, headersJson: String?): String {
+        val target = com.codespace.ide.agent.research.Untrusted.checkTarget(url)
+        if (target.refused) return target.reason
         return try {
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.connectTimeout = 10000; conn.readTimeout = 30000
-            headersJson?.let { JSONObject(it).let { h -> for (k in h.keys()) conn.setRequestProperty(k, h.getString(k)) } }
-            val code = conn.responseCode
-            val body = if (code in 200..299) conn.inputStream.bufferedReader().use { it.readText() }
-                       else conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "HTTP $code"
-            "HTTP $code\n${body.take(8000)}"
-        } catch (e: Exception) { "Failed to fetch $url: ${e.message}" }
+            val page = fetchOnce(url, headersJson)
+            if (page.code !in 200..299) {
+                val hint = when (page.code) {
+                    404 -> " The page does not exist at this URL."
+                    403, 401 -> " The site refused access; try another source for this claim."
+                    429 -> " The site is rate limiting; wait or use another source."
+                    else -> ""
+                }
+                return "HTTP ${page.code} for $url" + hint
+            }
+            val kind = com.codespace.ide.agent.research.SiteAdapters.kindOf(url, page.contentType, page.body)
+            val adapted = when (kind) {
+                com.codespace.ide.agent.research.SiteAdapters.Kind.YOUTUBE ->
+                    com.codespace.ide.agent.research.SiteAdapters.youtube(page.body, url)
+                com.codespace.ide.agent.research.SiteAdapters.Kind.REDDIT -> redditThread(url, headersJson)
+                com.codespace.ide.agent.research.SiteAdapters.Kind.WIKIPEDIA -> wikipediaSummary(url, page.body)
+                com.codespace.ide.agent.research.SiteAdapters.Kind.FEED ->
+                    com.codespace.ide.agent.research.SiteAdapters.feed(page.body, url)
+                com.codespace.ide.agent.research.SiteAdapters.Kind.GENERIC -> ""
+            }
+            val extracted = if (adapted.isNotBlank()) adapted else {
+                when {
+                    page.contentType.contains("json", true) -> prettyJson(page.body, 5000)
+                    page.contentType.contains("html", true) || page.body.trimStart().startsWith("<") ->
+                        readablePage(page.body, url)
+                    else -> page.body.take(5000)
+                }
+            }
+            if (extracted.isBlank()) {
+                return "Fetched $url (HTTP ${page.code}, ${page.contentType.ifBlank { "unknown type" }}) " +
+                    "but no readable text was found. The page may be script-rendered."
+            }
+            val src = com.codespace.ide.agent.research.SourceLedger.note(
+                url = url,
+                title = page.title.ifBlank { com.codespace.ide.agent.research.UrlTools.domain(url) },
+                retrievedAt = nowStamp(),
+                publishedAt = page.published,
+                excerpt = extracted.take(300),
+            )
+            val fenced = com.codespace.ide.agent.research.Untrusted.fence(url, extracted)
+            buildString {
+                append("[").append(src.id).append("] ").append(page.contentType.ifBlank { "text" })
+                append(" · ").append(page.bytes).append(" bytes read")
+                if (page.truncated) append(" · TRUNCATED at the size limit")
+                append("\n")
+                append(fenced.text)
+                append("\n\n").append(com.codespace.ide.agent.research.SourceLedger.render(listOf(src)))
+            }
+        } catch (e: Exception) {
+            "Failed to fetch " + url + ": " + (e.message ?: e.javaClass.simpleName) +
+                ". Try another source rather than asking the user for a URL."
+        }
     }
 
+    private data class Fetched(
+        val code: Int,
+        val contentType: String,
+        val body: String,
+        val bytes: Int,
+        val title: String,
+        val published: String,
+        val truncated: Boolean,
+    )
+
+    private fun fetchOnce(url: String, headersJson: String?, maxBytes: Int = 1_500_000): Fetched {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.connectTimeout = 10000
+        conn.readTimeout = 30000
+        conn.instanceFollowRedirects = true
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) VNCode/1.0")
+        conn.setRequestProperty("Accept-Language", "en;q=0.9")
+        headersJson?.let { JSONObject(it).let { h -> for (k in h.keys()) conn.setRequestProperty(k, h.getString(k)) } }
+        val code = conn.responseCode
+        val contentType = (conn.contentType ?: "").lowercase()
+        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+        val raw = stream?.use { it.readNBytes(maxBytes) } ?: ByteArray(0)
+        val charset = Regex("charset=([A-Za-z0-9_\\-]+)").find(contentType)
+            ?.groupValues?.get(1)?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() }
+            ?: Charsets.UTF_8
+        val body = String(raw, charset)
+        val truncated = raw.size >= maxBytes
+        val title = if (contentType.contains("html", true))
+            com.codespace.ide.agent.research.HtmlExtractor.extract(body, url, 200).title else ""
+        val published = Regex("(?is)property=\"article:published_time\"[^>]*content=\"([^\"]+)\"")
+            .find(body)?.groupValues?.get(1)
+            ?: Regex("(?is)\"datePublished\":\"([^\"]+)\"`").find(body)?.groupValues?.get(1).orEmpty()
+        return Fetched(code, contentType, body, raw.size, title, published.take(31), truncated)
+    }
+
+    private fun readablePage(html: String, url: String): String {
+        val page = com.codespace.ide.agent.research.HtmlExtractor.extract(html, url, 6000)
+        val sb = StringBuilder(page.text)
+        if (page.links.isNotEmpty()) {
+            sb.append("\n\nLinks on this page:\n")
+            page.links.take(20).forEach { sb.append("- ").append(it.text.take(80)).append(" \u2014 ").append(it.url).append('\n') }
+        }
+        if (page.truncated) {
+            sb.append("\n\n[... TRUNCATED: showing the first 6000 of ").append(page.text.length)
+                .append(" readable chars from ").append(page.originalChars)
+                .append(" chars of HTML. Fetch a specific section or another source for the rest.]")
+        }
+        return sb.toString()
+    }
+
+    private fun prettyJson(body: String, max: Int): String = try {
+        val trimmed = body.trim()
+        val rendered = when {
+            trimmed.startsWith("{") -> JSONObject(trimmed).toString(2)
+            trimmed.startsWith("[") -> org.json.JSONArray(trimmed).toString(2)
+            else -> body
+        }
+        if (rendered.length <= max) rendered else rendered.take(max) +
+            "\n[... TRUNCATED: showing " + max + " of " + rendered.length + " chars of JSON.]"
+    } catch (e: Exception) {
+        body.take(max)
+    }
+
+    /** Reddit's documented public JSON view of a thread. Falls back to the HTML page. */
+    private fun redditThread(url: String, headersJson: String?): String {
+        val jsonUrl = url.substringBefore('?').trimEnd('/') + ".json?raw_json=1"
+        val attempt = runCatching { fetchOnce(jsonUrl, headersJson, 800_000) }.getOrNull()
+        if (attempt != null && attempt.code in 200..299) {
+            val thread = com.codespace.ide.agent.research.SiteAdapters.reddit(attempt.body)
+            if (thread.isNotBlank()) return thread
+        }
+        return ""
+    }
+
+    /** Wikipedia's documented REST summary endpoint; falls back to HTML extraction. */
+    private fun wikipediaSummary(url: String, html: String): String {
+        val title = url.substringAfter("/wiki/", "").substringBefore('#').substringBefore('?')
+        if (title.isBlank()) return ""
+        val lang = com.codespace.ide.agent.research.UrlTools.domain(url).substringBefore('.')
+        val rest = "https://" + lang + ".wikipedia.org/api/rest_v1/page/summary/" + title
+        val attempt = runCatching { fetchOnce(rest, null, 300_000) }.getOrNull()
+        if (attempt != null && attempt.code in 200..299) {
+            val summary = com.codespace.ide.agent.research.SiteAdapters.wikipedia(attempt.body, url)
+            if (summary.isNotBlank()) return summary
+        }
+        return ""
+    }
+
+    private fun nowStamp(): String =
+        java.time.Instant.ofEpochMilli(System.currentTimeMillis()).toString().replace("T", " ").take(16)
+
+    /**
+     * R2-R3: search that returns something to reason about, from more than one place.
+     */
     private fun webSearch(query: String): String {
-        return try {
-            val eq = java.net.URLEncoder.encode(query, "UTF-8")
-            val conn = URL("https://html.duckduckgo.com/html/?q=$eq").openConnection() as HttpURLConnection
-            conn.connectTimeout = 10000; conn.readTimeout = 30000
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-            val html = conn.inputStream.bufferedReader().use { it.readText() }
-            val results = mutableListOf<String>()
-            Regex("""<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
-                .findAll(html).take(5).forEach { m ->
-                    val title = m.groupValues[2].replace(Regex("<[^>]+>"), "").trim()
-                    results.add("$title - ${m.groupValues[1]}")
-                }
-            if (results.isEmpty()) "No results for '$query'." else "Results:\n" + results.joinToString("\n")
-        } catch (e: Exception) { "Search failed: ${e.message}" }
+        val fetcher = object : com.codespace.ide.agent.research.SearchRecovery.Fetcher {
+            override fun get(url: String): Pair<Int, String> {
+                val conn = URL(url).openConnection() as HttpURLConnection
+                conn.connectTimeout = 8000
+                conn.readTimeout = 20000
+                conn.instanceFollowRedirects = true
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) VNCode/1.0")
+                conn.setRequestProperty("Accept-Language", "en;q=0.9")
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val body = stream?.use { String(it.readNBytes(400_000), Charsets.UTF_8) } ?: ""
+                return code to body
+            }
+        }
+        val report = com.codespace.ide.agent.research.SearchRecovery.run(query, fetcher)
+        val labels = report.attempts.map { it.label() }
+        if (report.results.isNotEmpty() && query.isNotBlank()) {
+            report.results.take(5).forEach { r ->
+                com.codespace.ide.agent.research.SourceLedger.note(
+                    url = r.url, title = r.title, retrievedAt = nowStamp(), excerpt = r.snippet,
+                )
+            }
+        }
+        return com.codespace.ide.agent.research.ResultQuality.render(report.results, labels)
     }
 
     // ── Media ────────────────────────────────────────────────────────────
