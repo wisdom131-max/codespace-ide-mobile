@@ -1062,6 +1062,9 @@ class ChatSession internal constructor(
                 // The already-streamed prefix is kept, so a pressed Retry continues from it.
                 retryKeepLen = streamBuf.length
                 appendRow(ChatStatusMapping.rowForError(err))
+                // Item 36: say whether pressing Retry can work. Null for a retryable failure, so a
+                // fixed key is not greeted with a stale warning.
+                ChatFailureAdvice.noteFor(err)?.let { note -> appendRow(ChatRowModel.InfoNote(note)) }
                 ui.value = ui.value.copy(streaming = false)
             }
         }
