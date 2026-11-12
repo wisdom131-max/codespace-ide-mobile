@@ -869,8 +869,8 @@ internal object ToolRegistry {
             displayName = "Resolving conflicts",
             description = "Inspect unresolved merge conflicts, stage a file you have resolved by " +
                 "hand, or abort the merge. It never picks a side for you.",
-            schema = OBJ + ",\"required\":[\"action\"],\"properties\":{\"action\":{\"type\":\"string\"," +
-                "\"enum\":[\"list\",\"stage\",\"abort\"]},\"file\":{\"type\":\"string\"}," +
+            schema = OBJ + ",\"properties\":{\"action\":{\"type\":\"string\"," +
+                "\"enum\":[\"list\",\"stage\",\"abort\"]},\"file\":{\"type\":\"string\"},\"files\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}," +
                 "\"repo_dir\":{\"type\":\"string\"}}}",
             modes = WRITE_MODES,
         ),
@@ -915,7 +915,7 @@ internal object ToolRegistry {
             description = "Read the variables captured when a debug session paused. Filter by name " +
                 "to find one among many.",
             schema = OBJ + ",\"properties\":{\"session\":{\"type\":\"string\"}," +
-                "\"filter\":{\"type\":\"string\"}}}",
+                "\"name\":{\"type\":\"string\"},\"filter\":{\"type\":\"string\"}}}",
             modes = READ_ALL,
         ),
         ToolSpec(
@@ -931,7 +931,7 @@ internal object ToolRegistry {
             displayName = "Managing breakpoints",
             description = "List the breakpoints in the project, or place and remove one at a file " +
                 "and line.",
-            schema = OBJ + ",\"required\":[\"action\"],\"properties\":{\"action\":{\"type\":\"string\"," +
+            schema = OBJ + ",\"properties\":{\"action\":{\"type\":\"string\"," +
                 "\"enum\":[\"list\",\"toggle\"]},\"file\":{\"type\":\"string\"}," +
                 "\"line\":{\"type\":\"integer\"}}}",
             modes = WRITE_MODES,

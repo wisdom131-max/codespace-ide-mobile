@@ -201,6 +201,12 @@ You can use multiple tools in sequence. When done, give a final summary.
         "zip_create", "zip_extract", "zip_list",
         // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
         "npm_info", "pypi_info", "lockfile_parse",
+        // Git recovery (owner approval 2026-11-12): history, checkpoints, previewed restores, and
+        // conflict inspection that never picks a side.
+        "git_log", "git_checkpoint", "git_restore", "git_conflict_resolve",
+        // Debugger (owner approval 2026-11-12): the seven DAP inspection and control tools.
+        "debug_sessions", "debug_stack", "debug_variables", "debug_attach",
+        "debug_breakpoints", "debug_step", "debug_evaluate",
     )
 
     /** Builtin tool names for the /tools chat command (see BUILTIN_TOOL_NAMES). */

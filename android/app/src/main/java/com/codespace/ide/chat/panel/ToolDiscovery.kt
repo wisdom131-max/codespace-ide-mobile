@@ -211,4 +211,10 @@ internal object ToolCatalogue {
             "rest load on demand through tool_search.")
         return sb.toString()
     }
+
+    /**
+     * The advertised schema for [name], on request only. The catalogue deliberately does NOT carry
+     * schemas in its rows: 110 definitions in one render is exactly the prompt bloat this replaces.
+     */
+    fun schema(name: String): String? = ToolRegistry.spec(name)?.schema
 }

@@ -52,7 +52,7 @@ class ToolDocBudgetTest {
         val catalogue = ToolRegistry.promptBlock(ChatMode.AGENT).length
         val agentOffer = ChatInstructions.build(ChatMode.AGENT, true, ToolOffer.plan(ChatMode.AGENT, "").names, "", "")
         println("[comp] catalogue=" + catalogue + " agentPrompt=" + agentOffer.length)
-        assertTrue("the registry catalogue has grown unexpectedly: " + catalogue, catalogue < 18000)
+        assertTrue("the registry catalogue has grown unexpectedly: " + catalogue, catalogue < 18500)
         assertTrue("the prompt must be smaller than the catalogue it is drawn from",
             agentOffer.length < catalogue)
     }

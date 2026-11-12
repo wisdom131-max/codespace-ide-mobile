@@ -39,6 +39,7 @@ class ToolRegistryTest {
         "terminal_list", "job_status",
         // ZIP tools (owner approval 2026-11-12): listing an archive writes nothing, so it belongs
         // to the read wave. zip_create and zip_extract write and stay out of ASK.
+        "git_log", "debug_sessions", "debug_stack", "debug_variables", "debug_attach",
         "zip_list",
         // Package Intelligence (2026-11-12): registry lookups and lockfile inspection write nothing.
         "npm_info", "pypi_info", "lockfile_parse",
@@ -60,9 +61,10 @@ class ToolRegistryTest {
         // allowlisted dispatcher that replaces the hidden run_vscode_command concept.
         // 2026-11-11 (Wave 1 Group A): 92 = 89 + json_query, csv_parse, base64_codec.
         // 2026-11-11 (Wave 1 Groups B/C/D): 101 = 92 + the nine filesystem/job/insight tools.
-        // 2026-11-12: 107 = 101 + zip_create/zip_extract/zip_list + npm_info/pypi_info/lockfile_parse.
-        assertEquals("every registered tool is listed exactly once", 107, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 107, ToolRegistry.names().toSet().size)
+        // 2026-11-12: 118 = 107 + git_log/git_checkpoint/git_restore/git_conflict_resolve
+        // + the seven debug tools.
+        assertEquals("every registered tool is listed exactly once", 118, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 118, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -272,6 +274,17 @@ class ToolRegistryTest {
             "pypi_info" to (listOf("name") to listOf("version")),
             "lockfile_parse" to (emptyList<String>() to listOf(
                 "path", "format", "package", "direct_only", "production_only", "dev_only", "offset", "limit")),
+            "git_log" to (emptyList<String>() to listOf("repo_dir", "limit", "path")),
+            "git_checkpoint" to (emptyList<String>() to listOf("repo_dir", "message")),
+            "git_restore" to (listOf("ref") to listOf("repo_dir", "files", "confirm")),
+            "git_conflict_resolve" to (emptyList<String>() to listOf("repo_dir", "action", "files")),
+            "debug_sessions" to (emptyList<String>() to emptyList<String>()),
+            "debug_stack" to (emptyList<String>() to listOf("session")),
+            "debug_variables" to (emptyList<String>() to listOf("session", "name")),
+            "debug_attach" to (listOf("session") to emptyList<String>()),
+            "debug_breakpoints" to (emptyList<String>() to listOf("action", "file", "line")),
+            "debug_step" to (listOf("action") to listOf("session")),
+            "debug_evaluate" to (listOf("expression") to listOf("session")),
         )
         // Two directions, each with its own meaning: an expectation for a tool that is not
         // registered is a stale lie, and an exposed tool with no expectation means the model is
