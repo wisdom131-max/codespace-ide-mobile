@@ -393,6 +393,50 @@ You can use multiple tools in sequence. When done, give a final summary.
                     args.optBoolean("dev_only", false),
                     args.optInt("offset", 0), args.optInt("limit", PackageTools.DEFAULT_PAGE),
                 )
+                // Git recovery (2026-11-12): every call goes through the same gitRun seam the
+                // stash/tag tools use, so arguments are a checked vector, not a shell string.
+                "git_log" -> GitRecoveryTools.log(
+                    getRepoDir(args.optString("repo_dir").ifBlank { null }, context),
+                    { list -> gitRun(*list.toTypedArray(),
+                        repo = getRepoDir(args.optString("repo_dir").ifBlank { null }, context), context = context) },
+                    args.optInt("limit", 20),
+                    args.optString("path").ifBlank { null })
+                "git_conflict_resolve" -> GitRecoveryTools.conflicts(
+                    getRepoDir(args.optString("repo_dir").ifBlank { null }, context),
+                    { list -> gitRun(*list.toTypedArray(),
+                        repo = getRepoDir(args.optString("repo_dir").ifBlank { null }, context), context = context) },
+                    args.optString("action", "list").ifBlank { "list" },
+                    args.optString("file").ifBlank { null })
+                "git_checkpoint" -> GitRecoveryTools.checkpoint(
+                    getRepoDir(args.optString("repo_dir").ifBlank { null }, context),
+                    { list -> gitRun(*list.toTypedArray(),
+                        repo = getRepoDir(args.optString("repo_dir").ifBlank { null }, context), context = context) },
+                    args.optString("message", ""),
+                    java.time.Instant.now().toString().replace(":", "-"))
+                "git_restore" -> GitRecoveryTools.restore(
+                    getRepoDir(args.optString("repo_dir").ifBlank { null }, context),
+                    { list -> gitRun(*list.toTypedArray(),
+                        repo = getRepoDir(args.optString("repo_dir").ifBlank { null }, context), context = context) },
+                    args.optString("ref", ""),
+                    zipStrings(args, "files"),
+                    args.optBoolean("confirm", false))
+                // Debugger (2026-11-12): reads the existing UDM state, never a second runtime.
+                "debug_sessions" -> DebugTools.sessions()
+                "debug_stack" -> DebugTools.stack(args.optString("session").ifBlank { null })
+                "debug_variables" -> DebugTools.variables(
+                    args.optString("session").ifBlank { null },
+                    args.optString("filter").ifBlank { null })
+                "debug_attach" -> DebugTools.attach(args.optString("session"))
+                "debug_breakpoints" -> DebugTools.breakpoints(
+                    args.optString("action", "list").ifBlank { "list" },
+                    args.optString("file").ifBlank { null },
+                    args.optInt("line", 0))
+                "debug_step" -> DebugTools.step(
+                    args.optString("action", "over").ifBlank { "over" },
+                    args.optString("session").ifBlank { null })
+                "debug_evaluate" -> DebugTools.evaluate(
+                    args.optString("expression"),
+                    args.optString("session").ifBlank { null })
                 "zip_create" -> ZipTools.create(
                     zipRoot(context), zipStrings(args, "sources"), args.optString("dest"),
                     args.optBoolean("overwrite", false), context)

@@ -387,11 +387,13 @@ private fun ChatBody(
                     "attach" -> showPicker = true
                     // 2026-11-05 (tool discovery): answer from the execution registry, in the
                     // transcript, so the list cannot drift from what the agent can really call.
+                    // 2026-11-12 (/tools picker): grouped catalogue instead of one flat list, so
+                    // "which tools do I have for X" is answerable without reading 110 names.
                     "tools" -> session.note(
-                        ToolDiscovery.describe(
+                        ToolCatalogue.describe(
+                            mode = chatMode,
                             mcpCached = com.codespace.ide.agent.McpClientManager
                                 .cachedToolNames(ctx),
-                            modeLabel = chatMode.label,
                         )
                     )
                 }

@@ -54,6 +54,17 @@ internal object ToolMetaIndex {
         ),
         "move_path" to ToolMeta(ToolCategory.FILES, listOf("move", "rename", "relocate"), destructive = true),
         // ZIP (2026-11-12): "archive", "compress" and "unzip" are the words a user actually types.
+        "git_log" to ToolMeta(ToolCategory.GIT, listOf("history", "commits", "log", "blame", "recent changes")),
+        "git_conflict_resolve" to ToolMeta(ToolCategory.GIT, listOf("conflict", "merge", "resolve", "unmerged"), destructive = true),
+        "git_checkpoint" to ToolMeta(ToolCategory.GIT, listOf("checkpoint", "recovery", "save point", "undo safety"), destructive = true),
+        "git_restore" to ToolMeta(ToolCategory.GIT, listOf("restore", "revert files", "recover", "checkpoint"), destructive = true),
+        "debug_sessions" to ToolMeta(ToolCategory.AGENT, listOf("debug", "session", "debugger", "running")),
+        "debug_stack" to ToolMeta(ToolCategory.AGENT, listOf("debug", "stack", "call stack", "frames")),
+        "debug_variables" to ToolMeta(ToolCategory.AGENT, listOf("debug", "variables", "locals", "inspect")),
+        "debug_attach" to ToolMeta(ToolCategory.AGENT, listOf("debug", "attach", "adapter")),
+        "debug_breakpoints" to ToolMeta(ToolCategory.AGENT, listOf("debug", "breakpoint", "break"), destructive = true),
+        "debug_step" to ToolMeta(ToolCategory.AGENT, listOf("debug", "step", "continue", "pause"), destructive = true),
+        "debug_evaluate" to ToolMeta(ToolCategory.AGENT, listOf("debug", "evaluate", "expression", "watch"), destructive = true),
         "zip_create" to ToolMeta(
             ToolCategory.FILES,
             listOf("zip", "archive", "compress", "bundle", "pack", "tar"),

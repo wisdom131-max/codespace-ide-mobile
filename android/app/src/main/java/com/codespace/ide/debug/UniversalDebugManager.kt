@@ -192,6 +192,37 @@ object UniversalDebugManager {
     // P27-4: Thread-safe collections — DAP events arrive on background threads
     private val sessions = ConcurrentHashMap<String, DebugSession>()
     private val breakpoints = ConcurrentHashMap<String, MutableList<DebugBreakpoint>>() // filePath -> breakpoints
+
+    /**
+     * COPILOT DEBUG TOOLS (2026-11-12): the last paused state per session.
+     *
+     * Before this, paused frames and variables went straight to whichever UI had subscribed, so a
+     * tool had nothing to read: "no stack" was indistinguishable from "not paused yet". The cache is
+     * UDM-owned, filled at the same callback the panel already receives, and bounded by
+     * [PAUSED_KEEP] so a long debug session cannot grow it without limit.
+     */
+    private val pausedStack = ConcurrentHashMap<String, List<DebugStackFrame>>()
+    private val pausedVars = ConcurrentHashMap<String, List<DebugVariable>>()
+    private const val PAUSED_KEEP = 400
+
+    /** Called wherever a pause event arrives, so the tool surface and the UI see the same state. */
+    fun recordPaused(session: DebugSession, stack: List<DebugStackFrame>, vars: List<DebugVariable>) {
+        pausedStack[session.id] = stack.take(PAUSED_KEEP)
+        pausedVars[session.id] = vars.take(PAUSED_KEEP)
+    }
+
+    /** Live sessions, newest first. Read-only snapshot: the tool must never mutate the map. */
+    fun sessionsSnapshot(): List<DebugSession> = sessions.values.sortedByDescending { it.id }
+
+    fun sessionById(id: String): DebugSession? = sessions[id]
+
+    fun stackFor(sessionId: String): List<DebugStackFrame> = pausedStack[sessionId] ?: emptyList()
+
+    fun varsFor(sessionId: String): List<DebugVariable> = pausedVars[sessionId] ?: emptyList()
+
+    fun breakpointsSnapshot(): Map<String, List<DebugBreakpoint>> = breakpoints.mapValues { it.value.toList() }
+
+    fun adapterFor(sessionId: String): DebugAdapter? = sessionAdapters[sessionId]
     private val sessionCounter = AtomicInteger(0)
 
     // P26-2d: DAP adapters — tried before legacy providers; prefer DAP when available.
@@ -602,6 +633,7 @@ object UniversalDebugManager {
                 onOutput = { msg -> notifyOutput(msg) },
                 onPaused = { stack, vars ->
                     transitionState(session, DebugState.PAUSED)
+                    recordPaused(session, stack, vars)
                     notifyPaused(session, stack, vars)
                 },
                 onStopped = { exitCode ->
@@ -625,6 +657,7 @@ object UniversalDebugManager {
                 onOutput = { msg -> notifyOutput(msg) },
                 onPaused = { stack, vars ->
                     transitionState(session, DebugState.PAUSED)
+                    recordPaused(session, stack, vars)
                     notifyPaused(session, stack, vars)
                 },
             )
@@ -714,6 +747,7 @@ object UniversalDebugManager {
             onOutput = { msg -> notifyOutput(msg) },
             onPaused = { stack, vars ->
                 transitionState(session, DebugState.PAUSED)
+                recordPaused(session, stack, vars)
                 notifyPaused(session, stack, vars)
             },
             onStopped = { exitCode ->
