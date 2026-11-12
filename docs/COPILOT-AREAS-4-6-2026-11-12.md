@@ -63,3 +63,28 @@ turn cannot reopen as finished.
 
 Still NOT wired: `Continuation` is not invoked from the dispatch path and `ToolRetry` is not
 consulted by `AgentTools.executeTool`. Area 5 and Area 6 therefore remain IN PROGRESS.
+
+## Real dispatch integration (a418aaf)
+
+**Continuation.** `ChatSession.continueTurn()` calls `Continuation.plan` and dispatches through the
+SAME `sendCore` lifecycle: a `continuationPrefix` seeds the stream buffer with the delivered text
+plus a visible seam, so the continuation appends instead of replacing, and no user bubble is added.
+It returns NEEDS_CONTINUATION without dispatching when the finish is not a ceiling, and reports
+the state through `continuationState` (COMPLETE / NEEDS_CONTINUATION / CONTINUING /
+UNKNOWN_OR_INTERRUPTED). A continuation that hits the ceiling again stays incomplete.
+
+**Tool retry.** `AgentTools.executeTool` takes an optional stable `callId`. Before the body runs it
+consults `ToolCallLedger` (persisted, bounded at 200 entries, 4 KB result cap) and obeys
+`ToolRetry.decide`: REUSE_PERSISTED returns the stored result, RECONCILE_FIRST and REFUSE return a
+stated refusal and execute nothing. Cancellation during execution is recorded as
+CANCELLED_DURING_EXECUTION, never as "did not run". An unreadable ledger reads as empty, so a
+duplicate starts from UNKNOWN_AFTER_START rather than looking safe.
+
+**Limitations, stated plainly.** Reconciliation is refusal, not repair: there is no generic way to
+ask the world whether a write landed, so an uncertain side effect is refused with its state rather
+than reconciled automatically. The ledger's tests exercise it directly; the AgentTools wrapper is
+verified by compilation and by the ledger/classification suites, not by an instrumented
+instrumentation test. Continuation is wired but not yet surfaced in the composer UI.
+
+Tests: ToolCallLedgerTest 10, ToolEffectIndexTest 3, ContinuationDispatchTest 6.
+Full suite: 2296 tests, 1 failure (BackupTarTest.failureMessageCarriesRealTotals, root-sandbox only).
