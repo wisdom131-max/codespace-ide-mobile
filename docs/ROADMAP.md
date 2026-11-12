@@ -151,7 +151,8 @@ green CI run.
 | 13 | Deferred research, media and persistent-execution features | DEFERRED | - |
 | 14 | Consolidated phone testing (one batched device round) | PENDING | `P5-DEVICE-CHECKLIST.md` |
 
-| 14a | Copilot areas 5 and 6 (reliability, output limits) | IN PROGRESS - dispatch wired and tested; composer has no UI harness | `COPILOT-AREAS-4-6-2026-11-12.md` |
+| 14a | Copilot areas 5 and 6 (reliability, output limits) | COMPLETE - dispatch wired, finish verdict persisted and restored, composer has no UI harness | `COPILOT-AREAS-4-6-2026-11-12.md` |
+| 14b | VN Code Dynamic Tool Loading System (Lean Tool Mode, Tool Relevance, Tool Groups, On-Demand Tool Loading) | COMPLETE - all four branches; authoritative table in `IMPLEMENTED.md` | `IMPLEMENTED.md` |
 
 Completed and therefore closed (do not reopen without evidence of a regression): Thinking Tree,
 Research R1-R6, clickable sources, Dynamic Tool Loading, Wave 0 permission work, Wave 1 Groups A-D,

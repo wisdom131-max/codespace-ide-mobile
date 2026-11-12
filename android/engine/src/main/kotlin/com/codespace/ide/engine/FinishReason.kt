@@ -40,7 +40,27 @@ enum class FinishReason(
      */
     val continuable: Boolean get() = this == OUTPUT_LIMIT
 
+    /**
+     * The exact name written to a saved conversation. Persisting the ENUM NAME, not the raw
+     * provider value, is what keeps a restored turn's eligibility identical to the one it had
+     * before the app closed: the raw value's meaning is provider-specific and may change.
+     */
+    val storedName: String get() = name
+
     companion object {
+        /**
+         * Read a persisted verdict.
+         *
+         * [raw] null means the conversation predates finish-reason storage. That is UNKNOWN, not
+         * NATURAL and not OUTPUT_LIMIT: an older reply must not become continuable just because it
+         * looks unfinished, and must not be called complete when nothing recorded that it was.
+         */
+        fun fromStored(raw: String?): FinishReason {
+            val v = raw?.trim() ?: return UNKNOWN
+            if (v.isEmpty() || v == "-") return UNKNOWN
+            return entries.firstOrNull { it.name == v } ?: UNKNOWN
+        }
+
         /**
          * Normalize one provider's stop value.
          *

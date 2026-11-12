@@ -131,3 +131,31 @@ per-session memory.
 Tests added this pass: ToolDispatchGuardTest 10, ToolReconcilerTest 6, ContinueBarStateTest 8,
 CopilotLifecycleTest 5.
 Full suite: 2325 tests, 1 failure (BackupTarTest.failureMessageCarriesRealTotals, root-sandbox only).
+
+## Restoration: the verdict is now persisted
+
+The gap in the previous pass was that `lastFinish` was per-session memory and restored sessions
+leaned on the sticky incomplete flag, which cannot distinguish a ceiling from a filter or a
+dropped connection.
+
+`StoredMessage` now carries `finish` (the `FinishReason` name), written onto the LAST assistant
+message of a conversation and read back on restore by `ChatSession.restoreFinish`. File format is
+`v2`: `role \t complete \t atMs \t finish \t text`. Compatibility:
+
+- a `v1` file still loads, its messages intact, with `finish = null`;
+- a four-field line under a v2 header is read as v1 rather than skipped;
+- `null`, `-` or an unknown name restores as UNKNOWN, which is neither complete nor continuable,
+  so an older cut-off reply keeps its incomplete marker but does NOT get a guessed Continue action;
+- `FinishReason.entries` round-trips by name, so eligibility after a reopen is identical to
+  eligibility before the close.
+
+Restored eligibility therefore comes from recorded state, never from inference on the sticky flag.
+The request gate is untouched: a continuation after restoration still takes a fresh number.
+
+Tests: FinishRestorationTest 11 (round trip per reason, v1 file, torn file, tricky text, per-turn
+verdict, fresh gate, repeated ceiling, completion persistence, no duplicated user bubble).
+Full suite: 2337 tests, 1 failure (BackupTarTest.failureMessageCarriesRealTotals, root-sandbox only).
+
+Note on the umbrella: the "Tool Groups" row in this document refers to the catalogue branch of the
+VN Code Dynamic Tool Loading System, whose authoritative table lives in `IMPLEMENTED.md`. It is not
+the Thinking Tree and not the chevron grouping.

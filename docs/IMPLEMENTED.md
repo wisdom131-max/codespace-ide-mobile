@@ -202,6 +202,24 @@ verdict each commit.
 | Tool retry ledger (area 5) | `ToolCallLedger` + `ToolDispatchGuard` in front of `AgentTools.executeTool`; persisted, bounded, per-id serialized | a418aaf GREEN 43177377367 |
 | Narrow reconciliation (area 5) | `ToolReconciler.fileWrites` proves a write by reading the target back; every other class refuses honestly | see `COPILOT-AREAS-4-6-2026-11-12.md` |
 
+## VN Code Dynamic Tool Loading System
+
+The umbrella initiative for how tools reach the model. Four branches, all complete and
+CI-verified. This heading is the single authoritative grouping: the individual rows below are
+referenced from the roadmap, not restated there.
+
+| Branch | Status | Implementation evidence |
+| --- | --- | --- |
+| Lean Tool Mode | Complete | `ToolOffer.kt` (offer for one turn and the reason for it), `ToolMeta.kt` core sets; prompt carries only the offered tools - `1b3340a` GREEN 43069139441 |
+| Tool Relevance | Complete | `ToolMeta` index with deterministic search and relevance scoring; lean set and budget guard - `32e6b36` GREEN, `1b3340a` GREEN 43069139441 |
+| Tool Groups | Complete | Grouped `/tools` catalogue over the 118-tool registry - `0197002` GREEN 43170924773 |
+| On-Demand Tool Loading | Complete | `tool_search` discovery plus progressive load, six added capabilities, metadata index - `32e6b36` GREEN |
+
+Distinction worth keeping: **Tool Groups is the tool-catalogue grouping branch.** It is not the
+Thinking Tree and not the chevron activity grouping, both of which are separate features recorded
+above.
+
+
 | ZIP tools (`zip_create`, `zip_extract`, `zip_list`) | `java.util.zip` engine with ZIP-Slip, symlink, overwrite and resource limits; bounded listing | see `ZIP-TOOLS-2026-11-12.md` |
 | Package Intelligence (`npm_info`, `pypi_info`, `lockfile_parse`) | Registry metadata plus nine offline lockfile formats, injectable fetcher, untrusted-text flagging | see `PACKAGE-INTELLIGENCE-2026-11-12.md` |
 Note on counts: Wave 1 is recorded as twelve tools in total (three in Group A, nine in B/C/D). The

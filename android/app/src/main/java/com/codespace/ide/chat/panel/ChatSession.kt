@@ -232,6 +232,7 @@ class ChatSession internal constructor(
                         restoreFinished, ui.value.rows.size, loaded.messages.size)) {
                     ui.value = ui.value.copy(rows = stored)
                 }
+                restoreFinish(loaded.messages)
                 seedEngineFrom(loaded.messages)
                 loaded.note?.let { appendRow(ChatRowModel.InfoNote(it)) }
                 restoreFinished = true
@@ -262,6 +263,21 @@ class ChatSession internal constructor(
     }
 
     /** BATCH 4: hand the current transcript to the store (no-op before the restore ends). */
+    /**
+     * Area 6 restoration: the FINISH VERDICT comes back from the saved conversation, so a reopened
+     * turn offers Continue exactly when it did before the app closed.
+     *
+     * Migration rule, stated once: a conversation with no recorded verdict restores as UNKNOWN.
+     * That is neither "complete" nor "continuable", so an older cut-off reply keeps its incomplete
+     * marker and its warning, but the Continue action stays hidden rather than being guessed from
+     * the sticky flag.
+     */
+    private fun restoreFinish(messages: List<com.codespace.ide.chat.StoredMessage>) {
+        val stored = messages.lastOrNull { it.role == "assistant" }?.finish
+        lastFinish = com.codespace.ide.engine.FinishReason.fromStored(stored)
+        _continuationUi.value = continuationStateFor(lastFinish)
+    }
+
     private fun persistTranscript() {
         if (disposed) return
         val sink = transcripts ?: return
@@ -272,7 +288,11 @@ class ChatSession internal constructor(
         sink.save(
             projectId,
             conversationId,
-            com.codespace.ide.chat.ChatTranscript.rowsToMessages(st.rows, streaming),
+            com.codespace.ide.chat.ChatTranscript.rowsToMessages(
+                st.rows,
+                streaming,
+                lastFinish = lastFinish.storedName.takeIf { lastFinish != com.codespace.ide.engine.FinishReason.UNKNOWN },
+            ),
         ) { error ->
             if (!storageErrorShown) {
                 storageErrorShown = true

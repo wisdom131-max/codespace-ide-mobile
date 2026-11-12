@@ -40,6 +40,12 @@ data class StoredMessage(
     val complete: Boolean = true,
     /** Wall-clock at save time; kept for debugging and future ordering, never shown. */
     val atMs: Long = 0L,
+    /**
+     * Area 6: the authoritative finish verdict for this assistant turn
+     * ([com.codespace.ide.engine.FinishReason] name), or null for a conversation saved before it
+     * was recorded. Null restores as UNKNOWN: no Continue offered, nothing called complete.
+     */
+    val finish: String? = null,
 )
 
 /** Result of decoding a stored transcript: messages plus how much was thrown away. */
@@ -53,7 +59,10 @@ internal data class DecodedTranscript(
 
 internal object ChatTranscript {
 
-    const val FORMAT_VERSION = "v1"
+    const val FORMAT_VERSION = "v2"
+
+    /** v1 had no finish field. Read, never written. */
+    internal const val LEGACY_FORMAT_VERSION = "v1"
 
     /** Bounded storage: a runaway conversation must not become a slow file. */
     const val MAX_MESSAGES = 300
@@ -78,6 +87,8 @@ internal object ChatTranscript {
         rows: List<ChatRowModel>,
         streaming: Boolean,
         nowMs: Long = System.currentTimeMillis(),
+        /** The last assistant turn's verdict, written onto that message only. */
+        lastFinish: String? = null,
     ): List<StoredMessage> {
         val mapped = ArrayList<StoredMessage>(rows.size)
         for (row in rows) {
@@ -98,9 +109,12 @@ internal object ChatTranscript {
                 ChatRowModel.NoCredits, ChatRowModel.Offline, is ChatRowModel.OverBudget -> Unit
             }
         }
-        if (streaming) {
-            val lastAssistant = mapped.indexOfLast { it.role == "assistant" }
-            if (lastAssistant >= 0) mapped[lastAssistant] = mapped[lastAssistant].copy(complete = false)
+        val lastAssistant = mapped.indexOfLast { it.role == "assistant" }
+        if (lastAssistant >= 0) {
+            var row = mapped[lastAssistant]
+            if (lastFinish != null) row = row.copy(finish = lastFinish)
+            if (streaming) row = row.copy(complete = false)
+            mapped[lastAssistant] = row
         }
         return cap(mapped)
     }
@@ -162,6 +176,7 @@ internal object ChatTranscript {
             sb.append(m.role).append('\t')
                 .append(if (m.complete) '1' else '0').append('\t')
                 .append(m.atMs).append('\t')
+                .append(m.finish ?: "-").append('\t')
                 .append(escape(m.text)).append('\n')
         }
         return sb.toString()
@@ -172,7 +187,8 @@ internal object ChatTranscript {
         if (raw.isBlank()) return DecodedTranscript(emptyList())
         val lines = raw.split('\n')
         val header = lines.firstOrNull()?.trim()
-        if (header != FORMAT_VERSION) {
+        val legacy = header == LEGACY_FORMAT_VERSION
+        if (header != FORMAT_VERSION && !legacy) {
             return DecodedTranscript(emptyList(), skippedLines = lines.size, unreadable = true)
         }
         val out = ArrayList<StoredMessage>(lines.size)
@@ -180,7 +196,7 @@ internal object ChatTranscript {
         for (i in 1 until lines.size) {
             val line = lines[i]
             if (line.isBlank()) continue
-            val parts = splitFields(line)
+            val parts = if (legacy) legacyFields(line) else splitFields(line)
             if (parts == null) { skipped++; continue }
             val role = parts[0]
             if (role != "user" && role != "assistant" && role != "note") { skipped++; continue }
@@ -190,14 +206,40 @@ internal object ChatTranscript {
                     text = parts[3],
                     complete = parts[1] != "0",
                     atMs = parts[2].toLongOrNull() ?: 0L,
+                    finish = if (legacy) null else parts[4].takeIf { it != "-" },
                 ),
             )
         }
         return DecodedTranscript(out, skippedLines = skipped)
     }
 
-    /** Exactly four fields, with the TEXT allowed to contain nothing unescaped. */
+    /**
+     * v2: five fields, finish before the text so the escaped text stays last. v1 lines still parse
+     * through [legacyFields]: an old conversation keeps its messages and simply has no verdict.
+     */
     private fun splitFields(line: String): List<String>? {
+        val a = line.indexOf('\t')
+        if (a < 0) return null
+        val b = line.indexOf('\t', a + 1)
+        if (b < 0) return null
+        val c = line.indexOf('\t', b + 1)
+        if (c < 0) return null
+        // A four-field line under a v2 header is a v1 line (torn write, hand edit, a file written
+        // by an older build into a new session). Read it as v1 rather than skipping the message:
+        // the TEXT is the user's, the verdict is the only thing missing.
+        val d = line.indexOf('\t', c + 1)
+        if (d < 0) return legacyFields(line)
+        return listOf(
+            unescape(line.substring(0, a)),
+            line.substring(a + 1, b),
+            line.substring(b + 1, c),
+            unescape(line.substring(d + 1)),
+            line.substring(c + 1, d),
+        )
+    }
+
+    /** Exactly four fields, with the TEXT allowed to contain nothing unescaped. */
+    private fun legacyFields(line: String): List<String>? {
         val a = line.indexOf('\t')
         if (a < 0) return null
         val b = line.indexOf('\t', a + 1)
@@ -209,6 +251,7 @@ internal object ChatTranscript {
             line.substring(a + 1, b),
             line.substring(b + 1, c),
             unescape(line.substring(c + 1)),
+            "-",
         )
     }
 
