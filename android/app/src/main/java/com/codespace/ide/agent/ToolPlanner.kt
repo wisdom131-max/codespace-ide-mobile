@@ -104,9 +104,20 @@ object ToolPlanner {
         fun has(t: String) = t in have
         val steps = ArrayList<Step>()
 
+        // A step whose tool is not offered here is DROPPED, and so is any dependency on it: the
+        // search that will never run cannot gate the read behind it. Without this, dropping a step
+        // left its dependents waiting on an id that no longer exists, waves() reported nothing, and
+        // the plan silently degraded to "whatever order the model emitted" - the planner deciding
+        // nothing at all while looking like it had.
+        val dropped = HashSet<String>()
+
         fun add(id: String, tool: String, deps: List<String> = emptyList(), writes: Boolean = false, intent: String = "") {
-            if (!has(tool)) { notes.add("not planned: " + tool + " is not offered here"); return }
-            steps.add(Step(id, tool, deps, writes, intent = intent))
+            if (!has(tool)) {
+                notes.add("not planned: " + tool + " is not offered here")
+                dropped.add(id)
+                return
+            }
+            steps.add(Step(id, tool, deps.filter { it !in dropped }, writes, intent = intent))
         }
 
         when (goal) {

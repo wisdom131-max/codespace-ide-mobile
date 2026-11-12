@@ -1171,12 +1171,36 @@ class ChatSession internal constructor(
             // P4.6/4.7: the same results, itemised, so a long tool chain can be bounded instead of
             // growing without a ceiling. Text stays authoritative; this is what gets trimmed.
             val resultItems = ArrayList<com.codespace.ide.agent.ToolContextTrim.Item>()
-            for (call in calls) {
+            // P4.A: the batch is PLANNED before it runs. ToolPlanner existed and computed dependency
+            // waves that nothing on the request path ever asked for. Here its waves decide the
+            // sequence, and an exact repeat of a call already answered in this batch reuses that
+            // result instead of running the side effect again.
+            val planNames = calls.map { it.name }
+            val batchPlan = com.codespace.ide.agent.ToolPlanner.plan(
+                planNames.joinToString(" "), planNames.toSet())
+            val planOrder = com.codespace.ide.agent.ToolBatchPlan.order(batchPlan, planNames)
+            val repeats = com.codespace.ide.agent.ToolBatchPlan.duplicates(
+                planNames, calls.map { it.argumentsJson })
+            val answered = HashMap<Int, String>()
+            com.codespace.ide.agent.ToolBatchPlan.note(batchPlan, planNames)?.let { appendRow(ChatRowModel.InfoNote(it)) }
+            for (idx in planOrder) {
+                val call = calls[idx]
                 val summary = AgentToolWire.summary(call)
                 // Stable id: the tree collapses by identity, so a streaming update cannot reset it.
                 appendRow(ChatRowModel.ToolActivity(
                     AgentToolWire.stepLabel(call), summary,
-                    id = "r" + toolRound + "c" + (calls.indexOf(call) + 1)))
+                    id = "r" + toolRound + "c" + (idx + 1)))
+                val already = repeats[idx]?.takeIf { answered.containsKey(it) }
+                if (already != null) {
+                    val reused = answered.getValue(already)
+                    appendRow(ChatRowModel.InfoNote(
+                        "Same call as step " + (already + 1) + " - reused that result instead of repeating it."))
+                    results.append(AgentToolWire.resultMessage(call, reused))
+                    results.append("\n\n")
+                    resultItems.add(com.codespace.ide.agent.ToolContextTrim.Item(
+                        call.name, reused, pinned = reused.contains("[S")))
+                    continue
+                }
                 // Batch 2: EDIT-mode writes are PROPOSALS. Staging cannot touch the
                 // user's files (it writes a private pending record), so it needs no
                 // approval prompt - the user's Apply in the editor strip IS the
@@ -1192,6 +1216,7 @@ class ChatSession internal constructor(
                         if (staged.startsWith("FAILED")) staged
                         else AgentToolWire.firstLine(staged)
                     ))
+                    answered[idx] = staged
                     results.append(AgentToolWire.resultMessage(call, staged))
                     results.append("\n\n")
                     resultItems.add(com.codespace.ide.agent.ToolContextTrim.Item(call.name, staged))
@@ -1210,6 +1235,7 @@ class ChatSession internal constructor(
                         if (verdict == com.codespace.ide.agent.AgentFlowGate.ApprovalVerdict.TIMEOUT)
                             "no answer in 10 minutes" else "you declined"
                     appendRow(ChatRowModel.InfoNote("Skipped " + call.name + " - " + why))
+                    answered[idx] = "NOT RUN (" + why + ")"
                     results.append(AgentToolWire.resultMessage(call, "NOT RUN (" + why + ")"))
                     results.append("\n\n")
                     continue
@@ -1224,6 +1250,7 @@ class ChatSession internal constructor(
                     (if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
                         AgentToolWire.firstLine(out)
                 ))
+                answered[idx] = out
                 // Guard (c): a tool result joins the echo corpus for the REST of this turn.
                 turnContext.add(out)
                 results.append(AgentToolWire.resultMessage(call, out))
