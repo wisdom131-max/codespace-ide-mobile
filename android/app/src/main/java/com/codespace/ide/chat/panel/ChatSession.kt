@@ -167,7 +167,9 @@ class ChatSession internal constructor(
      * never be resurrected by a timer that was armed a minute ago (that is the duplicate
      * submission this guards against).
      */
-    @Volatile private var sendGeneration = 0
+    private val requestGate = RequestGate()
+    private val sendGeneration: Int
+        get() = requestGate.current
     /** Automatic 429 re-attempts used for the CURRENT send. */
     /** A save failure is shown once, not once per delta. */
     private var storageErrorShown = false
@@ -556,8 +558,8 @@ class ChatSession internal constructor(
         }
         for (a in attachments) a.textData?.let { if (it.isNotBlank()) turnContext.add(it) }
         val chips = staged.map { com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes)) }
-        sendGeneration++
-        val gen = sendGeneration
+        requestGate.bump()
+        val gen = requestGate.bump()
         // Every send marks the ledger: a source recorded during this turn is shown under THIS
         // answer. Reading the size (not clearing) keeps a source from an earlier turn intact for
         // the answer that already cites it.
@@ -611,7 +613,7 @@ class ChatSession internal constructor(
      * generation is what makes the pending timer inert even if it wakes up afterwards.
      */
     fun cancel() {
-        sendGeneration++
+        requestGate.bump()
         sendJob?.cancel()
         // Stop means stopped. When a 429 retry is ARMED there is no active collect to notice
         // the cancellation, so streaming would otherwise stay true and the composer would
@@ -792,6 +794,10 @@ class ChatSession internal constructor(
         confirmOverBudget: Boolean,
         gen: Int = 0,
     ) {
+        // Area 5: an event that belongs to a request which is no longer current is DROPPED here,
+        // before it can touch rows, tool calls or the buffer. This is what stops a stopped or
+        // replaced stream from appending to a newer answer.
+        if (requestGate.stale(gen)) return
         when (ev) {
             is EngineEvent.Delta -> {
                 if (retryKeepLen > 0) {
