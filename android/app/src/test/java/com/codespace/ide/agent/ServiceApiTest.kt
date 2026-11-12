@@ -454,12 +454,97 @@ class ServiceApiTest {
         assertEquals("https://gitlab.com/api/v4/projects/1/jobs/2/trace", logs.url)
     }
 
+
+    // ── L20: one credential-free hop for a signed URL ────────────────────────────────────────────
+
+    @Test fun aSameHostRedirectIsFollowedWithoutTheCredential() {
+        val stub = LocalHttpStub()
+        stub.sequence = listOf(302, 200)
+        stub.headers = mapOf("Location" to (stub.base + "/signed/logs"))
+        stub.body = "JOB LOG BODY"
+        val plan = planOk(
+            "custom", "get", mapOf("path" to "health"),
+            secrets = secrets("api_base_url" to stub.base, "api_token" to token),
+            plain = true,
+        )
+        assertNull(plan.refusal)
+        val outcome = ServiceApi.execute(plan, requireHttps = false)
+        assertTrue(outcome.ok)
+        assertTrue(outcome.text.contains("JOB LOG BODY"))
+        assertEquals(2, stub.requestCount)
+        // The second request carried no Authorization header: that is the whole point of the hop.
+        assertNull(stub.lastAuthorization)
+        stub.close()
+    }
+
+    @Test fun aRedirectToAnotherHostIsStillRefused() {
+        val stub = LocalHttpStub()
+        stub.status = 302
+        stub.headers = mapOf("Location" to "https://objects.githubusercontent.com/signed?sig=1")
+        val plan = planOk(
+            "custom", "get", mapOf("path" to "health"),
+            secrets = secrets("api_base_url" to stub.base, "api_token" to token),
+            plain = true,
+        )
+        val outcome = ServiceApi.execute(plan, requireHttps = false)
+        assertFalse(outcome.ok)
+        assertTrue(outcome.text.contains("objects.githubusercontent.com"))
+        assertTrue(outcome.text.contains("not custom's own host"))
+        assertEquals(1, stub.requestCount)
+        stub.close()
+    }
+
+    @Test fun aRedirectOnAWriteIsNeverReSend() {
+        val stub = LocalHttpStub()
+        stub.sequence = listOf(302, 200)
+        stub.headers = mapOf("Location" to (stub.base + "/signed"))
+        val plan = planOk(
+            "custom", "post", mapOf("path" to "items"), body = "{\"a\":1}", write = true,
+            secrets = secrets("api_base_url" to stub.base, "api_token" to token),
+            plain = true,
+        )
+        val outcome = ServiceApi.execute(plan, requireHttps = false)
+        assertFalse(outcome.ok)
+        assertTrue(outcome.text.contains("Only a GET is followed"))
+        assertEquals(1, stub.requestCount)
+        stub.close()
+    }
+
+    @Test fun productionNeverFollowsAPlainHttpRedirectBecauseItNeverSendsAPlainRequest() {
+        // The https rule is one gate covering the first request AND the hop. In production
+        // (requireHttps) a plain-http base is refused before any socket is opened, so a plain-http
+        // redirect can never be reached.
+        val stub = LocalHttpStub()
+        stub.status = 302
+        stub.headers = mapOf("Location" to "http://127.0.0.1:1/x")
+        val plan = planOk(
+            "custom", "get", mapOf("path" to "health"),
+            secrets = secrets("api_base_url" to stub.base, "api_token" to token),
+            plain = true,
+        )
+        val outcome = ServiceApi.execute(plan)  // production default: requireHttps = true
+        assertFalse(outcome.ok)
+        assertTrue(outcome.text.contains("only https is allowed"))
+        assertEquals(0, stub.requestCount)
+        stub.close()
+    }
+
+    @Test fun githubNowOffersRunLogs() {
+        val plan = planOk("github", "run_logs", mapOf("owner" to "o", "repo" to "r", "run_id" to "9"))
+        assertNull(plan.refusal)
+        assertEquals("https://api.github.com/repos/o/r/actions/runs/9/logs", plan.url)
+    }
+
     // ── the stub ────────────────────────────────────────────────────────────────────────────────
 
     /** One-request-at-a-time HTTP/1.1 stub. Enough for a client that does not reuse connections. */
     internal class LocalHttpStub : Closeable {
         private val socket = ServerSocket(0, 20, InetAddress.getByName("127.0.0.1"))
         @Volatile var status: Int = 200
+
+        /** Status for request N (1-based); falls back to [status] when the list is shorter. */
+        @Volatile var sequence: List<Int> = emptyList()
+        private val served = java.util.concurrent.atomic.AtomicInteger(0)
         @Volatile var body: String = ""
         @Volatile var headers: Map<String, String> = emptyMap()
         @Volatile var delayMs: Long = 0
@@ -483,6 +568,8 @@ class ServiceApiTest {
         private fun handle(client: Socket) {
             client.use { c ->
                 requestCount++
+                val nth = served.incrementAndGet()
+                val thisStatus = sequence.getOrElse(nth - 1) { status }
                 val input = BufferedInputStream(c.getInputStream())
                 val requestLine = readLine(input) ?: return
                 lastMethod = requestLine.substringBefore(' ')
@@ -501,7 +588,7 @@ class ServiceApiTest {
                 lastBody = if (contentLength > 0) String(readN(input, contentLength), Charsets.UTF_8) else ""
                 if (delayMs > 0) Thread.sleep(delayMs)
                 val bytes = body.toByteArray()
-                val head = StringBuilder("HTTP/1.1 " + status + " Status\r\n")
+                val head = StringBuilder("HTTP/1.1 " + thisStatus + " Status\r\n")
                 head.append("Content-Length: ").append(bytes.size).append("\r\n")
                 head.append("Connection: close\r\n")
                 headers.forEach { (k, v) -> head.append(k).append(": ").append(v).append("\r\n") }

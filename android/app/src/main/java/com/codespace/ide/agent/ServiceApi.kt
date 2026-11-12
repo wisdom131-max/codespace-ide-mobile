@@ -85,6 +85,12 @@ object ServiceApi {
         val baseSecret: String? = null,
         /** BASIC auth needs a username as well as the token (Jira: the account email). */
         val emailSecret: String? = null,
+        /**
+         * Hosts this service's own API redirects to, for endpoints that hand out a signed URL
+         * (GitHub's logs endpoint answers 302 to object storage). Only these - plus the service's
+         * own host - can be followed, and only without the credential.
+         */
+        val redirectHosts: List<String> = emptyList(),
         val operations: List<Operation>,
     )
 
@@ -146,6 +152,7 @@ object ServiceApi {
             baseUrl = "https://api.github.com",
             auth = Auth.BEARER,
             secretName = "github_token",
+            redirectHosts = listOf("objects.githubusercontent.com", "codeload.github.com", "github.com"),
             operations = listOf(
                 Operation("repo", Effect.READ, "GET", "/repos/{owner}/{repo}", summary = "repository metadata"),
                 Operation("contents", Effect.READ, "GET", "/repos/{owner}/{repo}/contents/{path}", summary = "file or directory listing"),
@@ -154,6 +161,7 @@ object ServiceApi {
                 Operation("commits", Effect.READ, "GET", "/repos/{owner}/{repo}/commits", summary = "recent commits"),
                 Operation("runs", Effect.READ, "GET", "/repos/{owner}/{repo}/actions/runs", summary = "workflow runs, newest first"),
                 Operation("search_code", Effect.READ, "GET", "/search/code", query = "q={q}", summary = "code search across GitHub"),
+                Operation("run_logs", Effect.READ, "GET", "/repos/{owner}/{repo}/actions/runs/{run_id}/logs", summary = "the log archive of one run (signed redirect, credential-free)"),
                 Operation("run_jobs", Effect.READ, "GET", "/repos/{owner}/{repo}/actions/runs/{run_id}/jobs", summary = "jobs of one workflow run, with conclusions"),
                 Operation("run_cancel", Effect.WRITE, "POST", "/repos/{owner}/{repo}/actions/runs/{run_id}/cancel", summary = "cancel a workflow run (no body)", bodyOptional = true),
                 Operation("run_rerun", Effect.WRITE, "POST", "/repos/{owner}/{repo}/actions/runs/{run_id}/rerun", summary = "re-run a workflow run (no body)", bodyOptional = true),
@@ -539,35 +547,37 @@ object ServiceApi {
             return Outcome("Refused before sending: only https is allowed.", ok = false, status = 0)
         }
 
+        var target = url
+        var authed = true
+        var hops = 0
         var connection: HttpURLConnection? = null
         return try {
-            connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = plan.method
-                // P8.B: a redirect is how a server moves the credential to a host of its choosing.
-                instanceFollowRedirects = false
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = readTimeoutMs
-                plan.headers.forEach { (name, value) -> setRequestProperty(name, value) }
-                plan.token?.let { token -> setRequestProperty(plan.authHeaderName, plan.authPrefix + token.value) }
-                if (plan.body != null && plan.method != "GET" && plan.method != "HEAD") {
-                    doOutput = true
-                    setFixedLengthStreamingMode(plan.body.toByteArray().size)
-                }
-            }
-            if (plan.body != null && plan.method != "GET" && plan.method != "HEAD") {
-                connection.outputStream.use { it.write(plan.body.toByteArray()) }
-            }
-            val status = connection.responseCode
-            val stream: InputStream? = if (status in 200..299) connection.inputStream else connection.errorStream
-            val read = readBounded(stream, plan.scrub ?: plan.token)
-            when {
-                status in 300..399 -> Outcome(
-                    "Refused: " + plan.serviceId + " answered with a redirect to " +
-                        (connection.getHeaderField("Location") ?: "another URL") +
-                        ". Following it would carry the credential to a host it was not issued for, so it was not followed.",
-                    ok = false, status = status,
-                )
-                status == 401 || status == 403 -> Outcome(
+            var done: Outcome? = null
+            while (done == null) {
+                connection = open(target, plan, authed, readTimeoutMs)
+                val status = connection.responseCode
+                val location = connection.getHeaderField("Location")
+                if (status in 300..399) {
+                    val (next, why) = redirectTarget(plan, target, location, hops, requireHttps)
+                    if (next == null) {
+                        done = Outcome(
+                            "Refused: " + plan.serviceId + " answered with a redirect to " +
+                                (location ?: "another URL") + ". " + why,
+                            ok = false, status = status,
+                        )
+                    } else {
+                        hops++
+                        // L20: the follow-up is credential-free on purpose. The server named the
+                        // destination, so the destination gets no key - it only gets to send bytes.
+                        authed = false
+                        connection.disconnect()
+                        target = next
+                    }
+                } else {
+                    val stream: InputStream? = if (status in 200..299) connection.inputStream else connection.errorStream
+                    val read = readBounded(stream, plan.scrub ?: plan.token)
+                    done = when {
+                        status == 401 || status == 403 -> Outcome(
                     "HTTP " + status + " from " + plan.serviceId + ": the stored credential was rejected or lacks the " +
                         "scope for this operation. " + read.text.take(600),
                     ok = false, status = status,
@@ -579,9 +589,12 @@ object ServiceApi {
                     ok = false, status = status,
                 )
                 status == 404 -> Outcome("HTTP 404 from " + plan.serviceId + ": not found. " + read.text.take(600), ok = false, status = status)
-                status in 200..299 -> Outcome(text(read), ok = true, status = status)
-                else -> Outcome("HTTP " + status + " from " + plan.serviceId + ". " + read.text.take(2000), ok = false, status = status)
+                        status in 200..299 -> Outcome(text(read), ok = true, status = status)
+                        else -> Outcome("HTTP " + status + " from " + plan.serviceId + ". " + read.text.take(2000), ok = false, status = status)
+                    }
+                }
             }
+            done!!
         } catch (e: javax.net.ssl.SSLException) {
             Outcome("TLS failure talking to " + plan.serviceId + ": " + (e.message ?: "handshake refused"), ok = false, status = 0)
         } catch (e: java.net.SocketTimeoutException) {
@@ -594,6 +607,85 @@ object ServiceApi {
             Outcome("Call to " + plan.serviceId + " failed: " + (e.message ?: e.javaClass.simpleName), ok = false, status = 0)
         } finally {
             connection?.disconnect()
+        }
+    }
+
+    /** Only one hop, and only for a GET: a POST that redirects is a request we do not understand. */
+    private const val MAX_REDIRECT_HOPS = 1
+
+    private fun open(
+        url: URL,
+        plan: Plan,
+        authed: Boolean,
+        readTimeoutMs: Int,
+    ): HttpURLConnection = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = plan.method
+        // P8.B: a redirect is how a server moves the credential to a host of its choosing.
+        instanceFollowRedirects = false
+        connectTimeout = CONNECT_TIMEOUT_MS
+        this.readTimeout = readTimeoutMs
+        plan.headers.forEach { (name, value) -> setRequestProperty(name, value) }
+        if (authed) plan.token?.let { token -> setRequestProperty(plan.authHeaderName, plan.authPrefix + token.value) }
+        if (plan.body != null && plan.method != "GET" && plan.method != "HEAD") {
+            doOutput = true
+            setFixedLengthStreamingMode(plan.body.toByteArray().size)
+        }
+    }.also { conn ->
+        if (authed && plan.body != null && plan.method != "GET" && plan.method != "HEAD") {
+            conn.outputStream.use { it.write(plan.body.toByteArray()) }
+        }
+    }
+
+    /**
+     * Where a redirect may go, if anywhere. The first element is the destination or null, the
+     * second is the sentence explaining a refusal.
+     *
+     * The four conditions are independent and all required, and none of them is "because the
+     * endpoint is convenient": GET only, https only, one hop only, and a host this service owns.
+     * The follow-up carries no credential, so even a host that passes all four gets nothing but
+     * the request line.
+     */
+    private fun redirectTarget(
+        plan: Plan,
+        current: URL,
+        location: String?,
+        hops: Int,
+        requireHttps: Boolean,
+    ): Pair<URL?, String> {
+        if (plan.method != "GET") {
+            return null to "Only a GET is followed; a redirect on a write is a request this client will not re-send."
+        }
+        if (hops >= MAX_REDIRECT_HOPS) {
+            return null to "Only one credential-free hop is allowed, and it was already used."
+        }
+        if (location.isNullOrBlank()) {
+            return null to "The redirect carried no Location header."
+        }
+        val next = try {
+            URL(current, location)
+        } catch (t: Throwable) {
+            return null to "The Location header was not a usable URL."
+        }
+        // The SAME gate as the first request, not a second one: production passes requireHttps and
+        // a plain-http hop is impossible there. Only the loopback test seam lowers it, and it lowers
+        // it for both requests or neither.
+        if (requireHttps && next.protocol != "https") {
+            return null to "The redirect left https, which is never followed."
+        }
+        val allowed = ArrayList<String>()
+        allowed += current.host
+        SERVICES.firstOrNull { it.id == plan.serviceId }?.redirectHosts?.let { allowed += it }
+        val host = next.host.lowercase()
+        val ok = allowed.any { entry ->
+            val e = entry.lowercase()
+            host == e || host.endsWith("." + e)
+        }
+        return if (ok) {
+            next to ""
+        } else {
+            null to "It points at " + host + ", which is not " + plan.serviceId +
+                "'s own host. Following it would carry the request (and anything the request proves) " +
+                "to a third party, so it was not followed."
         }
     }
 

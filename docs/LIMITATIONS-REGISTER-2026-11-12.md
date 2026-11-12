@@ -148,13 +148,26 @@ per-operation allowlist beyond the method, so `post` can reach any path under th
 
 ## Discovered during Items 32 and 33
 
-**L20. GitHub Actions job logs are not retrievable through this app. - DEFERRED (design collision)**
-`GET /repos/{owner}/{repo}/actions/runs/{id}/logs` answers with a 302 to signed blob storage. `ServiceApi`
-refuses redirects on purpose (`10b2380`), because following one is how a server moves the credential to a
-host of its choosing. So the operation is deliberately **not** in the catalogue rather than shipped
-broken: job status is available (`runs`, `run_jobs`), the log body is not. A scoped exception that follows
-a redirect only after stripping the credential, and only to a host the API itself named, is the correct
-fix and is a separate piece of work.
+**L20. GitHub Actions job logs were not retrievable through this app. - RESOLVED (stub-tested, not live-verified)**
+`GET /repos/{owner}/{repo}/actions/runs/{id}/logs` answers with a 302 to signed blob storage, and every
+redirect was refused (`10b2380`), so the operation was left out of the catalogue rather than shipped broken.
+The scoped exception named here as the correct fix is now implemented in `ServiceApi`: a redirect is
+followed only when **all** of these hold - the request is a `GET`, it is the first hop (one maximum), the
+destination is https, and the destination host is the service's own host or one the service names in
+`redirectHosts` (GitHub: `objects.githubusercontent.com`, `codeload.github.com`, `github.com`). The
+follow-up request carries **no credential at all**, so a host that passes the check still receives nothing
+but the request line. Anything else is refused with the host named in the message. `run_logs` is now in the
+GitHub catalogue.
+
+The https rule is one gate covering both the first request and the hop, threaded through the same
+`requireHttps` flag; production passes it, so a plain-http base or hop is unreachable there and the loopback
+test seam cannot mask that (asserted: `productionNeverFollowsAPlainHttpRedirectBecauseItNeverSendsAPlainRequest`).
+
+Evidence: `ServiceApiTest` - `aSameHostRedirectIsFollowedWithoutTheCredential`,
+`aRedirectToAnotherHostIsStillRefused`, `aRedirectOnAWriteIsNeverReSend`,
+`productionNeverFollowsAPlainHttpRedirectBecauseItNeverSendsAPlainRequest`, `githubNowOffersRunLogs`, plus
+the pre-existing refusal tests. Stub-tested only: no live GitHub run log has been fetched, so the shape of a
+real signed URL is assumed from the documented behaviour, not observed (see L18).
 
 **L21. Service credentials are used as stored; there is no refresh. - STILL VALID**
 A personal access token (or Bitbucket app password, or Jira API token + email) is read from
