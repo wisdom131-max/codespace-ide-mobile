@@ -317,6 +317,44 @@ class ServiceApiTest {
         assertEquals("no request reached the network", 0, stub.requestCount)
     }
 
+
+    // ── registry invariants (Item 31: the checks that catch a careless addition) ─────────────────
+
+    @Test fun everyOperationIsWellFormed() {
+        val methods = setOf("GET", "POST", "PUT", "DELETE")
+        assertTrue("at least the three original services must exist", ServiceApi.SERVICES.size >= 3)
+        for (service in ServiceApi.SERVICES) {
+            assertTrue("a service needs an id", service.id.isNotBlank())
+            assertTrue("a service needs a credential name", service.secretName.isNotBlank())
+            assertTrue("a service needs at least one operation", service.operations.isNotEmpty())
+            val ids = service.operations.map { it.id }
+            assertEquals(service.id + " has a duplicate operation id", ids.size, ids.toSet().size)
+            for (op in service.operations) {
+                assertTrue(service.id + "/" + op.id + " has a method outside the allowlist: " + op.method, op.method in methods)
+                assertTrue(service.id + "/" + op.id + " must use a relative path", op.path.startsWith("/") && !op.path.contains("://"))
+                assertTrue(service.id + "/" + op.id + " needs a summary", op.summary.isNotBlank())
+                // A static base must already be https - a definition cannot introduce a plain host.
+                if (service.baseUrl.isNotBlank()) assertTrue(service.baseUrl, service.baseUrl.startsWith("https://"))
+            }
+            // A service with a configurable base must name the secret that holds it.
+            if (service.baseUrl.isBlank()) assertNotNull(service.id + " has a blank base but no baseSecret", service.baseSecret)
+        }
+    }
+
+    @Test fun everyPlaceholderInATemplateIsAValidName() {
+        for (service in ServiceApi.SERVICES) {
+            for (op in service.operations) {
+                for (template in listOf(op.path, op.query)) {
+                    Regex("\\{([^}]*)\\}").findAll(template).forEach { m ->
+                        val name = m.groupValues[1]
+                        assertTrue(service.id + "/" + op.id + " has a malformed placeholder {" + name + "}",
+                            Regex("^[a-zA-Z][a-zA-Z0-9_]*$").matches(name))
+                    }
+                }
+            }
+        }
+    }
+
     // ── the stub ────────────────────────────────────────────────────────────────────────────────
 
     /** One-request-at-a-time HTTP/1.1 stub. Enough for a client that does not reuse connections. */

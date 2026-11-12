@@ -137,4 +137,16 @@ class AgentFlowGateScopeTest {
         AgentFlowGate.rememberForSession("run_command")
         assertEquals(1, AgentFlowGate.sessionAllowedCount())
     }
+
+    /**
+     * P3/Item 32: a write to a third party must ask at every level. Both flags true is the case that
+     * matters - AUTO_ALL plus a remembered "always allow" is exactly what a write must outrank.
+     */
+    @Test fun serviceWriteAsksEvenWhenAutoApprovedAndSessionAllowed() {
+        assertTrue(com.codespace.ide.agent.AgentFlowGate.requiresForcedApproval("service_write"))
+        assertTrue(com.codespace.ide.agent.AgentFlowGate.mustAsk("service_write", autoApproved = true, sessionAllowed = true))
+        // The read half is not forced: reading with a stored token is not a mutation.
+        assertFalse(com.codespace.ide.agent.AgentFlowGate.requiresForcedApproval("service_read"))
+    }
+
 }

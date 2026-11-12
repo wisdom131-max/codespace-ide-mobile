@@ -168,3 +168,22 @@ Facts and Persistent Memory. Their commits are recorded in `IMPLEMENTED.md`.
 
 No device testing has been run for any item in this roadmap. Phone testing is item 14, batched once,
 and nothing in this document may claim otherwise.
+
+## Delivery status - Items 29 to 38 (2026-11-12)
+
+Evidence for every row below is a commit plus a CI run, not a claim. CI-verified means green in GitHub
+Actions; none of this is device-verified yet, and no external service is live-service verified.
+
+| Item | Scope | Status | Evidence |
+|---|---|---|---|
+| 28 | Archive tool descriptions match capability | Complete | `a5410d3`, CI 43275036618 |
+| 29 | Limitations register review | Complete | this commit |
+| 30 | Documentation reconciliation | Complete | this commit |
+| 31 | Executable test matrix + missing tests | Complete | this commit |
+| 32 | External API and service integration (GitHub, GitLab, custom REST) | Complete, stub-tested | `6aeb5c8`, CI 43286546707 |
+| 33 | Additional integrations (Bitbucket, Gitea, Jira, CI/CD operations) | In progress - see the integration table in `docs/EXTERNAL-SERVICES-ITEM32-2026-11-12.md` | pending |
+| 34 | - | Not started | - |
+| 35-38 | - | Not started | - |
+
+Partial by design, and recorded as such: real RAR fixtures (L2), live-service verification of every
+integration (L18), GitHub Actions job logs (L20, refused by the redirect rule).
