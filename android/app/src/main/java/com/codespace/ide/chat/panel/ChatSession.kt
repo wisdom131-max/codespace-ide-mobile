@@ -1200,6 +1200,22 @@ class ChatSession internal constructor(
 
             fun noteAndRecord(idx: Int, out: String) {
                 val call = calls[idx]
+                // P3.C: an attempted write is not a successful write. Read the target back and report
+                // only when the file does NOT hold what was asked for - a verified write is the
+                // expected case and does not need an activity row.
+                val verifyLine = runCatching {
+                    val args = org.json.JSONObject(call.argumentsJson).let { o ->
+                        o.keys().asSequence().associateWith { k -> o.optString(k) }
+                    }
+                    com.codespace.ide.agent.WriteVerifier.line(
+                        com.codespace.ide.agent.WriteVerifier.verify(call.name, args) { path ->
+                            runCatching {
+                                java.io.File(com.codespace.ide.agent.ToolPathResolver.resolve(ctx, path))
+                                    .takeIf { it.isFile }?.readText()
+                            }.getOrNull()
+                        },
+                    )
+                }.getOrNull()
                 appendRow(ChatRowModel.InfoNote(
                     (if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
                         AgentToolWire.firstLine(out)
@@ -1209,6 +1225,10 @@ class ChatSession internal constructor(
                 turnContext.add(out)
                 results.append(AgentToolWire.resultMessage(call, out))
                 results.append("\n\n")
+                if (verifyLine != null) {
+                    appendRow(ChatRowModel.InfoNote(verifyLine))
+                    results.append(verifyLine).append("\n\n")
+                }
                 // Pinned when the result carries a citation marker: evidence the answer must keep.
                 resultItems.add(
                     com.codespace.ide.agent.ToolContextTrim.Item(
