@@ -457,6 +457,28 @@ private fun ChatBody(
                         transcriptRead = voiceStore.read(projectId, activeId)
                         showTranscripts = true
                     }
+                    ChatOverflowAction.CONTINUE_IN_NEW_SESSION -> {
+                        // P6: the handoff is built from THIS session's own rows, then a new session
+                        // is created and seeded with it. The old conversation is left untouched and
+                        // stays the record; approvals and credentials are not carried.
+                        val handoff = com.codespace.ide.chat.session.SessionHandoff.build(
+                            session.ui.value.rows.mapNotNull { row ->
+                                when (row) {
+                                    is ChatRowModel.User -> com.codespace.ide.chat.session.SessionHandoff.Turn("user", row.text)
+                                    is ChatRowModel.AssistantStream -> com.codespace.ide.chat.session.SessionHandoff.Turn("assistant", row.text)
+                                    else -> null
+                                }
+                            },
+                        )
+                        val created = manager.createSession(projectId)
+                        if (created is com.codespace.ide.chat.session.SessionCreate.Created) {
+                            val seed = handoff.render()
+                            manager.session(projectId, created.meta.id)?.send(seed)
+                            notice = com.codespace.ide.chat.session.SessionHandoff.describe(handoff)
+                        } else {
+                            notice = "Could not create the new session; this conversation is unchanged."
+                        }
+                    }
                     ChatOverflowAction.MANAGE_APPROVALS -> showApprovals = true
                     ChatOverflowAction.SHOW_VIEW_BY_DEFAULT -> {
                         viewByDefault = !viewByDefault

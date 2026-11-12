@@ -26,6 +26,8 @@ class ChatOverflowSpecTest {
                 "Show Voice Transcripts",
                 "Show View by Default",
                 "Approvals",
+                // P6 appended after the approved seven; inserting would reorder a signed-off design.
+                "Continue in New Session",
             ),
             ChatOverflowSpec.order.map { it.label },
         )

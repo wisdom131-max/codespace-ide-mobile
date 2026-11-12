@@ -43,6 +43,9 @@ internal enum class ChatOverflowAction(val label: String) {
 
     /** Item 9 (2026-10-31): the approvals level needs a door; this is it. */
     MANAGE_APPROVALS("Approvals"),
+
+    /** P6 (appended, not inserted): carry this conversation into a linked fresh session. */
+    CONTINUE_IN_NEW_SESSION("Continue in New Session"),
 }
 
 internal data class ChatOverflowItem(
