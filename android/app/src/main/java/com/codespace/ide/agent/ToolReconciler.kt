@@ -35,8 +35,9 @@ fun interface ToolReconciler {
             val content = readFile(path) ?: return@ToolReconciler null
             val wanted = prior.args["content"]
             when {
-                // Content recorded and matched: the write landed.
-                wanted != null && content == wanted ->
+                // Content recorded and matched: the write landed. A body over ArgFingerprint.KEEP was
+                // stored as a hash, so this compares through the same rule that stamped it.
+                wanted != null && ArgFingerprint.matches(wanted, content) ->
                     "Verified already applied: $path already holds the requested content. No re-write."
                 // Recorded content present but different: do NOT claim victory, let the caller retry
                 // deliberately (the file is readable and provably not the requested state).

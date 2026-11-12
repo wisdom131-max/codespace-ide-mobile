@@ -44,7 +44,10 @@ class ToolCallLedger private constructor(private val file: File) {
     @Synchronized
     fun recordStarted(callId: String, tool: String, effect: ToolEffect, args: Map<String, String> = emptyMap()) {
         // Started but no verdict yet: exactly the state that must never be silently retried.
-        put(Entry(callId, tool, effect, ToolOutcome.UNKNOWN_AFTER_START, null, System.currentTimeMillis(), args))
+        // Audit 2026-11-12: long argument values are fingerprinted, not kept whole - a written file
+        // body is the whole file, and 200 of those on a phone is memory spent on one comparison.
+        put(Entry(callId, tool, effect, ToolOutcome.UNKNOWN_AFTER_START, null,
+            System.currentTimeMillis(), ArgFingerprint.stamp(args)))
     }
 
     /** Proven already applied by a read-only inspection: the call is complete, not retried. */
