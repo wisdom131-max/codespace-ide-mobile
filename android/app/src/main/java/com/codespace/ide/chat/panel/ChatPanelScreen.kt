@@ -470,11 +470,22 @@ private fun ChatBody(
                                 }
                             },
                         )
+                        // P6.C: the new session knows where it came from. The chain is numbered from
+                        // the root and keeps the root's topic, so hop five still reads as
+                        // "Session 5 from explain git" instead of an unrelated title.
+                        val lineage = com.codespace.ide.chat.session.SessionLineage.forProject(ctx, projectId)
+                        val parentTitle = com.codespace.ide.chat.session.SessionTitles
+                            .derive(session.ui.value.rows.filterIsInstance<ChatRowModel.User>().firstOrNull()?.text)
+                        val parentLink = lineage.record(activeId, null, parentTitle)
                         val created = manager.createSession(projectId)
                         if (created is com.codespace.ide.chat.session.SessionCreate.Created) {
+                            val successor = lineage.record(created.meta.id, activeId, parentLink.origin)
+                            manager.renameSession(projectId, created.meta.id,
+                                com.codespace.ide.chat.session.SessionLineage.label(successor))
                             val seed = handoff.render()
                             manager.session(projectId, created.meta.id)?.send(seed)
-                            notice = com.codespace.ide.chat.session.SessionHandoff.describe(handoff)
+                            notice = com.codespace.ide.chat.session.SessionLineage.label(successor) +
+                                " - " + com.codespace.ide.chat.session.SessionHandoff.describe(handoff)
                         } else {
                             notice = "Could not create the new session; this conversation is unchanged."
                         }
