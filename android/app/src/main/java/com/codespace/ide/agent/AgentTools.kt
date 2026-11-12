@@ -2272,13 +2272,32 @@ You can use multiple tools in sequence. When done, give a final summary.
                     (if (a?.stale == true) ", out of date for this question" else "")
             })
         }
-        // 1.3: compare what this task has actually read, and say where it disagrees.
-        val evidence = com.codespace.ide.agent.research.SourceLedger.all()
-            .map { it.id to (it.title + ". " + it.excerpt) }
-        val dispute = com.codespace.ide.agent.research.ContradictionScan.render(
-            com.codespace.ide.agent.research.ContradictionScan.report(evidence),
+        // 1.3 / 1.4: one brief over what this task has read. It carries the disputes with both
+        // sides, claim-level citations, what is unresolved, and whether stopping was honest.
+        val ledger = com.codespace.ide.agent.research.SourceLedger.all()
+        val brief = com.codespace.ide.agent.research.ResearchSynthesis.build(
+            question = query,
+            evidence = ledger.map {
+                com.codespace.ide.agent.research.ResearchSynthesis.Evidence(
+                    it.id, it.url, it.title, it.excerpt, it.publishedAt,
+                )
+            },
+            recovery = if (report.results.isEmpty()) {
+                listOf(
+                    com.codespace.ide.agent.research.ResearchSynthesis.RecoveryNote(
+                        com.codespace.ide.agent.research.ResearchSynthesis.RecoveryKind.NO_RESULTS,
+                        labels.joinToString(", ").ifBlank { "all phrasings" },
+                        retriable = false,
+                    ),
+                )
+            } else {
+                emptyList()
+            },
+            budget = com.codespace.ide.agent.research.ResearchSynthesis.Budget(
+                round = 0, searchesUsed = 1, searchBudget = 6,
+            ),
         )
-        if (dispute.isNotBlank()) notes.append("\n\n").append(dispute)
+        if (ledger.isNotEmpty() || report.results.isEmpty()) notes.append("\n\n").append(brief.render)
         val notesText = notes.toString()
         return if (dropped > 0) {
             body + "\n\n" + dropped + " further result(s) were the same page or a duplicate of a " +
