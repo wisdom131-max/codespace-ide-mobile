@@ -133,6 +133,15 @@ private fun ChatBody(
     var showTranscripts by remember(projectId) { mutableStateOf(false) }
     var transcriptRead by remember(projectId) { mutableStateOf(com.codespace.ide.chat.voice.VoiceTranscriptRead(emptyList())) }
     var viewByDefault by remember { mutableStateOf(ChatSettingsPrefs.showChatByDefault()) }
+    // P7.D: read a finished reply aloud - opt-in, remembered, and inert when the device cannot speak.
+    var readAloud by remember { mutableStateOf(ChatSettingsPrefs.readAloud()) }
+    var speechState by remember { mutableStateOf<SpeechState>(SpeechState.Loading) }
+    val speech = rememberSpeaker { speechState = it }
+    val lastSpokenReply = session.ui.value.rows.lastOrNull { it is ChatRowModel.AssistantStream && !it.cursorOn }
+    androidx.compose.runtime.LaunchedEffect(lastSpokenReply, readAloud) {
+        val row = lastSpokenReply as? ChatRowModel.AssistantStream ?: return@LaunchedEffect
+        if (readAloud) speech.speak(row.text)
+    }
     // Attribution: the journal is process-wide, so the session that owns this screen claims it.
     DisposableEffect(projectId, activeId) {
         com.codespace.ide.agent.AgentWriteJournal.activeSessionId = activeId
@@ -429,6 +438,7 @@ private fun ChatBody(
                 canUndo = com.codespace.ide.chat.panel.edits.LastEditActions.canUndo(activeId),
                 canRedo = com.codespace.ide.chat.panel.edits.LastEditActions.canRedo(activeId),
                 viewByDefault = viewByDefault,
+                readAloud = readAloud,
                 canMoveToEditor = onMoveToEditor != null,
                 approvalsLabel = ApprovalLevelSpec.menuLabel(flowLevel),
             ),
@@ -488,6 +498,17 @@ private fun ChatBody(
                                 " - " + com.codespace.ide.chat.session.SessionHandoff.describe(handoff)
                         } else {
                             notice = "Could not create the new session; this conversation is unchanged."
+                        }
+                    }
+                    ChatOverflowAction.READ_REPLIES_ALOUD -> {
+                        // P7.D: off by default, remembered, and honest when the device cannot speak.
+                        readAloud = !readAloud
+                        com.codespace.ide.chat.panel.ChatSettingsPrefs.setReadAloud(readAloud)
+                        notice = when {
+                            !readAloud -> "Replies will stay silent."
+                            speech.state is SpeechState.Unavailable ->
+                                (speech.state as SpeechState.Unavailable).reason
+                            else -> "New replies will be read aloud."
                         }
                     }
                     ChatOverflowAction.MANAGE_APPROVALS -> showApprovals = true

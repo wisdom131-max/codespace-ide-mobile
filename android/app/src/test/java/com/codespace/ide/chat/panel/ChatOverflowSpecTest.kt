@@ -28,6 +28,9 @@ class ChatOverflowSpecTest {
                 "Approvals",
                 // P6 appended after the approved seven; inserting would reorder a signed-off design.
                 "Continue in New Session",
+                // P7.D appended after P6 for the same reason: read-aloud is a new toggle, not a
+                // rearrangement of the six reference labels.
+                "Read Replies Aloud",
             ),
             ChatOverflowSpec.order.map { it.label },
         )
@@ -54,7 +57,8 @@ class ChatOverflowSpecTest {
     @Test
     fun `every other item is always enabled`() {
         val items = ChatOverflowSpec.items(canUndo = true, canRedo = true, viewByDefault = true, canMoveToEditor = true)
-        assertEquals(7, items.size)
+        // Eight since P7.D appended Read Replies Aloud; every one of them must still be actionable.
+        assertEquals(8, items.size)
         assertTrue(items.all { it.enabled })
         assertNull(items.first { it.action == ChatOverflowAction.UNDO_LAST_EDIT }.reason)
     }
@@ -73,7 +77,11 @@ class ChatOverflowSpecTest {
     fun `view by default is a checkbox, the others are actions`() {
         val items = ChatOverflowSpec.items(canUndo = false, canRedo = false, viewByDefault = true, canMoveToEditor = true)
         assertEquals(true, items.first { it.action == ChatOverflowAction.SHOW_VIEW_BY_DEFAULT }.checked)
-        assertEquals(1, items.count { it.checked != null })
+        // P7.D added a second toggle: read-aloud is on/off, so it is a checkbox like view-by-default.
+        assertEquals(
+            setOf(ChatOverflowAction.SHOW_VIEW_BY_DEFAULT, ChatOverflowAction.READ_REPLIES_ALOUD),
+            items.filter { it.checked != null }.map { it.action }.toSet(),
+        )
     }
 
     @Test

@@ -46,8 +46,10 @@ class ConnectorApprovalTest {
         assertTrue(AgentFlowGate.requiresForcedApproval("use_connector"))
         // Everything else keeps the level-based behaviour it had: forcing them would be a silent
         // change to how AUTO_ALL works for the whole tool set.
+        // P8.D (owner spec, 2026-11-12): MCP calls are now forced too - "AUTO_ALL must not bypass
+        // MCP approval". The local tools below still keep level-based behaviour.
         for (name in listOf("run_command", "run_vncode_command", "write_file", "grep_replace_all",
-                "read_file", "git_commit_push", "mcp_github_create_issue")) {
+                "read_file", "git_commit_push")) {
             assertFalse(name + " must not be force-gated", AgentFlowGate.requiresForcedApproval(name))
         }
     }
@@ -98,7 +100,10 @@ class ConnectorApprovalTest {
         val auto = ChatPermissionStore.decideAutoApproved(ChatFlowLevel.AUTO_ALL, "mcp_github_create_issue", emptySet())
         assertFalse("MCP tools are never auto-approved", auto)
         assertTrue("so they are gated", AgentFlowGate.mustAsk("mcp_github_create_issue", auto, false))
-        assertFalse("and not by the connector rule, which is connector-only", AgentFlowGate.requiresForcedApproval("mcp_github_create_issue"))
+        // P8.D: the connector rule is no longer connector-only - the mcp_ namespace is forced, which
+        // is what makes "AUTO_ALL must not bypass MCP approval" true.
+        assertTrue("mcp_ namespace is forced", AgentFlowGate.requiresForcedApproval("mcp_github_create_issue"))
+        assertTrue(AgentFlowGate.mustAsk("mcp_github_create_issue", autoApproved = true, sessionAllowed = true))
     }
 
     @Test

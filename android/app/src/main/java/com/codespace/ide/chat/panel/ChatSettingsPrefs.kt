@@ -71,6 +71,7 @@ fun decodeOverrides(json: String): Map<String, Int> {
 object ChatSettingsPrefs {
     private const val PREFS = "chat_settings"
     private const val KEY_FAILOVER = "failover_opt_in"
+    private const val KEY_READ_ALOUD = "read_replies_aloud"
     private const val KEY_SELECTION = "last_selection"
     private const val KEY_OVERRIDES = "context_overrides"
 
@@ -107,6 +108,13 @@ object ChatSettingsPrefs {
     }
 
     fun showChatByDefault(): Boolean = prefs?.getBoolean(KEY_SHOW_BY_DEFAULT, false) ?: false
+
+    /** P7.D: read each finished reply aloud. Off by default; a device without a speech engine says so. */
+    fun readAloud(): Boolean = prefs?.getBoolean(KEY_READ_ALOUD, false) ?: false
+
+    fun setReadAloud(enabled: Boolean) {
+        prefs?.edit()?.putBoolean(KEY_READ_ALOUD, enabled)?.apply()
+    }
 
     fun setShowChatByDefault(enabled: Boolean) {
         prefs?.edit()?.putBoolean(KEY_SHOW_BY_DEFAULT, enabled)?.apply()

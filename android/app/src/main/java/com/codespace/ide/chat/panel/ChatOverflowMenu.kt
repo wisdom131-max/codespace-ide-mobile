@@ -46,6 +46,9 @@ internal enum class ChatOverflowAction(val label: String) {
 
     /** P6 (appended, not inserted): carry this conversation into a linked fresh session. */
     CONTINUE_IN_NEW_SESSION("Continue in New Session"),
+
+    /** P7.D (appended, not inserted): read finished replies aloud. Off by default. */
+    READ_REPLIES_ALOUD("Read Replies Aloud"),
 }
 
 internal data class ChatOverflowItem(
@@ -69,6 +72,7 @@ internal object ChatOverflowSpec {
         canUndo: Boolean,
         canRedo: Boolean,
         viewByDefault: Boolean,
+        readAloud: Boolean = false,
         canMoveToEditor: Boolean,
         approvalsLabel: String = ChatOverflowAction.MANAGE_APPROVALS.label,
     ): List<ChatOverflowItem> = listOf(
@@ -90,9 +94,13 @@ internal object ChatOverflowSpec {
         ChatOverflowItem(ChatOverflowAction.MOVE_TO_NEW_WINDOW, enabled = true),
         ChatOverflowItem(ChatOverflowAction.SHOW_VOICE_TRANSCRIPTS, enabled = true),
         ChatOverflowItem(ChatOverflowAction.SHOW_VIEW_BY_DEFAULT, enabled = true, checked = viewByDefault),
+        // P7.D: appended at the end, so the six-label reference and its seventh item keep their
+        // signed-off order.
         // Item 9: always enabled, and its label carries the CURRENT level so the menu answers
         // "what happens if I run something" without opening anything.
         ChatOverflowItem(ChatOverflowAction.MANAGE_APPROVALS, enabled = true, label = approvalsLabel),
+        // P7.D: appended last so the six-label reference and its seventh item keep their order.
+        ChatOverflowItem(ChatOverflowAction.READ_REPLIES_ALOUD, enabled = true, checked = readAloud),
     )
 }
 
