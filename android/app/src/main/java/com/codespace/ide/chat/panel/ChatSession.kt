@@ -322,6 +322,11 @@ class ChatSession internal constructor(
             if (dialogue.isNotEmpty()) engine.restoreHistory(dialogue)
         }
         selection.value = sel
+        // P5: say how much is actually KNOWN about this model's limits instead of presenting an
+        // estimate as a fact. Silent for an exact catalog match, one line otherwise.
+        com.codespace.ide.engine.ModelCatalog.honestyNote(sel.providerId, sel.modelId)?.let {
+            appendRow(ChatRowModel.InfoNote(it))
+        }
     }
 
     private fun buildEngine(providerId: String = selection.value.providerId): ChatEngineImpl =

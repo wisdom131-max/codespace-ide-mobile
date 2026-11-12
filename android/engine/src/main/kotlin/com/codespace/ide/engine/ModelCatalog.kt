@@ -42,6 +42,8 @@ data class ModelCapability(
      */
     val supportsTools: Boolean? = null,
     val supportsReasoning: Boolean = false,
+    /** Provider ids this row is verified for. Empty means "this id names the model, whoever serves it". */
+    val providers: Set<String> = emptySet(),
 )
 
 object ModelCatalog {
@@ -53,10 +55,41 @@ object ModelCatalog {
     fun withOverride(bundled: ModelCapability?, custom: ModelCapability?): ModelCapability? =
         custom ?: bundled
 
-    /** Exact id or lowercase substring match against the bundled table. */
-    fun capabilityFor(providerId: String, modelId: String): ModelCapability? {
+    /**
+     * P5: exact id first, then the MOST SPECIFIC substring match.
+     *
+     * The old rule was `BUNDLED.firstOrNull { id.contains(it.idMatch) }`, which is first-match-wins on a
+     * list ordered by nothing in particular. Two rows can match one id - "gpt-6.1-terra-pro-mini"
+     * contains "gpt-6.1-terra-pro" AND (once any shorter family row exists) the family name - and the
+     * winner was whichever sat higher in the file. The loser's context window then set the payload
+     * budget, so the model was silently under- or over-fed. Longest match is the one the model id
+     * actually names.
+     */
+    fun capabilityFor(providerId: String, modelId: String): ModelCapability? = resolve(providerId, modelId).capability
+
+    /** How the capability was found, so the UI can be honest about which numbers are verified. */
+    enum class Source { EXACT, SUBSTRING, UNKNOWN }
+
+    data class Resolution(val capability: ModelCapability?, val source: Source)
+
+    fun resolve(providerId: String, modelId: String): Resolution {
         val m = modelId.lowercase()
-        return BUNDLED.firstOrNull { m.contains(it.idMatch) }
+        if (m.isBlank()) return Resolution(null, Source.UNKNOWN)
+        val scoped = if (providerId.isBlank()) BUNDLED else BUNDLED.filter { providerId in it.providers || it.providers.isEmpty() }
+        scoped.firstOrNull { it.idMatch == m }?.let { return Resolution(it, Source.EXACT) }
+        val best = scoped.filter { m.contains(it.idMatch) }.maxByOrNull { it.idMatch.length }
+            ?: return Resolution(null, Source.UNKNOWN)
+        return Resolution(best, Source.SUBSTRING)
+    }
+
+    /**
+     * One honest line about how much this model's limits are known, or null when nothing needs saying.
+     * Shown when the user picks a model, so an unknown model is not presented with invented numbers.
+     */
+    fun honestyNote(providerId: String, modelId: String): String? = when (resolve(providerId, modelId).source) {
+        Source.EXACT -> null
+        Source.SUBSTRING -> "This model is matched to a known family, so its context window is an estimate."
+        Source.UNKNOWN -> "This model is not in the catalog: context and attachment limits fall back to your settings."
     }
 
     /**

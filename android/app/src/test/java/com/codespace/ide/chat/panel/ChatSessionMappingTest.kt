@@ -174,8 +174,11 @@ class KeyFailoverMappingTest {
         runBlocking { var n = 0; while (s.ui.value.streaming && n < 400) { delay(10); n++ } }
         // Second attempt used the next stored key.
         assertEquals(listOf("ai_OPENAI", "ai_OPENAI_2"), used)
-        val note = s.ui.value.rows.filterIsInstance<ChatRowModel.InfoNote>().singleOrNull()
-        assertTrue("switch is visible, not silent", note != null)
+        // P5 added a model-honesty note on select(), so the switch note is no longer the ONLY
+        // InfoNote. The intent is unchanged: the switch itself must be visible and named.
+        val notes = s.ui.value.rows.filterIsInstance<ChatRowModel.InfoNote>()
+        assertTrue("switch is visible, not silent",
+            notes.any { it.text.contains("switching to the next stored key", ignoreCase = true) })
         val done = s.ui.value.rows.last() as ChatRowModel.AssistantStream
         assertEquals("Hello!", done.text)
         assertFalse(done.cursorOn)
