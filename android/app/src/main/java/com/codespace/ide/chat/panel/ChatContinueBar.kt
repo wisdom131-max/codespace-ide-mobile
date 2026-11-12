@@ -36,7 +36,11 @@ internal fun ChatContinueBar(
 
 /** Pure visibility rule, so the composer's behaviour is testable without Compose. */
 internal fun isVisibleContinuation(state: ContinuationState): Boolean =
-    state == ContinuationState.NEEDS_CONTINUATION || state == ContinuationState.CONTINUING
+    state == ContinuationState.NEEDS_CONTINUATION ||
+        state == ContinuationState.CONTINUING ||
+        // 2026-11-12 audit: a continuation that FAILED used to hide the button, which left the user
+        // with no way to ask again for an answer the provider was willing to give.
+        state == ContinuationState.CONTINUATION_FAILED
 
 @Composable
 private fun ContinueBarContent(loading: Boolean, onContinue: () -> Unit) {

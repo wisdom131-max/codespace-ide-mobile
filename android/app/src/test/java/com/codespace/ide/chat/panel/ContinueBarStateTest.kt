@@ -21,8 +21,17 @@ class ContinueBarStateTest {
 
     @Test fun hiddenForCompleteUnknownCancelledAndInterrupted() {
         listOf(ContinuationState.COMPLETE, ContinuationState.UNKNOWN_OR_INTERRUPTED,
-            ContinuationState.CONTINUED, ContinuationState.CONTINUATION_FAILED)
+            ContinuationState.CONTINUED)
             .forEach { assertFalse("$it must not offer Continue", isVisibleContinuation(it)) }
+    }
+
+    /**
+     * 2026-11-12 audit: a FAILED continuation used to hide the bar, which left a user with no way to
+     * ask again for an answer the provider was still willing to give. Retry is offered; the *reason*
+     * it failed is shown by the turn itself, not by removing the control.
+     */
+    @Test fun aFailedContinuationOffersRetry() {
+        assertTrue(isVisibleContinuation(ContinuationState.CONTINUATION_FAILED))
     }
 
     @Test fun anOutputLimitMapsToTheVisibleState() {

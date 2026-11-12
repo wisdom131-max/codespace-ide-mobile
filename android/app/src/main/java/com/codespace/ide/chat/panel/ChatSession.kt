@@ -506,7 +506,12 @@ class ChatSession internal constructor(
      * being "continued" into a second answer.
      */
     internal fun continueTurn(providerSupportsContinuation: Boolean = true): ContinuationState {
-        if (ui.value.streaming) return ContinuationState.CONTINUING
+        // 2026-11-12 audit: `continuationInFlight` was written and cleared but never READ, so a
+        // second Continue tap between "sent" and the first stream event started a second
+        // continuation. The flag is now the guard it was always meant to be.
+        if (!Continuation.mayStart(streaming = ui.value.streaming, inFlight = continuationInFlight)) {
+            return ContinuationState.CONTINUING
+        }
         val delivered = streamBuf.toString()
         val plan = Continuation.plan(
             finish = lastFinish,
@@ -1023,6 +1028,10 @@ class ChatSession internal constructor(
                 }
             }
             is EngineEvent.Failed -> {
+                // The continuation never produced a Completed event; without this the flag would
+                // stay set and Continue would be refused for the rest of the session.
+                continuationInFlight = false
+                _continuationUi.value = ContinuationState.CONTINUATION_FAILED
                 val err = ev.error
                 // WP6: OPT-IN key failover on auth/credits rejection - visible,
                 // never silent, once per stored key, no wraparound.

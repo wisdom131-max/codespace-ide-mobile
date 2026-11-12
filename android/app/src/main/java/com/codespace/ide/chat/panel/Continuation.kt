@@ -87,4 +87,13 @@ object Continuation {
             )
         }
     }
+
+    /**
+     * MAY A CONTINUE START RIGHT NOW?
+     *
+     * Two ways to double-answer: the previous stream is still running, or a continuation was already
+     * sent and has not produced its first event yet. The second is invisible to `streaming`, which is
+     * exactly the window a double tap lands in.
+     */
+    fun mayStart(streaming: Boolean, inFlight: Boolean): Boolean = !streaming && !inFlight
 }
