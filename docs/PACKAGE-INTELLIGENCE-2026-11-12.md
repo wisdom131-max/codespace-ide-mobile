@@ -88,3 +88,10 @@ expectation tables. Focused run: 69 tests, 0 failures. Full suite: 2,157 tests, 
 
 - Implementation + docs commit: `TBD`
 - CI run: `TBD`
+
+## 12. Delivery
+
+- Implementation + docs commit: `49bc21b`
+- CI run: `43157562900` — SUCCESS
+- Pushed to `main`.
+- Device testing: not run. Consolidated phone testing is roadmap item 14 and remains pending.
