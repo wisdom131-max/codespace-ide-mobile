@@ -184,6 +184,10 @@ class ChatSession internal constructor(
      */
     @Volatile private var interruptedReplyPending = false
 
+    /** Area 6: the last provider verdict for THIS session, for the turn summary and continuation. */
+    @Volatile internal var lastFinish: com.codespace.ide.engine.FinishReason =
+        com.codespace.ide.engine.FinishReason.UNKNOWN
+
     /**
      * MULTI-SESSION (M1): set when this conversation has been DELETED. A deleted session must
      * not be able to write its transcript back from under the delete, so every save after this
@@ -821,6 +825,12 @@ class ChatSession internal constructor(
                 ui.value = st.copy(rows = st.rows + listOf(ChatRowModel.InfoNote(ev.visibleText)))
             }
             is EngineEvent.Completed -> {
+                // Area 6: the provider's verdict decides whether this turn may be called
+                // finished. A ceiling marks the reply incomplete through the SAME sticky flag
+                // that already survives every later save, so a reopen cannot upgrade a cut-off
+                // answer into a complete one.
+                lastFinish = ev.finish
+                if (!ev.finish.complete) interruptedReplyPending = true
                 val st = ui.value
                 // Section 6: a finished reply is either an ANSWER or an ACTION request. The
                 // decision is pure (AgentToolWire); this only carries it out. The raw

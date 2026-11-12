@@ -101,7 +101,14 @@ sealed class EngineEvent {
     /** One streamed text delta. */
     data class Delta(val text: String) : EngineEvent()
     /** Send finished normally. totalChars is the streamed length. */
-    data class Completed(val totalChars: Int) : EngineEvent()
+    data class Completed(
+        val totalChars: Int,
+        /**
+         * Area 6: WHY the stream ended. Defaults to UNKNOWN, never NATURAL, so an adapter that
+         * says nothing cannot make a cut-off answer look finished.
+         */
+        val finish: FinishReason = FinishReason.UNKNOWN,
+    ) : EngineEvent()
     /** Send failed with a classified error from the taxonomy. */
     data class Failed(val error: ChatError) : EngineEvent()
     /**

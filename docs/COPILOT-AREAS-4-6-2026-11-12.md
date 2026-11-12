@@ -52,3 +52,14 @@ first. A persisted result is reused, never re-dispatched. Effect comes from the 
 side-effect metadata, never from a tool's description.
 
 Tests: FinishReasonTest 16, ToolRetryTest 15, ContinuationTest 9.
+
+## Dispatch integration (this pass)
+
+`EngineEvent.Completed` now carries `FinishReason` (default UNKNOWN). `ChatEngineImpl.finishOf`
+is the single place a stream ending becomes a verdict: a cut-off end reason is OUTPUT_LIMIT,
+otherwise the provider value is normalized. `ChatSession` records it and, when the finish is not
+complete, sets the SAME sticky incomplete flag that already survives every save, so a ceiling
+turn cannot reopen as finished.
+
+Still NOT wired: `Continuation` is not invoked from the dispatch path and `ToolRetry` is not
+consulted by `AgentTools.executeTool`. Area 5 and Area 6 therefore remain IN PROGRESS.

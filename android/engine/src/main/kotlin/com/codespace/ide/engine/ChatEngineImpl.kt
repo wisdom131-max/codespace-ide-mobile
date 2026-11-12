@@ -52,6 +52,16 @@ class ChatEngineImpl(
      * "stop"/"end_turn"/"STOP" are ordinary completions; anything naming a length ceiling, a filter
      * or a refusal means the owner is looking at a partial reply.
      */
+    /**
+     * Area 6: the ONE place a stream ending becomes a verdict. A cut-off end is an output
+     * ceiling; otherwise the provider's own value is normalized. No signal stays UNKNOWN.
+     */
+    private fun finishOf(raw: String?, cfg: EngineConfig): FinishReason {
+        if (raw.isNullOrBlank()) return FinishReason.UNKNOWN
+        if (isCutOff(raw)) return FinishReason.OUTPUT_LIMIT
+        return FinishReason.normalize(cfg.providerId, raw)
+    }
+
     internal fun isCutOff(reason: String): Boolean = when (reason.lowercase()) {
         "length", "max_tokens", "max_output_tokens", "max_tokens_reached",
         "model_length", "content_filter", "safety", "blocklist", "recitation", "refusal" -> true
@@ -131,10 +141,13 @@ class ChatEngineImpl(
                         emit(EngineEvent.Delta(delta))
                     } else if (adapter.isDoneSentinel(data)) {
                         done = true
+                        // Recorded here as well: the sentinel chunk is often the last carrier
+                        // of the reason.
+                        if (endReason.isEmpty()) endReason = adapter.endReason(data) ?: endReason
                         state.update(responseMsg.id) {
                             it.copy(text = builder.toString(), state = MessageState.DONE)
                         }
-                        emit(EngineEvent.Completed(builder.length))
+                        emit(EngineEvent.Completed(builder.length, finishOf(endReason, attemptCfg)))
                         break
                     }
                 }
@@ -151,7 +164,7 @@ class ChatEngineImpl(
                 state.update(responseMsg.id) {
                     it.copy(text = builder.toString(), state = MessageState.DONE)
                 }
-                emit(EngineEvent.Completed(builder.length))
+                emit(EngineEvent.Completed(builder.length, finishOf(endReason, attemptCfg)))
             }
             val cut = isCutOff(endReason)
             ChatLog.record(
