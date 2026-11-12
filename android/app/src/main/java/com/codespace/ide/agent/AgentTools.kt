@@ -364,7 +364,8 @@ You can use multiple tools in sequence. When done, give a final summary.
                 // past the scope read_memory would show.
                 "memory_search" -> InsightTools.memorySearch(
                     context, args.optString("query"),
-                    MemoryScopeState.activeSessionId, args.optInt("limit", 10))
+                    MemoryScopeState.activeSessionId, args.optInt("limit", 10),
+                    currentMemoryScope(), activeProjectId(context))
                 "move_path" -> {
                     val moved = FileInsightTools.move(
                         guestPath(args.getString("from"), context),
@@ -424,12 +425,13 @@ You can use multiple tools in sequence. When done, give a final summary.
                     ) "Deleted skill " + args.getString("name")
                     else "No skill named " + args.getString("name")
                 }.getOrElse { "Could not delete skill: " + it.message }
-                "save_memory" -> AgentMemory.save(
-                    args.getString("key"), args.getString("value"), context,
-                    currentMemoryScope(), MemoryScopeState.activeSessionId,
+                "save_memory" -> MemoryTools.save(
+                    context, args, currentMemoryScope(),
+                    MemoryScopeState.activeSessionId, activeProjectId(context),
                 )
                 "read_memory" -> AgentMemory.readAll(
                     context, currentMemoryScope(), MemoryScopeState.activeSessionId,
+                    activeProjectId(context),
                 )
                 "delete_memory" -> AgentMemory.delete(
                     args.getString("key"), context,
@@ -1371,6 +1373,13 @@ You can use multiple tools in sequence. When done, give a final summary.
             staged++
         }
         return "staged:" + staged + "|" + toRaw
+    }
+
+    /** The project the user is actually in, or null. The Facts scopes are keyed on this. */
+    private fun activeProjectId(context: Context): String? = try {
+        com.codespace.ide.data.LocalConnectorStore.activeProjectId(context)
+    } catch (_: Throwable) {
+        null
     }
 
     private fun coverageReadTool(args: org.json.JSONObject, context: Context): String {

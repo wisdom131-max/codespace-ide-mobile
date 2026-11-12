@@ -504,11 +504,14 @@ class ChatSession internal constructor(
         // is already visible as a tool_search activity row.
         offeredAtSend = offer.names
         wsBlockForRefresh = wsBlock
+        // FACTS: retrieved once per turn, from the message that actually asked for it.
+        memoryAtSend = memoryBlockFor(userText)
         loadoutVersionAtSend = ToolLoadout.version()
         val cfg = EngineConfig(
             modelId = sel.modelId,
             // U4-d: the mode rides the provider's own system slot (see ChatModePrompts).
-            systemInstruction = buildInstruction(mode, toolPlan.sendTools, wsBlock, offer.names),
+            systemInstruction = buildInstruction(
+                mode, toolPlan.sendTools, wsBlock, offer.names, memoryAtSend),
             providerId = sel.providerId,
             baseUrl = liveBaseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
@@ -719,6 +722,8 @@ class ChatSession internal constructor(
     /** L4: what this turn was offered, and the loadout version it was built from. */
     private var offeredAtSend: List<String> = emptyList()
     private var wsBlockForRefresh: String = ""
+    /** FACTS: the memory block this turn was built with, so a loadout refresh keeps it. */
+    private var memoryAtSend: String = ""
     private var loadoutVersionAtSend: Int = 0
 
     /**
@@ -734,6 +739,7 @@ class ChatSession internal constructor(
         sendTools: Boolean,
         wsBlock: String,
         offered: List<String>,
+        memory: String = "",
     ): String {
         // 2026-11-11 (Wave 1 Group A budget fix): this used to append AgentToolWire.protocol(mode)
         // - which advertised the ENTIRE mode catalogue - and then the filtered block on top, so the
@@ -749,7 +755,26 @@ class ChatSession internal constructor(
                 ""
             }
         } else ""
-        return ChatInstructions.build(mode, sendTools, offered, wsBlock, mcpDocs, loaded)
+        return ChatInstructions.build(mode, sendTools, offered, wsBlock, mcpDocs, loaded, memory)
+    }
+
+    /**
+     * FACTS (2026-11-11): the remembered facts relevant to THIS message, already bounded by
+     * [com.codespace.ide.agent.facts.FactRetrieval]. Retrieval is scoped to the open project plus
+     * the user's own facts, so a fact learned in another repository cannot reach this prompt.
+     */
+    private fun memoryBlockFor(request: String): String {
+        val ctx = appContext ?: return ""
+        return try {
+            com.codespace.ide.agent.facts.FactRetrieval.blockFor(
+                context = ctx,
+                projectId = projectId,
+                request = request,
+                maxChars = com.codespace.ide.agent.facts.FactRetrieval.MAX_PROMPT_CHARS,
+            )
+        } catch (_: Throwable) {
+            ""
+        }
     }
 
     private fun appendRow(row: ChatRowModel) {
@@ -1033,7 +1058,8 @@ class ChatSession internal constructor(
             // the config is the whole mechanism - nothing about the engine call changes.
             val refreshed = if (ToolLoadout.version() != loadoutVersionAtSend) {
                 loadoutVersionAtSend = ToolLoadout.version()
-                cfg.copy(systemInstruction = buildInstruction(mode, true, wsBlockForRefresh, offeredAtSend))
+                cfg.copy(systemInstruction = buildInstruction(
+                    mode, true, wsBlockForRefresh, offeredAtSend, memoryAtSend))
             } else cfg
             attemptSend(refreshed, slotName, results.toString().trim(), emptyList(), confirmOverBudget, gen)
         }

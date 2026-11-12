@@ -224,11 +224,17 @@ internal object ToolRegistry {
         // --- Hidden: memory writes; read is exposed ---
         ToolSpec(
             name = "save_memory",
-            displayName = "Saving a memory",
-            description = "Save one durable note for this project that later conversations can read " +
-                "with read_memory. Agent mode only; every call passes the approval gate.",
+            displayName = "Saving a fact",
+            description = "Save one durable fact that later conversations can read with " +
+                "read_memory and find with memory_search. scope=\"user\" follows the user across " +
+                "projects, scope=\"project\" stays in this project only. Credentials are refused. " +
+                "Every call passes the approval gate.",
             schema = OBJ + ",\"required\":[\"key\",\"value\"],\"properties\":{" +
-                "\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}}}",
+                "\"key\":{\"type\":\"string\"},\"value\":{\"type\":\"string\"}" +
+                ",\"scope\":{\"type\":\"string\",\"enum\":[\"user\",\"project\"]}" +
+                ",\"category\":{\"type\":\"string\",\"enum\":[\"preference\",\"workflow\"," +
+                "\"convention\",\"architecture\",\"build\",\"test\",\"constraint\",\"general\"]}" +
+                ",\"citation\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
         ToolSpec(
@@ -797,8 +803,9 @@ internal object ToolRegistry {
         ToolSpec(
             name = "memory_search",
             displayName = "Searching Copilot memory",
-            description = "Search saved memories for a word or phrase and rank the matches. Only " +
-                "memories visible in the current scope are searched; read_memory lists them all.",
+            description = "Search saved facts for a word or phrase and rank the matches, with their " +
+                "scope and provenance. Only facts visible in the current scope and project are " +
+                "searched, never superseded ones; read_memory lists them all.",
             schema = OBJ + ",\"properties\":{\"query\":{\"type\":\"string\"}" +
                 ",\"limit\":{\"type\":\"integer\"}}}",
             modes = READ_ALL,

@@ -473,6 +473,8 @@ enum class RowType {
     MCP_TOOLS_SECTION,         // MCP / Agent Tools servers section (relocated from Extensions panel)
     TASK_NOTIFY_WINDOW_ON_COMPLETION_CHECKBOX,
     MCP_INDICATOR_CHECKBOX,
+    // FACTS (2026-11-11): the memory manager.
+    FACTS_MANAGER,
 }
 
 // ── Usage tracking for "Commonly Used" ranking ───────────────────────
@@ -521,6 +523,12 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
         RowType.MCP_INDICATOR_CHECKBOX))
     // IM03 (2026-09-27): the AI image-generation model id is finally a setting —
     // was a hardcoded constant with a bump-this comment.
+    // FACTS (2026-11-11): the memory the agent keeps, inspectable and editable. It sits in the AI
+    // Agent category because it is agent state, not an editor preference.
+    add(SettingsRow("facts_manager", SettingsCategory.AI_AGENT, "Facts & Memory",
+        "Review, edit and delete what Copilot remembers. User facts follow you across projects; " +
+            "project facts stay in the project they were learned in",
+        RowType.FACTS_MANAGER))
     add(SettingsRow("gemini_image_model", SettingsCategory.AI_AGENT, "Gemini Image Model",
         "Model id used by Generate Image with AI (empty = gemini-2.5-flash-image)",
         RowType.GEMINI_IMAGE_MODEL_INPUT))
@@ -848,6 +856,7 @@ private fun SettingsRowRenderer(
         // ── P54-CONNECTORS renderers ──
         RowType.CONNECTORS_HUB -> ConnectorsHubRow(onOpenConnectors, accent, textPri, textSec)
         RowType.MCP_TOOLS_SECTION -> McpToolsSectionRow()
+        RowType.FACTS_MANAGER -> FactsManagerRow(accent, textPri, textSec, divider)
     }
 }
 
@@ -1754,5 +1763,60 @@ private fun CommandsToSkipShellRow(textPri: Color, textSec: Color, divider: Colo
             singleLine = true,
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = textPri),
         )
+    }
+}
+
+// ── FACTS (2026-11-11): the "Facts & Memory" row and the screen it opens ─────────
+/**
+ * The row carries the live count, because "how much does it remember about me?" is the question
+ * this row exists to answer. It opens full-screen: a facts list inside a settings dialog inside a
+ * dialog would be three levels of chrome on a phone.
+ */
+@Composable
+private fun FactsManagerRow(
+    accent: Color,
+    textPri: Color,
+    textSec: Color,
+    divider: Color,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    var revision by remember { mutableStateOf(0) }
+    val projectId = remember(revision, open) {
+        try { com.codespace.ide.data.LocalConnectorStore.activeProjectId(context) }
+        catch (_: Throwable) { null }
+    }
+    val summary = remember(revision, open) {
+        try {
+            com.codespace.ide.agent.facts.FactRetrieval.summary(
+                com.codespace.ide.agent.facts.FactsStore.load(context), projectId,
+            )
+        } catch (_: Throwable) { "unavailable" }
+    }
+    Column {
+        Row(
+            Modifier.fillMaxWidth().clickable { open = true }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Facts & Memory", color = textPri, fontSize = 13.sp)
+                Text(summary, color = textSec, fontSize = 11.sp)
+            }
+            Text("Manage", color = accent, fontSize = 11.sp)
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(divider))
+    }
+    if (open) {
+        Dialog(
+            onDismissRequest = { open = false; revision++ },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            androidx.compose.material3.Surface(
+                modifier = Modifier.fillMaxSize(), color = Color(0xFF1E1E1E),
+            ) {
+                FactsScreen(projectId = projectId, onDismiss = { open = false; revision++ })
+            }
+        }
     }
 }

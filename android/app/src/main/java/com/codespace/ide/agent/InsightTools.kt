@@ -381,13 +381,97 @@ object InsightTools {
      * uses, so this can never surface another session's memory: [rank] only ever sees what
      * [AgentMemory.visibleEntries] handed it.
      */
-    fun memorySearch(context: Context, query: String, sessionId: String, limit: Int = 10): String {
+    fun memorySearch(
+        context: Context,
+        query: String,
+        sessionId: String,
+        limit: Int = 10,
+        memoryScope: MemoryScope = MemoryScope.ALL_SESSIONS,
+        projectId: String? = null,
+    ): String {
         val q = query.trim()
         if (q.isEmpty()) {
             return "Give a word or phrase to search memory for. Use read_memory to list everything " +
                 "visible in the current scope."
         }
-        return rank(AgentMemory.visibleEntries(context, sessionId), q, limit)
+        // FACTS (2026-11-11): search runs over the STRUCTURED store, so a hit carries its scope,
+        // its category and its provenance, and superseded facts never appear. The session and
+        // project boundaries are the same ones read_memory enforces: visibleFacts applies both,
+        // and this function never touches FactsStore.load directly.
+        val facts = AgentMemory.visibleFacts(
+            context, memoryScope, sessionId, projectId, includeSuperseded = false,
+        ).filter { it.status != com.codespace.ide.agent.facts.FactStatus.SUPERSEDED }
+        return searchFacts(facts, q, limit)
+    }
+
+    /**
+     * The pure half of memory_search: a visible fact list in, a bounded report out. Split out so
+     * every rule (ranking, limits, provenance, "no matches") is asserted by a test without needing
+     * an Android Context or a real session.
+     */
+    fun searchFacts(
+        facts: List<com.codespace.ide.agent.facts.Fact>,
+        q: String,
+        limit: Int = 10,
+    ): String {
+        if (q.isBlank()) {
+            return "Give a word or phrase to search memory for. Use read_memory to list everything " +
+                "visible in the current scope."
+        }
+        if (facts.isEmpty()) {
+            return "Memory is empty for this scope, so \"" + q + "\" has no matches."
+        }
+        val ranked = rankFacts(facts, q)
+        if (ranked.isEmpty()) {
+            return "No memory matches \"" + q + "\" (searched " + facts.size + " visible " +
+                (if (facts.size == 1) "fact" else "facts") + ")."
+        }
+        val shown = ranked.take(limit.coerceIn(1, MAX_MEMORY_HITS))
+        val sb = StringBuilder("Memory matches for \"" + q + "\" (" + ranked.size + "):\n")
+        for (f in shown) {
+            val label = f.legacyKey ?: f.id
+            sb.append("  [").append(if (f.scope == com.codespace.ide.agent.facts.FactScope.PROJECT) "project" else "user")
+                .append('/').append(f.category.id).append("] ")
+                .append(label).append(": ").append(f.content.take(300))
+            val prov = f.provenanceLine()
+            if (prov.isNotBlank()) sb.append("  (").append(prov).append(')')
+            sb.append('\n')
+        }
+        if (ranked.size > shown.size) sb.append("  ...and ").append(ranked.size - shown.size).append(" more\n")
+        return sb.toString().trimEnd()
+    }
+
+    /**
+     * Structured ranking: shared tokens with the query, then the standing of the fact (explicit
+     * over inferred, verified over stated), then recency. Deterministic and pure.
+     */
+    fun rankFacts(
+        facts: List<com.codespace.ide.agent.facts.Fact>,
+        query: String,
+    ): List<com.codespace.ide.agent.facts.Fact> {
+        val terms = com.codespace.ide.agent.facts.FactText.tokens(query).toSet()
+        if (terms.isEmpty()) return emptyList()
+        data class Scored(val fact: com.codespace.ide.agent.facts.Fact, val score: Int)
+        val hits = ArrayList<Scored>()
+        for (f in facts) {
+            val tokens = com.codespace.ide.agent.facts.FactText.tokenSet(f.content)
+            var score = 0
+            for (t in terms) {
+                if (f.legacyKey?.lowercase() == t) score += 60
+                else if (f.legacyKey?.lowercase()?.contains(t) == true) score += 40
+                if (t in tokens) score += 12
+                if (f.category.id == t) score += 8
+            }
+            if (score > 0) {
+                if (f.source == com.codespace.ide.agent.facts.FactSource.EXPLICIT_USER) score += 6
+                if (f.confidence == com.codespace.ide.agent.facts.FactConfidence.VERIFIED) score += 4
+                if (f.status == com.codespace.ide.agent.facts.FactStatus.CONFLICT) score -= 5
+                hits.add(Scored(f, score))
+            }
+        }
+        return hits.sortedWith(
+            compareByDescending<Scored> { it.score }.thenByDescending { it.fact.updatedAt }.thenBy { it.fact.id }
+        ).map { it.fact }
     }
 
     /**
