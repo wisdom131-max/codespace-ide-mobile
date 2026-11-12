@@ -254,3 +254,7 @@ above.
 Note on counts: Wave 1 is recorded as twelve tools in total (three in Group A, nine in B/C/D). The
 Group A commit carried the prompt/toolset rework that the rest of Wave 1 depended on, which is why
 the twelve are spread across two commits rather than four.
+
+## Limitations
+
+What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIONS-REGISTER-2026-11-12.md`.
