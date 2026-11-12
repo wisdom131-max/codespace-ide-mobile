@@ -88,3 +88,13 @@ instrumentation test. Continuation is wired but not yet surfaced in the composer
 
 Tests: ToolCallLedgerTest 10, ToolEffectIndexTest 3, ContinuationDispatchTest 6.
 Full suite: 2296 tests, 1 failure (BackupTarTest.failureMessageCarriesRealTotals, root-sandbox only).
+
+## Final CI evidence
+
+- `a418aaf` (dispatch integration) — run 43177377367 — **success**.
+- `98aca66` (documentation) — run 43177388902 — **success**.
+- Baseline `0a19ccb` — run 43176200916 — **success**.
+
+Areas 5 and 6 are wired into the real dispatch paths. Their remaining gaps are the ones listed
+directly above: no automatic reconciliation repair, no composer surface for continuation, and the
+AgentTools wrapper verified by compilation plus the ledger suites rather than an instrumented test.
