@@ -82,4 +82,42 @@ class SessionHandoffTest {
         )
         assertEquals(1, SessionHandoff.build(twice).decisions.size)
     }
+
+    // ── Item 35: evidence and lineage ─────────────────────────────────────────────────────────
+
+    @Test fun commitHashesAndCiEvidenceSurviveAHandoff() {
+        val h = SessionHandoff.build(listOf(
+            SessionHandoff.Turn("user", "continue the archive work"),
+            SessionHandoff.Turn("assistant", "Landed in `a5410d3`, CI run 43275036618, 2647 tests with one known failure."),
+        ))
+        assertTrue(h.commits.contains("a5410d3"))
+        assertTrue(h.evidence.any { it.contains("43275036618") })
+        assertTrue(h.evidence.any { it.contains("2647") })
+        // The rendered first message names them, so the new session does not have to ask.
+        assertTrue(h.render().contains("a5410d3"))
+    }
+
+    @Test fun aUserQuotingATestCountIsNotEvidence() {
+        val h = SessionHandoff.build(listOf(SessionHandoff.Turn("user", "I ran 12 tests and they passed")))
+        assertTrue(h.evidence.isEmpty())
+    }
+
+    @Test fun limitationsAreCarriedSoADeferralIsNotRefixed() {
+        val h = SessionHandoff.build(listOf(SessionHandoff.Turn("assistant", "RAR 1.4 extraction is not supported; it stays deferred.")))
+        assertTrue(h.limitations.isNotEmpty())
+        assertTrue(h.render().contains("Known limitations"))
+    }
+
+    @Test fun theLabelSaysWhereTheChainStarted() {
+        val h = SessionHandoff.build(
+            listOf(SessionHandoff.Turn("user", "fix the git tools")),
+            sessionNumber = 2,
+            originLabel = "Git",
+        )
+        assertTrue(h.render().contains("session 2 of a chain that started in \"Git\""))
+        assertEquals("Session 2 from Git", SessionHandoff.numberedLabel(2, "Git"))
+        // A bogus number is corrected rather than printed.
+        assertEquals("Session 1 from Git", SessionHandoff.numberedLabel(0, "Git"))
+    }
+
 }
