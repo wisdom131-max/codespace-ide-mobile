@@ -13,8 +13,8 @@ Definitions used everywhere in this repo's docs:
 | **CI** | Green in GitHub Actions at the stated commit - the only place the *whole* suite runs |
 | **Device** | Needs the owner's phone. **None of these have been run on a device yet.** |
 
-Local full suite at `6aeb5c8`: **2639 tests, 1 failure** (`BackupTarTest.failureMessageCarriesRealTotals`,
-root-owned sandbox - L15), 3 skipped. CI at the same commit: **43286546707, success**.
+Local full suite at `f5fc3e5`: **2647 tests, 1 failure** (`BackupTarTest.failureMessageCarriesRealTotals`,
+root-owned sandbox - L15), 3 skipped. CI: 43286546707 (`6aeb5c8`), 43289533532 (`c94a02d`), 43289925449 (`f5fc3e5`) - all success.
 
 ## 1. Core Copilot behaviour
 
@@ -94,6 +94,13 @@ root-owned sandbox - L15), 3 skipped. CI at the same commit: **43286546707, succ
 | Untrusted response labelling | `agent/ServiceApi.kt` | `ServiceApiTest.aSuccessfulReadIsLabelledAsUntrusted` | Stub | Output is labelled data, ANSI stripped | Prompt injection via response | Pass | `6aeb5c8` |
 | Credential redaction | `agent/ServiceApi.kt` | `ServiceApiTest.aPlanNeverPrintsItsCredential` | Unit | `Plan`/`Secret` print `***` | Log/transcript leak | Pass | `6aeb5c8` |
 | Credential migration | `chat/keys/StoredCredentialsMigration.kt` | `StoredCredentialsMigrationTest` | Unit | Credentials migrate without duplication | - | Pass | `6aeb5c8` |
+| Service auth header per style | `agent/ServiceApi.kt` | `ServiceApiTest.eachServiceBuildsItsOwnAuthHeader` | Unit | Bearer for GitHub/Bitbucket, `PRIVATE-TOKEN` for GitLab, `token` for Gitea | Credential shaped by the service definition, never by the model | Pass | `f5fc3e5` |
+| Jira Basic auth | `agent/ServiceApi.kt` | `ServiceApiTest.jiraUsesBasicAuthAndNeedsBothSecrets` | Unit | Both secrets required; sends base64(email:token), scrubs the raw token | No half-configured credential sent | Pass | `f5fc3e5` |
+| Self-hosted base | `agent/ServiceApi.kt` | `ServiceApiTest.aSelfHostedServiceWithoutBaseIsRefusedByName` | Unit | Gitea without `gitea_base_url` refused by name; a plain-http base refused | https-only for user-supplied hosts | Pass | `f5fc3e5` |
+| JQL encoding | `agent/ServiceApi.kt` | `ServiceApiTest.jqlIsEncodedSoItCannotAddAParameter` | Unit | `=` and `"` allowed, percent-encoded; no `&` can be introduced | Parameter injection | Pass | `f5fc3e5` |
+| CI operations | `agent/ServiceApi.kt` | `ServiceApiTest.theCiOperationsAreClassifiedAndBodylessOnesPlan` | Unit | cancel/retry are writes, not readable through `service_read`; they plan with no body | Consent for a run that spends minutes | Pass | `f5fc3e5` |
+| Registry invariants | `agent/ServiceApi.kt` | `ServiceApiTest.everyOperationIsWellFormed` | Unit | Unique ids, allowlisted methods, relative paths, https static bases, a baseSecret when the base is blank | A careless addition cannot introduce a plain host | Pass | `f5fc3e5` |
+| Placeholder names | `agent/ServiceApi.kt` | `ServiceApiTest.everyPlaceholderInATemplateIsAValidName` | Unit | Every `{name}` in every template is well-formed | - | Pass | `f5fc3e5` |
 | Live GitHub / GitLab / Bitbucket / Gitea / Jira | - | *(none)* | - | - | - | **Not tested** | L18 - no live credentials |
 
 ## Maintainability rules for this file

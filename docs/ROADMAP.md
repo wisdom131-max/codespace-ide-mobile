@@ -177,13 +177,32 @@ Actions; none of this is device-verified yet, and no external service is live-se
 | Item | Scope | Status | Evidence |
 |---|---|---|---|
 | 28 | Archive tool descriptions match capability | Complete | `a5410d3`, CI 43275036618 |
-| 29 | Limitations register review | Complete | this commit |
-| 30 | Documentation reconciliation | Complete | this commit |
-| 31 | Executable test matrix + missing tests | Complete | this commit |
+| 29 | Limitations register review | Complete | `c94a02d`, CI 43289533532 |
+| 30 | Documentation reconciliation | Complete | `c94a02d`, CI 43289533532 |
+| 31 | Executable test matrix + missing tests | Complete | `c94a02d`, CI 43289533532 |
 | 32 | External API and service integration (GitHub, GitLab, custom REST) | Complete, stub-tested | `6aeb5c8`, CI 43286546707 |
-| 33 | Additional integrations (Bitbucket, Gitea, Jira, CI/CD operations) | In progress - see the integration table in `docs/EXTERNAL-SERVICES-ITEM32-2026-11-12.md` | pending |
+| 33 | Additional integrations (Bitbucket, Gitea, Jira, CI/CD operations) | Complete, stub-tested | `f5fc3e5`, CI 43289925449 |
 | 34 | - | Not started | - |
 | 35-38 | - | Not started | - |
 
 Partial by design, and recorded as such: real RAR fixtures (L2), live-service verification of every
 integration (L18), GitHub Actions job logs (L20, refused by the redirect rule).
+
+### External integration status (the only table to trust)
+
+"Stub-tested" means a loopback double or the planner's own assertions. It is not live verification: no
+live credential was used for any integration, and the first real call is the owner's.
+
+| Integration | Status | Tested how |
+|---|---|---|
+| GitHub | Implemented | Stub-tested + planning tests |
+| GitLab | Implemented | Stub-tested + planning tests |
+| Bitbucket Cloud | Implemented | Planning tests only (same executor path as the stub) |
+| Gitea (self-hosted) | Implemented | Planning tests only |
+| Jira Cloud | Implemented | Planning tests only |
+| Custom REST API (one configured base per project) | Implemented | Stub-tested |
+| GitHub Actions (runs, jobs, cancel, rerun) | Implemented | Planning tests; **job logs not available** (L20) |
+| GitLab CI (pipelines, job logs, cancel, retry) | Implemented | Planning tests |
+| Bitbucket Server / Data Center | Not integrated | different API and host |
+| Jira Server | Not integrated | different auth model |
+| Azure DevOps, Jenkins, CircleCI, Travis, Buildkite, Drone | Not integrated | - |
