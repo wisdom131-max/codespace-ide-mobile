@@ -121,13 +121,16 @@ P1. plan           — Stage a structured plan / todo list for user review and
     host it belongs to. Values fill the operation's placeholders.
     <tool>{"name":"service_read","arguments":{"service":"github","operation":"issues","vars":{"owner":"octocat","repo":"hello","state":"open"}}}</tool>
     <tool>{"name":"service_read","arguments":{"service":"gitlab","operation":"pipelines","vars":{"id":"12345"}}}</tool>
-    Operations — github: repo, contents, issues, pulls, commits, runs, search_code (reads);
-    gitlab: projects, project, issues, mrs, file, pipelines (reads); custom: get.
+    Services — github, gitlab, bitbucket, gitea, jira, custom. Reads include repositories,
+    contents, branches, commits, issues, pull requests, releases, pipelines, workflow runs
+    (github run_jobs), Jira search (vars.jql) and gitlab job_logs. An unknown operation lists
+    the ones that service has, so one retry is enough to correct yourself.
 25. service_write — Write to those services. It ALWAYS asks the user first, at every permission
     level, and it refuses a read operation. Needs a JSON body except DELETE.
     <tool>{"name":"service_write","arguments":{"service":"github","operation":"issue_create","vars":{"owner":"octocat","repo":"hello"},"body":"{\"title\":\"Crash on launch\",\"body\":\"Details\"}"}}</tool>
-    Operations — github: issue_create, comment_create, pr_create; gitlab: issue_create, mr_create,
-    comment_create; custom: post, put, delete.
+    Writes — issue_create, comment_create, pr_create / mr_create on every git host; jira
+    issue_create, comment_create, transition_apply; github run_cancel / run_rerun and gitlab
+    pipeline_cancel / pipeline_retry (no body); custom post, put, delete.
     Missing credential? Say which project secret is empty (github_token, gitlab_token, api_token,
     api_base_url) and point the user at Settings > Secrets. Do not ask them to paste a token in chat.
 

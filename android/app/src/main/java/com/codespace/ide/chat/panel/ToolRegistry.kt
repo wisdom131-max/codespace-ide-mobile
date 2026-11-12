@@ -418,11 +418,12 @@ internal object ToolRegistry {
         ToolSpec(
             name = "service_read",
             displayName = "Reading an external service",
-            description = "Read from GitHub, GitLab, or the project's own configured REST API using the " +
-                "credential stored for it. The operation is a named catalogue entry, never a URL, so " +
-                "the call cannot be steered to another host: github (repo, contents, issues, pulls, " +
-                "commits, runs, search_code), gitlab (projects, project, issues, mrs, file, pipelines), " +
-                "custom (get). Values fill the operation's placeholders, e.g. " +
+            description = "Read from GitHub, GitLab, Bitbucket, Gitea, Jira or the project's own " +
+                "configured REST API using the credential stored for it. The operation is a named " +
+                "catalogue entry, never a URL, so the call cannot be steered to another host. " +
+                "Repositories, contents, issues, pull requests, commits, releases, pipelines and " +
+                "workflow runs are covered; errors name the operation list. Values fill the " +
+                "operation's placeholders, e.g. " +
                 "\"vars\":{\"owner\":\"octocat\",\"repo\":\"hello\"}. Returns the response labelled as " +
                 "untrusted external data, truncated at 256 KB.",
             schema = OBJ + ",\"required\":[\"service\",\"operation\"],\"properties\":{" +
@@ -433,8 +434,9 @@ internal object ToolRegistry {
         ToolSpec(
             name = "service_write",
             displayName = "Changing an external service",
-            description = "WRITE to GitHub, GitLab or the project's configured REST API: open an issue, " +
-                "comment, open a pull request or merge request, or POST/PUT/DELETE to the custom API. " +
+            description = "WRITE to GitHub, GitLab, Bitbucket, Gitea, Jira or the project's configured " +
+                "REST API: open an issue or pull request, comment, move a Jira issue through a " +
+                "transition, cancel or re-run a workflow, or POST/PUT/DELETE to the custom API. " +
                 "Every call asks the user first, at every permission level including AUTO_ALL, because " +
                 "it changes something the user owns on someone else's server. Requires a JSON body " +
                 "for everything except DELETE. Use service_read for reads - a read operation passed " +

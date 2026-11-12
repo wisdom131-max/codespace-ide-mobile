@@ -65,14 +65,17 @@ class ServiceApiTest {
         vars: Map<String, String> = emptyMap(),
         body: String? = null,
         write: Boolean = false,
-        secrets: (String) -> String? = secrets("github_token" to token, "gitlab_token" to token, "api_token" to token),
+        secrets: (String) -> String? = secrets(
+            "github_token" to token, "gitlab_token" to token, "api_token" to token,
+            "bitbucket_token" to token, "gitea_token" to token,
+        ),
         plain: Boolean = false,
     ): ServiceApi.Plan = ServiceApi.plan(service, operation, vars, body, secrets, write, requireHttps = !plain)
 
     // ── planning ────────────────────────────────────────────────────────────────────────────────
 
     @Test fun anUnknownServiceIsRefusedWithTheListOfKnownOnes() {
-        val plan = planOk("bitbucket", "repo")
+        val plan = planOk("sourcehut", "repo")
         assertNotNull(plan.refusal)
         assertTrue(plan.refusal!!.contains("github"))
         assertTrue(plan.refusal!!.contains("gitlab"))
@@ -353,6 +356,102 @@ class ServiceApiTest {
                 }
             }
         }
+    }
+
+
+    // ── Item 33: the added services, and the auth style each one builds ─────────────────────────
+
+    @Test fun eachServiceBuildsItsOwnAuthHeader() {
+        val gh = planOk("github", "repo", mapOf("owner" to "o", "repo" to "r"))
+        assertEquals("Authorization", gh.authHeaderName)
+        assertEquals("Bearer ", gh.authPrefix)
+        assertEquals(token, gh.token!!.value)
+
+        val gl = planOk("gitlab", "project", mapOf("id" to "42"))
+        assertEquals("PRIVATE-TOKEN", gl.authHeaderName)
+        assertEquals("", gl.authPrefix)
+
+        val gitea = planOk(
+            "gitea", "repo", mapOf("owner" to "o", "repo" to "r"),
+            secrets = secrets("gitea_token" to token, "gitea_base_url" to "https://git.example.com/api/v1"),
+        )
+        assertNull(gitea.refusal)
+        assertEquals("Authorization", gitea.authHeaderName)
+        assertEquals("token ", gitea.authPrefix)
+
+        val bitbucket = planOk("bitbucket", "repo", mapOf("workspace" to "w", "slug" to "s"))
+        assertNull(bitbucket.refusal)
+        assertEquals("Bearer ", bitbucket.authPrefix)
+        assertEquals("https://api.bitbucket.org/2.0/repositories/w/s", bitbucket.url)
+    }
+
+    @Test fun jiraUsesBasicAuthAndNeedsBothSecrets() {
+        val base = "https://site.atlassian.net"
+        val noEmail = planOk(
+            "jira", "issue", mapOf("key" to "VN-1"),
+            secrets = secrets("jira_token" to token, "jira_base_url" to base),
+        )
+        assertNotNull(noEmail.refusal)
+        assertTrue(noEmail.refusal!!.contains("jira_email"))
+
+        val plan = planOk(
+            "jira", "issue", mapOf("key" to "VN-1"),
+            secrets = secrets("jira_token" to token, "jira_email" to "me@example.com", "jira_base_url" to base),
+        )
+        assertNull(plan.refusal)
+        assertEquals("Basic ", plan.authPrefix)
+        assertEquals("https://site.atlassian.net/rest/api/3/issue/VN-1", plan.url)
+        // Basic carries base64(email:token), never the token alone, and the plan still redacts it.
+        assertTrue(plan.token!!.value.startsWith("bWVAZXhhbXBsZS5jb206"))
+        assertFalse(plan.toString().contains(plan.token!!.value))
+        assertEquals(token, plan.scrub!!.value)
+    }
+
+    @Test fun aSelfHostedServiceWithoutBaseIsRefusedByName() {
+        val gitea = planOk("gitea", "repo", mapOf("owner" to "o", "repo" to "r"), secrets = secrets("gitea_token" to token))
+        assertNotNull(gitea.refusal)
+        assertTrue(gitea.refusal!!.contains("gitea_base_url"))
+
+        val plain = planOk(
+            "gitea", "repo", mapOf("owner" to "o", "repo" to "r"),
+            secrets = secrets("gitea_token" to token, "gitea_base_url" to "http://git.example.com/api/v1"),
+        )
+        assertNotNull(plain.refusal)
+        assertTrue(plain.refusal!!.contains("https"))
+    }
+
+    @Test fun jqlIsEncodedSoItCannotAddAParameter() {
+        val plan = planOk(
+            "jira", "search", mapOf("jql" to "project = VN AND status = Open"),
+            secrets = secrets("jira_token" to token, "jira_email" to "me@example.com", "jira_base_url" to "https://s.atlassian.net"),
+        )
+        assertNull(plan.refusal)
+        assertTrue(plan.url.contains("jql=project%20%3D%20VN%20AND%20status%20%3D%20Open"))
+        assertFalse(plan.url.substringAfter("?").contains("&"))
+    }
+
+    @Test fun theCiOperationsAreClassifiedAndBodylessOnesPlan() {
+        // A cancel is a write even though it carries no body, and it may not go through the read tool.
+        val viaRead = planOk("github", "run_cancel", mapOf("owner" to "o", "repo" to "r", "run_id" to "9"))
+        assertNotNull(viaRead.refusal)
+        assertTrue(viaRead.refusal!!.contains("service_write"))
+
+        val cancel = planOk("github", "run_cancel", mapOf("owner" to "o", "repo" to "r", "run_id" to "9"), write = true)
+        assertNull(cancel.refusal)
+        assertEquals("POST", cancel.method)
+        assertEquals("https://api.github.com/repos/o/r/actions/runs/9/cancel", cancel.url)
+        assertNull(cancel.body)
+
+        val retry = planOk("gitlab", "pipeline_retry", mapOf("id" to "1", "pipeline_id" to "2"), write = true)
+        assertNull(retry.refusal)
+
+        val jobs = planOk("github", "run_jobs", mapOf("owner" to "o", "repo" to "r", "run_id" to "9"))
+        assertNull(jobs.refusal)
+        assertEquals(ServiceApi.Effect.READ, jobs.effect)
+
+        val logs = planOk("gitlab", "job_logs", mapOf("id" to "1", "job_id" to "2"))
+        assertNull(logs.refusal)
+        assertEquals("https://gitlab.com/api/v4/projects/1/jobs/2/trace", logs.url)
     }
 
     // ── the stub ────────────────────────────────────────────────────────────────────────────────

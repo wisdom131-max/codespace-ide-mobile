@@ -162,3 +162,43 @@ Recorded as L17-L19 in `docs/LIMITATIONS-REGISTER-2026-11-12.md`:
 - Bitbucket, Gitea, Forgejo, Azure DevOps, Jira and the CI/CD services named in the item are **not**
   integrated. The registry makes each one a data change plus a test, but shipping them without a live
   check would be claiming more than was verified, so they are listed as remaining work instead.
+
+---
+
+# Item 33 - additional integrations (same registry, no second system)
+
+Added by extending `ServiceApi.SERVICES`; the planner, guard, executor, rate limiter and approval rule
+are unchanged, which is the point of having built them first.
+
+| Service | Reads | Writes | Credential | Auth |
+|---|---|---|---|---|
+| **Bitbucket** (`api.bitbucket.org/2.0`) | repos, repo, branches, commits, src, prs, issues | issue_create, pr_create, comment_create | `bitbucket_token` | `Authorization: Bearer` |
+| **Gitea** (self-hosted `/api/v1`) | repos, repo, contents, branches, commits, issues, pulls, releases, tasks | issue_create, pr_create, comment_create | `gitea_base_url` + `gitea_token` | `Authorization: token` |
+| **Jira Cloud** (`https://<site>.atlassian.net`) | projects, issue, search (JQL), comments, transitions | issue_create, comment_create, transition_apply | `jira_base_url` + `jira_email` + `jira_token` | `Authorization: Basic base64(email:token)` |
+
+GitHub gained **run_jobs** (read) plus **run_cancel** / **run_rerun**; GitLab gained **job_logs** (read)
+plus **pipeline_cancel** / **pipeline_retry**. Those four writes carry no body, which is why `Operation`
+gained `bodyOptional` rather than the planner learning a per-method exception.
+
+**Auth is decided by the service definition, not by the executor.** `Service.auth` selects one of
+`BEARER`, `TOKEN_SCHEME`, `PRIVATE_TOKEN`, `BASIC`, and `plan()` resolves it into a header name, a prefix
+and a value. The old `serviceId == "gitlab"` branch in `execute()` is gone, which is what makes the header
+construction testable: `eachServiceBuildsItsOwnAuthHeader` and `jiraUsesBasicAuthAndNeedsBothSecrets`
+assert the header each service would send. BASIC keeps the raw token in `Plan.scrub` so a response that
+echoes it is still scrubbed, while the value actually sent is `base64(email:token)`.
+
+**Jira JQL needed one careful change.** `QUERY_VALUE` now permits `=` and `"` because JQL needs them, and
+that is safe precisely because `encodeQuery` percent-encodes both: `project = VN AND status = Open`
+becomes `jql=project%20%3D%20VN%20AND%20status%20%3D%20Open`, so a query cannot append a parameter of its
+own (`jqlIsEncodedSoItCannotAddAParameter`).
+
+**Not done, deliberately:** Bitbucket *Cloud* only (Server/Data Center answers a different API on a
+different host); GitLab self-hosted works by pointing the custom base at it, but there is no `gitlab_base_url`
+secret; Jira Server is not covered (Basic auth there accepts a password, which is a different threat
+model); GitHub Actions **job logs** are still not retrievable (L20 - the endpoint redirects and redirects
+are refused).
+
+**Verification status:** stub-tested only. `ServiceApiTest` grew from 24 to 33 tests; the four new
+services are asserted at the *planning* level (URL, method, auth header, read/write classification,
+placeholder and secret validation) and their execution path is the same code the GitHub/GitLab stub tests
+already exercise end to end. No live Bitbucket, Gitea or Jira credential was used (L18).

@@ -38,7 +38,16 @@ object ServiceApi {
      * How a service wants its credential presented. Kept as a small enum rather than a free-form
      * header name: a model-chosen header name would be another way to shape the egress.
      */
-    enum class Auth { BEARER, PRIVATE_TOKEN, X_API_KEY }
+    enum class Auth {
+        /** `Authorization: Bearer <token>` - GitHub, Bitbucket, the custom base. */
+        BEARER,
+        /** `Authorization: token <token>` - Gitea's personal-access-token scheme. */
+        TOKEN_SCHEME,
+        /** `PRIVATE-TOKEN: <token>` - GitLab. A header of its own, no scheme. */
+        PRIVATE_TOKEN,
+        /** `Authorization: Basic base64(email:api-token)` - Jira Cloud. */
+        BASIC,
+    }
 
     /** A credential that cannot be printed by accident. */
     class Secret(val value: String) {
@@ -58,6 +67,8 @@ object ServiceApi {
         val path: String,
         val query: String = "",
         val summary: String,
+        /** POST operations that legitimately carry no body (cancel, retry, rerun). */
+        val bodyOptional: Boolean = false,
     )
 
     /**
@@ -72,6 +83,8 @@ object ServiceApi {
         val auth: Auth,
         val secretName: String,
         val baseSecret: String? = null,
+        /** BASIC auth needs a username as well as the token (Jira: the account email). */
+        val emailSecret: String? = null,
         val operations: List<Operation>,
     )
 
@@ -83,7 +96,12 @@ object ServiceApi {
         val url: String,
         val headers: Map<String, String>,
         val body: String?,
+        /** The value actually sent. For BASIC this is the base64 of `email:token`, not the token. */
         val token: Secret?,
+        /** The raw credential, so a response that echoes it can be scrubbed. */
+        val scrub: Secret? = null,
+        val authHeaderName: String = "Authorization",
+        val authPrefix: String = "Bearer ",
         /** Non-null when the call must not be sent. Carries the reason, not a surprise. */
         val refusal: String? = null,
     ) {
@@ -115,7 +133,9 @@ object ServiceApi {
     const val MAX_CALLS_PER_MINUTE = 40
 
     private val PATH_VALUE = Regex("^[A-Za-z0-9._@/-]{1,$MAX_VALUE_LENGTH}$")
-    private val QUERY_VALUE = Regex("^[A-Za-z0-9._@/ :,-]{1,$MAX_VALUE_LENGTH}$")
+    // '=' and '"' are allowed because JQL needs them; encodeQuery percent-encodes both, so a value
+    // can carry its own syntax without being able to add a parameter to the request.
+    private val QUERY_VALUE = Regex("^[A-Za-z0-9._@/ :,=\\\"]{1,$MAX_VALUE_LENGTH}$")
 
     // ── Registry ─────────────────────────────────────────────────────────────────────────────────
 
@@ -134,6 +154,9 @@ object ServiceApi {
                 Operation("commits", Effect.READ, "GET", "/repos/{owner}/{repo}/commits", summary = "recent commits"),
                 Operation("runs", Effect.READ, "GET", "/repos/{owner}/{repo}/actions/runs", summary = "workflow runs, newest first"),
                 Operation("search_code", Effect.READ, "GET", "/search/code", query = "q={q}", summary = "code search across GitHub"),
+                Operation("run_jobs", Effect.READ, "GET", "/repos/{owner}/{repo}/actions/runs/{run_id}/jobs", summary = "jobs of one workflow run, with conclusions"),
+                Operation("run_cancel", Effect.WRITE, "POST", "/repos/{owner}/{repo}/actions/runs/{run_id}/cancel", summary = "cancel a workflow run (no body)", bodyOptional = true),
+                Operation("run_rerun", Effect.WRITE, "POST", "/repos/{owner}/{repo}/actions/runs/{run_id}/rerun", summary = "re-run a workflow run (no body)", bodyOptional = true),
                 Operation("issue_create", Effect.WRITE, "POST", "/repos/{owner}/{repo}/issues", summary = "open an issue {title, body}"),
                 Operation("comment_create", Effect.WRITE, "POST", "/repos/{owner}/{repo}/issues/{number}/comments", summary = "comment on an issue or PR {body}"),
                 Operation("pr_create", Effect.WRITE, "POST", "/repos/{owner}/{repo}/pulls", summary = "open a pull request {title, head, base, body}"),
@@ -152,9 +175,74 @@ object ServiceApi {
                 Operation("mrs", Effect.READ, "GET", "/projects/{id}/merge_requests", query = "state={state}", summary = "merge requests"),
                 Operation("file", Effect.READ, "GET", "/projects/{id}/repository/files/{path}/raw", query = "ref={ref}", summary = "raw file at a ref"),
                 Operation("pipelines", Effect.READ, "GET", "/projects/{id}/pipelines", summary = "recent pipelines"),
+                Operation("job_logs", Effect.READ, "GET", "/projects/{id}/jobs/{job_id}/trace", summary = "the trace of one job (plain text)"),
+                Operation("pipeline_retry", Effect.WRITE, "POST", "/projects/{id}/pipelines/{pipeline_id}/retry", summary = "retry a pipeline (no body)", bodyOptional = true),
+                Operation("pipeline_cancel", Effect.WRITE, "POST", "/projects/{id}/pipelines/{pipeline_id}/cancel", summary = "cancel a pipeline (no body)", bodyOptional = true),
                 Operation("issue_create", Effect.WRITE, "POST", "/projects/{id}/issues", summary = "open an issue {title, description}"),
                 Operation("mr_create", Effect.WRITE, "POST", "/projects/{id}/merge_requests", summary = "open an MR {source_branch, target_branch, title}"),
                 Operation("comment_create", Effect.WRITE, "POST", "/projects/{id}/issues/{iid}/notes", summary = "comment on an issue {body}"),
+            ),
+        ),
+        Service(
+            id = "bitbucket",
+            label = "Bitbucket",
+            baseUrl = "https://api.bitbucket.org/2.0",
+            auth = Auth.BEARER,
+            secretName = "bitbucket_token",
+            operations = listOf(
+                Operation("repos", Effect.READ, "GET", "/repositories/{workspace}", summary = "repositories in a workspace"),
+                Operation("repo", Effect.READ, "GET", "/repositories/{workspace}/{slug}", summary = "one repository"),
+                Operation("branches", Effect.READ, "GET", "/repositories/{workspace}/{slug}/refs/branches", summary = "branches"),
+                Operation("commits", Effect.READ, "GET", "/repositories/{workspace}/{slug}/commits", summary = "recent commits"),
+                Operation("src", Effect.READ, "GET", "/repositories/{workspace}/{slug}/src/{commit}/{path}", summary = "file contents at a commit"),
+                Operation("prs", Effect.READ, "GET", "/repositories/{workspace}/{slug}/pullrequests", query = "state={state}", summary = "pull requests (state: OPEN|MERGED|DECLINED)"),
+                Operation("issues", Effect.READ, "GET", "/repositories/{workspace}/{slug}/issues", summary = "issues, where the repo has them enabled"),
+                Operation("issue_create", Effect.WRITE, "POST", "/repositories/{workspace}/{slug}/issues", summary = "open an issue {title, content}"),
+                Operation("pr_create", Effect.WRITE, "POST", "/repositories/{workspace}/{slug}/pullrequests", summary = "open a pull request {title, source, destination}"),
+                Operation("comment_create", Effect.WRITE, "POST", "/repositories/{workspace}/{slug}/pullrequests/{id}/comments", summary = "comment on a pull request {content}"),
+            ),
+        ),
+        Service(
+            id = "gitea",
+            label = "Gitea",
+            // Self-hosted: the base must be the instance's /api/v1, supplied per project.
+            baseUrl = "",
+            baseSecret = "gitea_base_url",
+            auth = Auth.TOKEN_SCHEME,
+            secretName = "gitea_token",
+            operations = listOf(
+                Operation("repos", Effect.READ, "GET", "/user/repos", summary = "repositories the token can see"),
+                Operation("repo", Effect.READ, "GET", "/repos/{owner}/{repo}", summary = "one repository"),
+                Operation("contents", Effect.READ, "GET", "/repos/{owner}/{repo}/contents/{path}", summary = "file or directory listing"),
+                Operation("branches", Effect.READ, "GET", "/repos/{owner}/{repo}/branches", summary = "branches"),
+                Operation("commits", Effect.READ, "GET", "/repos/{owner}/{repo}/commits", summary = "recent commits"),
+                Operation("issues", Effect.READ, "GET", "/repos/{owner}/{repo}/issues", query = "state={state}", summary = "issues (state: open|closed|all)"),
+                Operation("pulls", Effect.READ, "GET", "/repos/{owner}/{repo}/pulls", summary = "pull requests"),
+                Operation("releases", Effect.READ, "GET", "/repos/{owner}/{repo}/releases", summary = "releases"),
+                Operation("tasks", Effect.READ, "GET", "/repos/{owner}/{repo}/actions/tasks", summary = "action task runs, newest first"),
+                Operation("issue_create", Effect.WRITE, "POST", "/repos/{owner}/{repo}/issues", summary = "open an issue {title, body}"),
+                Operation("pr_create", Effect.WRITE, "POST", "/repos/{owner}/{repo}/pulls", summary = "open a pull request {title, head, base}"),
+                Operation("comment_create", Effect.WRITE, "POST", "/repos/{owner}/{repo}/issues/{number}/comments", summary = "comment on an issue {body}"),
+            ),
+        ),
+        Service(
+            id = "jira",
+            label = "Jira",
+            // Cloud site: https://<site>.atlassian.net, per project.
+            baseUrl = "",
+            baseSecret = "jira_base_url",
+            auth = Auth.BASIC,
+            secretName = "jira_token",
+            emailSecret = "jira_email",
+            operations = listOf(
+                Operation("projects", Effect.READ, "GET", "/rest/api/3/project", summary = "visible projects"),
+                Operation("issue", Effect.READ, "GET", "/rest/api/3/issue/{key}", summary = "one issue by key"),
+                Operation("search", Effect.READ, "GET", "/rest/api/3/search", query = "jql={jql}", summary = "issue search; jql is an encoded JQL query"),
+                Operation("comments", Effect.READ, "GET", "/rest/api/3/issue/{key}/comment", summary = "comments on an issue"),
+                Operation("transitions", Effect.READ, "GET", "/rest/api/3/issue/{key}/transitions", summary = "the transitions available from the issue's state"),
+                Operation("issue_create", Effect.WRITE, "POST", "/rest/api/3/issue", summary = "create an issue {fields:{project,summary,issuetype}}"),
+                Operation("comment_create", Effect.WRITE, "POST", "/rest/api/3/issue/{key}/comment", summary = "comment on an issue {body}"),
+                Operation("transition_apply", Effect.WRITE, "POST", "/rest/api/3/issue/{key}/transitions", summary = "move an issue through a workflow transition {transition:{id}}"),
             ),
         ),
         Service(
@@ -263,17 +351,28 @@ object ServiceApi {
                 return@refuse refused(serviceId, op.id, "the body must be a JSON object or array")
             }
         }
-        if (op.effect == Effect.WRITE && body.isNullOrBlank() && op.method != "DELETE") {
+        if (op.effect == Effect.WRITE && body.isNullOrBlank() && op.method != "DELETE" && !op.bodyOptional) {
             return@refuse refused(serviceId, op.id, "this operation needs a JSON body")
         }
 
         val tokenValue = secret(service.secretName)
         if (tokenValue.isNullOrBlank()) {
-            return@refuse refused(
-                serviceId, op.id,
-                service.label + " has no stored credential. Set the project secret " + service.secretName +
-                    " in Settings > Secrets, then call again.",
-            )
+            return@refuse refused(serviceId, op.id, missingSecret(service, service.secretName))
+        }
+
+        // Auth is decided here, by the service definition, so the executor never guesses and the
+        // model never chooses. BASIC needs the account name as well as the token.
+        val auth = when (service.auth) {
+            Auth.BEARER -> Triple("Authorization", "Bearer ", tokenValue)
+            Auth.TOKEN_SCHEME -> Triple("Authorization", "token ", tokenValue)
+            Auth.PRIVATE_TOKEN -> Triple("PRIVATE-TOKEN", "", tokenValue)
+            Auth.BASIC -> {
+                val email = secret(service.emailSecret ?: "")
+                if (email.isNullOrBlank()) {
+                    return@refuse refused(serviceId, op.id, missingSecret(service, service.emailSecret ?: "email"))
+                }
+                Triple("Authorization", "Basic ", base64(email + ":" + tokenValue))
+            }
         }
 
         val headers = mutableMapOf("Accept" to "application/json")
@@ -286,7 +385,11 @@ object ServiceApi {
             url = url,
             headers = headers,
             body = body?.takeIf { it.isNotBlank() },
-            token = Secret(tokenValue),
+            token = Secret(auth.third),
+            // BASIC sends base64(email:token), so the raw token is what a response might echo.
+            scrub = Secret(tokenValue),
+            authHeaderName = auth.first,
+            authPrefix = auth.second,
         )
     }
 
@@ -312,6 +415,32 @@ object ServiceApi {
         return out
     }
 
+    /** Minimal standard base64. `android.util.Base64` would make this untestable on the JVM. */
+    private fun base64(value: String): String {
+        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        val bytes = value.toByteArray()
+        val out = StringBuilder()
+        var i = 0
+        while (i + 2 < bytes.size) {
+            val n = ((bytes[i].toInt() and 0xFF) shl 16) or ((bytes[i + 1].toInt() and 0xFF) shl 8) or (bytes[i + 2].toInt() and 0xFF)
+            out.append(alphabet[(n shr 18) and 63]).append(alphabet[(n shr 12) and 63])
+                .append(alphabet[(n shr 6) and 63]).append(alphabet[n and 63])
+            i += 3
+        }
+        when (bytes.size - i) {
+            1 -> {
+                val n = (bytes[i].toInt() and 0xFF) shl 16
+                out.append(alphabet[(n shr 18) and 63]).append(alphabet[(n shr 12) and 63]).append("==")
+            }
+            2 -> {
+                val n = ((bytes[i].toInt() and 0xFF) shl 16) or ((bytes[i + 1].toInt() and 0xFF) shl 8)
+                out.append(alphabet[(n shr 18) and 63]).append(alphabet[(n shr 12) and 63])
+                    .append(alphabet[(n shr 6) and 63]).append('=')
+            }
+        }
+        return out.toString()
+    }
+
     private fun encodeQuery(value: String): String = buildString {
         for (ch in value) {
             if (ch.isLetterOrDigit() || ch == '-' || ch == '_' || ch == '.' || ch == '~' || ch == ',' || ch == '/') {
@@ -323,6 +452,10 @@ object ServiceApi {
             }
         }
     }
+
+    private fun missingSecret(service: Service, name: String): String =
+        service.label + " has no stored credential: set the project secret " + name +
+            " in Settings > Secrets, then call again."
 
     private fun refused(serviceId: String, operationId: String, why: String): Plan = Plan(
         serviceId = serviceId, operationId = operationId, effect = Effect.READ, method = "GET",
@@ -415,12 +548,7 @@ object ServiceApi {
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = readTimeoutMs
                 plan.headers.forEach { (name, value) -> setRequestProperty(name, value) }
-                plan.token?.let { token ->
-                    when {
-                        plan.serviceId == "gitlab" -> setRequestProperty("PRIVATE-TOKEN", token.value)
-                        else -> setRequestProperty("Authorization", "Bearer " + token.value)
-                    }
-                }
+                plan.token?.let { token -> setRequestProperty(plan.authHeaderName, plan.authPrefix + token.value) }
                 if (plan.body != null && plan.method != "GET" && plan.method != "HEAD") {
                     doOutput = true
                     setFixedLengthStreamingMode(plan.body.toByteArray().size)
@@ -431,7 +559,7 @@ object ServiceApi {
             }
             val status = connection.responseCode
             val stream: InputStream? = if (status in 200..299) connection.inputStream else connection.errorStream
-            val read = readBounded(stream, plan.token)
+            val read = readBounded(stream, plan.scrub ?: plan.token)
             when {
                 status in 300..399 -> Outcome(
                     "Refused: " + plan.serviceId + " answered with a redirect to " +
