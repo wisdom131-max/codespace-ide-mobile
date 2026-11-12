@@ -695,6 +695,20 @@ You can use multiple tools in sequence. When done, give a final summary.
         val file = File(resolvedPath)
         if (!file.exists()) return "File not found: $path"
         if (file.isDirectory) return "Path is a directory: $path"
+        // P2: a document is read as a DOCUMENT. PDF, DOCX, PPTX and XLSX are extracted to plain
+        // text with a note about what could not be read, instead of arriving as mojibake. Anything
+        // else that is not text is refused by name rather than decoded.
+        val docKind = com.codespace.ide.agent.docs.DocText.kindOf(file.name)
+        if (docKind != com.codespace.ide.agent.docs.DocText.Kind.PLAIN) {
+            if (file.length() > com.codespace.ide.agent.docs.DocText.MAX_INPUT_BYTES) {
+                return "File too large (${file.length()} bytes) for the document reader."
+            }
+            val bytes = try { file.readBytes() } catch (t: Throwable) {
+                return "Could not read " + path + ": " + (t.message ?: "read failed")
+            }
+            val extracted = com.codespace.ide.agent.docs.DocText.extract(file.name, bytes)
+            return truncMark("[document text — best effort, no OCR]\n" + extracted, 16000)
+        }
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
         return truncMark(file.readText(), 16000)  // CH06 (P4h)
     }
