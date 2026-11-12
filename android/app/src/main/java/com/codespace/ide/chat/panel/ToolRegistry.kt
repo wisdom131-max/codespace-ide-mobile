@@ -968,7 +968,7 @@ internal object ToolRegistry {
         ToolSpec(
             name = "zip_extract",
             displayName = "Extracting an archive",
-            description = "Extract a .zip inside the workspace. Refuses entries that would escape " +
+            description = "Extract an archive inside the workspace. Refuses entries that would escape " +
                 "the destination, enforces size and entry limits, and does not overwrite existing " +
                 "files unless overwrite is true. Says so when only part of the archive was written.",
             schema = OBJ + ",\"required\":[\"archive\"],\"properties\":{" +
@@ -979,8 +979,9 @@ internal object ToolRegistry {
         ToolSpec(
             name = "zip_list",
             displayName = "Listing an archive",
-            description = "List a .zip's entries with sizes and flag unsafe paths, without " +
-                "extracting anything. Bounded: page through with offset when the archive is large.",
+            description = "List an archive's entries with sizes and flag unsafe paths, without " +
+                "extracting anything. Opens .zip/.apk/.jar/.aab, .tar, .tar.gz, .gz, .bz2, .xz and .7z; " +
+                "says so honestly for .rar and .zst. Bounded: page through with offset.",
             schema = OBJ + ",\"required\":[\"archive\"],\"properties\":{" +
                 "\"archive\":{\"type\":\"string\"},\"offset\":{\"type\":\"integer\"}," +
                 "\"limit\":{\"type\":\"integer\"}}}",

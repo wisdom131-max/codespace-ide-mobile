@@ -525,14 +525,40 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "zip_create" -> ZipTools.create(
                     zipRoot(context), zipStrings(args, "sources"), args.optString("dest"),
                     args.optBoolean("overwrite", false), context)
-                "zip_extract" -> ZipTools.extract(
-                    zipRoot(context), args.optString("archive"),
-                    args.optString("dest").takeIf { it.isNotBlank() },
-                    args.optBoolean("overwrite", false), context)
-                "zip_list" -> ZipTools.list(
-                    zipRoot(context), args.optString("archive"),
-                    args.optInt("offset", 0), args.optInt("limit", com.codespace.ide.util.ZipEngine.DEFAULT_LIST),
-                    context)
+                "zip_extract" -> {
+                    val raw = args.optString("archive")
+                    val resolved = File(resolveToolPath(context, raw))
+                    if (ArchiveEngine.kindOf(resolved) == ArchiveEngine.Kind.ZIP) {
+                        ZipTools.extract(
+                            zipRoot(context), raw,
+                            args.optString("dest").takeIf { it.isNotBlank() },
+                            args.optBoolean("overwrite", false), context)
+                    } else {
+                        val destRaw = args.optString("dest").takeIf { it.isNotBlank() }
+                        val dest = if (destRaw == null) zipRoot(context) else File(resolveToolPath(context, destRaw))
+                        archiveExtract(raw, resolved, dest, args.optBoolean("overwrite", false))
+                    }
+                }
+                "zip_list" -> {
+                    // P2.B: one entry point for every archive the app can open. A ZIP still goes
+                    // through ZipEngine (which owns the Slip/bomb rules); the other formats the build
+                    // ships a reader for go through ArchiveEngine, and a format it cannot read says so
+                    // instead of being guessed at.
+                    val raw = args.optString("archive")
+                    val resolved = File(resolveToolPath(context, raw))
+                    if (ArchiveEngine.kindOf(resolved) == ArchiveEngine.Kind.ZIP) {
+                        ZipTools.list(
+                            zipRoot(context), raw,
+                            args.optInt("offset", 0),
+                            args.optInt("limit", com.codespace.ide.util.ZipEngine.DEFAULT_LIST),
+                            context)
+                    } else {
+                        val listing = ArchiveEngine.list(
+                            resolved, args.optInt("offset", 0),
+                            args.optInt("limit", com.codespace.ide.util.ZipEngine.DEFAULT_LIST))
+                        archiveListing(raw, listing)
+                    }
+                }
                 "journal_write" -> FileInsightTools.journalWrite(
                     journalFile(context), args.getString("note"),
                     java.time.Instant.ofEpochMilli(System.currentTimeMillis()).toString().replace("T", " ").take(19))
@@ -976,6 +1002,49 @@ You can use multiple tools in sequence. When done, give a final summary.
         } finally {
             conn.disconnect()
         }
+    }
+
+    /**
+     * P2.B: how an archive the ZIP engine does not own is reported. Bounded, and explicit when the
+     * list is partial, when the format is unsupported, and when only some entries were written.
+     */
+    /** Keeps a tool answer inside its character ceiling without pretending it is complete. */
+    private fun trimTo(text: String, max: Int): String =
+        if (text.length <= max) text
+        else text.take(max - 60) + "\n[... truncated " + (text.length - max + 60) + " chars]"
+
+    private fun archiveListing(raw: String, listing: ArchiveEngine.Listing): String {
+        val kind = listing.kind.name.lowercase().replace('_', '.')
+        listing.note?.let { return raw + " (" + kind + "): " + it }
+        if (listing.items.isEmpty()) return raw + ": the archive is empty (0 entries)."
+        val sb = StringBuilder()
+        sb.append(raw).append(" (").append(kind).append("): ").append(listing.total).append(" entries")
+        listing.items.take(90).forEach { e ->
+            sb.append("\n").append(if (e.isDirectory) "[dir] " else "").append(e.name)
+            if (!e.isDirectory) sb.append(" (").append(ZipTools.human(e.size)).append(")")
+            if (e.isSymlink) sb.append(" [link, skipped on extract]")
+        }
+        if (listing.items.size < listing.total) sb.append("\n... showing ").append(listing.items.size).append(" of ").append(listing.total).append("; page with offset.")
+        return trimTo(sb.toString(), ZipTools.MAX_RESULT_CHARS)
+    }
+
+    private fun archiveExtract(
+        raw: String,
+        archive: File,
+        dest: File,
+        overwrite: Boolean,
+    ): String {
+        val out = ArchiveEngine.extract(archive, dest, overwrite = overwrite)
+        out.failure?.let { return "Archive extraction failed: " + it }
+        val sb = StringBuilder()
+        sb.append("Extracted ").append(out.written.size).append(" entry(ies) from ").append(raw)
+        sb.append(" into ").append(dest.name).append(".")
+        if (out.skipped.isNotEmpty()) {
+            sb.append("\nSkipped ").append(out.skipped.size).append(": ")
+            sb.append(out.skipped.take(6).joinToString("; "))
+            sb.append(if (out.skipped.size > 6) "; ..." else "")
+        }
+        return trimTo(sb.toString(), ZipTools.MAX_RESULT_CHARS)
     }
 
     /**
