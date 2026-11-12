@@ -137,8 +137,8 @@ green CI run.
 | # | Item | Status | Where |
 |---|---|---|---|
 | 1 | MCP and Connectors Lifecycle | IN PROGRESS → see `MCP-LIFECYCLE-2026-11-12.md` | this project |
-| 2 | ZIP tools (reuse the IDE environment's existing extraction) | PENDING | - |
-| 3 | Package Intelligence: `npm_info`, `pypi_info`, `lockfile_parse` | PENDING | - |
+| 2 | ZIP tools (reuse the IDE environment's existing extraction) | DONE | `ZIP-TOOLS-2026-11-12.md` |
+| 3 | Package Intelligence: `npm_info`, `pypi_info`, `lockfile_parse` | PENDING (next) | - |
 | 4 | Git tools and recovery | PENDING | - |
 | 5 | `/tools` picker improvements | PENDING | - |
 | 6 | Chat presentation improvements | PENDING | - |

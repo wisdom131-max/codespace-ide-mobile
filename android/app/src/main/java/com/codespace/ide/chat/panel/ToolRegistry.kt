@@ -856,6 +856,38 @@ internal object ToolRegistry {
             modes = READ_ALL,
         ),
         ToolSpec(
+            name = "zip_create",
+            displayName = "Creating an archive",
+            description = "Create a .zip from workspace files and directories, relative to the " +
+                "project. Reports files, directories, size and anything skipped. Refuses to " +
+                "overwrite an existing archive unless overwrite is true.",
+            schema = OBJ + ",\"required\":[\"sources\",\"dest\"],\"properties\":{" +
+                "\"sources\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}," +
+                "\"dest\":{\"type\":\"string\"},\"overwrite\":{\"type\":\"boolean\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "zip_extract",
+            displayName = "Extracting an archive",
+            description = "Extract a .zip inside the workspace. Refuses entries that would escape " +
+                "the destination, enforces size and entry limits, and does not overwrite existing " +
+                "files unless overwrite is true. Says so when only part of the archive was written.",
+            schema = OBJ + ",\"required\":[\"archive\"],\"properties\":{" +
+                "\"archive\":{\"type\":\"string\"},\"dest\":{\"type\":\"string\"}," +
+                "\"overwrite\":{\"type\":\"boolean\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
+            name = "zip_list",
+            displayName = "Listing an archive",
+            description = "List a .zip's entries with sizes and flag unsafe paths, without " +
+                "extracting anything. Bounded: page through with offset when the archive is large.",
+            schema = OBJ + ",\"required\":[\"archive\"],\"properties\":{" +
+                "\"archive\":{\"type\":\"string\"},\"offset\":{\"type\":\"integer\"}," +
+                "\"limit\":{\"type\":\"integer\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
             name = "move_path",
             displayName = "Moving a file",
             description = "Move or rename a file or directory. Refuses to overwrite an existing " +

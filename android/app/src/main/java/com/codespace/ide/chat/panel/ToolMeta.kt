@@ -53,6 +53,21 @@ internal object ToolMetaIndex {
             destructive = true,
         ),
         "move_path" to ToolMeta(ToolCategory.FILES, listOf("move", "rename", "relocate"), destructive = true),
+        // ZIP (2026-11-12): "archive", "compress" and "unzip" are the words a user actually types.
+        "zip_create" to ToolMeta(
+            ToolCategory.FILES,
+            listOf("zip", "archive", "compress", "bundle", "pack", "tar"),
+            destructive = true,
+        ),
+        "zip_extract" to ToolMeta(
+            ToolCategory.FILES,
+            listOf("zip", "unzip", "extract", "unpack", "archive", "decompress"),
+            destructive = true,
+        ),
+        "zip_list" to ToolMeta(
+            ToolCategory.FILES,
+            listOf("zip", "archive", "contents", "entries", "list", "unzip", "inspect"),
+        ),
         "checksum" to ToolMeta(ToolCategory.FILES, listOf("hash", "sha256", "md5", "verify", "integrity", "digest")),
         "diff_files" to ToolMeta(ToolCategory.FILES, listOf("diff", "compare", "difference", "changes", "versus")),
         "view_image" to ToolMeta(ToolCategory.FILES, listOf("image", "screenshot", "picture", "png")),

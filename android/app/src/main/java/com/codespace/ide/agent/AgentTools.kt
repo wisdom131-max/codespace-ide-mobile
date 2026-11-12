@@ -197,6 +197,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         "file_stat", "disk_usage", "copy_path",
         "terminal_list", "terminal_kill", "job_status",
         "coverage_read", "entity_schema_read", "memory_search",
+        // ZIP (2026-11-12): three tools on the one engine the app already ships.
+        "zip_create", "zip_extract", "zip_list",
     )
 
     /** Builtin tool names for the /tools chat command (see BUILTIN_TOOL_NAMES). */
@@ -373,6 +375,19 @@ You can use multiple tools in sequence. When done, give a final summary.
                         args.optBoolean("overwrite", false))
                     if (!moved.startsWith("Moved")) moved else moved
                 }
+                // ZIP (2026-11-12): one engine, three thin entry points. The project root is the
+                // containment boundary for every path these three touch.
+                "zip_create" -> ZipTools.create(
+                    zipRoot(context), zipStrings(args, "sources"), args.optString("dest"),
+                    args.optBoolean("overwrite", false), context)
+                "zip_extract" -> ZipTools.extract(
+                    zipRoot(context), args.optString("archive"),
+                    args.optString("dest").takeIf { it.isNotBlank() },
+                    args.optBoolean("overwrite", false), context)
+                "zip_list" -> ZipTools.list(
+                    zipRoot(context), args.optString("archive"),
+                    args.optInt("offset", 0), args.optInt("limit", com.codespace.ide.util.ZipEngine.DEFAULT_LIST),
+                    context)
                 "journal_write" -> FileInsightTools.journalWrite(
                     journalFile(context), args.getString("note"),
                     java.time.Instant.ofEpochMilli(System.currentTimeMillis()).toString().replace("T", " ").take(19))
@@ -2141,5 +2156,24 @@ You can use multiple tools in sequence. When done, give a final summary.
             else -> return "Unknown manager: $manager. Use: npm, pip, apt"
         }
         return truncMark(ProotInstaller.execOnce(context, command, projectDir), 16000)
+    }
+
+    // ── ZIP helpers (2026-11-12) ─────────────────────────────────────────────
+
+    /** The workspace a zip path must stay inside. Falls back to /root, the app's working root. */
+    private fun zipRoot(context: Context): java.io.File =
+        java.io.File(com.codespace.ide.security.TrustState.activeProjectRoot(context) ?: "/root")
+
+    /** `sources` accepts a JSON array, a single string, or a comma-separated list. */
+    private fun zipStrings(args: org.json.JSONObject, key: String): List<String> {
+        val arr = args.optJSONArray(key)
+        if (arr != null) {
+            val out = ArrayList<String>(arr.length())
+            for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { out.add(it) }
+            return out
+        }
+        val single = args.optString(key)
+        if (single.isBlank()) return emptyList()
+        return single.split(',').map { it.trim() }.filter { it.isNotEmpty() }
     }
 }
