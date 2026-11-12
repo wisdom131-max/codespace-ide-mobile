@@ -678,6 +678,18 @@ class ChatSession internal constructor(
         }
         for (a in attachments) a.textData?.let { if (it.isNotBlank()) turnContext.add(it) }
         val chips = staged.map { com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes)) }
+        // DUPLICATE REPLIES: a send that arrives while a request is streaming must replace it, not
+        // stack a second stream writing the same transcript. An identical tap within the double-tap
+        // window is ignored outright; the answer already on its way is the answer.
+        val elapsedRunning = System.currentTimeMillis() - ui.value.streamStartedMs
+        when (ReplyOwnership.startAction(sendJob?.isActive == true, userText == ui.value.lastUserText, elapsedRunning)) {
+            ReplyOwnership.Start.IGNORE_DUPLICATE_TAP -> return
+            ReplyOwnership.Start.REPLACE_RUNNING -> {
+                streamBuf.setLength(0)
+                sendJob?.cancel()
+            }
+            ReplyOwnership.Start.FRESH -> Unit
+        }
         requestGate.bump()
         val gen = requestGate.bump()
         // Every send marks the ledger: a source recorded during this turn is shown under THIS
@@ -849,6 +861,8 @@ class ChatSession internal constructor(
     private var memoryAtSend: String = ""
     /** P4.5: the request the current instruction was built for, so MCP advice matches this turn. */
     private var requestAtSend: String = ""
+    /** DUPLICATE REPLIES: the last generation whose completion was already applied. */
+    private var lastCompletedGen: Int = 0
     private var loadoutVersionAtSend: Int = 0
 
     /**
@@ -956,10 +970,12 @@ class ChatSession internal constructor(
                 ui.value = st.copy(rows = st.rows + listOf(ChatRowModel.InfoNote(ev.visibleText)))
             }
             is EngineEvent.Completed -> {
+                if (!ReplyOwnership.mayComplete(gen, lastCompletedGen, !requestGate.stale(gen))) return
                 // Area 6: the provider's verdict decides whether this turn may be called
                 // finished. A ceiling marks the reply incomplete through the SAME sticky flag
                 // that already survives every later save, so a reopen cannot upgrade a cut-off
                 // answer into a complete one.
+                lastCompletedGen = gen
                 lastFinish = ev.finish
                 continuationInFlight = false
                 _continuationUi.value = continuationStateFor(ev.finish)
