@@ -159,3 +159,68 @@ Full suite: 2337 tests, 1 failure (BackupTarTest.failureMessageCarriesRealTotals
 Note on the umbrella: the "Tool Groups" row in this document refers to the catalogue branch of the
 VN Code Dynamic Tool Loading System, whose authoritative table lives in `IMPLEMENTED.md`. It is not
 the Thinking Tree and not the chevron grouping.
+
+---
+
+# Areas 5 and 6 - closing the gaps (2026-11-12, second pass)
+
+## The gate is now tested where it actually runs
+
+`AgentTools.executeTool` was split into two lines: it resolves the guard and the body, then hands both
+to `executeGated`. That is not a new implementation, it is the same call one frame deeper, and it is
+what makes the dispatch contract reachable from a JVM test. 16 tests in `AgentToolsDispatchTest` drive
+**that** function with the real guard, the real effect index, the real retry policy, the real ledger
+file and the real result check. Only the tool body is fake.
+
+| # | Claim | Test |
+| --- | --- | --- |
+| 1 | first call executes its body | `firstCallExecutesItsBody` |
+| 2 | repeated completed call returns the stored result | `aRepeatedCompletedCallReturnsTheStoredResultAndDoesNotRunTheBody` |
+| 3 | the body does not run again | same test (invocation count stays 1) |
+| 4 | a lost response does not re-execute | `aLostResponseAfterSuccessDoesNotReExecuteWhenTheResultIsPersisted` |
+| 5 | an unprovable side effect is refused | `anUncertainSideEffectIsRefusedWhenNothingCanProveIt` |
+| 6 | cancellation records uncertainty | `cancellationDuringExecutionRecordsUncertaintyAndBlocksARepeat` |
+| 7 | read-only calls follow the retry policy | `aReadOnlyCallThatFailedIsRetriedRatherThanRefused` |
+| 8 | unknown tools are side-effecting | `anUnknownToolIsTreatedAsSideEffecting`, `anUnknownToolWithAnUnknownOutcomeIsRefused` |
+| 9 | missing/malformed ids fail conservatively | `aMissingCallIdNeverReusesAnotherCallsResult`, `aBlankCallIdIsTreatedAsMissingNotAsASharedKey` |
+| 10 | concurrent same-id calls run the side effect once | `twoConcurrentRequestsWithTheSameIdExecuteTheSideEffectOnce` |
+| 11 | the ledger survives restoration | `theLedgerSurvivesRestorationAndStillRefusesTheRepeat` |
+| 12 | approvals are not decided by the guard | `anApprovalRefusalAboveTheGuardIsNeverTurnedIntoARun`, `aCompletedMcpCallIsReusedAndTheRemoteToolIsNotCalledTwice` |
+
+**A real bug fell out of this.** `ToolCallLedger.recordCompleted` and `recordFailed` replaced the entry
+**without its arguments**, so by the time an outcome was uncertain the reconciler had nothing to
+inspect. Every recoverable write therefore degraded to a refusal, which looked like policy but was a
+data-loss bug. Both records now carry the arguments forward.
+
+## Reconciliation: what is provable, and what is not
+
+| Operation class | Reconcilable? | Evidence used |
+| --- | --- | --- |
+| `write_file` / `create_file` | **yes** | the target is read back and compared with the recorded `content` |
+| writes whose content differs from what was asked | no | refusal, because "different" is not "applied" |
+| `run_command`, terminal, git, package installs, archives | no | there is no read that proves a shell command's effect; refusal stands |
+| MCP remote tools | no | the remote system's state is not readable from here; refusal stands |
+
+Covered by `anUncertainWriteIsReconciledFromTheFileItselfAndTheEvidenceIsRecorded` (evidence is
+recorded in the ledger and the body never runs) and
+`anUncertainWriteWhoseContentDoesNotMatchIsNotClaimedAsDone` (no false success).
+
+## Composer continuation
+
+Already wired in the previous pass (`continueTurn`, `ContinuationState`, the composer's
+`isVisibleContinuation`, the `SEAM`). What was missing was the cross-area proof, now in
+`Area56LifecycleTest` (7 tests): the ceiling keeps the turn incomplete, the offer survives a reopen
+from the same ledger file, the continuation takes a fresh request-gate number, a replay of the same
+tool-call id reuses the persisted result with the side effect still at one, a second ceiling still
+offers continue, cancellation/interruption/filter never do, and the seam appears exactly once so the
+original answer is not duplicated.
+
+## Honest limitations
+
+- The composer is tested at its **production state boundary** (`ChatSession.continuationStateForTest`,
+  `Continuation.plan`, `RequestGate`, `isVisibleContinuation`), not through Compose. There is no
+  Compose UI test harness in this project, and adding one was not part of this assignment. The button's
+  visibility rule is a pure function of that state, and that function is what is asserted.
+- `ChatSession.continueTurn` itself needs an Android `Context` and a live provider, so its two branches
+  (already streaming, plan not allowed) are covered by the pure plan and state, not by a live stream.
+- Reconciliation is deliberately one class wide. Anything else refuses, on purpose.

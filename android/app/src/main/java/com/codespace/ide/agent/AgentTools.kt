@@ -242,9 +242,28 @@ You can use multiple tools in sequence. When done, give a final summary.
         context: Context,
         callId: String? = null,
     ): String {
-        val result = dispatchGuard(context).run(callId, name, args.withPathHints()) {
+        return executeGated(dispatchGuard(context), name, args, args.withPathHints(), callId) {
             executeToolBody(name, args, context)
         }
+    }
+
+    /**
+     * Area 5 - THE DISPATCH CONTRACT, EXACTLY ONCE.
+     *
+     * [executeTool] is the two lines above this function: it resolves the guard and the body and
+     * hands both here. Splitting them out is what makes the gate testable without an Android
+     * `Context`; there is no second implementation of "may this body run again", because a second
+     * implementation is how the two paths drift apart.
+     */
+    internal suspend fun executeGated(
+        guard: ToolDispatchGuard,
+        name: String,
+        args: JSONObject,
+        hints: Map<String, String>,
+        callId: String?,
+        body: suspend () -> String,
+    ): String {
+        val result = guard.run(callId, name, hints, body)
         // P4.3: a body returning is not the same as the operation working. The verdict is appended
         // as a note for the model, so a truncation or an "error:" inside a normal return cannot be
         // read as success. Silence when there is nothing to say.

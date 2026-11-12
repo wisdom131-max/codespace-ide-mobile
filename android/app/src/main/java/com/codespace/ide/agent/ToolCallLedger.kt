@@ -55,14 +55,22 @@ class ToolCallLedger private constructor(private val file: File) {
             System.currentTimeMillis(), prev?.args ?: emptyMap()))
     }
 
+    /**
+     * 2026-11-12 (found by `AgentToolsDispatchTest`): the terminal records used to REPLACE the entry
+     * without its arguments, so by the time an outcome was uncertain the reconciler had nothing to
+     * inspect and every recoverable write degraded to a refusal. The arguments travel with the
+     * outcome now; they are the evidence a reconciler needs.
+     */
     @Synchronized
     fun recordCompleted(callId: String, tool: String, effect: ToolEffect, result: String) {
-        put(Entry(callId, tool, effect, ToolOutcome.COMPLETED_OK, result.takeLast(RESULT_CAP), System.currentTimeMillis()))
+        put(Entry(callId, tool, effect, ToolOutcome.COMPLETED_OK, result.takeLast(RESULT_CAP),
+            System.currentTimeMillis(), entries[callId]?.args ?: emptyMap()))
     }
 
     @Synchronized
     fun recordFailed(callId: String, tool: String, effect: ToolEffect, outcome: ToolOutcome) {
-        put(Entry(callId, tool, effect, outcome, null, System.currentTimeMillis()))
+        put(Entry(callId, tool, effect, outcome, null, System.currentTimeMillis(),
+            entries[callId]?.args ?: emptyMap()))
     }
 
     private fun put(e: Entry) {
