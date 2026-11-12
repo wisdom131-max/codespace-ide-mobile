@@ -28,6 +28,8 @@ class ToolCallLedger private constructor(private val file: File) {
         /** Bounded tail of the result, kept so REUSE can return something real. */
         val result: String?,
         val updatedAt: Long,
+        /** Arguments the call carried, so a reconciler can inspect what was asked for. */
+        val args: Map<String, String> = emptyMap(),
     )
 
     private val entries = LinkedHashMap<String, Entry>()
@@ -40,9 +42,17 @@ class ToolCallLedger private constructor(private val file: File) {
     fun lookup(callId: String): Entry? = entries[callId]
 
     @Synchronized
-    fun recordStarted(callId: String, tool: String, effect: ToolEffect) {
+    fun recordStarted(callId: String, tool: String, effect: ToolEffect, args: Map<String, String> = emptyMap()) {
         // Started but no verdict yet: exactly the state that must never be silently retried.
-        put(Entry(callId, tool, effect, ToolOutcome.UNKNOWN_AFTER_START, null, System.currentTimeMillis()))
+        put(Entry(callId, tool, effect, ToolOutcome.UNKNOWN_AFTER_START, null, System.currentTimeMillis(), args))
+    }
+
+    /** Proven already applied by a read-only inspection: the call is complete, not retried. */
+    @Synchronized
+    fun recordReconciled(callId: String, tool: String, effect: ToolEffect, evidence: String) {
+        val prev = entries[callId]
+        put(Entry(callId, tool, effect, ToolOutcome.COMPLETED_OK, evidence.takeLast(RESULT_CAP),
+            System.currentTimeMillis(), prev?.args ?: emptyMap()))
     }
 
     @Synchronized
@@ -79,6 +89,9 @@ class ToolCallLedger private constructor(private val file: File) {
                         .getOrDefault(ToolOutcome.UNKNOWN_AFTER_START),
                     result = o.optString("result").takeIf { it.isNotEmpty() },
                     updatedAt = o.optLong("updatedAt"),
+                    args = o.optJSONObject("args")?.let { a ->
+                        buildMap { a.keys().forEach { k -> put(k, a.optString(k)) } }
+                    } ?: emptyMap(),
                 )
             }
         } catch (_: Throwable) {
@@ -99,6 +112,9 @@ class ToolCallLedger private constructor(private val file: File) {
                     put("outcome", e.outcome.name)
                     put("result", e.result ?: "")
                     put("updatedAt", e.updatedAt)
+                    if (e.args.isNotEmpty()) put("args", JSONObject().apply {
+                        e.args.forEach { (k, v) -> put(k, v.take(2000)) }
+                    })
                 })
             }
             val tmp = File(file.parentFile, file.name + ".tmp")

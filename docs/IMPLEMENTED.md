@@ -194,6 +194,14 @@ verdict each commit.
 | Wave 1 Groups B/C/D | Nine inspection tools: file_stat, disk_usage, copy_path, terminal_list, terminal_kill, job_status, coverage_read, entity_schema_read, memory_search | 3f4c72a GREEN 43082361285 |
 | Facts and Persistent Memory | Structured facts with scope/provenance/conflicts, Facts screen, prompt retrieval, `memory_search` over the store | 1c10232 GREEN 43125607414 |
 
+| Tool Groups, `/tools` picker, Git recovery, debugger | Grouped catalogue, four git recovery tools, seven DAP tools; 118-tool registry | 0197002 GREEN 43170924773 |
+| Chat presentation (area 4) | `ToolResultPresentation` is the single ruler for a tool result; row draws kind, reason, partial marker, withheld count | 28553f4 GREEN 43171888030, d7e40e0 GREEN 43172592726 |
+| Request identity (area 5) | `RequestGate` numbers each turn; a stale event cannot touch rows, tools or buffer | 471081f GREEN 43173679208 |
+| Finish reasons (area 6) | `FinishReason` normalizes each adapter's stop value; absent or unknown is UNKNOWN, never NATURAL; only a ceiling continues | 0a19ccb GREEN 43176200916 |
+| Continuation dispatch (area 6) | `ChatSession.continueTurn()` reuses `sendCore` with a continuation prefix and a visible seam; composer offers Continue only for a ceiling | a418aaf GREEN 43177377367 |
+| Tool retry ledger (area 5) | `ToolCallLedger` + `ToolDispatchGuard` in front of `AgentTools.executeTool`; persisted, bounded, per-id serialized | a418aaf GREEN 43177377367 |
+| Narrow reconciliation (area 5) | `ToolReconciler.fileWrites` proves a write by reading the target back; every other class refuses honestly | see `COPILOT-AREAS-4-6-2026-11-12.md` |
+
 | ZIP tools (`zip_create`, `zip_extract`, `zip_list`) | `java.util.zip` engine with ZIP-Slip, symlink, overwrite and resource limits; bounded listing | see `ZIP-TOOLS-2026-11-12.md` |
 | Package Intelligence (`npm_info`, `pypi_info`, `lockfile_parse`) | Registry metadata plus nine offline lockfile formats, injectable fetcher, untrusted-text flagging | see `PACKAGE-INTELLIGENCE-2026-11-12.md` |
 Note on counts: Wave 1 is recorded as twelve tools in total (three in Group A, nine in B/C/D). The

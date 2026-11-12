@@ -241,35 +241,34 @@ You can use multiple tools in sequence. When done, give a final summary.
         args: JSONObject,
         context: Context,
         callId: String? = null,
-    ): String {
-        val ledger = ToolCallLedger.get(context)
-        val id = callId?.trim()?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
-        val effect = ToolEffectIndex.effectOf(name)
-        val prior = ledger.lookup(id)
-        if (prior != null) {
-            when (ToolRetry.decide(prior.outcome, effect)) {
-                RetryDecision.REUSE_PERSISTED -> return prior.result
-                    ?: "This call ($name) already completed; its result was not retained. Not re-executing."
-                RetryDecision.RECONCILE_FIRST -> return "Refused to repeat $name: its earlier outcome is " +
-                    "${prior.outcome.name}. Verify whether it took effect before asking again. Nothing was executed."
-                RetryDecision.REFUSE -> return "Refused to repeat $name: the earlier attempt did not complete " +
-                    "and repeating it cannot be proven safe. Nothing was executed."
-                RetryDecision.EXECUTE -> Unit
-            }
+    ): String = dispatchGuard(context).run(callId, name, args.withPathHints()) {
+        executeToolBody(name, args, context)
+    }
+
+    /**
+     * One guard per application: it owns the per-call-id mutexes, so it must not be recreated per
+     * call. The reconciler is scoped to what can actually be proven: a file write whose target
+     * reads back as the requested content.
+     */
+    private fun dispatchGuard(context: Context): ToolDispatchGuard {
+        val app = context.applicationContext
+        return guards.getOrPut(app) {
+            val ledger = ToolCallLedger.get(app)
+            ToolDispatchGuard(
+                ledger = ledger,
+                reconciler = ToolReconciler.fileWrites { path ->
+                    runCatching { java.io.File(path).takeIf { it.isFile }?.readText() }.getOrNull()
+                },
+            )
         }
-        ledger.recordStarted(id, name, effect)
-        val out = try {
-            executeToolBody(name, args, context)
-        } catch (c: kotlinx.coroutines.CancellationException) {
-            // Cancellation is NOT proof that nothing ran.
-            ledger.recordFailed(id, name, effect, ToolOutcome.CANCELLED_DURING_EXECUTION)
-            throw c
-        } catch (t: Throwable) {
-            ledger.recordFailed(id, name, effect, ToolOutcome.COMPLETED_ERROR)
-            throw t
-        }
-        ledger.recordCompleted(id, name, effect, out)
-        return out
+    }
+
+    private val guards = java.util.concurrent.ConcurrentHashMap<Context, ToolDispatchGuard>()
+
+    /** The reconciler needs the two fields it can verify; nothing else is copied. */
+    private fun JSONObject.withPathHints(): Map<String, String> = buildMap {
+        optString("path").takeIf { it.isNotBlank() }?.let { put("path", it) }
+        if (has("content")) put("content", optString("content"))
     }
 
     private suspend fun executeToolBody(name: String, args: JSONObject, context: Context): String {

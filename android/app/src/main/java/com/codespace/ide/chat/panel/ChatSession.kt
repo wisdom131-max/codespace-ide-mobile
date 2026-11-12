@@ -189,6 +189,16 @@ class ChatSession internal constructor(
      */
     @Volatile private var interruptedReplyPending = false
 
+    /**
+     * Area 6: what the composer should offer. A StateFlow so the bar recomposes on its own; the
+     * rules live in [ContinuationState], not in the composable.
+     */
+    private val _continuationUi = kotlinx.coroutines.flow.MutableStateFlow(ContinuationState.COMPLETE)
+    internal val continuationUi: kotlinx.coroutines.flow.StateFlow<ContinuationState> = _continuationUi
+
+    /** True between "Continue" and the first event of the continuation stream. */
+    @Volatile private var continuationInFlight = false
+
     /** Area 6: the plan built for the most recent continuation attempt, for the UI state. */
     @Volatile internal var lastContinuation: ContinuationPlan? = null
 
@@ -358,6 +368,15 @@ class ChatSession internal constructor(
          * The visible join. A continuation must not look like one uninterrupted answer: the user
          * is told exactly where the first response stopped.
          */
+        /** Test seam: the composer's mapping, without building a session. */
+        internal fun continuationStateForTest(
+            finish: com.codespace.ide.engine.FinishReason,
+        ): ContinuationState = when {
+            finish.complete -> ContinuationState.COMPLETE
+            finish.continuable -> ContinuationState.NEEDS_CONTINUATION
+            else -> ContinuationState.UNKNOWN_OR_INTERRUPTED
+        }
+
         internal const val SEAM = "\n\n[continued after the output limit]\n\n"
 
     /** Extension to MIME, used when the picker could not tell us. */
@@ -475,6 +494,8 @@ class ChatSession internal constructor(
         lastContinuation = plan
         if (!plan.allowed) return plan.state
         lastFinish = com.codespace.ide.engine.FinishReason.UNKNOWN
+        continuationInFlight = true
+        _continuationUi.value = ContinuationState.CONTINUING
         val prefix = if (delivered.isBlank()) "" else delivered + SEAM
         sendCore(
             plan.instruction,
@@ -485,6 +506,14 @@ class ChatSession internal constructor(
         )
         return ContinuationState.CONTINUING
     }
+
+    /** Area 6: finish verdict -> what the composer may offer. Pure and total. */
+    internal fun continuationStateFor(finish: com.codespace.ide.engine.FinishReason): ContinuationState =
+        when {
+            finish.complete -> ContinuationState.COMPLETE
+            finish.continuable -> ContinuationState.NEEDS_CONTINUATION
+            else -> ContinuationState.UNKNOWN_OR_INTERRUPTED
+        }
 
     /** What the composer should say about continuation right now. */
     internal val continuationState: ContinuationState
@@ -897,6 +926,8 @@ class ChatSession internal constructor(
                 // that already survives every later save, so a reopen cannot upgrade a cut-off
                 // answer into a complete one.
                 lastFinish = ev.finish
+                continuationInFlight = false
+                _continuationUi.value = continuationStateFor(ev.finish)
                 if (!ev.finish.complete) interruptedReplyPending = true
                 val st = ui.value
                 // Section 6: a finished reply is either an ANSWER or an ACTION request. The

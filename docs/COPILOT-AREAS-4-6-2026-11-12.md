@@ -98,3 +98,36 @@ Full suite: 2296 tests, 1 failure (BackupTarTest.failureMessageCarriesRealTotals
 Areas 5 and 6 are wired into the real dispatch paths. Their remaining gaps are the ones listed
 directly above: no automatic reconciliation repair, no composer surface for continuation, and the
 AgentTools wrapper verified by compilation plus the ledger suites rather than an instrumented test.
+
+## Closing pass: dispatch proof, narrow reconciliation, composer surface
+
+**Tool dispatch is now tested at the boundary.** `AgentTools.executeTool` delegates to
+`ToolDispatchGuard`, and the guard is driven with counted fake bodies: a first call runs, a repeated
+completed call returns the stored result and the body runs exactly once, an uncertain write is
+refused with nothing executed, an uncertain read may run, a throwing body is recorded as
+COMPLETED_ERROR, cancellation records CANCELLED_DURING_EXECUTION, a blank or null call id gets a
+fresh id instead of a reuse, two concurrent calls sharing one id run the side effect once, and a
+restored ledger still blocks the duplicate.
+
+**Reconciliation, narrowly and honestly.** `ToolReconciler.fileWrites` proves one class of operation
+by reading the target back: if the file already holds the requested content the call is recorded as
+COMPLETED_OK with that evidence and no write happens. If the content differs, or the file cannot be
+read, nothing is claimed and the refusal stands. Every other operation class (commands, git, network,
+package installs, archives) has no reliable read-only evidence, so it keeps the refusal and says so.
+This is deliberately not a generic reconciler: assuming success is how a side effect gets applied
+twice.
+
+**Continuation is in the composer.** `ChatContinueBar` sits above the input strip and reads
+`session.continuationUi`. It appears only for NEEDS_CONTINUATION or CONTINUING; while running the
+button disappears rather than disabling, so a second tap cannot start a second continuation. The
+bar calls `continueTurn()`, which appends to the cut-off answer behind the visible seam.
+
+**Limits.** No Compose UI harness in this project, so the composer is verified through
+`isVisibleContinuation` and `continuationStateForTest` rather than by rendering. The AgentTools
+wrapper is exercised through the guard it delegates to, not through a shell-backed tool body.
+Restored-session continuation relies on the existing sticky incomplete flag; `lastFinish` itself is
+per-session memory.
+
+Tests added this pass: ToolDispatchGuardTest 10, ToolReconcilerTest 6, ContinueBarStateTest 8,
+CopilotLifecycleTest 5.
+Full suite: 2325 tests, 1 failure (BackupTarTest.failureMessageCarriesRealTotals, root-sandbox only).

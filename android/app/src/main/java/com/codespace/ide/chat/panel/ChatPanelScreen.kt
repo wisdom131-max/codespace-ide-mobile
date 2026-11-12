@@ -358,6 +358,12 @@ private fun ChatBody(
         },
         note = stagedNote,
     )
+    // Area 6: the Continue action sits directly above the composer, so it reads as a property of
+    // the answer the composer is about to extend.
+    ChatContinueBar(
+        state = session.continuationUi.collectAsState().value,
+        onContinue = { session.continueTurn() },
+    )
     ChatInputComposer(
             value = input,
             onValueChange = { input = it },
