@@ -206,3 +206,16 @@ live credential was used for any integration, and the first real call is the own
 | Bitbucket Server / Data Center | Not integrated | different API and host |
 | Jira Server | Not integrated | different auth model |
 | Azure DevOps, Jenkins, CircleCI, Travis, Buildkite, Drone | Not integrated | - |
+
+## Items 35-38 - started 2026-11-11, closed 2026-11-12
+
+| Item | Scope | State |
+|---|---|---|
+| 35 | Long-context management (`ContextDigest`, `retrieve`, `SessionHandoff` evidence) | **Done** - `364392a`, CI `43296311098` |
+| 36 | Cross-provider retry intelligence (`ProviderRetry` + failure-card verdict) | **Done** - `364392a`, `71b4ea4`, fix `6db186f`, CI `43305393117` |
+| 37 | L20 credential-free one-hop redirect + `run_logs` | **Done** - `485fecc`, verified `6db186f`; stub-tested |
+| 38 | Final documentation | **Done** - this commit |
+| 34 | Voice Chat | **Paused** (owner has not defined the experience) |
+
+Next candidates, none started: live verification of one external service (needs a real token and a decision
+about storing it), a real RAR fixture, credential refresh (L21).

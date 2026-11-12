@@ -109,3 +109,17 @@ root-owned sandbox - L15), 3 skipped. CI: 43286546707 (`6aeb5c8`), 43289533532 (
 2. `Not tested` rows stay. They are the honest half of the matrix and the reason L2 and L18 exist.
 3. No row may say "CI" unless the run ID and verdict are named in Evidence.
 4. Never write "verified" for stub tests.
+
+## Items 35-37 (added 2026-11-12)
+
+| Feature | Test class | Cases | Evidence |
+|---|---|---|---|
+| Context extraction and provenance | `ContextDigestTest` | 12 | local + CI `43296311098` |
+| Handoff evidence fields | `SessionHandoffTest` | +4 | local + CI `43296311098` |
+| Turn-level retry policy | `ProviderRetryTest` | 9 | local + CI `43305393117` |
+| Retry verdict text | `ChatFailureAdviceTest` | 4 | local + CI `43305393117` |
+| Failure card stays single and last | `ChatSessionMappingTest`, `KeyFailoverMappingTest` | 7 | CI `43305393117` (caught the regression) |
+| Credential-free redirect / L20 | `ServiceApiTest` | 36 | local + CI `43305393117`; stub only |
+
+/L15 `BackupTarTest.failureMessageCarriesRealTotals` remains the single known sandbox failure and is
+unmodified.
