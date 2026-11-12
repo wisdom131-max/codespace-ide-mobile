@@ -67,17 +67,17 @@ internal object ToolMetaIndex {
         "debug_evaluate" to ToolMeta(ToolCategory.AGENT, listOf("debug", "evaluate", "expression", "watch"), destructive = true),
         "zip_create" to ToolMeta(
             ToolCategory.FILES,
-            listOf("zip", "archive", "compress", "bundle", "pack", "tar"),
+            listOf("zip", "archive", "compress", "bundle", "pack", "tar", "jar", "apk"),
             destructive = true,
         ),
         "zip_extract" to ToolMeta(
             ToolCategory.FILES,
-            listOf("zip", "unzip", "extract", "unpack", "archive", "decompress"),
+            listOf("zip", "unzip", "extract", "unpack", "archive", "decompress", "rar", "zst", "zstd", "tar", "gz", "7z"),
             destructive = true,
         ),
         "zip_list" to ToolMeta(
             ToolCategory.FILES,
-            listOf("zip", "archive", "contents", "entries", "list", "unzip", "inspect"),
+            listOf("zip", "archive", "contents", "entries", "list", "unzip", "inspect", "rar", "zst", "zstd", "7z", "tar"),
         ),
         "checksum" to ToolMeta(ToolCategory.FILES, listOf("hash", "sha256", "md5", "verify", "integrity", "digest")),
         "npm_info" to ToolMeta(ToolCategory.WEB, listOf("npm", "node", "package", "registry", "version", "dependencies", "license")),

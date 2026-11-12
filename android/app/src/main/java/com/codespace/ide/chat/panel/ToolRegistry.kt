@@ -959,7 +959,10 @@ internal object ToolRegistry {
             displayName = "Creating an archive",
             description = "Create a .zip from workspace files and directories, relative to the " +
                 "project. Reports files, directories, size and anything skipped. Refuses to " +
-                "overwrite an existing archive unless overwrite is true.",
+                "overwrite an existing archive unless overwrite is true. .zip (including .apk, " +
+                ".jar and .aab) is the ONLY format this tool writes: it cannot produce .tar, " +
+                ".tar.gz, .7z, .rar or .zst, and RAR creation is ruled out permanently by the " +
+                "reader's licence.",
             schema = OBJ + ",\"required\":[\"sources\",\"dest\"],\"properties\":{" +
                 "\"sources\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}," +
                 "\"dest\":{\"type\":\"string\"},\"overwrite\":{\"type\":\"boolean\"}}}",
@@ -970,7 +973,11 @@ internal object ToolRegistry {
             displayName = "Extracting an archive",
             description = "Extract an archive inside the workspace. Refuses entries that would escape " +
                 "the destination, enforces size and entry limits, and does not overwrite existing " +
-                "files unless overwrite is true. Says so when only part of the archive was written.",
+                "files unless overwrite is true. Says so when only part of the archive was written. " +
+                "Extracts .zip/.apk/.jar/.aab, .tar, .tar.gz, .tar.zst, .gz, .bz2, .xz, .rar " +
+                "(RAR 4.x and 5.x) and .zst (one stream, one file). Does NOT extract 7z or RAR 1.4 - " +
+                "both list only - and cannot open any password-protected archive, because no " +
+                "password prompt exists yet.",
             schema = OBJ + ",\"required\":[\"archive\"],\"properties\":{" +
                 "\"archive\":{\"type\":\"string\"},\"dest\":{\"type\":\"string\"}," +
                 "\"overwrite\":{\"type\":\"boolean\"}}}",
