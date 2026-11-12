@@ -33,17 +33,26 @@ Waves are derived from steps, so concurrency is bounded by the plan rather than 
 a `[N chars omitted]` marker. MCP ranking is capped at 8 picks. Nothing here loads a whole file: the
 planner names tools, and the existing bounded tools do the reading.
 
-## Not wired yet, stated plainly
+## What is wired, and what is not
 
-The components are pure and tested but **not yet called from `AgentTools.executeTool`**. Wiring
-planning into the dispatch loop changes when and how tools run, and doing that on the same commit as
-the components would make a red CI ambiguous between a reasoning bug and a dispatch regression. The
-integration points are known: `ToolPlanner.plan` at request start for multi-step tasks,
-`ToolResultCheck.note` appended to a tool result before it enters the transcript, and
-`ToolFailurePolicy` consulted where `ToolRetry` is consulted today. This is the remaining P4 work.
+Wired into the production dispatch path (`AgentTools.executeTool`):
+
+- **Result validation.** Every tool result passes through `ToolResultCheck.check` and gains its
+  note when there is something to say. A truncated read now carries "do not describe the operation
+  as complete"; an "error:" or "command not found" inside a normal return is marked for read-back.
+  A legitimately empty grep adds nothing.
+- **Failure interpretation.** The exception path classifies the failure and appends the one action
+  that can follow it, so the model is told whether this was a permission refusal, a missing
+  prerequisite, an argument problem or a timeout.
+
+**Not wired: planning and dependency-aware execution.** `ToolPlanner` is implemented and tested, but
+it changes when and how tools run, so it needs its own commit against a known-green base rather than
+riding along with validation. The integration point is the request loop in `ChatSession`, where the
+plan would land as Thinking Tree steps. Until then the model still chooses its own order; nothing in
+this commit pretends otherwise.
 
 ## Tests
 
-Planner 12, result check 10, failure policy 10, MCP picker 9, context trim 7 (48 new). Full suite
+Planner 12, result check 11, failure policy 10, MCP picker 9, context trim 7 (48 new). Full suite
 2440 tests, 1 failure: `BackupTarTest.failureMessageCarriesRealTotals`, root-sandbox only, green in
 CI.

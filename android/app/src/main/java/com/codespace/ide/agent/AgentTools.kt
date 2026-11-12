@@ -241,8 +241,15 @@ You can use multiple tools in sequence. When done, give a final summary.
         args: JSONObject,
         context: Context,
         callId: String? = null,
-    ): String = dispatchGuard(context).run(callId, name, args.withPathHints()) {
-        executeToolBody(name, args, context)
+    ): String {
+        val result = dispatchGuard(context).run(callId, name, args.withPathHints()) {
+            executeToolBody(name, args, context)
+        }
+        // P4.3: a body returning is not the same as the operation working. The verdict is appended
+        // as a note for the model, so a truncation or an "error:" inside a normal return cannot be
+        // read as success. Silence when there is nothing to say.
+        val note = ToolResultCheck.note(name, ToolResultCheck.check(name, result))
+        return if (note.isBlank()) result else result + "\n" + note
     }
 
     /**
@@ -599,7 +606,11 @@ You can use multiple tools in sequence. When done, give a final summary.
                 } else "Unknown tool: $name"
             }
         } catch (e: Exception) {
-            "Error executing $name: ${e.message}"
+            // P4.4: name the failure's kind and the one action that can follow it, instead of a
+            // bare message the model has to guess about. Retrying is never suggested for an
+            // unknown-outcome side effect; that decision stays with the dispatch guard.
+            val decision = ToolFailurePolicy.classify(e.message ?: "", e)
+            "Error executing $name: ${e.message}\n" + ToolFailurePolicy.guidance(decision, keptResults = 0)
         }
     }
 

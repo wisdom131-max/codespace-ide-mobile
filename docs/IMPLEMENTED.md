@@ -229,6 +229,7 @@ above.
 | P4 Tool intelligence: failure policy | `ToolFailurePolicy` classifies nine failure kinds into retry / alternative / ask-user / stop, caps attempts at 2, and refuses any retry of a side effect whose outcome is unknown | this commit |
 | P4 Tool intelligence: MCP selection | `McpToolPicker` ranks server tools by task relevance, drops disconnected and stale definitions, keeps server ownership, and stamps every pick `requiresApproval = true` | this commit |
 | P4 Tool intelligence: context | `ToolContextTrim` keeps evidence and the latest result per tool, drops repeats, compresses long output with an explicit omitted-chars marker, and respects a total budget | this commit |
+| P4 wiring: result validation and failure interpretation | `ToolResultCheck` and `ToolFailurePolicy` run inside `AgentTools.executeTool`, so every result carries its verdict note and every exception carries its classified action | this commit |
 | ZIP tools (`zip_create`, `zip_extract`, `zip_list`) | `java.util.zip` engine with ZIP-Slip, symlink, overwrite and resource limits; bounded listing | see `ZIP-TOOLS-2026-11-12.md` |
 | Package Intelligence (`npm_info`, `pypi_info`, `lockfile_parse`) | Registry metadata plus nine offline lockfile formats, injectable fetcher, untrusted-text flagging | see `PACKAGE-INTELLIGENCE-2026-11-12.md` |
 Note on counts: Wave 1 is recorded as twelve tools in total (three in Group A, nine in B/C/D). The

@@ -61,6 +61,14 @@ class ToolResultCheckTest {
         assertTrue(c.successful)
     }
 
+    @Test fun theRealTruncationMarkerFromTheDispatchPathIsRecognised() {
+        // The marker AgentTools actually emits (truncMark) must trip the check, or the wiring is
+        // decorative. Text copied from the shipped constant, not invented here.
+        val marker = "body\n[... TRUNCATED \u2014 showing 4000 of 90000 chars. Ask for a specific range/section to see the rest.]"
+        assertTrue(ToolResultCheck.isTruncated(marker))
+        assertEquals(ToolResultCheck.Verdict.INCOMPLETE, ToolResultCheck.check("read_file", marker).verdict)
+    }
+
     @Test fun aDiffThatIsEmptyForGitStatusIsLegitimate() {
         assertEquals(ToolResultCheck.Verdict.LEGITIMATELY_EMPTY, ToolResultCheck.check("git_status", "").verdict)
     }
