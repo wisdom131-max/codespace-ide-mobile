@@ -153,6 +153,7 @@ green CI run.
 
 | 14a | Copilot areas 5 and 6 (reliability, output limits) | COMPLETE - dispatch wired, finish verdict persisted and restored, composer has no UI harness | `COPILOT-AREAS-4-6-2026-11-12.md` |
 | 15 | P1 Research improvements (1.1 multi-source, 1.2 source intelligence, 1.3 contradictions, 1.4 synthesis, 1.5 recovery) | COMPLETE - all five stages landed and tested; 92 research tests | `IMPLEMENTED.md` |
+| 16 | P4 Advanced Tool Intelligence (planning, dependency-aware execution, validation, failure policy, MCP selection, context, output bounds) | IN PROGRESS - components and tests landed; dispatch wiring outstanding | `IMPLEMENTED.md` |
 | 14b | VN Code Dynamic Tool Loading System (Lean Tool Mode, Tool Relevance, Tool Groups, On-Demand Tool Loading) | COMPLETE - all four branches; authoritative table in `IMPLEMENTED.md` | `IMPLEMENTED.md` |
 
 Completed and therefore closed (do not reopen without evidence of a regression): Thinking Tree,
