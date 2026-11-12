@@ -209,7 +209,24 @@ internal fun McpServersSection() {
                 cfg = cfg,
                 expanded = expanded == cfg.name,
                 running = McpClientManager.isRunning(cfg.name),
+                state = McpClientManager.stateOf(context, cfg),
                 toolCount = McpClientManager.cachedToolsFor(cfg.name).size,
+                // LIFECYCLE: connect is explicit, so "nothing happened" is never the answer.
+                onConnect = {
+                    busy = true
+                    scope.launch(Dispatchers.IO) {
+                        val err = McpClientManager.connect(context, cfg.name)
+                        reload()
+                        checkRuntimes()
+                        busy = false
+                        statusLine = err ?: ("Connected to " + cfg.name)
+                    }
+                },
+                onDisconnect = {
+                    McpClientManager.disconnect(cfg.name)
+                    statusLine = "Disconnected from " + cfg.name
+                    scope.launch(Dispatchers.IO) { reload() }
+                },
                 onToggleEnabled = { enabled ->
                     scope.launch(Dispatchers.IO) {
                         McpClientManager.setEnabled(context, cfg.name, enabled)
@@ -304,15 +321,18 @@ internal fun McpServersSection() {
                 TextButton(
                     onClick = {
                         scope.launch(Dispatchers.IO) {
-                            val ok = McpClientManager.addServer(context, addName, addCommand)
+                            // LIFECYCLE: the refusal now names the rule that failed
+                            // ("names cannot start with mcp_", "already exists", ...) instead of
+                            // one sentence that covered five different mistakes.
+                            val err = McpClientManager.addServerChecked(context, addName, addCommand)
                             reload()
                             checkRuntimes()
-                            if (ok) {
+                            if (err == null) {
                                 showAddDialog = false
                                 addName = ""; addCommand = ""
                                 statusLine = "Server added"
                             } else {
-                                statusLine = "Add failed: name blank or duplicate"
+                                statusLine = err
                             }
                         }
                     },
@@ -372,7 +392,10 @@ private fun McpServerRow(
     cfg: McpClientManager.McpServerConfig,
     expanded: Boolean,
     running: Boolean,
+    state: McpClientManager.ServerState,
     toolCount: Int,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
     onExpand: () -> Unit,
     onRemove: () -> Unit,
@@ -410,10 +433,31 @@ private fun McpServerRow(
                 modifier = Modifier.height(24.dp),
             )
         }
+        // LIFECYCLE: the state is spelled out. "Configured but not started" and "died" look
+        // identical as a grey dot, and they need different actions.
+        Text(
+            when (state) {
+                McpClientManager.ServerState.DISABLED -> "Disabled - turned off, tools withheld"
+                McpClientManager.ServerState.STOPPED -> "Not connected - starts on Connect"
+                McpClientManager.ServerState.RUNNING -> "Connected - " + toolCount + " tool(s) available"
+                McpClientManager.ServerState.FAILED -> "Connection failed - see the error above"
+            },
+            fontSize = 9.sp,
+            color = if (running) McpGreen else McpMuted,
+        )
 
         if (expanded) {
             Spacer(Modifier.height(6.dp))
             Row {
+                if (state == McpClientManager.ServerState.RUNNING) {
+                    TextButton(onClick = onDisconnect, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+                        Text("Disconnect", fontSize = 10.sp, color = McpRed)
+                    }
+                } else {
+                    TextButton(onClick = onConnect, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+                        Text("Connect", fontSize = 10.sp, color = McpGreen)
+                    }
+                }
                 TextButton(onClick = onAddEnv, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
                     Text("Add env var", fontSize = 10.sp, color = McpAccent)
                 }

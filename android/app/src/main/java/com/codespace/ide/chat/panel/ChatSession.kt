@@ -748,7 +748,9 @@ class ChatSession internal constructor(
         // prompt in exactly one place: the offer plus whatever was loaded.
         val loaded = ToolLoadout.extra()
         val mcpLoaded = loaded.filter { it.startsWith("mcp_") }
-        val mcpDocs = if (sendTools && mcpLoaded.isNotEmpty() && appContext != null) {
+        // LIFECYCLE: a null appContext no longer erases the docs - the manager answers from its
+        // last enabled snapshot, so a headless continuation still sees the tool it discovered.
+        val mcpDocs = if (sendTools && mcpLoaded.isNotEmpty()) {
             try {
                 com.codespace.ide.agent.McpClientManager.docsFor(appContext, mcpLoaded)
             } catch (e: Exception) {

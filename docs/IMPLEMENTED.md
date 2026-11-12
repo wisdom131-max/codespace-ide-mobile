@@ -175,3 +175,25 @@ session and still need their commit id pasted here.
 - Cumulative device round covering the two menus, notebook cell view, skills, settings, preview
   and browser, plus this round: formatter relocation, one GitHub sign-in (fe22784), keyboard-up
   chip (6f2e9a2), edit-tool protocol (6f2e9a2).
+
+## Durable project record (backfill 2026-11-12)
+
+The rows above record features as they landed. This section records the SEVEN projects the owner
+signed off as complete, with the commit each one finished on, so a later session can find the work
+without reading chat history. Verified against `git log` on 2026-11-12; CI figures are the runs that
+verdict each commit.
+
+| Project | Delivered | Commit / CI |
+|---|---|---|
+| Thinking Tree and chevron behaviour | One task tree per conversation; chevron-only collapse on activity rows | 8eff1e2 (tree), chevron rule in activity rows; wave-level CI green |
+| Autonomous Research R1-R6 | Bounded fetch + real page text, evidence ledger, continuation across rounds | 02a959f GREEN (research) / 02a959f-adjacent wave runs |
+| Clickable research sources | Sources an answer used, tappable, survive a reopen | f5a840d GREEN |
+| Dynamic Tool Loading | ToolMeta index, lean offer, relevance scoring, progressive load, `tool_search` | 32e6b36 GREEN 3634 |
+| Wave 0 tool + connector permission work | Connector use always asks; 14 malformed schemas made valid; allowlisted commands | 19bed0c (connector), 94dc434 (schemas), 887fb27 (commands) GREEN |
+| Wave 1 Group A | Prompt carries only the offered tools; lean set; budget guard | 1b3340a GREEN 43069139441 |
+| Wave 1 Groups B/C/D | Nine inspection tools: file_stat, disk_usage, copy_path, terminal_list, terminal_kill, job_status, coverage_read, entity_schema_read, memory_search | 3f4c72a GREEN 43082361285 |
+| Facts and Persistent Memory | Structured facts with scope/provenance/conflicts, Facts screen, prompt retrieval, `memory_search` over the store | 1c10232 GREEN 43125607414 |
+
+Note on counts: Wave 1 is recorded as twelve tools in total (three in Group A, nine in B/C/D). The
+Group A commit carried the prompt/toolset rework that the rest of Wave 1 depended on, which is why
+the twelve are spread across two commits rather than four.

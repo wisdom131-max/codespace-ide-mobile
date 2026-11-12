@@ -127,3 +127,33 @@ Still pending (this entry lists all of it, per the continuity rule):
 6. Roadmap table below: P1-P6 and Source Control items remain untouched.
 7. Device round for this batch (batched, not per-step, per the mobile-data rule).
 
+
+## Agreed implementation order (owner, 2026-11-12)
+
+Status legend unchanged: DONE / IN PROGRESS / PENDING / DEFERRED. This block is the single answer to
+"what comes next", and it is ordered: an item is not started before the one above it finishes with a
+green CI run.
+
+| # | Item | Status | Where |
+|---|---|---|---|
+| 1 | MCP and Connectors Lifecycle | IN PROGRESS → see `MCP-LIFECYCLE-2026-11-12.md` | this project |
+| 2 | ZIP tools (reuse the IDE environment's existing extraction) | PENDING | - |
+| 3 | Package Intelligence: `npm_info`, `pypi_info`, `lockfile_parse` | PENDING | - |
+| 4 | Git tools and recovery | PENDING | - |
+| 5 | `/tools` picker improvements | PENDING | - |
+| 6 | Chat presentation improvements | PENDING | - |
+| 7 | Research improvements | PENDING | - |
+| 8 | Conversation reliability | PENDING | - |
+| 9 | Output limits and truncation | PENDING | 712a596 (token budget) is the groundwork |
+| 10 | Document and media intelligence | PENDING | - |
+| 11 | Debugger integration | PENDING | - |
+| 12 | Advanced agent capabilities | PENDING | - |
+| 13 | Deferred research, media and persistent-execution features | DEFERRED | - |
+| 14 | Consolidated phone testing (one batched device round) | PENDING | `P5-DEVICE-CHECKLIST.md` |
+
+Completed and therefore closed (do not reopen without evidence of a regression): Thinking Tree,
+Research R1-R6, clickable sources, Dynamic Tool Loading, Wave 0 permission work, Wave 1 Groups A-D,
+Facts and Persistent Memory. Their commits are recorded in `IMPLEMENTED.md`.
+
+No device testing has been run for any item in this roadmap. Phone testing is item 14, batched once,
+and nothing in this document may claim otherwise.

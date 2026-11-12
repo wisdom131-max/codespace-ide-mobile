@@ -80,6 +80,24 @@ object McpClientManager {
 
     fun configFile(context: Context): File = File(context.filesDir, "mcp_servers.json")
 
+    /**
+     * LIFECYCLE (2026-11-12): a corrupt config used to parse to an EMPTY list, which looks exactly
+     * like "you have no servers" and invites the user to re-add them by hand. The file is now moved
+     * aside (never deleted) so the servers can be recovered by hand, and the failure is logged.
+     */
+    private fun quarantineConfig(f: File, reason: String) {
+        try {
+            val dest = File(f.parentFile, f.name + ".corrupt-" + System.currentTimeMillis())
+            if (f.renameTo(dest)) {
+                AppOutputLog.log("mcp config unreadable ($reason); moved to ${dest.name}", CHANNEL)
+            } else {
+                AppOutputLog.log("mcp config unreadable ($reason); could not move it aside", CHANNEL)
+            }
+        } catch (e: Exception) {
+            AppOutputLog.log("mcp config quarantine failed: ${e.message}", CHANNEL)
+        }
+    }
+
     fun loadConfig(context: Context): MutableList<McpServerConfig> {
         val f = configFile(context)
         if (!f.exists()) return mutableListOf()
@@ -100,7 +118,10 @@ object McpClientManager {
                 list.add(cfg)
             }
             list
-        } catch (_: Exception) { mutableListOf() }
+        } catch (e: Exception) {
+            quarantineConfig(f, e.message ?: "parse error")
+            mutableListOf()
+        }
     }
 
     fun saveConfig(context: Context, list: List<McpServerConfig>) {
@@ -117,7 +138,11 @@ object McpClientManager {
                 o.put("envKeys", ek)
                 arr.put(o)
             }
-            configFile(context).writeText(arr.toString(2))
+            // LIFECYCLE: the config was the last non-atomic JSON write in this family. A truncated
+            // write loses every server's command and env mapping, so it goes through AtomicJson.
+            if (!com.codespace.ide.util.AtomicJson.write(configFile(context), arr.toString(2))) {
+                AppOutputLog.log("mcp config save FAILED (write refused or disk full)", CHANNEL)
+            }
         } catch (e: Exception) {
             AppOutputLog.log("mcp config save failed: ${e.message}", CHANNEL)
         }
@@ -142,15 +167,22 @@ object McpClientManager {
     fun serverNameRaw(name: String): String =
         name.trim().lowercase().replace(Regex("[^a-z0-9_]"), "_")
 
-    fun addServer(context: Context, name: String, command: String): Boolean {
-        val clean = serverNameRaw(name)
-        if (clean.isBlank() || command.isBlank()) return false
+    fun addServer(context: Context, name: String, command: String): Boolean =
+        addServerChecked(context, name, command) == null
+
+    /**
+     * LIFECYCLE: the add path with the reason it refused. The old Boolean gave the UI one sentence
+     * ("name blank or duplicate") for five different mistakes; every refusal now names the rule that
+     * failed so the user can fix it without guessing.
+     */
+    fun addServerChecked(context: Context, name: String, command: String): String? {
         val list = loadConfig(context)
-        if (list.any { it.name == clean }) return false
+        McpLifecycle.validateNewServer(name, command, list.map { it.name })?.let { return it }
+        val clean = name.trim()
         list.add(McpServerConfig(clean, command.trim()))
         saveConfig(context, list)
-        AppOutputLog.log("mcp server added: $clean -> ${command.trim()}", CHANNEL)
-        return true
+        AppOutputLog.log("mcp server added: $clean", CHANNEL)
+        return null
     }
 
     fun removeServer(context: Context, name: String) {
@@ -185,12 +217,14 @@ object McpClientManager {
         saveConfig(context, list)
     }
 
-    fun setCommand(context: Context, name: String, command: String) {
+    fun setCommand(context: Context, name: String, command: String): String? {
+        McpLifecycle.validateCommand(command)?.let { return it }
         val list = loadConfig(context)
-        val cfg = list.find { it.name == name } ?: return
+        val cfg = list.find { it.name == name } ?: return "No server named $name"
         cfg.command = command.trim()
         stopServer(name) // restart required for a changed command
         saveConfig(context, list)
+        return null
     }
 
     // ── Env vars via SecureTokenStore (encrypted, Keystore-backed) ─────────
@@ -271,7 +305,16 @@ object McpClientManager {
 
     /** First-chat lazy discovery: spawn each enabled server once, tools/list, cache docs. */
     suspend fun ensureDiscovered(context: Context) {
-        if (discoveryStarted) return
+        // LIFECYCLE (2026-11-12): the latch alone made a fresh session depend on the cache being
+        // warm. Discovery is skipped only when EVERY enabled server already has tools (or has a
+        // recorded failure) - so a new process, or a cache that was pruned after a server died,
+        // re-discovers instead of reporting "no MCP tools" to a user who just connected one.
+        val enabled = loadConfig(context).filter { it.enabled }
+        if (enabled.isEmpty()) return
+        if (discoveryStarted && enabled.all { cfg ->
+                cachedToolsFor(cfg.name).isNotEmpty() ||
+                    lastDiscoveryErrors.value.containsKey(cfg.name)
+            }) return
         // P2c: do NOT latch discoveryStarted up front — refreshServerTools sets it
         // only after a server actually handshakes. A REFUSED trust prompt leaves
         // it unset, so the next chat retries discovery once trust is granted.
@@ -336,7 +379,9 @@ object McpClientManager {
                 cfg.name,
                 toolName,
                 t.optString("description"),
-                t.optJSONObject("inputSchema") ?: JSONObject(),
+                // LIFECYCLE: an external schema is arbitrary JSON; normalise it so the definition
+                // line never claims arguments that do not exist.
+                McpLifecycle.sanitizeSchema(t.optJSONObject("inputSchema")),
             )
         }
         discoveryStarted = true
@@ -366,6 +411,56 @@ object McpClientManager {
         } catch (_: Exception) {
             // No prompts capability (or errored) — normal, keep cache empty.
         }
+    }
+
+    /**
+     * LIFECYCLE (2026-11-12): an explicit connect, so the panel can start a server and report the
+     * outcome instead of waiting for a chat to happen to touch it. Returns null on success, else the
+     * reason (runtime missing, trust refused, handshake failure).
+     */
+    suspend fun connect(context: Context, name: String): String? = withContext(Dispatchers.IO) {
+        val cfg = loadConfig(context).find { it.name == name }
+            ?: return@withContext "No server named $name"
+        if (!cfg.enabled) return@withContext "Server '$name' is disabled - enable it first."
+        val runtime = requiredRuntime(cfg.command)
+        if (runtime != null && !runtimePresent(context, runtime)) {
+            return@withContext "Needs $runtime inside the Ubuntu session."
+        }
+        if (!com.codespace.ide.security.TrustState.awaitTrusted(
+                context, com.codespace.ide.security.TrustState.activeProjectRoot(context))) {
+            return@withContext "The project is not trusted yet, so the server was not started."
+        }
+        try {
+            val s = session(context, cfg)
+            if (!s.initialized) s.initialize()
+            refreshServerTools(context, cfg)
+            if (!s.alive) return@withContext "The server exited during the handshake."
+            null
+        } catch (e: Exception) {
+            "Connection failed: " + (e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    /** LIFECYCLE: disconnect = stop the process AND drop the tools it was offering. */
+    fun disconnect(name: String) {
+        stopServer(name)
+        AppOutputLog.log("mcp server disconnected: $name", "mcp")
+    }
+
+    /**
+     * LIFECYCLE: the state the panel renders. "Configured but never started" is its own state - it
+     * looks the same as "disconnected" on screen, but the row says which, because "why is this
+     * server not running" is the question users actually have.
+     */
+    enum class ServerState { DISABLED, STOPPED, RUNNING, FAILED }
+
+    fun stateOf(context: Context, cfg: McpServerConfig): ServerState {
+        if (!cfg.enabled) return ServerState.DISABLED
+        val s = sessions[cfg.name]
+        if (s == null) return if (lastDiscoveryErrors.value.containsKey(cfg.name)) ServerState.FAILED
+                          else ServerState.STOPPED
+        if (s.alive) return ServerState.RUNNING
+        return ServerState.FAILED
     }
 
     fun stopServer(name: String) {
@@ -431,6 +526,17 @@ object McpClientManager {
 
     fun cachedToolNames(context: Context): List<String> {
         val cfgs = loadConfig(context)
+        // LIFECYCLE: a session that DIED (crash, kill, OOM) leaves its tools in the cache, so the
+        // model keeps being offered tools nobody is listening for. Prune those before answering -
+        // but only servers whose session we actually saw die, never servers that have not started.
+        val dead = sessions.filterValues { !it.alive }.keys
+        if (dead.isNotEmpty()) {
+            val stale = McpLifecycle.pruneStale(toolsCache.mapValues { it.value.server }, dead)
+            for (key in stale) {
+                toolsCache.remove(key)
+                AppOutputLog.log("mcp: dropped stale tool $key (server not running)", CHANNEL)
+            }
+        }
         return toolsCache.entries
             .filter { entry ->
                 val cfg = cfgs.find { it.name == entry.value.server }
@@ -456,8 +562,18 @@ object McpClientManager {
      * whole server's schema landing in the prompt. Enabled servers and per-tool disables are still
      * enforced by [cachedToolNames], so this can never describe a tool that cannot run.
      */
-    fun docsFor(context: Context, names: List<String>): String {
-        val enabled = cachedToolNames(context).toSet()
+    /**
+     * LIFECYCLE: [context] is nullable because the prompt is also composed on paths that have no
+     * Activity (a headless continuation). Those paths used to get EMPTY docs - a tool the model had
+     * just discovered rendered as "not available". The last enabled set is remembered whenever a
+     * real context is available, so the null case answers from that snapshot instead of lying.
+     */
+    private val lastEnabled = java.util.concurrent.atomic.AtomicReference<Set<String>>(emptySet())
+
+    fun docsFor(context: Context?, names: List<String>): String {
+        val enabled = if (context != null) {
+            cachedToolNames(context).toSet().also { lastEnabled.set(it) }
+        } else lastEnabled.get()
         val wanted = names.filter { it in enabled }
         if (wanted.isEmpty()) {
             val disabled = names.filter { it.startsWith("mcp_") }
@@ -513,11 +629,20 @@ object McpClientManager {
     suspend fun callTool(fullName: String, args: JSONObject, context: Context): String {
         return withContext(Dispatchers.IO) {
             val cfgs = loadConfig(context)
-            val cfg = cfgs.firstOrNull { fullName.startsWith("mcp_${it.name}_") }
-            if (cfg == null) {
+            // LIFECYCLE: the server is taken from the cache entry that OWNS this tool, and only
+            // falls back to a longest-name match. Prefix-first-match routes incorrectly as soon as
+            // one server's name is a prefix of another's.
+            val route = McpLifecycle.resolve(
+                fullName,
+                cfgs.map { it.name },
+                toolsCache[fullName]?.server,
+            )
+            if (route == null) {
                 return@withContext "Unknown MCP tool: $fullName (no matching configured server)"
             }
-            val tool = fullName.removePrefix("mcp_${cfg.name}_")
+            val cfg = cfgs.firstOrNull { it.name == route.server }
+                ?: return@withContext "Unknown MCP server: ${route.server} (configured tools are stale)"
+            val tool = route.tool
             if (!cfg.enabled) return@withContext "MCP server '${cfg.name}' is disabled."
             if (cfg.disabledTools.contains(tool)) {
                 return@withContext "Tool '$tool' is disabled on MCP server '${cfg.name}'."
@@ -552,7 +677,7 @@ object McpClientManager {
                                 if (toolName.startsWith("mcp_")) continue
                                 toolsCache[prefix + toolName] = ExternalTool(
                                     cfg.name, toolName, t.optString("description"),
-                                    t.optJSONObject("inputSchema") ?: JSONObject(),
+                                    McpLifecycle.sanitizeSchema(t.optJSONObject("inputSchema")),
                                 )
                             }
                         }
@@ -571,13 +696,17 @@ object McpClientManager {
                     }
                 }
                 val text = sb.toString().trim()
+                // LIFECYCLE: the server's own words are untrusted DATA. They are wrapped in a
+                // boundary so the model can tell server output from its instructions, and capped so
+                // one runaway response cannot eat the context window.
                 if (result.optBoolean("isError", false)) {
-                    "MCP tool error: ${text.ifBlank { "(empty error body)" }}"
+                    McpLifecycle.wrapResult(cfg.name, tool,
+                        "ERROR: " + text.ifBlank { "(empty error body)" })
                 } else {
-                    text.ifBlank { "(no output)" }
+                    McpLifecycle.wrapResult(cfg.name, tool, text.ifBlank { "(no output)" })
                 }
             } catch (e: Exception) {
-                "MCP call failed: ${e.message}"
+                McpLifecycle.describeFailure(cfg.name, tool, e.message ?: e.javaClass.simpleName)
             }
         }
     }
