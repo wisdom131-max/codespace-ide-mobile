@@ -35,14 +35,17 @@ internal object ChatStatusMapping {
      * 2 minutes before trying again."), and it does not retry by itself. RateLimitMessage holds
      * that copy and the reasoning, so a wording change has one home.
      */
-    fun rowForError(err: ChatError): ChatRowModel = when (err) {
+    fun rowForError(err: ChatError, advice: String? = null): ChatRowModel = when (err) {
         is ChatError.OutOfCredits -> ChatRowModel.NoCredits
         is ChatError.Network -> ChatRowModel.Offline
         is ChatError.OverBudget -> ChatRowModel.OverBudget(err.detail)
         is ChatError.RateLimited -> ChatRowModel.Failed(
             RateLimitMessage.VERDICT, RateLimitMessage.detail(err.retryAfterSec), err.retryable,
         )
-        else -> ChatRowModel.Failed(err.userVerdict, "", err.retryable)
+        // Item 36: the retry verdict rides INSIDE the failure card, as its detail. A second row
+        // would break the one-error-one-card contract the UI and its tests rely on (and would be
+        // the last row, so "is the last row a failure card" would answer no for an actual failure).
+        else -> ChatRowModel.Failed(err.userVerdict, advice ?: "", err.retryable)
     }
 
     /**

@@ -1061,10 +1061,10 @@ class ChatSession internal constructor(
                 // (chatErrorConfirmationPart.ts:79). The wait is whatever the provider said.
                 // The already-streamed prefix is kept, so a pressed Retry continues from it.
                 retryKeepLen = streamBuf.length
-                appendRow(ChatStatusMapping.rowForError(err))
-                // Item 36: say whether pressing Retry can work. Null for a retryable failure, so a
-                // fixed key is not greeted with a stale warning.
-                ChatFailureAdvice.noteFor(err)?.let { note -> appendRow(ChatRowModel.InfoNote(note)) }
+                // Item 36: the retry verdict is folded INTO the failure card rather than appended
+                // as a second row - one error, one card, and the card stays the last row so the
+                // failure is still visibly the last thing that happened.
+                appendRow(ChatStatusMapping.rowForError(err, ChatFailureAdvice.noteFor(err)))
                 ui.value = ui.value.copy(streaming = false)
             }
         }
