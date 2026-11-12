@@ -135,8 +135,21 @@ object ArchiveEngine {
                         if (items.size < cap) items.add(Item(e.name, e.size, e.isDirectory, false))
                     }
                 }
-            } else if (kind == Kind.GZ || kind == Kind.BZ2 || kind == Kind.XZ || kind == Kind.ZST) {
-                // A plain compressor wraps ONE file; the archive name is the only entry.
+            } else if (kind == Kind.GZ || kind == Kind.BZ2 || kind == Kind.XZ) {
+                // A plain compressor wraps ONE file; the archive name is the only entry. When the
+                // payload turns out to be a tar, say that instead of offering a nameless blob - the
+                // behaviour P2.B shipped, restored here after a rewrite of this block dropped it.
+                val one = File(file.name.substringBeforeLast('.', file.name))
+                if (kindOfGuessIsTar(file, kind)) {
+                    total = 0
+                    problem = "The compressed payload is a tar archive: open it as .tar.gz for full listing."
+                } else {
+                    total = 1
+                    if (offset <= 0) items.add(Item(one.name, file.length(), false, false))
+                }
+            } else if (kind == Kind.ZST) {
+                // A bare .zst is one stream: one entry, named after the file. (.tar.zst never reaches
+                // here - resolvedKind() reports TAR_ZST and it is walked as a tar above.)
                 total = 1
                 if (offset <= 0) items.add(Item(ZstdEngine.singleEntryName(file), file.length(), false, false))
             } else {
@@ -232,6 +245,15 @@ object ArchiveEngine {
     private fun contains(root: File, target: File): Boolean = try {
         val r = root.canonicalPath + File.separator
         target.canonicalPath.startsWith(r)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** True when a single-file compressor is wrapping a tar. Reads 512 bytes, never the whole file. */
+    private fun kindOfGuessIsTar(file: File, kind: Kind): Boolean = try {
+        val head = ByteArray(512)
+        decompress(file, kind).use { it.read(head) }
+        String(head, 257, 5, Charsets.US_ASCII) == "ustar"
     } catch (e: Exception) {
         false
     }

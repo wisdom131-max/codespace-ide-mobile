@@ -163,7 +163,10 @@ object RarEngine {
                     refused = "Total size limit reached; extraction stopped after " + written.size + " file(s)."
                     return@withArchive false
                 }
-                ratioRefusal(header)?.let { skipped.add(name + " (" + it + ")"); continue }
+                // Not "?.let { continue }": a break/continue across an inline lambda is experimental
+                // in this Kotlin version and fails the compile outright.
+                val ratio = ratioRefusal(header)
+                if (ratio != null) { skipped.add(name + " (" + ratio + ")"); continue }
                 if (target.exists() && !overwrite) { skipped.add(name + " (exists)"); continue }
                 target.parentFile?.mkdirs()
                 val sink = CountingSink(FileOutputStream(target), ZipEngine.MAX_ENTRY_BYTES)
