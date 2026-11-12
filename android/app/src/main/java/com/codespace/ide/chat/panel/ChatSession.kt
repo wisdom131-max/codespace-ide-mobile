@@ -1183,6 +1183,45 @@ class ChatSession internal constructor(
                 planNames, calls.map { it.argumentsJson })
             val answered = HashMap<Int, String>()
             com.codespace.ide.agent.ToolBatchPlan.note(batchPlan, planNames)?.let { appendRow(ChatRowModel.InfoNote(it)) }
+            // P4.B: execution itself is coordinated. Independent read-only calls run together and
+            // bounded; every write, command, connector and MCP call stays strictly sequential and in
+            // plan order. Answers are collected by index, so the transcript order is the plan's.
+            suspend fun executeOnce(idx: Int): String = try {
+                com.codespace.ide.agent.AgentTools.executeTool(
+                    calls[idx].name, org.json.JSONObject(calls[idx].argumentsJson), ctx)
+            } catch (t: Throwable) {
+                "FAILED: " + (t.message ?: "unknown error")
+            }
+
+            fun noteAndRecord(idx: Int, out: String) {
+                val call = calls[idx]
+                appendRow(ChatRowModel.InfoNote(
+                    (if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
+                        AgentToolWire.firstLine(out)
+                ))
+                answered[idx] = out
+                // Guard (c): a tool result joins the echo corpus for the REST of this turn.
+                turnContext.add(out)
+                results.append(AgentToolWire.resultMessage(call, out))
+                results.append("\n\n")
+                // Pinned when the result carries a citation marker: evidence the answer must keep.
+                resultItems.add(
+                    com.codespace.ide.agent.ToolContextTrim.Item(
+                        call.name, out, pinned = out.contains("[S"),
+                    ),
+                )
+            }
+
+            val readyReads = ArrayList<Int>()
+            suspend fun flushReads() {
+                if (readyReads.isEmpty()) return
+                val queued = readyReads.toList()
+                readyReads.clear()
+                val outs = com.codespace.ide.agent.ToolExecutionCoordinator.collect(
+                    listOf(queued)) { i -> executeOnce(i) }
+                for (i in queued) noteAndRecord(i, outs.getValue(i))
+            }
+
             for (idx in planOrder) {
                 val call = calls[idx]
                 val summary = AgentToolWire.summary(call)
@@ -1240,28 +1279,18 @@ class ChatSession internal constructor(
                     results.append("\n\n")
                     continue
                 }
-                val out = try {
-                    com.codespace.ide.agent.AgentTools.executeTool(
-                        call.name, org.json.JSONObject(call.argumentsJson), ctx)
-                } catch (t: Throwable) {
-                    "FAILED: " + (t.message ?: "unknown error")
+                if (com.codespace.ide.agent.ToolExecutionCoordinator.parallelSafe(call.name)) {
+                    readyReads.add(idx)
+                    if (readyReads.size >= com.codespace.ide.agent.ToolExecutionCoordinator.MAX_PARALLEL_READS) {
+                        flushReads()
+                    }
+                    continue
                 }
-                appendRow(ChatRowModel.InfoNote(
-                    (if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
-                        AgentToolWire.firstLine(out)
-                ))
-                answered[idx] = out
-                // Guard (c): a tool result joins the echo corpus for the REST of this turn.
-                turnContext.add(out)
-                results.append(AgentToolWire.resultMessage(call, out))
-                results.append("\n\n")
-                // Pinned when the result carries a citation marker: evidence the answer must keep.
-                resultItems.add(
-                    com.codespace.ide.agent.ToolContextTrim.Item(
-                        call.name, out, pinned = out.contains("[S"),
-                    ),
-                )
+                // Anything not provably independent runs alone, after everything queued.
+                flushReads()
+                noteAndRecord(idx, executeOnce(idx))
             }
+            flushReads()
             // Internal continuation: no user bubble, same key and model, no re-sent files.
             streamBuf.setLength(0)
             failoverAttempts = 0
