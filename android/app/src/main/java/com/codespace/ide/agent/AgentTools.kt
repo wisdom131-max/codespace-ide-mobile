@@ -2130,6 +2130,12 @@ You can use multiple tools in sequence. When done, give a final summary.
                     com.codespace.ide.agent.research.SiteAdapters.feed(page.body, url)
                 com.codespace.ide.agent.research.SiteAdapters.Kind.GENERIC -> ""
             }
+            // P8: an ignored header is stated, never silently dropped.
+            pendingHeaderNote?.let { note ->
+                pendingHeaderNote = null
+                if (note.isNotBlank()) return note + "\n\n" +
+                    if (adapted.isNotBlank()) adapted else page.body.take(5000)
+            }
             val extracted = if (adapted.isNotBlank()) adapted else {
                 when {
                     page.contentType.contains("json", true) -> prettyJson(page.body, 5000)
@@ -2174,6 +2180,9 @@ You can use multiple tools in sequence. When done, give a final summary.
         val truncated: Boolean,
     )
 
+    /** P8: set by [fetchOnce] so the tool result can say which headers were ignored, and why. */
+    @Volatile private var pendingHeaderNote: String? = null
+
     private fun fetchOnce(url: String, headersJson: String?, maxBytes: Int = 1_500_000): Fetched {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 10000
@@ -2181,7 +2190,20 @@ You can use multiple tools in sequence. When done, give a final summary.
         conn.instanceFollowRedirects = true
         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) VNCode/1.0")
         conn.setRequestProperty("Accept-Language", "en;q=0.9")
-        headersJson?.let { JSONObject(it).let { h -> for (k in h.keys()) conn.setRequestProperty(k, h.getString(k)) } }
+        // P8: the caller's headers pass a policy first. Transport-owned and credential-bearing
+        // names are never forwarded, a casing collision sends neither copy, and whatever the caller
+        // asked for is never echoed back with its value in it.
+        pendingHeaderNote = null
+        headersJson?.let { raw ->
+            val asked = LinkedHashMap<String, String>()
+            runCatching {
+                val h = JSONObject(raw)
+                for (k in h.keys()) asked[k] = h.optString(k)
+            }.onFailure { pendingHeaderNote = "Custom headers were not valid JSON; none were sent." }
+            val decision = com.codespace.ide.agent.net.HeaderPolicy.apply(asked)
+            for ((k, v) in decision.accepted) conn.setRequestProperty(k, v)
+            if (decision.rejected.isNotEmpty()) pendingHeaderNote = decision.summary()
+        }
         val code = conn.responseCode
         val contentType = (conn.contentType ?: "").lowercase()
         val stream = if (code in 200..299) conn.inputStream else conn.errorStream
