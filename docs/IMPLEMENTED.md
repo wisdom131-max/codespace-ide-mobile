@@ -220,6 +220,7 @@ Thinking Tree and not the chevron activity grouping, both of which are separate 
 above.
 
 
+| P1 Research: selection and dedupe | `ResearchPlanner` collapses equivalent URLs and mirrored titles, caps a host at two slots while others remain, turns uncovered question terms into bounded follow-up queries, and refuses rounds past `MAX_ROUNDS` or the search budget; wired into `web_search` | `1f0ba59` baseline, this commit |
 | ZIP tools (`zip_create`, `zip_extract`, `zip_list`) | `java.util.zip` engine with ZIP-Slip, symlink, overwrite and resource limits; bounded listing | see `ZIP-TOOLS-2026-11-12.md` |
 | Package Intelligence (`npm_info`, `pypi_info`, `lockfile_parse`) | Registry metadata plus nine offline lockfile formats, injectable fetcher, untrusted-text flagging | see `PACKAGE-INTELLIGENCE-2026-11-12.md` |
 Note on counts: Wave 1 is recorded as twelve tools in total (three in Group A, nine in B/C/D). The

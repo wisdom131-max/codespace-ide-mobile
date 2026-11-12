@@ -2231,14 +2231,33 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         val report = com.codespace.ide.agent.research.SearchRecovery.run(query, fetcher)
         val labels = report.attempts.map { it.label() }
-        if (report.results.isNotEmpty() && query.isNotBlank()) {
-            report.results.take(5).forEach { r ->
+        // Project 1.1: the same page reached twice, or a mirror of one already cited, is ONE
+        // source. The planner decides which hits are distinct and keeps no host over two slots,
+        // then the ledger refuses anything it has already recorded for this task.
+        val seenUrls = com.codespace.ide.agent.research.SourceLedger.all().map { it.url }.toSet()
+        val candidates = report.results.mapIndexed { i, r ->
+            com.codespace.ide.agent.research.ResearchPlanner.Candidate(r.url, r.title, r.snippet, i)
+        }
+        val picked = com.codespace.ide.agent.research.ResearchPlanner.select(
+            candidates, seenUrls = seenUrls, limit = 5,
+        )
+        if (picked.isNotEmpty() && query.isNotBlank()) {
+            picked.forEach { c ->
                 com.codespace.ide.agent.research.SourceLedger.note(
-                    url = r.url, title = r.title, retrievedAt = nowStamp(), excerpt = r.snippet,
+                    url = c.url, title = c.title, retrievedAt = nowStamp(), excerpt = c.snippet,
                 )
             }
         }
-        return com.codespace.ide.agent.research.ResultQuality.render(report.results, labels)
+        val pickedUrls = picked.map { it.url }.toHashSet()
+        val kept = report.results.filter { it.url in pickedUrls }
+        val dropped = report.results.size - kept.size
+        val body = com.codespace.ide.agent.research.ResultQuality.render(kept, labels)
+        return if (dropped > 0) {
+            body + "\n\n" + dropped + " further result(s) were the same page or a duplicate of a " +
+                "source already retrieved, so they were not listed twice."
+        } else {
+            body
+        }
     }
 
     // ── Media ────────────────────────────────────────────────────────────
