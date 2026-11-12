@@ -24,11 +24,18 @@ object LocalConnectorCall {
         val url: String,
         val headers: Map<String, String>,
         val body: String?,
+        /** Non-null when the call must not be sent at all (P8.B). Carries the reason, not a surprise. */
+        val refusal: String? = null,
     )
 
+    // P8.B: redirects are NOT followed. Following one would carry the credential headers to whatever
+    // host the redirect names, which is the same leak as posting an absolute URL - just decided by the
+    // server instead of the model.
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
 
     /**
@@ -53,11 +60,22 @@ object LocalConnectorCall {
             "firebase" -> headers["X-Goog-Api-Key"] = key
             else -> headers["Authorization"] = "Bearer $key"
         }
+        // P8.B: the guard runs on the URL that will actually be called, before any key is attached to
+        // a header map that could leave the device.
+        val decision = CredentialHostGuard.check(service, trimmedBase, url)
+        if (decision is CredentialHostGuard.Decision.Refused) {
+            return Spec(method.uppercase(), url, emptyMap(), null, decision.reason)
+        }
         return Spec(method.uppercase(), url, headers, body?.takeIf { it.isNotBlank() })
     }
 
     /** Runs the call, returning the body on success and the status line plus body on failure. */
-    fun execute(spec: Spec): String = try {
+    fun execute(spec: Spec): String {
+        spec.refusal?.let { return it }
+        return run(spec)
+    }
+
+    private fun run(spec: Spec): String = try {
         val builder = Request.Builder().url(spec.url)
         spec.headers.forEach { (name, value) -> builder.header(name, value) }
         if (spec.method == "GET" || spec.method == "HEAD") {
@@ -68,7 +86,12 @@ object LocalConnectorCall {
         client.newCall(builder.build()).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
             val shown = if (text.length > 6000) text.take(6000) + "..." else text
-            if (resp.isSuccessful) {
+            if (resp.isRedirect) {
+                val where = resp.header("Location")?.let { CredentialHostGuard.check("", spec.url, it) }
+                "Stopped: the service redirected this call to " + (resp.header("Location") ?: "another URL") +
+                    ", and following it would send the credential to a host it does not belong to. " +
+                    "Call the final URL directly, or fix the configured base URL."
+            } else if (resp.isSuccessful) {
                 shown
             } else {
                 "HTTP " + resp.code + " for " + spec.method + " " + spec.url + ": " +
