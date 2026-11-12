@@ -79,4 +79,18 @@ object HeaderPolicy {
     /** A one-line, safe description of what was sent, for a tool result or a log. */
     fun describe(headers: Map<String, String>): String =
         if (headers.isEmpty()) "" else redact(headers).entries.joinToString(", ") { it.key + ": " + it.value }
+
+    /**
+     * P8 - MAY THE CALLER'S HEADERS FOLLOW THIS REDIRECT?
+     *
+     * A redirect is where a header for one API silently becomes a header for someone else's server.
+     * They survive only when the hop stays on the same host over https; anything else drops them.
+     */
+    fun redirectKeepsCustomHeaders(fromUrl: String, toUrl: String): Boolean {
+        fun hostOf(u: String): String? = runCatching { java.net.URL(u).host?.lowercase() }.getOrNull()
+        fun secure(u: String): Boolean = runCatching { java.net.URL(u).protocol == "https" }.getOrDefault(false)
+        val from = hostOf(fromUrl) ?: return false
+        val to = hostOf(toUrl) ?: return false
+        return from == to && secure(toUrl)
+    }
 }

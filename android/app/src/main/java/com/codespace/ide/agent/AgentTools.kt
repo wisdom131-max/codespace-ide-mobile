@@ -2111,6 +2111,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         if (target.refused) return target.reason
         return try {
             val page = fetchOnce(url, headersJson)
+            // P8: an ignored or dropped header is stated in the result, never silently swallowed.
+            val headerNote = page.note?.takeIf { it.isNotBlank() }?.plus("\n\n").orEmpty()
             if (page.code !in 200..299) {
                 val hint = when (page.code) {
                     404 -> " The page does not exist at this URL."
@@ -2118,7 +2120,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                     429 -> " The site is rate limiting; wait or use another source."
                     else -> ""
                 }
-                return "HTTP ${page.code} for $url" + hint
+                return headerNote + "HTTP ${page.code} for $url" + hint
             }
             val kind = com.codespace.ide.agent.research.SiteAdapters.kindOf(url, page.contentType, page.body)
             val adapted = when (kind) {
@@ -2129,12 +2131,6 @@ You can use multiple tools in sequence. When done, give a final summary.
                 com.codespace.ide.agent.research.SiteAdapters.Kind.FEED ->
                     com.codespace.ide.agent.research.SiteAdapters.feed(page.body, url)
                 com.codespace.ide.agent.research.SiteAdapters.Kind.GENERIC -> ""
-            }
-            // P8: an ignored header is stated, never silently dropped.
-            pendingHeaderNote?.let { note ->
-                pendingHeaderNote = null
-                if (note.isNotBlank()) return note + "\n\n" +
-                    if (adapted.isNotBlank()) adapted else page.body.take(5000)
             }
             val extracted = if (adapted.isNotBlank()) adapted else {
                 when {
@@ -2157,6 +2153,7 @@ You can use multiple tools in sequence. When done, give a final summary.
             )
             val fenced = com.codespace.ide.agent.research.Untrusted.fence(url, extracted)
             buildString {
+                append(headerNote)
                 append("[").append(src.id).append("] ").append(page.contentType.ifBlank { "text" })
                 append(" · ").append(page.bytes).append(" bytes read")
                 if (page.truncated) append(" · TRUNCATED at the size limit")
@@ -2178,48 +2175,9 @@ You can use multiple tools in sequence. When done, give a final summary.
         val title: String,
         val published: String,
         val truncated: Boolean,
+        /** P8: what the caller should know about its headers (ignored, stripped on redirect). */
+        val note: String? = null,
     )
-
-    /** P8: set by [fetchOnce] so the tool result can say which headers were ignored, and why. */
-    @Volatile private var pendingHeaderNote: String? = null
-
-    private fun fetchOnce(url: String, headersJson: String?, maxBytes: Int = 1_500_000): Fetched {
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.connectTimeout = 10000
-        conn.readTimeout = 30000
-        conn.instanceFollowRedirects = true
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) VNCode/1.0")
-        conn.setRequestProperty("Accept-Language", "en;q=0.9")
-        // P8: the caller's headers pass a policy first. Transport-owned and credential-bearing
-        // names are never forwarded, a casing collision sends neither copy, and whatever the caller
-        // asked for is never echoed back with its value in it.
-        pendingHeaderNote = null
-        headersJson?.let { raw ->
-            val asked = LinkedHashMap<String, String>()
-            runCatching {
-                val h = JSONObject(raw)
-                for (k in h.keys()) asked[k] = h.optString(k)
-            }.onFailure { pendingHeaderNote = "Custom headers were not valid JSON; none were sent." }
-            val decision = com.codespace.ide.agent.net.HeaderPolicy.apply(asked)
-            for ((k, v) in decision.accepted) conn.setRequestProperty(k, v)
-            if (decision.rejected.isNotEmpty()) pendingHeaderNote = decision.summary()
-        }
-        val code = conn.responseCode
-        val contentType = (conn.contentType ?: "").lowercase()
-        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-        val raw = stream?.use { it.readNBytes(maxBytes) } ?: ByteArray(0)
-        val charset = Regex("charset=([A-Za-z0-9_\\-]+)").find(contentType)
-            ?.groupValues?.get(1)?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() }
-            ?: Charsets.UTF_8
-        val body = String(raw, charset)
-        val truncated = raw.size >= maxBytes
-        val title = if (contentType.contains("html", true))
-            com.codespace.ide.agent.research.HtmlExtractor.extract(body, url, 200).title else ""
-        val published = Regex("(?is)property=\"article:published_time\"[^>]*content=\"([^\"]+)\"")
-            .find(body)?.groupValues?.get(1)
-            ?: Regex("(?is)\"datePublished\":\"([^\"]+)\"`").find(body)?.groupValues?.get(1).orEmpty()
-        return Fetched(code, contentType, body, raw.size, title, published.take(31), truncated)
-    }
 
     private fun readablePage(html: String, url: String): String {
         val page = com.codespace.ide.agent.research.HtmlExtractor.extract(html, url, 6000)
@@ -2235,6 +2193,84 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         return sb.toString()
     }
+
+    /**
+     * P8 - one fetch, with the caller's headers on a leash and a redirect that cannot carry them
+     * somewhere else.
+     *
+     * `HttpURLConnection` re-sends its request properties on a redirect automatically. That is how a
+     * header supplied for `api.example.com` ends up at `evil.example` after a 302. So when the caller
+     * supplied headers this function follows redirects ITSELF, drops the custom set the moment the
+     * host changes, and reports that it did. Without custom headers it keeps the platform's own
+     * redirect handling, which is faster and has nothing to leak.
+     */
+    private fun fetchOnce(url: String, headersJson: String?, maxBytes: Int = 1_500_000): Fetched {
+        val asked = LinkedHashMap<String, String>()
+        var note: String? = null
+        headersJson?.let { raw ->
+            runCatching {
+                val h = JSONObject(raw)
+                for (k in h.keys()) asked[k] = h.optString(k)
+            }.onFailure { note = "Custom headers were not valid JSON; none were sent." }
+        }
+        val decision = com.codespace.ide.agent.net.HeaderPolicy.apply(asked)
+        if (decision.rejected.isNotEmpty()) note = decision.summary()
+        var headers: Map<String, String> = decision.accepted
+        var current = url
+        var hops = 0
+        while (true) {
+            val conn = (URL(current).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 10000
+                readTimeout = 30000
+                // Manual following ONLY when the caller brought headers: that is the case with a leak.
+                instanceFollowRedirects = headers.isEmpty()
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) VNCode/1.0")
+                setRequestProperty("Accept-Language", "en;q=0.9")
+                for ((k, v) in headers) setRequestProperty(k, v)
+            }
+            val code = conn.responseCode
+            val location = runCatching { conn.getHeaderField("Location") }.getOrNull()
+            if (headers.isNotEmpty() && code in 300..399 && !location.isNullOrBlank()) {
+                hops++
+                if (hops > MAX_FETCH_REDIRECTS) {
+                    conn.disconnect()
+                    return Fetched(0, "", "", 0, "", "", false,
+                        (note?.plus(" ") ?: "") + "Stopped after " + MAX_FETCH_REDIRECTS +
+                            " redirects without reaching content.")
+                }
+                val next = runCatching { URL(URL(current), location).toString() }.getOrNull()
+                conn.disconnect()
+                if (next == null) {
+                    return Fetched(code, "", "", 0, "", "", false,
+                        (note?.plus(" ") ?: "") + "Redirect target could not be read: " + location)
+                }
+                if (!com.codespace.ide.agent.net.HeaderPolicy.redirectKeepsCustomHeaders(current, next)) {
+                    headers = emptyMap()
+                    note = (note?.plus(" ") ?: "") +
+                        "Custom headers were dropped after a redirect to another host, so they could not leak."
+                }
+                current = next
+                continue
+            }
+            val contentType = (conn.contentType ?: "").lowercase()
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val raw = stream?.use { it.readNBytes(maxBytes) } ?: ByteArray(0)
+            val charset = Regex("charset=([A-Za-z0-9_\\-]+)").find(contentType)
+                ?.groupValues?.get(1)?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() }
+                ?: Charsets.UTF_8
+            val body = String(raw, charset)
+            val truncated = raw.size >= maxBytes
+            val title = if (contentType.contains("html", true))
+                com.codespace.ide.agent.research.HtmlExtractor.extract(body, current, 200).title else ""
+            val published = Regex("(?is)property=\"article:published_time\"[^>]*content=\"([^\"]+)\"")
+                .find(body)?.groupValues?.get(1)
+                ?: Regex("(?is)\"datePublished\":\"([^\"]+)\"`").find(body)?.groupValues?.get(1).orEmpty()
+            return Fetched(code, contentType, body, raw.size, title, published.take(31), truncated, note)
+        }
+    }
+
+    /** P8: how many hops a caller-header fetch will follow before giving up. */
+    private val MAX_FETCH_REDIRECTS = 4
 
     private fun prettyJson(body: String, max: Int): String = try {
         val trimmed = body.trim()

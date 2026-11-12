@@ -55,4 +55,25 @@ class HeaderPolicyTest {
         val d = HeaderPolicy.apply(mapOf("   " to "x", "Accept" to "*/*"))
         assertEquals(1, d.accepted.size)
     }
+
+    @Test fun aSameHostHttpsRedirectKeepsTheCallersHeaders() {
+        assertTrue(HeaderPolicy.redirectKeepsCustomHeaders(
+            "https://api.example.com/v1/items", "https://api.example.com/v1/items/2"))
+    }
+
+    @Test fun aCrossHostRedirectDropsThemSoTheyCannotLeak() {
+        assertFalse(HeaderPolicy.redirectKeepsCustomHeaders(
+            "https://api.example.com/v1", "https://evil.example/collect"))
+        assertFalse(HeaderPolicy.redirectKeepsCustomHeaders(
+            "https://api.example.com/v1", "https://api.example.com.evil.example/x"))
+    }
+
+    @Test fun aDowngradeToPlainHttpIsNeverAllowedToCarryThem() {
+        assertFalse(HeaderPolicy.redirectKeepsCustomHeaders(
+            "https://api.example.com/v1", "http://api.example.com/v1"))
+    }
+
+    @Test fun anUnparseableRedirectTargetKeepsNothing() {
+        assertFalse(HeaderPolicy.redirectKeepsCustomHeaders("https://api.example.com/v1", "not a url"))
+    }
 }
