@@ -980,8 +980,9 @@ internal object ToolRegistry {
             name = "zip_list",
             displayName = "Listing an archive",
             description = "List an archive's entries with sizes and flag unsafe paths, without " +
-                "extracting anything. Opens .zip/.apk/.jar/.aab, .tar, .tar.gz, .gz, .bz2, .xz and .7z; " +
-                "says so honestly for .rar and .zst. Bounded: page through with offset.",
+                "extracting anything. Opens .zip/.apk/.jar/.aab, .tar, .tar.gz, .tar.zst, .gz, .bz2, " +
+                ".xz, .7z and .rar (RAR 1.4/4.x/5.x). A bare .zst holds one stream, so it lists as a " +
+                "single entry; only .tar.zst has an entry list. Bounded: page through with offset.",
             schema = OBJ + ",\"required\":[\"archive\"],\"properties\":{" +
                 "\"archive\":{\"type\":\"string\"},\"offset\":{\"type\":\"integer\"}," +
                 "\"limit\":{\"type\":\"integer\"}}}",

@@ -11,9 +11,18 @@ gives the model the words. Tables arrive as flattened lines, slide boundaries ar
 becomes rows of text rather than cells. The agent can read a document; it cannot reason about a table it
 cannot see. Structure-aware reading is a separate, sizeable piece of work per format.
 
-**L2. RAR and ZST archives are refused, not read.** The build ships no reader for either: RAR needs a
-licence-restricted library and ZST a native decoder. `archive` says so explicitly rather than failing
-silently, which is the honest floor (see `docs/P2-B-ARCHIVE-ENGINE-2026-11-12.md`).
+**L2. RAR and ZST archives are read, with named exceptions (PARTIALLY RESOLVED, P2.C).** This entry
+used to say both were refused outright. They are now read: RAR 1.4/4.x/5.x list through junrar
+(`RarEngine`) and 4.x/5.x extract under the same containment, entry-count, byte and ratio ceilings as
+ZIP; Zstandard decodes as a stream, and `.tar.zst` gets a real entry list through the same tar walk as
+`.tar.gz` (`ZstdEngine`). What is still NOT supported, said out loud rather than attempted: **RAR 1.4
+extraction** (junrar parses those headers only, so listing works and extraction refuses with a reason);
+**password-protected RAR of any variant** (no archive-password prompt exists yet); **RAR symlink
+entries** (junrar exposes no link flag, and links are never created because the reader only writes
+regular files); **RAR dictionaries above 64 MiB** (capped so a 4 GiB window cannot be allocated on a
+phone); and **solid RAR archives are unverified** until the device round - sequential extraction is
+junrar's job, and this build has not exercised it. Neither format can be CREATED here: reading only, by
+design (see the UnRAR licence note in `docs/P2-C-RAR-ZST-2026-11-12.md`).
 
 **L3. Images are downscaled before the model sees them.** A phone photo sent straight through would be
 rejected by the payload budget, so `view_image` downscales. Fine detail in a screenshot may not survive.

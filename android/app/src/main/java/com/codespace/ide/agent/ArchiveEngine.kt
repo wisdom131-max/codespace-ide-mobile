@@ -20,22 +20,25 @@ import com.codespace.ide.util.ZipEngine
  * already ships a library for, and REFUSES the ones it does not, with a reason. Claiming 7z or RAR
  * support without the code behind it is worse than saying no.
  *
- * Supported here: ZIP (including APK, JAR and AAB, which are ZIPs), TAR, TAR.GZ/TGZ, GZ, BZ2, XZ, 7Z.
- * Not supported, and said so: RAR (needs a licence-restricted library) and ZST (needs a native
- * decoder). Everything else is UNKNOWN and is reported as unrecognised, never guessed at.
+ * Supported here: ZIP (including APK, JAR and AAB, which are ZIPs), TAR, TAR.GZ/TGZ, GZ, BZ2, XZ, 7Z,
+ * and - as of P2.C - RAR (1.4, 4.x and 5.x through junrar) and Zstandard, both as a bare `.zst` stream
+ * and as `.tar.zst`. A format this build cannot read is still named as unsupported rather than guessed
+ * at; today that is none of the common ones, so [unsupportedReason] answers null for everything [SUPPORTED].
  */
 object ArchiveEngine {
 
-    enum class Kind { ZIP, TAR, TAR_GZ, GZ, BZ2, XZ, SEVEN_Z, RAR, ZST, UNKNOWN }
+    enum class Kind { ZIP, TAR, TAR_GZ, TAR_ZST, GZ, BZ2, XZ, SEVEN_Z, RAR, ZST, UNKNOWN }
 
     /** The formats this build can open. Everything else is named as unsupported. */
-    val SUPPORTED = setOf(Kind.ZIP, Kind.TAR, Kind.TAR_GZ, Kind.GZ, Kind.BZ2, Kind.XZ, Kind.SEVEN_Z)
+    val SUPPORTED = setOf(
+        Kind.ZIP, Kind.TAR, Kind.TAR_GZ, Kind.TAR_ZST,
+        Kind.GZ, Kind.BZ2, Kind.XZ, Kind.SEVEN_Z,
+        Kind.RAR, Kind.ZST,
+    )
 
     fun supported(kind: Kind): Boolean = kind in SUPPORTED
 
     fun unsupportedReason(kind: Kind): String? = when (kind) {
-        Kind.RAR -> "RAR is not supported in this build: the reader needs a licence-restricted library."
-        Kind.ZST -> "Zstandard (.zst) is not supported in this build: it needs a native decoder."
         Kind.UNKNOWN -> "Not a recognised archive: the file signature matches no supported format."
         else -> null
     }
@@ -87,9 +90,19 @@ object ArchiveEngine {
         }
     }
 
+    /**
+     * The kind, refined by looking at the payload where the signature alone is not enough: a `.zst`
+     * holds one stream, and whether that stream is a tar decides if there is an entry list at all.
+     * Costs 512 decompressed bytes, never a whole file.
+     */
+    fun resolvedKind(file: File): Kind {
+        val kind = kindOf(file)
+        return if (kind == Kind.ZST && ZstdEngine.payloadIsTar(file)) Kind.TAR_ZST else kind
+    }
+
     /** List entries, bounded, with the total reported so a truncated list is never mistaken for all. */
     fun list(file: File, offset: Int = 0, limit: Int = ZipEngine.DEFAULT_LIST): Listing {
-        val kind = kindOf(file)
+        val kind = resolvedKind(file)
         unsupportedReason(kind)?.let { return Listing(kind, emptyList(), 0, it) }
         if (kind == Kind.ZIP) {
             return when (val out = ZipEngine.list(file, offset, limit)) {
@@ -102,30 +115,40 @@ object ArchiveEngine {
                 is ZipEngine.ListOutcome.Failed -> Listing(kind, emptyList(), 0, out.reason)
             }
         }
+        if (kind == Kind.RAR) {
+            val entries = RarEngine.list(file, offset, limit)
+            return Listing(kind, entries.items, entries.total, entries.note)
+        }
         val cap = limit.coerceIn(1, ZipEngine.MAX_LIST)
         val items = ArrayList<Item>()
         var total = 0
         var problem: String? = null
         try {
-            open(file, kind).use { stream ->
-                if (stream is TarArchiveInputStream) {
+            if (kind == Kind.SEVEN_Z) {
+                // Previously this returned an empty list and the caller reported "the archive is empty",
+                // which was untrue for every 7z. Enumerate for real; the ceiling still applies.
+                SevenZFile(file).use { z ->
+                    for (e in z.entries) {
+                        total++
+                        if (total > ZipEngine.MAX_ENTRIES) { problem = "Entry limit reached; the list is partial."; break }
+                        if (total <= offset) continue
+                        if (items.size < cap) items.add(Item(e.name, e.size, e.isDirectory, false))
+                    }
+                }
+            } else if (kind == Kind.GZ || kind == Kind.BZ2 || kind == Kind.XZ || kind == Kind.ZST) {
+                // A plain compressor wraps ONE file; the archive name is the only entry.
+                total = 1
+                if (offset <= 0) items.add(Item(ZstdEngine.singleEntryName(file), file.length(), false, false))
+            } else {
+                open(file, kind).use { stream ->
+                    val tar = stream as? TarArchiveInputStream ?: return@use
                     while (true) {
-                        val e = stream.nextEntry ?: break
+                        val e = tar.nextEntry ?: break
                         total++
                         if (total > ZipEngine.MAX_ENTRIES) { problem = "Entry limit reached; the list is partial."; break }
                         if (total <= offset) continue
                         if (items.size < cap) items.add(Item(e.name, e.size, e.isDirectory, e.isSymbolicLink))
                     }
-                }
-            }
-            if (kind == Kind.GZ || kind == Kind.BZ2 || kind == Kind.XZ) {
-                // A plain compressor wraps ONE file; the archive name is the only entry.
-                val one = File(file.name.substringBeforeLast('.', file.name))
-                if (kindOfGuessIsTar(file, kind)) {
-                    items.clear(); total = 0
-                    problem = "The compressed payload is a tar archive: open it as .tar.gz for full listing."
-                } else {
-                    items.add(Item(one.name, file.length(), false, false)); total = 1
                 }
             }
         } catch (t: Throwable) {
@@ -139,7 +162,7 @@ object ArchiveEngine {
      * no symlinks, canonical containment under [root], and an explicit overwrite decision.
      */
     fun extract(file: File, root: File, overwrite: Boolean = false, only: List<String> = emptyList()): Extract {
-        val kind = kindOf(file)
+        val kind = resolvedKind(file)
         unsupportedReason(kind)?.let { return Extract(kind, emptyList(), emptyList(), it) }
         if (kind == Kind.ZIP) {
             val out = ZipEngine.extract(file, root, overwrite)
@@ -150,10 +173,22 @@ object ArchiveEngine {
                 failure = if (out.failed.isEmpty()) null else out.failed.first().detail,
             )
         }
+        if (kind == Kind.RAR) return RarEngine.extract(file, root, overwrite, only)
         val written = ArrayList<String>()
         val skipped = ArrayList<String>()
         var totalBytes = 0L
         try {
+            if (kind == Kind.ZST) {
+                // One stream, one file - unless it is a .tar.zst, which never reaches this branch
+                // because resolvedKind() reports it as TAR_ZST and it is walked as a tar below.
+                val target = File(root, ZstdEngine.singleEntryName(file))
+                if (!contains(root, target)) return Extract(kind, written, skipped, "Refused: output escapes the destination.")
+                if (target.exists() && !overwrite) return Extract(kind, written, skipped, "Refused: " + target.name + " already exists (use force).")
+                val out = ZstdEngine.decompressTo(file, target, ZipEngine.MAX_ENTRY_BYTES)
+                out.failure?.let { return Extract(kind, written, skipped, it) }
+                written.add(target.name)
+                return Extract(kind, written, skipped)
+            }
             if (kind == Kind.GZ || kind == Kind.BZ2 || kind == Kind.XZ) {
                 val target = File(root, file.name.substringBeforeLast('.', file.name))
                 if (!contains(root, target)) return Extract(kind, written, skipped, "Refused: output escapes the destination.")
@@ -202,6 +237,7 @@ object ArchiveEngine {
     }
 
     private fun decompress(file: File, kind: Kind): InputStream = when (kind) {
+        Kind.ZST, Kind.TAR_ZST -> ZstdEngine.stream(file)
         Kind.BZ2 -> BZip2CompressorInputStream(buffered(file), true)
         Kind.XZ -> XZCompressorInputStream(buffered(file))
         else -> GzipCompressorInputStream(buffered(file), true)
@@ -211,18 +247,11 @@ object ArchiveEngine {
 
     private fun open(file: File, kind: Kind): java.io.Closeable = when (kind) {
         Kind.TAR -> TarArchiveInputStream(buffered(file))
+        Kind.TAR_ZST -> TarArchiveInputStream(ZstdEngine.stream(file))
         Kind.TAR_GZ -> TarArchiveInputStream(GzipCompressorInputStream(buffered(file), true))
         Kind.GZ, Kind.BZ2, Kind.XZ -> decompress(file, kind)
         Kind.SEVEN_Z -> SevenZFile(file)
         else -> throw IllegalStateException("unsupported: " + kind)
-    }
-
-    private fun kindOfGuessIsTar(file: File, kind: Kind): Boolean = try {
-        val head = ByteArray(512)
-        decompress(file, kind).use { it.read(head) }
-        head.size > 262 && String(head, 257, 5, Charsets.US_ASCII) == "ustar"
-    } catch (e: Exception) {
-        false
     }
 
     private fun copyBounded(input: InputStream, target: File, max: Long): Long {

@@ -264,7 +264,21 @@ dependencies {
     }
     implementation("org.tukaani:xz:1.9")
     implementation("androidx.core:core-splashscreen:1.0.1")
-    implementation("com.github.luben:zstd-jni:1.5.6-4")
+    // P2.C: Zstandard decoding for .zst and .tar.zst. The PLAIN JAR is unusable on Android - it
+    // carries desktop .so files only (linux/, darwin/, win/) and loading it throws
+    // UnsatisfiedLinkError on device. The @aar variant carries jni/{arm64-v8a,armeabi-v7a,x86,x86_64},
+    // which Gradle packages into the APK as normal native libs, so the coordinate asks for the aar.
+    // zstd-jni: BSD-2-Clause; the bundled zstd C library: BSD-3-Clause.
+    implementation("com.github.luben:zstd-jni:1.5.6-4@aar")
+    // P2.C: RAR reading (1.4, 4.x, 5.x). Pure Java, no native parts, Java 8 bytecode.
+    // LICENSE: UnRAR licence - free to use for HANDLING RAR archives, forbidden for building a
+    // RAR-compatible archiver. VN Code only ever reads RAR (RarEngine), so the restriction holds by
+    // construction: there is no RAR creation path anywhere in this app.
+    implementation("com.github.junrar:junrar:8.1.2")
+    // junrar logs through slf4j. Without a provider it prints "No SLF4J providers were found" into
+    // the terminal stream on first use; slf4j-nop (4 KB, no runtime) keeps that noise out of the
+    // agent's own output.
+    implementation("org.slf4j:slf4j-nop:2.0.17")
 
     // Network
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

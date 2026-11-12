@@ -156,7 +156,7 @@ green CI run.
 | 22 | P8 Request headers | DONE for `web_fetch` - blacklist, collision rule, redaction, visible notices | `P8-REQUEST-HEADERS-2026-11-12.md` |
 | 21 | P4.6/4.7 context trim wiring | DONE - trim called at the send boundary; `ToolPlanner` still parked and stated | `P4-CONTEXT-TRIM-WIRING-2026-11-12.md` |
 | 20 | Areas 5 & 6 closing pass | DONE - wrapper-level dispatch tests, reconciliation evidence fix, cross-area lifecycle tests | `COPILOT-AREAS-4-6-2026-11-12.md` |
-| 19 | P2 Documents & Media | IN PROGRESS - document text extraction wired into `read_file`; archive engine already existed and was left alone; archive browser UI not started | `PROJECT-2-DOCUMENTS-MEDIA-2026-11-12.md` |
+| 19 | P2 Documents & Media | IN PROGRESS - document text extraction wired into `read_file`; archive engine covers ZIP/APK/JAR/AAB, TAR, TAR.GZ, TAR.ZST, GZ, BZ2, XZ, 7Z, RAR and ZST (P2.C, read-only); archive browser UI not started | `PROJECT-2-DOCUMENTS-MEDIA-2026-11-12.md`, `P2-C-RAR-ZST-2026-11-12.md` |
 | 18 | P6 Long-context: Continue in Another Session | COMPLETE - handoff engine, overflow action, seeded linked session | `PROJECT-6-SESSION-HANDOFF-2026-11-12.md` |
 | 17 | Duplicate Copilot Reply Prevention (cross-project) | INVESTIGATED + IMPLEMENTED - four lifecycle gaps closed with `ReplyOwnership`; device confirmation still pending | `DUPLICATE-REPLIES-2026-11-12.md` |
 | 16 | P4 Advanced Tool Intelligence | IN PROGRESS - validation, failure interpretation and MCP suggestion wired; planner, coordinator and context trim not yet wired | `IMPLEMENTED.md` |

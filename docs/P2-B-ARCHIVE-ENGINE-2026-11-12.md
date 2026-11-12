@@ -13,8 +13,8 @@ produced nothing useful.
 | TAR.GZ / TGZ | supported | gzip + tar |
 | GZ, BZ2, XZ (single file) | supported | the matching compressor stream |
 | 7Z | supported | commons-compress `SevenZFile` |
-| RAR | **refused with a reason** | needs a licence-restricted library |
-| ZST | **refused with a reason** | needs a native decoder |
+| RAR | supported as of P2.C - see `docs/P2-C-RAR-ZST-2026-11-12.md` | junrar (UnRAR licence, read-only) |
+| ZST / TAR.ZST | supported as of P2.C - see `docs/P2-C-RAR-ZST-2026-11-12.md` | zstd-jni `@aar` (Android natives) |
 
 `commons-compress 1.26.0` is already a project dependency (it backs the cloud backup tar), so this adds
 no dependency and no download.
@@ -42,7 +42,7 @@ tool.
 ## Tests
 
 `ArchiveEngineTest` (11): tar recognised by signature, a gz holding a tar is flagged instead of being
-offered as one anonymous file, a plain gzip is one file, RAR and ZST are refused with a reason, an
+offered as one anonymous file, a plain gzip or .zst is one file, an
 unrecognised file says so, a tar lists its entries with sizes, extraction stays under the destination,
 a traversal entry is skipped and nothing is written outside, an existing file is not overwritten
 without force, selective extraction takes only the named entry, and a gzip payload decompresses to its

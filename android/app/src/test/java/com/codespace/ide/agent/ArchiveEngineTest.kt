@@ -85,12 +85,21 @@ class ArchiveEngineTest {
         assertEquals("notes.txt", listing.items.first().name)
     }
 
-    @Test fun rarAndZstAreRefusedWithAReason() {
-        assertFalse(ArchiveEngine.supported(ArchiveEngine.Kind.RAR))
-        assertFalse(ArchiveEngine.supported(ArchiveEngine.Kind.ZST))
-        assertNotNull(ArchiveEngine.unsupportedReason(ArchiveEngine.Kind.RAR))
-        assertNotNull(ArchiveEngine.unsupportedReason(ArchiveEngine.Kind.ZST))
+    /**
+     * P2.C reversed this test: RAR and Zstandard are supported now, so the old assertions would have
+     * gone red on the first run after the change. What still matters is that a format with no reader
+     * keeps answering with a reason instead of pretending.
+     */
+    @Test fun rarZstAndTarZstAreSupportedAndNothingElsePretends() {
+        assertTrue(ArchiveEngine.supported(ArchiveEngine.Kind.RAR))
+        assertTrue(ArchiveEngine.supported(ArchiveEngine.Kind.ZST))
+        assertTrue(ArchiveEngine.supported(ArchiveEngine.Kind.TAR_ZST))
+        assertNull(ArchiveEngine.unsupportedReason(ArchiveEngine.Kind.RAR))
+        assertNull(ArchiveEngine.unsupportedReason(ArchiveEngine.Kind.ZST))
+        assertNull(ArchiveEngine.unsupportedReason(ArchiveEngine.Kind.TAR_ZST))
         assertNull(ArchiveEngine.unsupportedReason(ArchiveEngine.Kind.TAR))
+        // UNKNOWN is the one kind that must always explain itself.
+        assertNotNull(ArchiveEngine.unsupportedReason(ArchiveEngine.Kind.UNKNOWN))
     }
 
     @Test fun anUnknownFileSaysSoRatherThanGuessing() {
