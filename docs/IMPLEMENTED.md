@@ -195,6 +195,7 @@ verdict each commit.
 | Facts and Persistent Memory | Structured facts with scope/provenance/conflicts, Facts screen, prompt retrieval, `memory_search` over the store | 1c10232 GREEN 43125607414 |
 
 | ZIP tools (`zip_create`, `zip_extract`, `zip_list`) | `java.util.zip` engine with ZIP-Slip, symlink, overwrite and resource limits; bounded listing | see `ZIP-TOOLS-2026-11-12.md` |
+| Package Intelligence (`npm_info`, `pypi_info`, `lockfile_parse`) | Registry metadata plus nine offline lockfile formats, injectable fetcher, untrusted-text flagging | see `PACKAGE-INTELLIGENCE-2026-11-12.md` |
 Note on counts: Wave 1 is recorded as twelve tools in total (three in Group A, nine in B/C/D). The
 Group A commit carried the prompt/toolset rework that the rest of Wave 1 depended on, which is why
 the twelve are spread across two commits rather than four.

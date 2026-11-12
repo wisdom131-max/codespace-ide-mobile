@@ -40,6 +40,8 @@ class ToolRegistryTest {
         // ZIP tools (owner approval 2026-11-12): listing an archive writes nothing, so it belongs
         // to the read wave. zip_create and zip_extract write and stay out of ASK.
         "zip_list",
+        // Package Intelligence (2026-11-12): registry lookups and lockfile inspection write nothing.
+        "npm_info", "pypi_info", "lockfile_parse",
     )
 
     // --- registration parity -------------------------------------------------------
@@ -58,9 +60,9 @@ class ToolRegistryTest {
         // allowlisted dispatcher that replaces the hidden run_vscode_command concept.
         // 2026-11-11 (Wave 1 Group A): 92 = 89 + json_query, csv_parse, base64_codec.
         // 2026-11-11 (Wave 1 Groups B/C/D): 101 = 92 + the nine filesystem/job/insight tools.
-        // 2026-11-12 (ZIP tools): 104 = 101 + zip_create, zip_extract, zip_list.
-        assertEquals("every registered tool is listed exactly once", 104, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 104, ToolRegistry.names().toSet().size)
+        // 2026-11-12: 107 = 101 + zip_create/zip_extract/zip_list + npm_info/pypi_info/lockfile_parse.
+        assertEquals("every registered tool is listed exactly once", 107, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 107, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -266,6 +268,10 @@ class ToolRegistryTest {
             "zip_create" to (listOf("sources", "dest") to listOf("overwrite")),
             "zip_extract" to (listOf("archive") to listOf("dest", "overwrite")),
             "zip_list" to (listOf("archive") to listOf("offset", "limit")),
+            "npm_info" to (listOf("name") to listOf("version")),
+            "pypi_info" to (listOf("name") to listOf("version")),
+            "lockfile_parse" to (emptyList<String>() to listOf(
+                "path", "format", "package", "direct_only", "production_only", "dev_only", "offset", "limit")),
         )
         // Two directions, each with its own meaning: an expectation for a tool that is not
         // registered is a stale lie, and an exposed tool with no expectation means the model is

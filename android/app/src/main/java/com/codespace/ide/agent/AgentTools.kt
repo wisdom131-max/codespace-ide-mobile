@@ -199,6 +199,8 @@ You can use multiple tools in sequence. When done, give a final summary.
         "coverage_read", "entity_schema_read", "memory_search",
         // ZIP (2026-11-12): three tools on the one engine the app already ships.
         "zip_create", "zip_extract", "zip_list",
+        // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
+        "npm_info", "pypi_info", "lockfile_parse",
     )
 
     /** Builtin tool names for the /tools chat command (see BUILTIN_TOOL_NAMES). */
@@ -377,6 +379,20 @@ You can use multiple tools in sequence. When done, give a final summary.
                 }
                 // ZIP (2026-11-12): one engine, three thin entry points. The project root is the
                 // containment boundary for every path these three touch.
+                "npm_info" -> PackageTools.npmInfo(
+                    args.optString("name"), args.optString("version").ifBlank { null })
+                "pypi_info" -> PackageTools.pypiInfo(
+                    args.optString("name"), args.optString("version").ifBlank { null })
+                "lockfile_parse" -> PackageTools.lockfile(
+                    zipRoot(context),
+                    args.optString("path").ifBlank { null },
+                    args.optString("format").ifBlank { null },
+                    args.optString("package").ifBlank { null },
+                    args.optBoolean("direct_only", false),
+                    args.optBoolean("production_only", false),
+                    args.optBoolean("dev_only", false),
+                    args.optInt("offset", 0), args.optInt("limit", PackageTools.DEFAULT_PAGE),
+                )
                 "zip_create" -> ZipTools.create(
                     zipRoot(context), zipStrings(args, "sources"), args.optString("dest"),
                     args.optBoolean("overwrite", false), context)

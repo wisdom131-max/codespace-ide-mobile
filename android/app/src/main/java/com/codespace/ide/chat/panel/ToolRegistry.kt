@@ -888,6 +888,37 @@ internal object ToolRegistry {
             modes = READ_ALL,
         ),
         ToolSpec(
+            name = "npm_info",
+            displayName = "Looking up an npm package",
+            description = "Read an npm package's registry metadata without installing it: latest or a " +
+                "specific version, description, license, maintainers, engines and dependencies.",
+            schema = OBJ + ",\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\"}" +
+                ",\"version\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "pypi_info",
+            displayName = "Looking up a PyPI package",
+            description = "Read a PyPI project's metadata without installing it: latest or a specific " +
+                "release, summary, license, requires-python, project URLs and requires_dist.",
+            schema = OBJ + ",\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\"}" +
+                ",\"version\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
+            name = "lockfile_parse",
+            displayName = "Reading a dependency lockfile",
+            description = "Parse a lockfile in the project offline (package-lock, npm-shrinkwrap, " +
+                "yarn.lock, pnpm-lock.yaml, poetry.lock, Pipfile.lock, uv.lock, pdm.lock, requirements.txt). " +
+                "Reports resolved versions, direct/dev/optional, sources and duplicates, paginated.",
+            schema = OBJ + ",\"properties\":{\"path\":{\"type\":\"string\"}" +
+                ",\"format\":{\"type\":\"string\"},\"package\":{\"type\":\"string\"}" +
+                ",\"direct_only\":{\"type\":\"boolean\"},\"production_only\":{\"type\":\"boolean\"}" +
+                ",\"dev_only\":{\"type\":\"boolean\"},\"offset\":{\"type\":\"integer\"}" +
+                ",\"limit\":{\"type\":\"integer\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
             name = "move_path",
             displayName = "Moving a file",
             description = "Move or rename a file or directory. Refuses to overwrite an existing " +
