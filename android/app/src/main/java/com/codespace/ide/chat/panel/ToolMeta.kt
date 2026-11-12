@@ -65,6 +65,15 @@ internal object ToolMetaIndex {
         "debug_breakpoints" to ToolMeta(ToolCategory.AGENT, listOf("debug", "breakpoint", "break"), destructive = true),
         "debug_step" to ToolMeta(ToolCategory.AGENT, listOf("debug", "step", "continue", "pause"), destructive = true),
         "debug_evaluate" to ToolMeta(ToolCategory.AGENT, listOf("debug", "evaluate", "expression", "watch"), destructive = true),
+        "service_read" to ToolMeta(
+            ToolCategory.WEB,
+            listOf("github", "gitlab", "api", "rest", "external", "issue", "pull", "repository", "read"),
+        ),
+        "service_write" to ToolMeta(
+            ToolCategory.WEB,
+            listOf("github", "gitlab", "api", "rest", "external", "create", "comment", "issue", "pull", "write"),
+            destructive = true,
+        ),
         "zip_create" to ToolMeta(
             ToolCategory.FILES,
             listOf("zip", "archive", "compress", "bundle", "pack", "tar", "jar", "apk"),

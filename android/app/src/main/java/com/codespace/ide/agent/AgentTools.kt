@@ -116,6 +116,20 @@ P1. plan           — Stage a structured plan / todo list for user review and
     <tool>{"name":"use_connector","arguments":{"service":"gitlab","method":"POST","endpoint":"/projects","body":"{\"name\":\"my-repo\",\"visibility\":\"private\"}"}}</tool>
 23. request_connector — Show the user an inline "Connect <Service>" card in the chat when they need a service that isn't connected yet (works for all connector types)
     <tool>{"name":"request_connector","arguments":{"service":"sentry"}}</tool>
+24. service_read  — Read GitHub, GitLab, or the project's own REST API with the credential the user
+    stored for it. You name a NAMED OPERATION, never a URL: that is what keeps the credential on the
+    host it belongs to. Values fill the operation's placeholders.
+    <tool>{"name":"service_read","arguments":{"service":"github","operation":"issues","vars":{"owner":"octocat","repo":"hello","state":"open"}}}</tool>
+    <tool>{"name":"service_read","arguments":{"service":"gitlab","operation":"pipelines","vars":{"id":"12345"}}}</tool>
+    Operations — github: repo, contents, issues, pulls, commits, runs, search_code (reads);
+    gitlab: projects, project, issues, mrs, file, pipelines (reads); custom: get.
+25. service_write — Write to those services. It ALWAYS asks the user first, at every permission
+    level, and it refuses a read operation. Needs a JSON body except DELETE.
+    <tool>{"name":"service_write","arguments":{"service":"github","operation":"issue_create","vars":{"owner":"octocat","repo":"hello"},"body":"{\"title\":\"Crash on launch\",\"body\":\"Details\"}"}}</tool>
+    Operations — github: issue_create, comment_create, pr_create; gitlab: issue_create, mr_create,
+    comment_create; custom: post, put, delete.
+    Missing credential? Say which project secret is empty (github_token, gitlab_token, api_token,
+    api_base_url) and point the user at Settings > Secrets. Do not ask them to paste a token in chat.
 
 — Data Entities (local SQLite CRUD) —
 23. create_entity  — Create a data record
@@ -186,6 +200,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "save_secret", "get_secret", "detect_secrets", "web_fetch", "web_search",
         "save_memory", "read_memory", "delete_memory",
         "list_connectors", "connect_service", "use_connector", "request_connector",
+        "service_read", "service_write",
         "create_entity", "read_entities", "update_entity", "delete_entity",
         "schedule_task", "list_tasks", "cancel_task", "upload_file", "install_package",
         "plan",
@@ -627,6 +642,8 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "connect_service" -> AgentConnectorManager.connectService(args.getString("service"), args.optJSONArray("scopes"), context)
                 "use_connector" -> AgentConnectorManager.useConnector(args.getString("service"), args.getString("method"), args.getString("endpoint"), args.optString("body", "{}"), context)
                 "request_connector" -> AgentConnectorManager.requestConnectorCard(args.getString("service"), context)
+                "service_read" -> serviceApiCall(args, context, write = false)
+                "service_write" -> serviceApiCall(args, context, write = true)
                 "create_entity" -> AgentEntityManager.create(args.getString("entity"), args.getString("data"), context)
                 "read_entities" -> AgentEntityManager.read(args.getString("entity"), args.optString("filter").ifBlank { null }, context)
                 "update_entity" -> AgentEntityManager.update(args.getString("entity"), args.getString("filter"), args.getString("data"), context)
@@ -1620,6 +1637,40 @@ You can use multiple tools in sequence. When done, give a final summary.
             staged++
         }
         return "staged:" + staged + "|" + toRaw
+    }
+
+    /**
+     * P3/Item 32: one dispatcher for both service tools.
+     *
+     * The credential is read here and handed to `ServiceApi.plan` as a resolver, so the token never
+     * becomes a local that some later `Log` line could print; `Plan` redacts it by construction.
+     * A write asked for through the read tool (or the reverse) is refused by the planner itself.
+     */
+    private fun serviceApiCall(args: org.json.JSONObject, context: Context, write: Boolean): String {
+        val projectId = activeProjectId(context)
+        val vars = HashMap<String, String>()
+        args.optJSONObject("vars")?.let { obj ->
+            for (key in obj.keys()) vars[key] = obj.optString(key)
+        }
+        val store = com.codespace.ide.data.SecureTokenStore(context)
+        val plan = ServiceApi.plan(
+            serviceId = args.optString("service"),
+            operationId = args.optString("operation"),
+            values = vars,
+            body = args.optString("body").takeIf { it.isNotBlank() },
+            secret = { name ->
+                if (projectId == null) null else store.projectSecret(projectId, name)
+            },
+            wantWrite = write,
+        )
+        if (plan.refusal != null) {
+            return plan.refusal + if (projectId == null) {
+                " No project is open, and service credentials are stored per project - ask the user to open one."
+            } else ""
+        }
+        val outcome = ServiceApi.execute(plan)
+        val head = if (outcome.ok) "" else "FAILED. "
+        return head + outcome.text
     }
 
     /** The project the user is actually in, or null. The Facts scopes are keyed on this. */

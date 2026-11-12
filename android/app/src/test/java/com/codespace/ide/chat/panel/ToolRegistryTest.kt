@@ -21,7 +21,7 @@ class ToolRegistryTest {
         "read_file", "list_files", "search_files",
         "git_status", "git_diff", "detect_secrets",
         "read_memory", "list_tasks", "read_entities", "list_connectors",
-        "get_errors", "get_changed_files", "request_connector",
+        "get_errors", "get_changed_files", "request_connector", "service_read",
         "list_skills", "read_skill",
         "list_dir", "grep_search", "file_search", "semantic_search",
         "search_workspace_symbols", "read_project_structure",
@@ -61,10 +61,11 @@ class ToolRegistryTest {
         // allowlisted dispatcher that replaces the hidden run_vscode_command concept.
         // 2026-11-11 (Wave 1 Group A): 92 = 89 + json_query, csv_parse, base64_codec.
         // 2026-11-11 (Wave 1 Groups B/C/D): 101 = 92 + the nine filesystem/job/insight tools.
-        // 2026-11-12: 118 = 107 + git_log/git_checkpoint/git_restore/git_conflict_resolve
+        // 2026-11-12: 120 = 118 (git_log/git_checkpoint/git_restore/git_conflict_resolve added
+        // earlier) + service_read/service_write (P3 Item 32).
         // + the seven debug tools.
-        assertEquals("every registered tool is listed exactly once", 118, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 118, ToolRegistry.names().toSet().size)
+        assertEquals("every registered tool is listed exactly once", 120, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 120, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -205,6 +206,8 @@ class ToolRegistryTest {
             "save_memory" to (listOf("key", "value") to emptyList<String>()),
             "install_package" to (listOf("manager", "package") to listOf("project_dir")),
             "request_connector" to (listOf("service") to emptyList<String>()),
+            "service_read" to (listOf("service", "operation") to listOf("vars")),
+            "service_write" to (listOf("service", "operation") to listOf("vars", "body")),
             "list_dir" to (listOf("path") to emptyList<String>()),
             "grep_search" to (listOf("path", "pattern") to emptyList<String>()),
             "file_search" to (listOf("query") to listOf("path")),

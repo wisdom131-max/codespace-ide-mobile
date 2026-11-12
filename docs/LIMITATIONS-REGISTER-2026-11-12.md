@@ -89,6 +89,23 @@ even under AUTO_ALL (`401cedd`, superseded by `1182ff6`), but a tool the user al
 read a file or reach a host without a new card each time. That is the design; it is stated here because
 "approved tool" is not the same as "approved read of this file".
 
+**L17. Service operations are a curated catalogue, not the whole API.** `service_read`/`service_write`
+cover ten GitHub and nine GitLab operations plus GET/POST/PUT/DELETE on one configured custom base. An
+endpoint that is not in the catalogue cannot be called at all; adding one is a code change, not a
+setting. That is the trade for never letting the model name a URL, and it is the reason a service that
+changes its API needs a release rather than a config edit.
+
+**L18. GitHub and GitLab were tested against a loopback stub, not the real services.** Every rule
+(host binding, redirect refusal, bounds, scrubbing, read/write split) is asserted, and the request
+shapes follow the published API, but no live token was used: the first real call is the user's. A
+service that changes a path or an auth header will surface as a 404/401 the agent reports rather than a
+silent wrong answer.
+
+**L19. The custom API is one base and one credential per project.** `api_base_url` + `api_token` name a
+single host; a second internal API needs a second project or a new registry entry. Writes to it are
+gated by the same approval card as GitHub, but there is no per-operation allowlist beyond the method,
+so `post` can reach any path under the configured base.
+
 ## Cross-cutting
 
 **L15. The `BackupTarTest` failure is local, not in the app.** `failureMessageCarriesRealTotals` fails

@@ -70,6 +70,10 @@ object AgentFlowGate {
      */
     fun requiresForcedApproval(toolName: String): Boolean =
         toolName == "use_connector" ||
+            // P3/Item 32: service_write changes something on someone else's server with a credential
+            // the user stored. AUTO_ALL is a convenience setting, not consent for that, and "Always
+            // allow" is not either - the same reasoning as the connector rule above.
+            toolName == "service_write" ||
             // P8.D (spec: "MCP calls always require explicit approval; AUTO_ALL must not bypass
             // MCP approval"). An MCP tool runs code on a third-party server the owner connected,
             // with whatever that server holds. "Always allow" for a filesystem tool is not consent
