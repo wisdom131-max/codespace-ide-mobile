@@ -30,3 +30,25 @@ Registry: **118 tools**. Tool Groups, `/tools` catalogue, Git recovery and debug
 - Provider-reported finish reasons are not yet threaded into the truncation decision; detection currently rests on the existing cap markers.
 - Tool-side retry classification (never-started vs failed vs completed-but-response-lost) is not implemented.
 - The umbrella name for the four Tool System branches could not be recovered from repository records and is deliberately left unnamed.
+
+## Continuation update (area 6)
+
+`FinishReason` normalizes each adapter's own stop value (OpenAI `finish_reason`, Anthropic
+`stop_reason`, Gemini `finishReason`) into one enum whose `complete` flag is the ONLY thing the
+transcript may use to call a turn finished. Absent, blank or unrecognized values normalize to
+`UNKNOWN`, never to NATURAL: no reason is not evidence of finishing. Only OUTPUT_LIMIT is
+`continuable`; a content filter and a dropped connection are not "continued around".
+
+`Continuation.plan` builds the continuation prompt for a ceiling: it forbids repeating delivered
+content, forbids re-opening the answer, forbids re-running an already-executed tool and carries a
+mode-bounded tail (ask 600 / edit 900 / agent 1200 chars) so the seam is joined without dragging
+the whole answer back through the prompt. A provider that cannot continue is reported as
+NEEDS_CONTINUATION with an honest instruction instead of a silent failure.
+
+`ToolRetry` is the retry matrix: outcome x effect -> EXECUTE / REUSE_PERSISTED /
+RECONCILE_FIRST / REFUSE. Cancellation during execution and an unknown outcome after start are
+NOT treated as proof that nothing happened; a side-effecting call in either state reconciles
+first. A persisted result is reused, never re-dispatched. Effect comes from the registry's
+side-effect metadata, never from a tool's description.
+
+Tests: FinishReasonTest 16, ToolRetryTest 15, ContinuationTest 9.
