@@ -90,3 +90,10 @@ because the sandbox runs as uid 0 (root can read the files the test needs unread
   resolves and the longest-name fallback handles only as a best guess.
 - Discovery is per process. A session started after a restart re-discovers on first chat; there is no
   background poller, deliberately, to keep mobile data and battery use predictable.
+
+## 7. Delivery
+
+- Implementation + docs commit: `03a69a6`
+- CI run: `43135229948` — SUCCESS
+- Pushed to `main`.
+- Device testing: not run. Consolidated phone testing is roadmap item 14 and remains pending.
