@@ -49,7 +49,12 @@ data class PanelAttachment(
     /** WP9: text/context attachment content (null for binaries). */
     val text: String? = null,
 ) {
-    companion object { const val MAX_BYTES: Long = 10L * 1024 * 1024 }
+    companion object {
+        /**
+         * The visible join. A continuation must not look like one uninterrupted answer: the user
+         * is told exactly where the first response stopped.
+         */
+ const val MAX_BYTES: Long = 10L * 1024 * 1024 }
 }
 
 data class PanelSelection(
@@ -183,6 +188,9 @@ class ChatSession internal constructor(
      * what keeps the "that reply was cut off" note truthful across every later save.
      */
     @Volatile private var interruptedReplyPending = false
+
+    /** Area 6: the plan built for the most recent continuation attempt, for the UI state. */
+    @Volatile internal var lastContinuation: ContinuationPlan? = null
 
     /** Area 6: the last provider verdict for THIS session, for the turn summary and continuation. */
     @Volatile internal var lastFinish: com.codespace.ide.engine.FinishReason =
@@ -346,6 +354,12 @@ class ChatSession internal constructor(
     }
 
     companion object {
+        /**
+         * The visible join. A continuation must not look like one uninterrupted answer: the user
+         * is told exactly where the first response stopped.
+         */
+        internal const val SEAM = "\n\n[continued after the output limit]\n\n"
+
     /** Extension to MIME, used when the picker could not tell us. */
         internal fun mimeForName(name: String): String {
         val ext = name.substringAfterLast('.', "").lowercase()
@@ -438,6 +452,51 @@ class ChatSession internal constructor(
         sendCore(userText, confirmOverBudget, reuseStaged = false)
 
     /**
+     * Area 6 - CONTINUE THE CUT-OFF ANSWER.
+     *
+     * Goes through the SAME dispatch as [send]: one lifecycle, one request gate, one persistence
+     * path. What makes it a continuation is the prefix (the text already delivered, marked at the
+     * seam) and the instruction from [Continuation.plan], which forbids repetition and forbids
+     * re-running an executed tool.
+     *
+     * Returns the state to show. It refuses everything that is not an output ceiling: a filter, a
+     * dropped connection, a user Stop and a silent stream ending all stay incomplete rather than
+     * being "continued" into a second answer.
+     */
+    internal fun continueTurn(providerSupportsContinuation: Boolean = true): ContinuationState {
+        if (ui.value.streaming) return ContinuationState.CONTINUING
+        val delivered = streamBuf.toString()
+        val plan = Continuation.plan(
+            finish = lastFinish,
+            deliveredText = delivered,
+            mode = mode.name.lowercase(),
+            providerSupportsContinuation = providerSupportsContinuation,
+        )
+        lastContinuation = plan
+        if (!plan.allowed) return plan.state
+        lastFinish = com.codespace.ide.engine.FinishReason.UNKNOWN
+        val prefix = if (delivered.isBlank()) "" else delivered + SEAM
+        sendCore(
+            plan.instruction,
+            confirmOverBudget = false,
+            reuseStaged = true,
+            replaceTurn = true,
+            continuationPrefix = prefix,
+        )
+        return ContinuationState.CONTINUING
+    }
+
+    /** What the composer should say about continuation right now. */
+    internal val continuationState: ContinuationState
+        get() = when {
+            ui.value.streaming && lastContinuation?.state == ContinuationState.CONTINUING -> ContinuationState.CONTINUING
+            lastFinish.complete -> ContinuationState.COMPLETE
+            lastFinish.continuable -> ContinuationState.NEEDS_CONTINUATION
+            lastFinish == com.codespace.ide.engine.FinishReason.UNKNOWN -> ContinuationState.UNKNOWN_OR_INTERRUPTED
+            else -> ContinuationState.UNKNOWN_OR_INTERRUPTED
+        }
+
+    /**
      * [replaceTurn] is Retry. A retry re-asks the SAME turn: the user message and its attachment
      * row are already in the transcript and must not be added again (device finding #14 - three
      * "Read wire-test/app.conf" bubbles after one rate-limited send). The failed status row is
@@ -448,6 +507,12 @@ class ChatSession internal constructor(
         confirmOverBudget: Boolean,
         reuseStaged: Boolean,
         replaceTurn: Boolean = false,
+        /**
+         * Area 6: text the answer already has. Present only for a continuation, and it seeds the
+         * stream buffer so the continuation APPENDS to the cut-off answer instead of replacing it.
+         * A null value is an ordinary send.
+         */
+        continuationPrefix: String? = null,
     ) {
         if (ui.value.streaming || userText.isBlank()) return
         // A new turn supersedes a previous interruption: from here on the transcript is live
@@ -531,6 +596,7 @@ class ChatSession internal constructor(
             maxPayloadChars = com.codespace.ide.engine.ModelCatalog.payloadBudgetChars(resolveCapability(sel)),
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
+        if (continuationPrefix != null) streamBuf.append(continuationPrefix)
         turnContext.clear()
         wsBlock.takeIf { it.isNotBlank() }?.let { turnContext.add(it) }
         failoverAttempts = 0
@@ -575,7 +641,8 @@ class ChatSession internal constructor(
         ChatStatusMapping.dropStaleStatus(ui.value.rows).let { kept ->
             if (kept.size != ui.value.rows.size) ui.value = ui.value.copy(rows = kept)
         }
-        if (!replaceTurn) {
+        // A continuation is not a new question, so it adds no user bubble.
+        if (!replaceTurn && continuationPrefix == null) {
             newRows.add(ChatRowModel.User(userText))
             if (chips.isNotEmpty()) newRows.add(ChatRowModel.Attachments(chips))
         }
@@ -1428,4 +1495,5 @@ class ChatSessionManager internal constructor(
          */
         const val LEGACY_CONVERSATION_ID = com.codespace.ide.chat.session.SessionMeta.LEGACY_ID
     }
+
 }

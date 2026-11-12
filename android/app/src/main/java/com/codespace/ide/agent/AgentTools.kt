@@ -1,6 +1,9 @@
 package com.codespace.ide.agent
 
 import android.content.Context
+import com.codespace.ide.chat.panel.RetryDecision
+import com.codespace.ide.chat.panel.ToolOutcome
+import com.codespace.ide.chat.panel.ToolRetry
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.testing.TestDiscoveryService
 import com.codespace.ide.testing.TestStore
@@ -218,7 +221,58 @@ You can use multiple tools in sequence. When done, give a final summary.
     // CH11 (P4h): suspend — the MCP branch was runBlocking { callTool }, blocking
     // the calling thread for up to 60s per call with Stop unable to cancel mid-call.
     // The bridge is now a normal cancellable suspend call with a hard 90s bound.
-    suspend fun executeTool(name: String, args: JSONObject, context: Context): String {
+    /**
+     * Area 5 - THE LEDGERED DOOR.
+     *
+     * Every dispatch carries a stable tool-call id. Before the body runs, the ledger is consulted
+     * and [com.codespace.ide.chat.panel.ToolRetry] says what may happen:
+     *
+     *  - a call already completed is ANSWERED FROM THE LEDGER, not run twice;
+     *  - a side-effecting call whose outcome is uncertain is REFUSED with its state, because this
+     *    layer has no generic way to ask the world what happened, and guessing is how a write gets
+     *    applied twice;
+     *  - anything never started proceeds normally, with approval gates untouched.
+     *
+     * The id is optional so existing callers keep working; a missing or malformed id gets a fresh
+     * one, which means "unknown call" rather than "safe to reuse".
+     */
+    suspend fun executeTool(
+        name: String,
+        args: JSONObject,
+        context: Context,
+        callId: String? = null,
+    ): String {
+        val ledger = ToolCallLedger.get(context)
+        val id = callId?.trim()?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
+        val effect = ToolEffectIndex.effectOf(name)
+        val prior = ledger.lookup(id)
+        if (prior != null) {
+            when (ToolRetry.decide(prior.outcome, effect)) {
+                RetryDecision.REUSE_PERSISTED -> return prior.result
+                    ?: "This call ($name) already completed; its result was not retained. Not re-executing."
+                RetryDecision.RECONCILE_FIRST -> return "Refused to repeat $name: its earlier outcome is " +
+                    "${prior.outcome.name}. Verify whether it took effect before asking again. Nothing was executed."
+                RetryDecision.REFUSE -> return "Refused to repeat $name: the earlier attempt did not complete " +
+                    "and repeating it cannot be proven safe. Nothing was executed."
+                RetryDecision.EXECUTE -> Unit
+            }
+        }
+        ledger.recordStarted(id, name, effect)
+        val out = try {
+            executeToolBody(name, args, context)
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            // Cancellation is NOT proof that nothing ran.
+            ledger.recordFailed(id, name, effect, ToolOutcome.CANCELLED_DURING_EXECUTION)
+            throw c
+        } catch (t: Throwable) {
+            ledger.recordFailed(id, name, effect, ToolOutcome.COMPLETED_ERROR)
+            throw t
+        }
+        ledger.recordCompleted(id, name, effect, out)
+        return out
+    }
+
+    private suspend fun executeToolBody(name: String, args: JSONObject, context: Context): String {
         return try {
             when (name) {
                 "run_command" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
