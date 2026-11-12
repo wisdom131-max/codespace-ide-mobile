@@ -399,6 +399,9 @@ class ChatSession internal constructor(
 
         internal const val SEAM = "\n\n[continued after the output limit]\n\n"
 
+        /** How many characters of accumulated tool output one turn may carry into the next call. */
+        internal const val TOOL_RESULT_BUDGET_CHARS = 6_000
+
     /** Extension to MIME, used when the picker could not tell us. */
         internal fun mimeForName(name: String): String {
         val ext = name.substringAfterLast('.', "").lowercase()
@@ -1156,6 +1159,9 @@ class ChatSession internal constructor(
         ui.value = ui.value.copy(streaming = true)
         scope.launch {
             val results = StringBuilder()
+            // P4.6/4.7: the same results, itemised, so a long tool chain can be bounded instead of
+            // growing without a ceiling. Text stays authoritative; this is what gets trimmed.
+            val resultItems = ArrayList<com.codespace.ide.agent.ToolContextTrim.Item>()
             for (call in calls) {
                 val summary = AgentToolWire.summary(call)
                 // Stable id: the tree collapses by identity, so a streaming update cannot reset it.
@@ -1179,6 +1185,7 @@ class ChatSession internal constructor(
                     ))
                     results.append(AgentToolWire.resultMessage(call, staged))
                     results.append("\n\n")
+                    resultItems.add(com.codespace.ide.agent.ToolContextTrim.Item(call.name, staged))
                     continue
                 }
                 // Wave 0.2 (owner approval 2026-11-11): a connector call egresses to a third
@@ -1212,6 +1219,12 @@ class ChatSession internal constructor(
                 turnContext.add(out)
                 results.append(AgentToolWire.resultMessage(call, out))
                 results.append("\n\n")
+                // Pinned when the result carries a citation marker: evidence the answer must keep.
+                resultItems.add(
+                    com.codespace.ide.agent.ToolContextTrim.Item(
+                        call.name, out, pinned = out.contains("[S"),
+                    ),
+                )
             }
             // Internal continuation: no user bubble, same key and model, no re-sent files.
             streamBuf.setLength(0)
@@ -1228,7 +1241,15 @@ class ChatSession internal constructor(
                 cfg.copy(systemInstruction = buildInstruction(
                     mode, true, wsBlockForRefresh, offeredAtSend, memoryAtSend))
             } else cfg
-            attemptSend(refreshed, slotName, results.toString().trim(), emptyList(), confirmOverBudget, gen)
+            // P4.6/4.7: a chain of ten tools used to send all ten results again, unbounded, on a
+            // phone. Past the ceiling the OLDER results are compressed with an explicit marker and
+            // exact repeats dropped; the newest result, anything pinned and anything cited survive.
+            val payload = if (results.length > TOOL_RESULT_BUDGET_CHARS) {
+                com.codespace.ide.agent.ToolContextTrim.trim(resultItems, TOOL_RESULT_BUDGET_CHARS).render().trim()
+            } else {
+                results.toString().trim()
+            }
+            attemptSend(refreshed, slotName, payload, emptyList(), confirmOverBudget, gen)
         }
     }
 }
