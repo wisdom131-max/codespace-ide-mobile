@@ -11,7 +11,8 @@ gives the model the words. Tables arrive as flattened lines, slide boundaries ar
 becomes rows of text rather than cells. The agent can read a document; it cannot reason about a table it
 cannot see. Structure-aware reading is a separate, sizeable piece of work per format.
 
-**L2. RAR and ZST archives are read, with named exceptions (PARTIALLY RESOLVED, P2.C).** This entry
+**L2. RAR and ZST archives are read, with named exceptions (PARTIALLY RESOLVED, P2.C - locally
+compiled and unit-tested 2026-11-12, real-RAR coverage still absent).** This entry
 used to say both were refused outright. They are now read: RAR 1.4/4.x/5.x list through junrar
 (`RarEngine`) and 4.x/5.x extract under the same containment, entry-count, byte and ratio ceilings as
 ZIP; Zstandard decodes as a stream, and `.tar.zst` gets a real entry list through the same tar walk as
@@ -91,8 +92,10 @@ read a file or reach a host without a new card each time. That is the design; it
 ## Cross-cutting
 
 **L15. The `BackupTarTest` failure is local, not in the app.** `failureMessageCarriesRealTotals` fails
-under the root-owned CI sandbox used for local verification and passes in GitHub Actions. It is a test
-environment artefact and has been left visible rather than muted.
+under the root-owned sandbox used for local verification (confirmed again 2026-11-12: the test makes a
+directory non-writable and expects the writes to fail, but the sandbox runs as uid 0, so they succeed and
+`fileFailures` is 0 instead of 2) and passes in GitHub Actions, where the runner is not root. It is a
+test environment artefact and has been left visible rather than muted.
 
 **L16. `401cedd` is red in history.** That commit changed the MCP approval rule while two tests still
 asserted the old rule. The tests were corrected in `1182ff6` (green), so main is green at every head from
