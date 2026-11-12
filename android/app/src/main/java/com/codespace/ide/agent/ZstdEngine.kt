@@ -29,12 +29,21 @@ object ZstdEngine {
     /** 2^26 bytes = 64 MiB. A frame needing a bigger window is refused rather than allowed to allocate. */
     const val MAX_WINDOW_LOG = 26
 
-    /** A zstd stream, streaming: read, don't buffer the file. */
+    /**
+     * A zstd stream, streaming: read, don't buffer the file.
+     *
+     * **Continuous mode is deliberately OFF.** Its own javadoc says what it is for - "don't break on
+     * unfinished frames", for files still being written - and that is precisely the behaviour a reader
+     * must not have: with it on, a half-downloaded `.zst` decodes silently to whatever it had and looks
+     * like a complete file. With it off, zstd-jni throws `Truncated source` when the input ends
+     * mid-frame, so truncation is reported instead of trusted.
+     *
+     * Concatenated frames (`zstd -c a b > out.zst`) still decode: the reader returns at each frame
+     * boundary and the next call resumes with the following frame from the same buffer, so multi-frame
+     * files are not lost by turning continuous mode off.
+     */
     fun stream(file: File): InputStream {
         val zstd = ZstdInputStreamNoFinalizer(BufferedInputStream(FileInputStream(file), 64 * 1024))
-        // Continuous: keep going across concatenated frames instead of stopping at the first one,
-        // which is what `zstd -c a b > out.zst` produces.
-        zstd.setContinuous(true)
         zstd.setLongMax(MAX_WINDOW_LOG)
         return zstd
     }

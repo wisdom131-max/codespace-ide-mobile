@@ -279,6 +279,10 @@ dependencies {
     // the terminal stream on first use; slf4j-nop (4 KB, no runtime) keeps that noise out of the
     // agent's own output.
     implementation("org.slf4j:slf4j-nop:2.0.17")
+    // The @aar above carries ANDROID natives only, so JVM unit tests would fail at the first decode
+    // with UnsatisfiedLinkError. This classifier jar is the desktop (CI = linux/amd64) native and is
+    // TEST-SCOPED: it never reaches the APK. The binding classes still come from the aar.
+    testImplementation("com.github.luben:zstd-jni:1.5.6-4:linux_amd64@jar")
 
     // Network
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
