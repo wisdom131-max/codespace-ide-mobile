@@ -44,10 +44,15 @@ Wired into the production dispatch path (`AgentTools.executeTool`):
 - **Failure interpretation.** The exception path classifies the failure and appends the one action
   that can follow it, so the model is told whether this was a permission refusal, a missing
   prerequisite, an argument problem or a timeout.
+- **MCP selection.** `McpClientManager.suggestFor` ranks the discovered tools against this turn's
+  request and, when one fits but is not loaded, adds a single line naming it and stating that
+  loading it needs the owner's approval. Nothing is loaded automatically and the approval gate is
+  untouched, so the hint cannot widen what the model may call.
 
-**Not wired: planning and dependency-aware execution.** `ToolPlanner` is implemented and tested, but
-it changes when and how tools run, so it needs its own commit against a known-green base rather than
-riding along with validation. The integration point is the request loop in `ChatSession`, where the
+**Not wired: planning, dependency-aware execution and context trimming.** `ToolPlanner` and `ToolContextTrim` are implemented
+and tested, but the planner changes when and how tools run and the trimmer changes what history the
+model sees, so each needs its own commit against a known-green base rather than riding along with
+validation. The integration point is the request loop in `ChatSession`, where the
 plan would land as Thinking Tree steps. Until then the model still chooses its own order; nothing in
 this commit pretends otherwise.
 

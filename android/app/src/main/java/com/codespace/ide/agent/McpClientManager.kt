@@ -570,6 +570,33 @@ object McpClientManager {
      */
     private val lastEnabled = java.util.concurrent.atomic.AtomicReference<Set<String>>(emptySet())
 
+    /**
+     * P4.5 - ONE HONEST LINE ABOUT A TOOL THAT WOULD FIT.
+     *
+     * The loadout is chosen before the message is read, so a request that needs, say, a GitHub tool
+     * has no MCP definition in the prompt at all. Loading it automatically would widen what the
+     * model can call without the owner asking - so this only NAMES the fitting tool, says it needs
+     * approval, and leaves the decision where it belongs. Returns null when nothing fits, when the
+     * tool is already loaded (nothing to add), or when the request is too vague to rank.
+     */
+    fun suggestFor(context: Context?, request: String, alreadyLoaded: Collection<String> = emptyList()): String? {
+        if (request.isBlank()) return null
+        val names = if (context != null) cachedToolNames(context) else lastEnabled.get().toList()
+        if (names.isEmpty()) return null
+        val candidates = names.filter { it !in alreadyLoaded }.map { full ->
+            val t = toolsCache[full]
+            McpToolPicker.Candidate(
+                server = t?.server ?: "mcp",
+                tool = full,
+                description = t?.description?.take(200) ?: "",
+                connected = t != null,
+            )
+        }
+        val pick = McpToolPicker.choose(request, candidates) ?: return null
+        return "MCP tool that fits this request: " + pick.candidate.tool + " (server " + pick.candidate.server +
+            "). Loading it needs the owner's approval, so ask before relying on it; do not assume it is callable."
+    }
+
     fun docsFor(context: Context?, names: List<String>): String {
         val enabled = if (context != null) {
             cachedToolNames(context).toSet().also { lastEnabled.set(it) }

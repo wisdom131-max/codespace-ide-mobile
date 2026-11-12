@@ -626,6 +626,7 @@ class ChatSession internal constructor(
         wsBlockForRefresh = wsBlock
         // FACTS: retrieved once per turn, from the message that actually asked for it.
         memoryAtSend = memoryBlockFor(userText)
+        requestAtSend = userText
         loadoutVersionAtSend = ToolLoadout.version()
         val cfg = EngineConfig(
             modelId = sel.modelId,
@@ -846,6 +847,8 @@ class ChatSession internal constructor(
     private var wsBlockForRefresh: String = ""
     /** FACTS: the memory block this turn was built with, so a loadout refresh keeps it. */
     private var memoryAtSend: String = ""
+    /** P4.5: the request the current instruction was built for, so MCP advice matches this turn. */
+    private var requestAtSend: String = ""
     private var loadoutVersionAtSend: Int = 0
 
     /**
@@ -862,6 +865,7 @@ class ChatSession internal constructor(
         wsBlock: String,
         offered: List<String>,
         memory: String = "",
+        request: String = requestAtSend,
     ): String {
         // 2026-11-11 (Wave 1 Group A budget fix): this used to append AgentToolWire.protocol(mode)
         // - which advertised the ENTIRE mode catalogue - and then the filtered block on top, so the
@@ -879,7 +883,18 @@ class ChatSession internal constructor(
                 ""
             }
         } else ""
-        return ChatInstructions.build(mode, sendTools, offered, wsBlock, mcpDocs, loaded, memory)
+        // P4.5: when the request could be served by an MCP tool that is not loaded, the prompt says
+        // so in one line - it is never loaded automatically, and the approval gate is unchanged.
+        val mcpHint = if (sendTools) {
+            runCatching {
+                com.codespace.ide.agent.McpClientManager.suggestFor(appContext, request, loaded)
+            }.getOrNull().orEmpty()
+        } else ""
+        return ChatInstructions.build(
+            mode, sendTools, offered, wsBlock,
+            if (mcpHint.isBlank()) mcpDocs else mcpDocs + "\n\n" + mcpHint,
+            loaded, memory,
+        )
     }
 
     /**
