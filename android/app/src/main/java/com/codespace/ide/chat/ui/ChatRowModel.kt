@@ -41,7 +41,13 @@ sealed interface ChatRowModel {
      * collapse and expand by identity instead of by position — the old behaviour reset the group on
      * every streaming update because the key was an index.
      */
-    data class ToolActivity(val label: String, val detail: String, val id: String = "") : ChatRowModel
+    data class ToolActivity(
+        val label: String,
+        val detail: String,
+        val id: String = "",
+        /** The executor's verdict. Defaults true so existing producers stay valid. */
+        val ok: Boolean = true,
+    ) : ChatRowModel
 
     /**
      * 2026-11-11: the sources a research answer used, as tappable rows. Additive: it sits AFTER the

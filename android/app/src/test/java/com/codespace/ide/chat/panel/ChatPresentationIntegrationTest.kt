@@ -50,6 +50,20 @@ class ChatPresentationIntegrationTest {
     }
 
     @Test
+    fun aToolRowDefaultsToSuccessSoExistingProducersStayValid() {
+        val row = com.codespace.ide.chat.ui.ChatRowModel.ToolActivity("read_file", "a\nb")
+        assertTrue(row.ok)
+    }
+
+    @Test
+    fun aFailedRowReachesTheRendererAsAnErrorWithItsReason() {
+        val row = com.codespace.ide.chat.ui.ChatRowModel.ToolActivity("read_file", "ENOENT: gone", ok = false)
+        val p = ToolResultPresentation.present(row.label, row.ok, row.detail)
+        assertEquals(Kind.ERROR, p.kind)
+        assertTrue(p.summary.contains("ENOENT"))
+    }
+
+    @Test
     fun aTurnThatFailedAToolIsNotSummarisedAsAPlainAnswer() {
         val s = ToolResultPresentation.turnSummary(toolCount = 1, kind = Kind.ERROR, truncated = false)
         assertTrue(s, s.contains("error"))

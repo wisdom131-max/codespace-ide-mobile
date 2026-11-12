@@ -189,10 +189,18 @@ fun ThinkingCard(seconds: Int, steps: List<String> = emptyList(), modifier: Modi
 fun ToolActivityRow(
     label: String,
     detail: String,
+    ok: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val c = ChatTokens.LocalChatColors.current
     var expanded by remember { mutableStateOf(false) }
+    // Area 4: the row reads through the presentation ruler, so a failure says "failed" with its
+    // real reason, a capped result says "(partial)", and a long body is bounded instead of poured
+    // into the transcript. The Thinking Tree still owns grouping and identity; this only styles
+    // one step.
+    val p = remember(label, detail, ok) {
+        com.codespace.ide.chat.panel.ToolResultPresentation.present(label, ok, detail)
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -210,8 +218,9 @@ fun ToolActivityRow(
                     .padding(end = 6.dp),
             )
             Text(
-                label,
-                color = c.textSecondary,
+                p.title,
+                color = if (p.kind == com.codespace.ide.chat.panel.ToolResultPresentation.Kind.ERROR)
+                    c.error else c.textSecondary,
                 fontSize = ChatTokens.FONT_MICRO.sp,
                 modifier = Modifier
                     .weight(1f)
@@ -220,8 +229,34 @@ fun ToolActivityRow(
             // OWNER RULE (2026-11-05): an activity row collapses with its chevron and carries NO
             // dismiss x. The x lived here and could silently drop a step from the record.
         }
-        if (expanded) {
-            Text(detail, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
+        // The summary is always visible for a failure or a partial result: the reason for a
+        // stopped tool is not something the user should have to discover by expanding.
+        val showSummary = p.kind != com.codespace.ide.chat.panel.ToolResultPresentation.Kind.RESULT
+        if (showSummary) {
+            Text(
+                p.summary,
+                color = if (p.kind == com.codespace.ide.chat.panel.ToolResultPresentation.Kind.ERROR)
+                    c.error else c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+                modifier = Modifier.padding(start = 14.dp, top = 2.dp),
+            )
+        }
+        if (expanded && p.body.isNotEmpty()) {
+            Text(
+                p.body.joinToString("\n"),
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+                modifier = Modifier.padding(start = 14.dp, top = 2.dp),
+            )
+        }
+        // Never let a cut body look whole: say how much was withheld.
+        if (expanded && p.bodyTruncated) {
+            Text(
+                "Result withheld past " + p.body.size + " lines. Narrow the call to see the rest.",
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+                modifier = Modifier.padding(start = 14.dp, top = 2.dp),
+            )
         }
     }
 }

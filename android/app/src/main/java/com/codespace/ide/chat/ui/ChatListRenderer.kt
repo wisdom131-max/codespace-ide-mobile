@@ -104,7 +104,7 @@ object NativeChatListRenderer : ChatListRenderer {
             is ChatRowModel.OverBudget -> OverBudgetCard(row.estimate, state.onSendAnyway, state.onCancel)
             is ChatRowModel.InfoNote -> InfoNoteRow(row.text)
             is ChatRowModel.ToolActivity ->
-                ToolActivityRow(row.label, row.detail)
+                ToolActivityRow(row.label, row.detail, row.ok)
             is ChatRowModel.Attachments -> AttachmentChipRow(row.chips, state.onRemoveChip)
             // Drawn by the Single branch before it reaches here; this arm keeps the when total.
             is ChatRowModel.Sources -> SourcesRow(row.items)
