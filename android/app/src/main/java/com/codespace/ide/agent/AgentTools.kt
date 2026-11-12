@@ -2238,8 +2238,19 @@ You can use multiple tools in sequence. When done, give a final summary.
         val candidates = report.results.mapIndexed { i, r ->
             com.codespace.ide.agent.research.ResearchPlanner.Candidate(r.url, r.title, r.snippet, i)
         }
+        val quality = HashMap<String, com.codespace.ide.agent.research.SourceQuality.Assessment>()
+        candidates.forEach { c ->
+            quality[c.url] = com.codespace.ide.agent.research.SourceQuality.assess(
+                c.url, c.title, query,
+                publishedAt = report.results.firstOrNull { it.url == c.url }?.date.orEmpty(),
+            )
+        }
         val picked = com.codespace.ide.agent.research.ResearchPlanner.select(
-            candidates, seenUrls = seenUrls, limit = 5,
+            candidates,
+            seenUrls = seenUrls,
+            limit = 5,
+            // 1.2: a source's KIND outranks where an engine happened to place it.
+            priority = { c -> quality[c.url]?.score ?: 0 },
         )
         if (picked.isNotEmpty() && query.isNotBlank()) {
             picked.forEach { c ->
@@ -2252,9 +2263,28 @@ You can use multiple tools in sequence. When done, give a final summary.
         val kept = report.results.filter { it.url in pickedUrls }
         val dropped = report.results.size - kept.size
         val body = com.codespace.ide.agent.research.ResultQuality.render(kept, labels)
+        val notes = StringBuilder()
+        if (picked.isNotEmpty()) {
+            notes.append("\n\nSource quality (kind of source, not search rank): ")
+            notes.append(picked.take(5).joinToString("; ") { c ->
+                val a = quality[c.url]
+                c.url.take(60) + " \u2014 " + (a?.authority?.label ?: "unclassified") +
+                    (if (a?.stale == true) ", out of date for this question" else "")
+            })
+        }
+        // 1.3: compare what this task has actually read, and say where it disagrees.
+        val evidence = com.codespace.ide.agent.research.SourceLedger.all()
+            .map { it.id to (it.title + ". " + it.excerpt) }
+        val dispute = com.codespace.ide.agent.research.ContradictionScan.render(
+            com.codespace.ide.agent.research.ContradictionScan.report(evidence),
+        )
+        if (dispute.isNotBlank()) notes.append("\n\n").append(dispute)
+        val notesText = notes.toString()
         return if (dropped > 0) {
             body + "\n\n" + dropped + " further result(s) were the same page or a duplicate of a " +
-                "source already retrieved, so they were not listed twice."
+                "source already retrieved, so they were not listed twice." + notesText
+        } else if (notesText.isNotBlank()) {
+            body + notesText
         } else {
             body
         }

@@ -49,12 +49,17 @@ object ResearchPlanner {
         seenUrls: Set<String> = emptySet(),
         limit: Int = 6,
         maxPerDomain: Int = 2,
+        /** Higher first, before engine rank. Source quality feeds this; rank never does. */
+        priority: (Candidate) -> Int = { 0 },
     ): List<Candidate> {
         if (limit <= 0) return emptyList()
         val seenKeys = seenUrls.map { UrlTools.normalize(it) }.toHashSet()
         val kept = ArrayList<Candidate>(limit)
         val deferred = ArrayList<Candidate>()
-        for (c in candidates.sortedBy { it.rank }) {
+        val ordered = candidates.sortedWith(
+            compareByDescending<Candidate> { priority(it) }.thenBy { it.rank },
+        )
+        for (c in ordered) {
             val key = UrlTools.normalize(c.url)
             if (key.isBlank() || !seenKeys.add(key)) continue
             if (kept.any { sameContent(it, c) }) continue
