@@ -68,7 +68,14 @@ object AgentFlowGate {
      * That is the one place where a level-based shortcut is not convenience but egress, so the rule
      * lives here rather than in one call site: a caller can be rewritten, the gate cannot forget.
      */
-    fun requiresForcedApproval(toolName: String): Boolean = toolName == "use_connector"
+    fun requiresForcedApproval(toolName: String): Boolean =
+        toolName == "use_connector" ||
+            // P8.D (spec: "MCP calls always require explicit approval; AUTO_ALL must not bypass
+            // MCP approval"). An MCP tool runs code on a third-party server the owner connected,
+            // with whatever that server holds. "Always allow" for a filesystem tool is not consent
+            // for a remote one, and AUTO_ALL was silently granting it: the mcp_ namespace was
+            // exempted in ChatPermissionStore and then never forced here.
+            toolName.startsWith("mcp_")
 
     /**
      * The gate's decision as a PURE function, so the policy is asserted without Android prefs.
