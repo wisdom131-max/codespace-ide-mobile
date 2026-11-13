@@ -180,6 +180,23 @@ connector stack, which has its own flow.
 project, and a call with no project open is refused with that reason rather than falling back to a global
 secret.
 
+**L23. Tool Relevance can admit one tool per turn. - STILL VALID (intentional ceiling)**
+Each mode's offer target is exactly one above its core set (ASK 9 core / 10 target, AGENT 24 / 25), so
+relevance has a single free slot. A workflow that needs two request-specific tools - list the archive,
+then extract from it - must load the second through `tool_search`. Found by
+`DynamicToolLoadingIntegrationTest` (2026-11-13). Not raised because 10/16/25 are the lean-mode
+contract `DynamicToolsTest` asserts; changing them is an owner decision about prompt size.
+
+**L24. `/tools` groups archives and documents together. - STILL VALID (cosmetic)**
+`zip_*` and `read_file` share the `files` category, so the catalogue does not separate archive tools
+from document tools. The group is the tool's category and is asserted disjoint from Thinking Tree
+stage names, so nothing downstream confuses the two.
+
+**L25. Prompt-injection resistance for retrieved file content is not automatically tested. - UNVERIFIED**
+The rule is stated in the instructions and every tool has an injection prompt in
+`docs/TOOL-PROMPT-MATRIX-2026-11-13.md`, but no automated test feeds a hostile file through
+`read_file` and asserts the answer ignores it. Doing that deterministically needs a live model.
+
 ## Cross-cutting
 
 **L15. The `BackupTarTest` failure is local, not in the app. - STILL VALID (environment artefact)**

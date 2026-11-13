@@ -47,13 +47,18 @@ internal object ToolLoadout {
         val rejected = ArrayList<String>()
         val allowed = ToolRegistry.exposed(mode).map { it.name }.toSet() + mcpNames
         var atCap = false
+        // POST-IMPLEMENTATION (2026-11-13): the version is a change stamp for the loaded SET, so a
+        // replay of the same load (a retry, a continuation, a re-executed turn) must not bump it.
+        // It used to bump whenever anything was accepted, including names already loaded, which
+        // rebuilt the system instruction for a set that had not changed.
+        var changed = false
         for (raw in names.map { it.trim() }.filter { it.isNotEmpty() }) {
             if (raw in loaded) { accepted.add(raw); continue }
             if (raw !in allowed) { rejected.add(raw); continue }
             if (loaded.size >= MAX_EXTRA) { atCap = true; rejected.add(raw); continue }
-            loaded.add(raw); accepted.add(raw)
+            loaded.add(raw); accepted.add(raw); changed = true
         }
-        if (accepted.isNotEmpty()) versionCounter++
+        if (changed) versionCounter++
         return LoadResult(accepted, rejected, atCap, versionCounter)
     }
 

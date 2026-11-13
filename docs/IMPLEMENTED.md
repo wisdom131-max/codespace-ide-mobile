@@ -263,3 +263,4 @@ the twelve are spread across two commits rather than four.
 ## Limitations
 
 What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIONS-REGISTER-2026-11-12.md`.
+| Post-implementation testing (2026-11-13) | `DynamicToolLoadingIntegrationTest` (9 tests) tests the four Dynamic Tool Loading branches as one system; two defects fixed (`ToolLoadout` version no longer bumps on a replayed load; `ToolRelevance` gained `git status`/`zip`/`unzip`/`archive`/`merge` synonyms); L23-L25 recorded; `docs/TOOL-PROMPT-MATRIX-2026-11-13.md` holds 10 derived prompts for each of the 120 tools | this commit |

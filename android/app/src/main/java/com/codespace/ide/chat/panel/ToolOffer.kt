@@ -36,6 +36,15 @@ internal object ToolRelevance {
         "hash" to listOf("checksum"),
         "verify" to listOf("checksum", "runTests"),
         "integrity" to listOf("checksum"),
+        // POST-IMPLEMENTATION (2026-11-13): found by DynamicToolLoadingIntegrationTest. A request
+        // that SAID "check git status" did not get git_status in ASK, because "status" is not a
+        // synonym on its own and "git " only scores by category. Exact phrases are supported here
+        // (contains), so the phrase is the precise fix rather than widening "status" to everything.
+        "git status" to listOf("git_status", "git_diff"),
+        "merge" to listOf("git_status", "git_diff", "git_conflict_resolve"),
+        "zip" to listOf("zip_list", "zip_extract", "zip_create"),
+        "unzip" to listOf("zip_extract", "zip_list"),
+        "archive" to listOf("zip_list", "zip_extract"),
         "commit" to listOf("git_commit_push", "git_status"),
         "branch" to listOf("git_branch"),
         "stash" to listOf("git_stash"),
@@ -132,6 +141,7 @@ internal object ToolOffer {
     /** How many zero-scoring core names a named match may displace. Small on purpose. */
     private const val MAX_SWAPS = 3
 
+
     data class Plan(
         val names: List<String>,
         /** One line for the transcript: what was offered and why. Null when nothing was limited. */
@@ -143,6 +153,13 @@ internal object ToolOffer {
         val exposed = ToolRegistry.exposed(mode).map { it.name }
         if (!enabled) return Plan(exposed, null, exposed.size)
         val core = ToolMetaIndex.core(mode).filter { it in exposed }
+        // POST-IMPLEMENTATION (2026-11-13): every mode's target sits exactly one above its core set
+        // (ASK 9 core / target 10, AGENT 24 / 25), so relevance can admit at most ONE
+        // request-specific tool. The consequence is visible in testing - a request to "look inside
+        // the zip" gets zip_extract and not zip_list - but the 10/16/25 targets are the lean-mode
+        // contract (DynamicToolsTest asserts them), so the ceiling is documented as limitation L23
+        // instead of being raised here. tool_search plus load is the supported path to the second
+        // tool, and the synonyms below at least make the ONE slot the right tool.
         val target = ToolMetaIndex.target(mode)
         val picked = LinkedHashSet(core)
         var added = 0
