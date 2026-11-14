@@ -416,7 +416,12 @@ You can use multiple tools in sequence. When done, give a final summary.
                 )
                 "list_files" -> listFiles(args.getString("path"), context)
                 "search_files" -> searchFiles(args.getString("path"), args.getString("pattern"), context)
-                "git_commit_push" -> gitCommitPush(args.getString("message"), args.optString("repo_dir").ifBlank { null }, context)
+                "git_commit_push" -> gitCommitPush(
+                    args.getString("message"),
+                    args.optJSONArray("paths")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                    args.optString("repo_dir").ifBlank { null },
+                    context,
+                )
                 "git_pull_rebase" -> gitPullRebase(args.optString("repo_dir").ifBlank { null }, context)
                 "git_branch" -> gitBranch(args.getString("action"), args.optString("name", ""), args.optString("repo_dir").ifBlank { null }, context)
                 // PHASE 1: inspected output is capped, so a giant diff/status can never
@@ -2095,13 +2100,75 @@ You can use multiple tools in sequence. When done, give a final summary.
         return File(project ?: "/root")
     }
 
-    private fun gitCommitPush(message: String, repoDir: String?, context: Context): String {
+    /**
+     * PHASE 1 (owner approval 2026-11-14): staging, committing and pushing are three operations with
+     * three answers. The old body ran `git add -A`, `git commit` and `git push` behind one approval,
+     * so agreeing to a commit also published it.
+     *
+     * Nothing here is guessed: the paths are resolved and shown, the remote and branch are read back
+     * from git, and a push to main or master needs its own second confirmation. Declining a push
+     * leaves the commit exactly where it is.
+     */
+    private suspend fun gitCommitPush(
+        message: String,
+        paths: List<String>,
+        repoDir: String?,
+        context: Context,
+    ): String {
         val repo = getRepoDir(repoDir, context)
         if (!ProotInstaller.guestToHostPath(context, "${repo.path}/.git").exists()) return "Not a git repository: ${repo.path}"
-        val add = gitRun("add", "-A", repo = repo, context = context)
+        if (message.isBlank()) return "A commit needs a message."
+
+        val branch = gitRun("rev-parse", "--abbrev-ref", "HEAD", repo = repo, context = context).trim()
+        val status = gitRun("status", "--porcelain", repo = repo, context = context)
+        val plan = GitSafety.planStaging(paths, GitSafety.trackedModifiedFromStatus(status))
+        if (!plan.ok) return plan.problems.joinToString("\n").ifBlank { "Nothing to stage." }
+
+        val commitAnswer = AgentQuestionGate.ask(
+            GitSafety.stageApprovalText(plan, message),
+            options = listOf("Commit", "Cancel"),
+            allowFreeText = false,
+        )
+        if (!commitAnswer.answered || commitAnswer.choice != "Commit") {
+            return "Declined: nothing was staged or committed."
+        }
+
+        val add = gitRun("add", "--", *plan.paths.toTypedArray(), repo = repo, context = context)
         val commit = gitRun("commit", "-m", message, repo = repo, context = context)
-        val push = gitRun("push", repo = repo, context = context)
-        return truncMark("git add: $add\ngit commit: $commit\ngit push: $push", 4000)  // CH06 (P4h)
+        val added = (add + " " + commit).trim()
+        if (commit.contains("nothing to commit", ignoreCase = true)) {
+            return truncMark("Staged " + plan.paths.size + " path(s). " + added, 2000)
+        }
+
+        val remoteList = gitRun("remote", "-v", repo = repo, context = context)
+        val target = GitSafety.pushTarget(remoteList, branch)
+            ?: return GitSafety.noRemoteText(added)
+
+        val pushAnswer = AgentQuestionGate.ask(
+            GitSafety.pushApprovalText(target),
+            options = listOf("Push", "Not now"),
+            allowFreeText = false,
+        )
+        if (!pushAnswer.answered || pushAnswer.choice != "Push") {
+            return GitSafety.declinedPush(target, added)
+        }
+        if (GitSafety.isProtectedBranch(target.branch)) {
+            val mainAnswer = AgentQuestionGate.ask(
+                GitSafety.mainPushApprovalText(target),
+                options = listOf("Confirm push to " + target.branch, "Not now"),
+                allowFreeText = false,
+            )
+            if (!mainAnswer.answered || mainAnswer.choice != "Confirm push to " + target.branch) {
+                return GitSafety.declinedPush(target, added)
+            }
+        }
+
+        val push = gitRun("push", target.remote, target.branch, repo = repo, context = context)
+        return truncMark(
+            "Staged " + plan.paths.size + " path(s) on " + target.branch + "\n" +
+                "git add: " + add + "\ngit commit: " + commit + "\ngit push " + target.remote + " " + target.branch + ": " + push,
+            4000,
+        )
     }
 
     private fun gitPullRebase(repoDir: String?, context: Context): String {

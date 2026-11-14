@@ -140,8 +140,8 @@ internal object ToolRegistry {
         ToolSpec(
             name = "git_commit_push",
             displayName = "Committing and pushing",
-            description = "Stage everything and commit with this message. Pushes to the remote when one is configured.",
-            schema = OBJ + ",\"required\":[\"message\"],\"properties\":{\"message\":{\"type\":\"string\"},\"repo_dir\":{\"type\":\"string\"}}}",
+            description = "Stage the files you name, commit with this message, then push. Staging, the commit and the push are each confirmed separately, and a push to main or master needs a second confirmation. Never stages the whole tree.",
+            schema = OBJ + ",\"required\":[\"message\"],\"properties\":{\"message\":{\"type\":\"string\"},\"paths\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Repository-relative paths to stage. Omit to stage the tracked files that actually changed.\"},\"repo_dir\":{\"type\":\"string\"}}}",
             modes = EXEC_MODES,
         ),
         ToolSpec(
