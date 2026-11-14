@@ -1535,6 +1535,15 @@ class ChatSessionManager internal constructor(
         return created
     }
 
+    /**
+     * PHASE 2 (owner approval 2026-11-14): true while ANY cached conversation still has a turn in
+     * flight. ChatRuntime asks this before closing on the last window release, so a panel close
+     * parks the runtime instead of cancelling the answer.
+     */
+    fun anyStreaming(): Boolean = synchronized(this) {
+        sessions.values.any { it.ui.value?.streaming == true }
+    }
+
     /** True while the given conversation is streaming (used by the switch rule below). */
     fun isStreaming(projectId: String, conversationId: String): Boolean =
         synchronized(this) { sessions[key(projectId, conversationId)] }?.ui?.value?.streaming == true

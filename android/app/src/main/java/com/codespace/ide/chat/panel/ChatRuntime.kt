@@ -51,8 +51,42 @@ object ChatRuntime {
     @Synchronized
     fun release() {
         if (!hosts.release()) return
+        val m = manager ?: return
+        // PHASE 2 (owner approval 2026-11-14): closing the last window must not cancel a turn.
+        // PARK keeps the manager (and its stream) alive; the reaper closes it when the work ends.
+        when (RuntimeLifecycle.onRelease(hosts.count(), m.anyStreaming())) {
+            RuntimeLifecycle.Action.KEEP -> Unit
+            RuntimeLifecycle.Action.PARK -> scheduleIdleReap()
+            RuntimeLifecycle.Action.CLOSE -> { closeNow() }
+        }
+    }
+
+    /** Closes the shared manager. Separate so PARK/CLOSE share one exit path. */
+    @Synchronized
+    private fun closeNow() {
         manager?.close()
         manager = null
+    }
+
+    /**
+     * A parked manager has no window, so nothing would otherwise notice the turn ending. One
+     * short tick while parked is enough; it stops the moment the manager is closed or a window
+     * returns, and it never runs when a host is present.
+     */
+    private fun scheduleIdleReap() {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val tick = object : Runnable {
+            override fun run() {
+                val parked = synchronized(this@ChatRuntime) { manager }
+                if (parked == null) return
+                if (RuntimeLifecycle.canCloseWhileParked(hostCount(), parked.anyStreaming())) {
+                    synchronized(this@ChatRuntime) { if (manager === parked) closeNow() }
+                    return
+                }
+                handler.postDelayed(this, IDLE_TICK_MS)
+            }
+        }
+        handler.postDelayed(tick, IDLE_TICK_MS)
     }
 
     /** The live manager, or null when no window is open. Used by the editor-tab host. */
@@ -61,4 +95,7 @@ object ChatRuntime {
 
     @Synchronized
     fun hostCount(): Int = hosts.count()
+
+    /** How often a parked runtime checks whether its work has finished. */
+    private const val IDLE_TICK_MS = 1_500L
 }
