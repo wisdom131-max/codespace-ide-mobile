@@ -4,6 +4,12 @@ One canonical list, grouped by area. Each row is something that was asked for an
 app. Commit + CI run where the record exists; rows marked *backfill* were reported in an earlier
 session and still need their commit id pasted here.
 
+## Copilot repair programme (owner-approved 2026-11-14)
+
+| Delivered | Commit / Run |
+|---|---|
+| Phase 1: staging, commit and push are three approvals; `add -A` removed; protected-branch push needs a second confirmation; declining keeps the commit | b537e61 / GREEN 43632852707 |
+
 ## Chat rebuild (owner-requested rewrite, A / WP1-WP9)
 
 | Delivered | Commit / Run |
