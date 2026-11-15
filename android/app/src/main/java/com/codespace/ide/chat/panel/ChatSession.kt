@@ -1263,7 +1263,11 @@ class ChatSession internal constructor(
             // plan order. Answers are collected by index, so the transcript order is the plan's.
             suspend fun executeOnce(idx: Int): String = try {
                 com.codespace.ide.agent.AgentTools.executeTool(
-                    calls[idx].name, org.json.JSONObject(calls[idx].argumentsJson), ctx)
+                    calls[idx].name, org.json.JSONObject(calls[idx].argumentsJson), ctx,
+                    // GATE 2: a write carries an id derived from what it asks for, so the
+                    // persisted ledger can answer a repeat instead of applying it twice.
+                    callId = com.codespace.ide.chat.panel.WriteCallIdentity.idFor(
+                        calls[idx].name, calls[idx].argumentsJson))
             } catch (t: Throwable) {
                 "FAILED: " + (t.message ?: "unknown error")
             }
