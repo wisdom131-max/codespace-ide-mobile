@@ -200,3 +200,67 @@ Device verification for all of it stays in the separate device-testing round, as
 - **Cloud prices are secondary-source figures** and must be confirmed at the vendor before any spend.
 - **Voice availability cannot be promised** for a specific device. The fallback path is part of the design precisely because Google's voice catalogue depends on the installed engine and on language packs.
 - The 14 November note stands: **no runtime observation of Brahma was ever made**, so every claim about its *behaviour* (as opposed to its structure) is inference.
+
+---
+
+## 9. ADDENDUM — the Brahma APK, opened (approved 2026-11-15)
+
+The owner approved downloading his own APK for read-only static inspection. Nothing was installed or executed, the Drive originals were untouched, and no code or asset was copied.
+
+### 9.1 The two copies are the same build
+
+**CONFIRMED.** Both Drive files are 55,630,071 bytes and hash identically:
+
+```
+sha256 6f4af99d578ec3aed35228bcbb0c44e01172cfc62655ac9e4beec3e91ac63ac0
+        BrahmaAI-Mobile-v1.0.1-release.apk  (id 1fzDmkHoogukuUZRdQ0CRfyKe7mOepIgB, modified 2026-11-13)
+        BrahmaAI-Mobile-v1.0.1-release.apk  (id 1wJiZq3QACklLXDUyMTI1IPGbu7qaRLQf, modified 2026-10-28)
+```
+
+The 14 November audit's "unconfirmed" line on this point is now closed: they are byte-identical.
+
+### 9.2 Correction to section 3.2 — the male voice is NOT the device engine
+
+My earlier inference was wrong, and the dex says so plainly. Three speech paths exist in `com.brahma.assistant.audio` and `com.brahma.assistant.service`:
+
+| Path | Evidence in `classes3.dex` | Label |
+|---|---|---|
+| **Microsoft Edge read-aloud neural voice** | `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=…`, `Content-Type:application/ssml+xml`, `Path:ssml`, `Sec-MS-GEC`, voice string **`en-US-GuyNeural`** | **CONFIRMED** |
+| **Gemini TTS** | `GeminiCharonVoiceClient`, `gemini-2.5-flash-preview-tts`, `gemini-3.8-flash-tts`, host `generativelanguage.googleapis.com/v1beta/models/` | **CONFIRMED** |
+| **Android `TextToSpeech`** | `android/speech/tts/TextToSpeech`, `UtteranceProgressListener`, `setVoice`, `setLanguage`, `setPitch`, `setSpeechRate`, `isTtsReady` | **CONFIRMED** |
+
+So the male voice the owner hears is a **cloud neural voice**, most likely `en-US-GuyNeural` over the Edge WebSocket, or Gemini's prebuilt **Charon** voice. Both are network services. The app's own marketing string says it outright: *"features Google Gemini's authentic Charon male voice, zero-latency sentence streaming"*, and its persona prompt reads *"deep, authoritative, and calm Charon male voice persona"* and *"calm, deep male baritone presence (like JARVIS or Charon)"*.
+
+Android `TextToSpeech` is the **fallback**, and one of its strings identifies the degraded mode: *"Command received, sir. I'm operating in on-device mode. Add an API key in Settings for full world knowledge."*
+
+**The tuning recipe is readable**, and this is the useful part to reproduce independently: it wraps text in SSML
+
+```xml
+<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
+  <voice name='…'><prosody pitch='-2Hz' rate='+2%' volume='+0%'>…</prosody></voice>
+</speak>
+```
+
+i.e. pitch nudged **down 2 Hz**, rate up **2%**, volume untouched. User-adjustable pitch and rate are persisted (`PreferencesManager.saveSpeechPitch` / `saveSpeechRate`, keys `speech_pitch`, `speechRate`).
+
+**What this means for VN Code:** the "natural male voice" the owner liked is a *paid/third-party network voice*. We cannot and should not use the Edge read-aloud endpoint (unofficial, tied to a client token, and it is not ours to use); Gemini TTS is a metered API. The independent reproduction is therefore: **Android TTS, tuned**, with the -2 Hz / +2% recipe applied, and a documented cloud-voice slot left open for a licensed provider the owner chooses later.
+
+### 9.3 How the welcome behaviour actually works
+
+**CONFIRMED** from class and string tables:
+
+- `BrahmaProactiveService` with `startProactiveSupervisor`, `checkMorningGreeting`, `evaluateProactiveCommentary`, `generateProactiveComment`, `deliverProactiveRemark`, and a notification channel `brahma_proactive_channel`.
+- Persisted flags: **`greetedToday`**, **`lastGreetingDay`**, **`lastProactiveCommentTime`**, and a **`TWENTY_FOUR_HOURS`** constant.
+- The greeting texts are **fixed strings with a time-of-day variant**, not model output: *"Good morning, sir. Brahma Evo core is online and standing by. Say daily briefing whenever you're ready."*, *"Good morning, sir. Core telemetry is nominal…"*, *"Systems are operating at peak telemetry this morning, sir. What is our primary target today?"*, and *"Identity verified. Welcome back, sir."* / *"PIN verified. Welcome back, sir."*
+- Commentary is separately rate-limited by `lastProactiveCommentTime`, and the prompt for it is a model call ("Spontaneous Knowledge / Tech Wit: Share an intriguing science/tech observation…").
+
+**So the answer to "why is the welcome occasional":** it is a **once-a-day flag keyed to the calendar day** (`greetedToday` + `lastGreetingDay` compared against a 24-hour constant), delivered by a background supervisor service, not by the activity lifecycle. That is why it fires when returning after a gap and never on every interaction. **INFERRED** for the exact comparison order (the dex shows the field names and the constant, not the branch), and **UNKNOWN** for whether the app also gates on a morning time window.
+
+**Deliberate difference for VN Code:** a once-per-calendar-day flag tied to a background service is the *idea* worth taking. Its notification channel is not: an IDE should not post a greeting as a notification, and should not speak when it is not on screen.
+
+### 9.4 What remains unknown even now
+
+- Whether the Edge path or the Gemini path is preferred at runtime, and what makes it fall back (**UNKNOWN**; both clients exist and the choice is inside compiled control flow).
+- The exact comparison that clears `greetedToday` (**INFERRED**: calendar day change).
+- Whether playback is pre-synthesised to file or streamed per sentence per path. `synthesizeToFile` appears on both neural clients, which suggests file-then-play; the marketing string claims "zero-latency sentence streaming" (**INFERRED**, contradictory).
+- Interruption/backgrounding handling (**UNKNOWN**; behavioural).
