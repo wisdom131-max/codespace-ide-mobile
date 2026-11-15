@@ -1050,11 +1050,12 @@ internal object ToolRegistry {
         ToolSpec(
             name = "media_info",
             displayName = "Inspecting a media file",
-            description = "Report what an audio or video file actually is, read from its header: format, " +
-                "duration, sample rate, channels. Handles wav, flac, mp4/m4a/mov and mp3. An mp3 " +
-                "duration is derived from one frame plus the file size and is labelled estimated, " +
-                "which a VBR file will prove wrong. It reads the first 4MB only and does not transcribe " +
-                "or decode anything.",
+            description = "Report what a media file actually is, read from its header and never by " +
+                "decoding it: audio and video (wav, flac, mp4/m4a/mov, mp3) give duration, sample rate " +
+                "and channels; images (png, jpeg, gif, webp, bmp) give pixel size and EXIF orientation. " +
+                "An mp3 duration is derived from one frame plus the file size and is labelled " +
+                "estimated, which a VBR file will prove wrong. Reads the first 4MB only and does not " +
+                "transcribe, decode or convert anything.",
             schema = OBJ + ",\"required\":[\"path\"],\"properties\":{\"path\":{\"type\":\"string\"}}}",
             modes = READ_ALL,
         ),

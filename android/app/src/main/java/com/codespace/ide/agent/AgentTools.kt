@@ -75,10 +75,11 @@ You have access to these tools for acting on the user's environment:
    line is a bullet too. The package carries a master, two layouts and a theme, because a deck
    without them opens as a repair prompt.
    <tool>{"name":"pptx_create","arguments":{"path":"/path/deck.pptx","content":"# Roadmap\n- Ship it\n- Measure it"}}</tool>
-3h. media_info     — What an audio or video file actually is
-   Reads format, duration, sample rate and channels FROM THE HEADER (wav, flac, mp4/m4a/mov, mp3).
-   An MP3 duration is derived from one frame plus file size, so it is labelled "estimated" -
-   trust that word.
+3h. media_info     — What an audio, video or image file actually is
+   Reads format and size FROM THE HEADER, never by decoding: audio and video (wav, flac, mp4/m4a/mov,
+   mp3) give duration, sample rate and channels; images (png, jpeg, gif, webp, bmp) give pixel size
+   and EXIF orientation. An MP3 duration is derived from one frame plus file size, so it is labelled
+   "estimated" - trust that word.
    <tool>{"name":"media_info","arguments":{"path":"/path/recording.m4a"}}</tool>
 3c. multi_replace_string_in_file — Several such edits to ONE file in one call
    <tool>{"name":"multi_replace_string_in_file","arguments":{"path":"/path/to/file","replacements":"[{\"old_string\":\"a\",\"new_string\":\"b\"}]","replace_all":false}}</tool>

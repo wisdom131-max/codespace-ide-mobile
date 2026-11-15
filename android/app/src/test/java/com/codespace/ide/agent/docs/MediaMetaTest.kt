@@ -80,7 +80,7 @@ class MediaMetaTest {
     @Test
     fun somethingThatIsNotMediaIsRefusedRatherThanGuessed() {
         assertNull(MediaMeta.of("a plain text file, honestly not an audio file".toByteArray()))
-        assertTrue(MediaMeta.render("nope".toByteArray()).contains("Not an audio or video file"))
+        assertTrue(MediaMeta.render("nope".toByteArray()).contains("Not a media file"))
     }
 
     @Test

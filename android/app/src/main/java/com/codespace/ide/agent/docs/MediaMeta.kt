@@ -27,8 +27,15 @@ object MediaMeta {
         return wav(bytes) ?: flac(bytes) ?: mp4(bytes) ?: mp3(bytes)
     }
 
+    /**
+     * PROJECT 2.9: images answer here too, from their own headers, so one tool describes anything a
+     * phone actually holds. Media first, because an MP4's MOV atom can look like nothing else.
+     */
     fun render(bytes: ByteArray, name: String = ""): String {
-        val info = of(bytes, name) ?: return "Not an audio or video file this reader understands (wav, flac, mp4/m4a/mov, mp3)."
+        val image = ImageMeta.of(bytes)
+        if (image != null) return ImageMeta.render(image)
+        val info = of(bytes, name) ?: return "Not a media file this reader understands " +
+            "(wav, flac, mp4/m4a/mov, mp3, png, jpeg, gif, webp, bmp)."
         val sb = StringBuilder()
         sb.append(info.format)
         when {
