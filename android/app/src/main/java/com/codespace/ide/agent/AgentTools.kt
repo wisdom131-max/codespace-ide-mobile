@@ -2526,7 +2526,18 @@ You can use multiple tools in sequence. When done, give a final summary.
                 return code to body
             }
         }
-        val report = com.codespace.ide.agent.research.SearchRecovery.run(query, fetcher)
+        val parent = com.codespace.ide.agent.research.SearchRecovery.run(query, fetcher)
+        // Project 1.6: a compound question is searched as the asks it contains, but only when the
+        // first search came back thin and never more than twice - each request is mobile data.
+        val asks = com.codespace.ide.agent.research.ResearchPlanner.decompose(query)
+        val extraQueries = com.codespace.ide.agent.research.ResearchPlanner.followUpSearches(
+            parent.results.size, asks)
+        val extraReports = extraQueries.map {
+            com.codespace.ide.agent.research.SearchRecovery.run(it, fetcher)
+        }
+        val allResults = (parent.results + extraReports.flatMap { it.results }).distinctBy { it.url }
+        val attempts = parent.attempts + extraReports.flatMap { it.attempts }
+        val report = com.codespace.ide.agent.research.SearchRecovery.Report(allResults, attempts)
         val labels = report.attempts.map { it.label() }
         // Project 1.1: the same page reached twice, or a mirror of one already cited, is ONE
         // source. The planner decides which hits are distinct and keeps no host over two slots,
@@ -2561,6 +2572,11 @@ You can use multiple tools in sequence. When done, give a final summary.
         val dropped = report.results.size - kept.size
         val body = com.codespace.ide.agent.research.ResultQuality.render(kept, labels)
         val notes = StringBuilder()
+        if (extraQueries.isNotEmpty()) {
+            notes.append("\n\nThe question had ").append(extraQueries.size + 1)
+                .append(" parts and the first search was thin, so each part was searched: ")
+                .append(extraQueries.joinToString(" | "))
+        }
         if (picked.isNotEmpty()) {
             notes.append("\n\nSource quality (kind of source, not search rank): ")
             notes.append(picked.take(5).joinToString("; ") { c ->

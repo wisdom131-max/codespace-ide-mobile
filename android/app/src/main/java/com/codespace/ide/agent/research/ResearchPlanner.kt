@@ -176,6 +176,25 @@ object ResearchPlanner {
         return if (union == 0) 0.0 else shared.toDouble() / union
     }
 
+    /**
+     * PROJECT 1.6 (2026-11-15): whether a thin first search earns a second one.
+     *
+     * Decomposition alone would multiply every search by three, and every extra request is the
+     * owner's mobile data. So the subquestions are spent only when the parent search came back
+     * thin, and only two of them at most. A search that already answered does not get repeated,
+     * which is the spec's own rule.
+     */
+    fun followUpSearches(
+        parentResultCount: Int,
+        subquestions: List<String>,
+        minUseful: Int = 4,
+        maxExtra: Int = 2,
+    ): List<String> {
+        if (parentResultCount >= minUseful) return emptyList()
+        if (subquestions.size < 2) return emptyList()
+        return subquestions.take(maxExtra)
+    }
+
     /** Whether another round is allowed: bounded by rounds, searches and the caller's own budget. */
     fun allowAnotherRound(round: Int, searchesUsed: Int, searchBudget: Int): Boolean =
         round < MAX_ROUNDS && searchesUsed < searchBudget

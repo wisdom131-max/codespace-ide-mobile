@@ -74,4 +74,30 @@ class ResearchDecompositionTest {
         // "vs" alone, or punctuation only, must not manufacture an ask.
         assertEquals(emptyList<String>(), ResearchPlanner.decompose("vs"))
     }
+
+    @Test
+    fun aThinFirstSearchEarnsTheSubquestions() {
+        val asks = listOf("proot link2symlink", "symlinkat crashes")
+        assertEquals(asks, ResearchPlanner.followUpSearches(parentResultCount = 1, subquestions = asks))
+    }
+
+    @Test
+    fun aSearchThatAlreadyAnsweredIsNotRepeated() {
+        val asks = listOf("proot link2symlink", "symlinkat crashes")
+        // Four or more distinct results is not thin; spending data again buys nothing.
+        assertEquals(emptyList<String>(), ResearchPlanner.followUpSearches(4, asks))
+        assertEquals(emptyList<String>(), ResearchPlanner.followUpSearches(9, asks))
+    }
+
+    @Test
+    fun neverMoreThanTwoExtraSearches() {
+        val asks = listOf("alpha beta", "gamma delta", "epsilon zeta")
+        assertEquals(2, ResearchPlanner.followUpSearches(0, asks).size)
+    }
+
+    @Test
+    fun noSubquestionsMeansNoExtraSearch() {
+        assertEquals(emptyList<String>(), ResearchPlanner.followUpSearches(0, emptyList()))
+        assertEquals(emptyList<String>(), ResearchPlanner.followUpSearches(0, listOf("only one ask here")))
+    }
 }
