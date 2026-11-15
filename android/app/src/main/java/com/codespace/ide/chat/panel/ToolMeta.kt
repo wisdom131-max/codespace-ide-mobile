@@ -110,6 +110,7 @@ internal object ToolMetaIndex {
         "docx_create" to ToolMeta(ToolCategory.EDIT, listOf("word", "docx", "document", "create", "report"), true),
         "docx_edit" to ToolMeta(ToolCategory.EDIT, listOf("word", "docx", "document", "append", "edit"), true),
         "xlsx_write" to ToolMeta(ToolCategory.EDIT, listOf("excel", "xlsx", "spreadsheet", "formula", "csv"), true),
+        "pptx_create" to ToolMeta(ToolCategory.EDIT, listOf("powerpoint", "pptx", "slides", "deck", "presentation"), true),
         "get_errors" to ToolMeta(ToolCategory.EDIT, listOf("error", "diagnostic", "compile", "warning", "lint")),
         "get_changed_files" to ToolMeta(ToolCategory.GIT, listOf("changed", "modified", "git", "status", "diff")),
         "git_status" to ToolMeta(ToolCategory.GIT, listOf("status", "changed", "modified", "dirty")),

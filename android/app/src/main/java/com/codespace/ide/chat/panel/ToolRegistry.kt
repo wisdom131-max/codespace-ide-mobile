@@ -1036,6 +1036,18 @@ internal object ToolRegistry {
             modes = WRITE_MODES,
         ),
         ToolSpec(
+            name = "pptx_create",
+            displayName = "Creating a PowerPoint deck",
+            description = "Create a real .pptx: \"# Slide title\" starts a slide, \"- text\" adds a bullet, " +
+                "any other line is a bullet too. The package carries a slide master, two layouts and a " +
+                "theme, because a deck without them opens as a repair prompt. Refuses an existing path " +
+                "and any extension other than .pptx. It does NOT add images, charts, transitions or " +
+                "speaker notes, and it edits no existing deck.",
+            schema = OBJ + ",\"required\":[\"path\",\"content\"],\"properties\":{" +
+                "\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
             name = "zip_extract",
             displayName = "Extracting an archive",
             description = "Extract an archive inside the workspace. Refuses entries that would escape " +

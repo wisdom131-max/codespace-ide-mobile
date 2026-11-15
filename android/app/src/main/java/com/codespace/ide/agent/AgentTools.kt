@@ -70,6 +70,11 @@ You have access to these tools for acting on the user's environment:
    Sheet1). A cell starting with "=" becomes a REAL formula, numbers stay numbers, and the
    workbook is marked to calculate on open.
    <tool>{"name":"xlsx_write","arguments":{"path":"/path/book.xlsx","content":"item,qty\nWidget,4\n,,\nTotal,=SUM(B2:B2)"}}</tool>
+3g. pptx_create    — CREATE a real PowerPoint .pptx
+   content is markdown-ish: "# Slide title" starts a slide, "- text" adds a bullet, any other
+   line is a bullet too. The package carries a master, two layouts and a theme, because a deck
+   without them opens as a repair prompt.
+   <tool>{"name":"pptx_create","arguments":{"path":"/path/deck.pptx","content":"# Roadmap\n- Ship it\n- Measure it"}}</tool>
 3c. multi_replace_string_in_file — Several such edits to ONE file in one call
    <tool>{"name":"multi_replace_string_in_file","arguments":{"path":"/path/to/file","replacements":"[{\"old_string\":\"a\",\"new_string\":\"b\"}]","replace_all":false}}</tool>
 4. list_files     — List files in a directory
@@ -234,7 +239,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "terminal_list", "terminal_kill", "job_status",
         "coverage_read", "entity_schema_read", "memory_search",
         // ZIP (2026-11-12): three tools on the one engine the app already ships.
-        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write",
+        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create",
         // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
         "npm_info", "pypi_info", "lockfile_parse",
         // Git recovery (owner approval 2026-11-12): history, checkpoints, previewed restores, and
@@ -362,6 +367,8 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "docx_edit" -> docxEdit(
                     args.getString("path"), args.optString("content"), context)
                 "xlsx_write" -> xlsxWrite(
+                    args.getString("path"), args.optString("content"), context)
+                "pptx_create" -> pptxCreate(
                     args.getString("path"), args.optString("content"), context)
                 // VS Code parity aliases: same implementation, their tool name.
                 "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
@@ -808,6 +815,33 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
         return truncMark(file.readText(), 16000)  // CH06 (P4h)
+    }
+
+    /**
+     * PROJECT 2.7: create a deck. Refuses an existing path and any extension but .pptx, for the
+     * same reason as the other create tools.
+     */
+    private fun pptxCreate(path: String, content: String, context: android.content.Context): String {
+        val resolved = resolveToolPath(context, path)
+        val target = File(resolved)
+        if (target.exists()) return "Refused: " + resolved + " already exists. Choose another path."
+        if (!resolved.lowercase().endsWith(".pptx")) {
+            return "Refused: pptx_create writes .pptx only, and the path ends in something else."
+        }
+        val slides = com.codespace.ide.agent.docs.PptxWriter.slidesOf(content)
+        if (slides.isEmpty()) return "Nothing to write: no slide titles were found."
+        val bytes = try {
+            com.codespace.ide.agent.docs.PptxWriter.build(slides)
+        } catch (t: Throwable) {
+            return "Failed to build the deck: " + (t.message ?: "unknown error")
+        }
+        return try {
+            target.parentFile?.mkdirs()
+            target.writeBytes(bytes)
+            "Created " + resolved + " (" + slides.size + " slide(s), " + bytes.size + " bytes)"
+        } catch (t: Throwable) {
+            "Failed to write " + resolved + ": " + (t.message ?: "unknown error")
+        }
     }
 
     /**
