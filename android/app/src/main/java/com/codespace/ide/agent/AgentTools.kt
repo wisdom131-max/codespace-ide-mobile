@@ -60,6 +60,11 @@ You have access to these tools for acting on the user's environment:
    any other line is a paragraph. Heading styles are written so the document's structure
    survives: reading it back with read_file lists its outline.
    <tool>{"name":"docx_create","arguments":{"path":"/path/report.docx","title":"Report","content":"# Summary\nThe build is green."}}</tool>
+3e. docx_edit      — APPEND to an existing .docx without rebuilding it
+   Only word/document.xml is rewritten; every other part (styles, images, headers) is copied
+   through byte for byte, which is what "preserve formatting" can honestly mean here. It appends;
+   it cannot rewrite a paragraph in place.
+   <tool>{"name":"docx_edit","arguments":{"path":"/path/report.docx","content":"## New section\nMore words."}}</tool>
 3c. multi_replace_string_in_file — Several such edits to ONE file in one call
    <tool>{"name":"multi_replace_string_in_file","arguments":{"path":"/path/to/file","replacements":"[{\"old_string\":\"a\",\"new_string\":\"b\"}]","replace_all":false}}</tool>
 4. list_files     — List files in a directory
@@ -224,7 +229,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "terminal_list", "terminal_kill", "job_status",
         "coverage_read", "entity_schema_read", "memory_search",
         // ZIP (2026-11-12): three tools on the one engine the app already ships.
-        "zip_create", "zip_extract", "zip_list", "docx_create",
+        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit",
         // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
         "npm_info", "pypi_info", "lockfile_parse",
         // Git recovery (owner approval 2026-11-12): history, checkpoints, previewed restores, and
@@ -349,6 +354,8 @@ You can use multiple tools in sequence. When done, give a final summary.
                 // PROJECT 2.4: a real Word document, with heading styles that survive a re-read.
                 "docx_create" -> docxCreate(
                     args.getString("path"), args.optString("title"), args.optString("content"), context)
+                "docx_edit" -> docxEdit(
+                    args.getString("path"), args.optString("content"), context)
                 // VS Code parity aliases: same implementation, their tool name.
                 "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
                 "insert_edit_into_file" -> replaceStringInFile(
@@ -794,6 +801,44 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
         return truncMark(file.readText(), 16000)  // CH06 (P4h)
+    }
+
+    /**
+     * PROJECT 2.5: append to an existing Word document.
+     *
+     * Reads the file, adds the blocks to the body, and writes it back atomically through a temp
+     * file, so a failure midway cannot leave a half-written document where a good one used to be.
+     */
+    private fun docxEdit(path: String, content: String, context: android.content.Context): String {
+        val resolved = resolveToolPath(context, path)
+        val target = File(resolved)
+        if (!target.isFile) return "Not found: " + resolved + " (docx_edit appends to an existing file)"
+        val original = try {
+            target.readBytes()
+        } catch (t: Throwable) {
+            return "Could not read " + resolved + ": " + (t.message ?: "unknown error")
+        }
+        if (!com.codespace.ide.agent.docs.DocxEditor.isDocx(original)) {
+            return "Refused: " + resolved + " is not a Word document; docx_edit only edits .docx."
+        }
+        val blocks = com.codespace.ide.agent.docs.DocxWriter.blocksOf(content)
+        if (blocks.isEmpty()) return "Nothing to add: the content was empty."
+        val updated = try {
+            com.codespace.ide.agent.docs.DocxEditor.append(original, blocks)
+        } catch (t: Throwable) {
+            return "Failed to edit the document: " + (t.message ?: "unknown error")
+        }
+        return try {
+            val tmp = File(target.parentFile, target.name + ".tmp")
+            tmp.writeBytes(updated)
+            if (!tmp.renameTo(target)) {
+                target.writeBytes(updated)
+                tmp.delete()
+            }
+            "Appended " + blocks.size + " block(s) to " + resolved + " (" + updated.size + " bytes)"
+        } catch (t: Throwable) {
+            "Failed to write " + resolved + ": " + (t.message ?: "unknown error")
+        }
     }
 
     /**

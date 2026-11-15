@@ -108,6 +108,7 @@ internal object ToolMetaIndex {
         "insert_edit_into_file" to ToolMeta(ToolCategory.EDIT, listOf("insert", "add", "edit"), true),
         "apply_patch" to ToolMeta(ToolCategory.EDIT, listOf("patch", "diff", "apply", "fix"), true),
         "docx_create" to ToolMeta(ToolCategory.EDIT, listOf("word", "docx", "document", "create", "report"), true),
+        "docx_edit" to ToolMeta(ToolCategory.EDIT, listOf("word", "docx", "document", "append", "edit"), true),
         "get_errors" to ToolMeta(ToolCategory.EDIT, listOf("error", "diagnostic", "compile", "warning", "lint")),
         "get_changed_files" to ToolMeta(ToolCategory.GIT, listOf("changed", "modified", "git", "status", "diff")),
         "git_status" to ToolMeta(ToolCategory.GIT, listOf("status", "changed", "modified", "dirty")),

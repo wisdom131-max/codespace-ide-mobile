@@ -1013,6 +1013,17 @@ internal object ToolRegistry {
             modes = WRITE_MODES,
         ),
         ToolSpec(
+            name = "docx_edit",
+            displayName = "Appending to a Word document",
+            description = "Append markdown-ish content to an existing .docx. Only word/document.xml is " +
+                "rewritten; every other part of the package is copied through byte for byte, so styles, " +
+                "images and headers survive. It APPENDS at the end of the body - it cannot rewrite or " +
+                "delete an existing paragraph, and it refuses anything that is not a Word document.",
+            schema = OBJ + ",\"required\":[\"path\",\"content\"],\"properties\":{" +
+                "\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
             name = "zip_extract",
             displayName = "Extracting an archive",
             description = "Extract an archive inside the workspace. Refuses entries that would escape " +
