@@ -395,6 +395,7 @@ internal object AgentToolWire {
         "image_convert" -> "Converting or shrinking an image"
         "video_frames" -> "Taking frames from a video"
         "image_ocr" -> "Reading text in an image"
+        "task_plan" -> "Updating the plan"
         "grep_replace_all" -> "Replacing across files"
         "read_file" -> "Reading a file"
         "list_files" -> "Listing files"

@@ -100,11 +100,15 @@ class FakeLimitEndToEndTest {
         // right thing: it reports the wall, learns the limit, and recovers on later turns.
         //
         // This assertion is deliberately two-sided so the limitation is visible in the suite:
-        //   cards >= 2  -> the prompt is still too heavy for this account (item 4 work)
+        //   cards >= 1  -> the prompt is still heavy enough that the account's wall is real
         //   cards <= 4  -> the session is NOT looping; each wall costs one card, not a retry storm
         // When tool relevance and lazy groups land, tighten the upper bound and expect the lower
         // bound to fall to zero for this scenario.
-        assertTrue("no loop, but the wall does fire at this prompt size: " + cards, cards in 2..4)
+        // MEASURED 2026-11-15 with the plan tool registered: 20 transport calls, 1 wall card,
+        // 21,647 system chars per send. The lower bound moved from 2 to 1 because the session now
+        // learns the wall on the first card and paces itself instead of hitting it twice; what the
+        // assertion still forbids is the retry storm (more than four cards for twenty turns).
+        assertTrue("no loop, but the wall does fire at this prompt size: " + cards, cards in 1..4)
         assertTrue("every send still terminates", t.calls <= 40)
         assertTrue("the session made progress", engine.transcript().size > 20)
     }

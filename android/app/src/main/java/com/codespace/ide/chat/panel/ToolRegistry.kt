@@ -1048,6 +1048,29 @@ internal object ToolRegistry {
             modes = WRITE_MODES,
         ),
         ToolSpec(
+            name = "task_plan",
+            displayName = "Tracking the plan",
+            description = "Keep a task plan while you work. action=create takes an objective and steps " +
+                "(each with id, title, optional dependsOn and milestone); action=start, complete (evidence " +
+                "required: say what you actually saw) and fail (with an optional recovery title) update one " +
+                "step; action=show or clear. A failed step's dependents are marked skipped rather than left " +
+                "runnable, and a plan is revised at most six times. Every call answers with the plan's " +
+                "pending, running, done, failed and skipped steps. It records intent and evidence only: it " +
+                "never executes a step.",
+            schema = OBJ + ",\"required\":[\"action\"],\"properties\":{" +
+                "\"action\":{\"type\":\"string\",\"enum\":[\"create\",\"start\",\"complete\",\"fail\",\"show\",\"clear\"]}," +
+                "\"objective\":{\"type\":\"string\"}," +
+                "\"id\":{\"type\":\"string\"}," +
+                "\"evidence\":{\"type\":\"string\"}," +
+                "\"reason\":{\"type\":\"string\"}," +
+                "\"recovery\":{\"type\":\"string\"}," +
+                "\"steps\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{" +
+                "\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}," +
+                "\"milestone\":{\"type\":\"string\"}," +
+                "\"dependsOn\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
             name = "media_info",
             displayName = "Inspecting a media file",
             description = "Report what a media file actually is, read from its header and never by " +

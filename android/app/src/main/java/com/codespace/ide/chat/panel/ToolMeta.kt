@@ -111,6 +111,7 @@ internal object ToolMetaIndex {
         "docx_edit" to ToolMeta(ToolCategory.EDIT, listOf("word", "docx", "document", "append", "edit"), true),
         "xlsx_write" to ToolMeta(ToolCategory.EDIT, listOf("excel", "xlsx", "spreadsheet", "formula", "csv"), true),
         "pptx_create" to ToolMeta(ToolCategory.EDIT, listOf("powerpoint", "pptx", "slides", "deck", "presentation"), true),
+        "task_plan" to ToolMeta(ToolCategory.AGENT, listOf("plan", "steps", "milestone", "progress", "task", "todo"), false),
         "media_info" to ToolMeta(ToolCategory.SEARCH, listOf("audio", "video", "duration", "media", "metadata")),
         "image_convert" to ToolMeta(ToolCategory.EDIT, listOf("image", "convert", "resize", "shrink", "thumbnail"), true),
         "image_ocr" to ToolMeta(ToolCategory.SEARCH, listOf("ocr", "text", "screenshot", "image", "read", "scan")),

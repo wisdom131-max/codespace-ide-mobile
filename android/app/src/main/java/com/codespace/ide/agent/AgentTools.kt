@@ -262,7 +262,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "terminal_list", "terminal_kill", "job_status",
         "coverage_read", "entity_schema_read", "memory_search",
         // ZIP (2026-11-12): three tools on the one engine the app already ships.
-        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create", "media_info", "image_convert", "video_frames", "image_ocr",
+        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create", "media_info", "image_convert", "video_frames", "image_ocr", "task_plan",
         // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
         "npm_info", "pypi_info", "lockfile_parse",
         // Git recovery (owner approval 2026-11-12): history, checkpoints, previewed restores, and
@@ -397,6 +397,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "image_convert" -> imageConvert(args, context)
                 "video_frames" -> videoFrames(args, context)
                 "image_ocr" -> imageOcr(args, context)
+                "task_plan" -> taskPlan(args)
                 // VS Code parity aliases: same implementation, their tool name.
                 "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
                 "insert_edit_into_file" -> replaceStringInFile(
@@ -1075,6 +1076,82 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         val described = com.codespace.ide.agent.docs.MediaMeta.render(head, file.name)
         return described + "\n" + resolved + " (" + file.length() + " bytes)"
+    }
+
+    /**
+     * PROJECT 3.2 (2026-11-15): keep the plan while the work happens.
+     *
+     * The model proposes the steps once, then reports each one as it starts and finishes. Every action
+     * answers with the plan's own lines, so the user reads the state of the work in the transcript
+     * rather than inferring it from a run of tool calls. Nothing here executes a step: the plan is a
+     * record of intent and evidence, and calling it cannot run, approve or widen anything.
+     */
+    private fun taskPlan(args: org.json.JSONObject): String {
+        val store = com.codespace.ide.agent.goal.PlanState
+        val action = args.optString("action", "show").lowercase()
+        val existing = store.plan()
+        return when (action) {
+            "create" -> {
+                val raw = args.optJSONArray("steps")
+                    ?: return "Refused: give the plan as a list of steps, each with an id and a title."
+                val steps = (0 until raw.length()).mapNotNull { index ->
+                    val row = raw.optJSONObject(index) ?: return@mapNotNull null
+                    com.codespace.ide.agent.goal.TaskPlanEngine.Step(
+                        id = row.optString("id"),
+                        title = row.optString("title"),
+                        dependsOn = row.optJSONArray("dependsOn")?.let { deps ->
+                            (0 until deps.length()).map { deps.optString(it) }
+                        } ?: emptyList(),
+                        milestone = row.optString("milestone").takeIf { it.isNotBlank() },
+                    )
+                }
+                if (steps.isEmpty()) return "Refused: no usable steps were given."
+                reportPlan(com.codespace.ide.agent.goal.TaskPlanEngine.create(args.optString("objective"), steps))
+            }
+            "show" -> existing?.let { renderPlan(it) } ?: "No plan is active."
+            "start" -> {
+                val plan = existing ?: return "Refused: there is no plan to start a step in."
+                reportPlan(com.codespace.ide.agent.goal.TaskPlanEngine.start(plan, args.optString("id")))
+            }
+            "complete" -> {
+                val plan = existing ?: return "Refused: there is no plan to complete a step in."
+                reportPlan(
+                    com.codespace.ide.agent.goal.TaskPlanEngine.complete(
+                        plan, args.optString("id"), args.optString("evidence"))
+                )
+            }
+            "fail" -> {
+                val plan = existing ?: return "Refused: there is no plan to record a failure in."
+                reportPlan(
+                    com.codespace.ide.agent.goal.TaskPlanEngine.fail(
+                        plan = plan,
+                        id = args.optString("id"),
+                        reason = args.optString("reason"),
+                        recoveryTitle = args.optString("recovery").takeIf { it.isNotBlank() },
+                    )
+                )
+            }
+            "clear" -> {
+                store.clear()
+                "Plan cleared."
+            }
+            else -> "Refused: unknown action '" + action + "'. Use create, start, complete, fail, show or clear."
+        }
+    }
+
+    private fun reportPlan(outcome: com.codespace.ide.agent.goal.TaskPlanEngine.Outcome): String =
+        when (outcome) {
+            is com.codespace.ide.agent.goal.TaskPlanEngine.Outcome.Rejected -> "Refused: " + outcome.reason
+            is com.codespace.ide.agent.goal.TaskPlanEngine.Outcome.Ok -> {
+                com.codespace.ide.agent.goal.PlanState.put(null, outcome.plan)
+                renderPlan(outcome.plan)
+            }
+        }
+
+    private fun renderPlan(plan: com.codespace.ide.agent.goal.TaskPlanEngine.Plan): String {
+        val lines = plan.lines()
+        val body = if (lines.isEmpty()) "  (nothing left to run)" else lines.joinToString("\n") { "  " + it }
+        return plan.objective + " — " + plan.progress().summary() + ", revision " + plan.revision + "\n" + body
     }
 
     /**

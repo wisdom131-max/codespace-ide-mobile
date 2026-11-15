@@ -167,6 +167,9 @@ private fun ChatBody(
         // M5: memory reads/writes are attributed to this conversation, so "current session only"
         // has a session to be scoped to.
         com.codespace.ide.agent.MemoryScopeState.activeSessionId = activeId
+        // Project 3.2: a task plan belongs to the conversation that made it, so two sessions cannot
+        // overwrite each other's plan and both look finished.
+        com.codespace.ide.agent.goal.PlanState.claim(activeId)
         onDispose { }
     }
     // U1 (build 657 findings a/d): the OPENING selection is RESOLVED from what the

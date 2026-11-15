@@ -26,6 +26,7 @@ class ToolRegistryTest {
         "media_info",
         // Project 2.12: OCR reads an image and returns text; it changes nothing, so Ask may do it.
         "image_ocr",
+        "task_plan",
         "list_skills", "read_skill",
         "list_dir", "grep_search", "file_search", "semantic_search",
         "search_workspace_symbols", "read_project_structure",
@@ -68,8 +69,8 @@ class ToolRegistryTest {
         // 2026-11-12: 120 = 118 (git_log/git_checkpoint/git_restore/git_conflict_resolve added
         // earlier) + service_read/service_write (P3 Item 32).
         // + the seven debug tools.
-        assertEquals("every registered tool is listed exactly once", 128, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 128, ToolRegistry.names().toSet().size)
+        assertEquals("every registered tool is listed exactly once", 129, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 129, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -284,6 +285,9 @@ class ToolRegistryTest {
             "image_convert" to (listOf("path", "out_path") to listOf("max_dimension", "quality")),
             "video_frames" to (listOf("path") to listOf("count", "max_dimension")),
             "image_ocr" to (listOf("path") to listOf("max_dimension")),
+            // Project 3.2: the plan tool reads one required discriminator and five optional fields.
+            "task_plan" to (listOf("action") to listOf(
+                "objective", "id", "evidence", "reason", "recovery", "steps")),
             "zip_extract" to (listOf("archive") to listOf("dest", "overwrite")),
             "zip_list" to (listOf("archive") to listOf("offset", "limit")),
             "npm_info" to (listOf("name") to listOf("version")),
