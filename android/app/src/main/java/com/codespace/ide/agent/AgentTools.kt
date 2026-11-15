@@ -39,6 +39,9 @@ import javax.net.ssl.HttpsURLConnection
  */
 object AgentTools {
 
+    /** Long enough for a dense page on a slow phone, short enough that a stuck detector cannot hang a turn. */
+    private const val OCR_TIMEOUT_SECONDS = 45L
+
     const val TOOLS_DESCRIPTION = """
 You have access to these tools for acting on the user's environment:
 
@@ -91,6 +94,10 @@ You have access to these tools for acting on the user's environment:
    last frame often refuses to decode. Frames land beside the video as <name>-frame01.jpg and an
    existing file is never overwritten.
    <tool>{"name":"video_frames","arguments":{"path":"/path/clip.mp4","count":4,"max_dimension":1024}}</tool>
+3k. image_ocr      — Read the text in an image, offline
+   Bundled ML Kit Latin. Returns reading order with paragraphs, keeps code indentation, and reports
+   confidence only when the engine actually gave one. Nothing leaves the device.
+   <tool>{"name":"image_ocr","arguments":{"path":"/path/screenshot.png"}}</tool>
 3c. multi_replace_string_in_file — Several such edits to ONE file in one call
    <tool>{"name":"multi_replace_string_in_file","arguments":{"path":"/path/to/file","replacements":"[{\"old_string\":\"a\",\"new_string\":\"b\"}]","replace_all":false}}</tool>
 4. list_files     — List files in a directory
@@ -255,7 +262,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "terminal_list", "terminal_kill", "job_status",
         "coverage_read", "entity_schema_read", "memory_search",
         // ZIP (2026-11-12): three tools on the one engine the app already ships.
-        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create", "media_info", "image_convert", "video_frames",
+        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create", "media_info", "image_convert", "video_frames", "image_ocr",
         // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
         "npm_info", "pypi_info", "lockfile_parse",
         // Git recovery (owner approval 2026-11-12): history, checkpoints, previewed restores, and
@@ -389,6 +396,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "media_info" -> mediaInfo(args.getString("path"), context)
                 "image_convert" -> imageConvert(args, context)
                 "video_frames" -> videoFrames(args, context)
+                "image_ocr" -> imageOcr(args, context)
                 // VS Code parity aliases: same implementation, their tool name.
                 "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
                 "insert_edit_into_file" -> replaceStringInFile(
@@ -834,6 +842,91 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
         return truncMark(file.readText(), 16000)  // CH06 (P4h)
+    }
+
+    /**
+     * PROJECT 2.12: read text out of an image, entirely on the device.
+     *
+     * The bitmap is bounded BEFORE it reaches the recogniser: ML Kit takes a full Bitmap, so handing
+     * it a 12MP photo is a ~48MB allocation for no accuracy gain past about 1,600px on the long edge.
+     * The recogniser is closed in a finally block because it holds a native detector, and the wait
+     * is a bounded latch rather than an unbounded one - a stuck detector must return an error, not
+     * hang the tool loop.
+     */
+    private fun imageOcr(args: org.json.JSONObject, context: android.content.Context): String {
+        val srcPath = args.getString("path")
+        val source = File(resolveToolPath(context, srcPath))
+        if (!source.isFile) return "Not found: " + srcPath
+        val maxDimension = args.optInt("max_dimension", 1600).coerceIn(320, 4096)
+
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(source.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return srcPath + " is not an image Android can read."
+        val sample = com.codespace.ide.agent.docs.ImagePipeline.sampleSizeFor(
+            bounds.outWidth, bounds.outHeight, maxDimension)
+        val decoded = android.graphics.BitmapFactory.decodeFile(
+            source.absolutePath, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: return "Android could not decode " + srcPath + "."
+        val (tw, th) = com.codespace.ide.agent.docs.ImagePipeline.targetSize(decoded.width, decoded.height, maxDimension)
+        val bitmap = if (tw > 0 && th > 0 && (tw != decoded.width || th != decoded.height))
+            android.graphics.Bitmap.createScaledBitmap(decoded, tw, th, true) else decoded
+        if (bitmap !== decoded) decoded.recycle()
+
+        val recognizer = com.google.mlkit.vision.text.TextRecognition.getClient(
+            com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS)
+        return try {
+            val task = recognizer.process(
+                com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap, 0))
+            val latch = java.util.concurrent.CountDownLatch(1)
+            var recognition: com.google.mlkit.vision.text.Text? = null
+            var failure: Throwable? = null
+            task.addOnSuccessListener { value ->
+                recognition = value
+                latch.countDown()
+            }.addOnFailureListener { error ->
+                failure = error
+                latch.countDown()
+            }
+            if (!latch.await(OCR_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)) {
+                return "Reading " + srcPath + " took longer than " + OCR_TIMEOUT_SECONDS +
+                    " seconds and was abandoned."
+            }
+            val error = failure
+            if (error != null) return "Could not read " + srcPath + ": " + (error.message ?: "unknown error")
+            val text = recognition ?: return "No text recognised in " + srcPath + "."
+            val lines = ArrayList<com.codespace.ide.agent.docs.OcrStructure.Line>()
+            text.textBlocks.forEach { block ->
+                block.lines.forEach { line ->
+                    val box = line.boundingBox ?: return@forEach
+                    val confidences = line.elements.mapNotNull { it.confidence }
+                    lines.add(
+                        com.codespace.ide.agent.docs.OcrStructure.Line(
+                            text = line.text,
+                            left = box.left,
+                            top = box.top,
+                            right = box.right,
+                            bottom = box.bottom,
+                            confidence = if (confidences.isEmpty()) null else confidences.average().toFloat(),
+                        )
+                    )
+                }
+            }
+            val assembled = com.codespace.ide.agent.docs.OcrStructure.assemble(lines)
+            if (assembled.text.isBlank()) return "No text recognised in " + srcPath + "."
+            val confidence = assembled.confidence
+            val summary = (if (confidence == null) "confidence not reported by the engine"
+                else "mean confidence " + Math.round(confidence * 100) + "%")
+            "Text from " + srcPath + " (" + assembled.lineCount + " lines, " + summary +
+                (if (assembled.looksLikeCode) ", read as code" else "") + "):\n\n" + assembled.text
+        } catch (t: Throwable) {
+            "Could not read " + srcPath + ": " + (t.message ?: "unknown error")
+        } finally {
+            try {
+                recognizer.close()
+            } catch (ignored: Throwable) {
+            }
+            bitmap.recycle()
+        }
     }
 
     /**

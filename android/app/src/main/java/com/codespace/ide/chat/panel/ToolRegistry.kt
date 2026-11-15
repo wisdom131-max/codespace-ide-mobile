@@ -1084,6 +1084,19 @@ internal object ToolRegistry {
             modes = WRITE_MODES,
         ),
         ToolSpec(
+            name = "image_ocr",
+            displayName = "Reading text in an image",
+            description = "Extract the text from a screenshot, a photographed document or a scanned " +
+                "page, entirely on the device with the bundled ML Kit Latin recogniser. Returns " +
+                "reading order with paragraphs, keeps the indentation of code-shaped text, and " +
+                "reports confidence only when the engine actually supplied it. The image is " +
+                "downscaled to max_dimension first so memory stays bounded. Latin script only; it " +
+                "does not translate, summarise or describe pictures.",
+            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{" +
+                "\"path\":{\"type\":\"string\"},\"max_dimension\":{\"type\":\"integer\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
             name = "zip_extract",
             displayName = "Extracting an archive",
             description = "Extract an archive inside the workspace. Refuses entries that would escape " +

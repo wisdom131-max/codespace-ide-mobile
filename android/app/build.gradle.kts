@@ -204,6 +204,11 @@ dependencies {
     // WP2: the rebuilt pure-JVM chat engine (adapters, budget guard, SSE).
     implementation(project(":engine"))
 
+    // Project 2.12 (OCR): ML Kit Latin text recognition, BUNDLED on purpose. The unbundled path
+    // downloads its model through Google Play Services on first use, which is exactly the silent
+    // download the owner forbids; ~4MB per architecture buys an offline-from-first-launch reader.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+
     // Firebase BOM — manages all Firebase lib versions
     implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
     implementation("com.google.firebase:firebase-auth-ktx")

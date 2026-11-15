@@ -34,6 +34,7 @@ internal object ApprovalPresentation {
         "pptx_create" to "Create a PowerPoint deck",
         "image_convert" to "Convert or shrink an image",
         "video_frames" to "Take frames from a video",
+        "image_ocr" to "Read text in an image",
         "read_file" to "Read file",
         "list_files" to "List files",
         "search_files" to "Search files",
