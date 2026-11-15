@@ -224,6 +224,8 @@ private fun ChatBody(
     var showPicker by remember(projectId) { mutableStateOf(false) }
     var showHub by remember(projectId) { mutableStateOf(false) }
     var connectCard by remember(projectId) { mutableStateOf<String?>(null) }
+    // PHASE 4c: the service whose setup is open inline in the chat.
+    var setupService by remember(projectId) { mutableStateOf<String?>(null) }
     // U3: composer mode. Item 18: it is now restored from THIS session's metadata, keyed on
     // (project, session), so Agent/Edit survive an app restart and switching sessions restores
     // each session's own mode. Ask stays the default only for a session that never chose one.
@@ -339,13 +341,28 @@ private fun ChatBody(
                 ConnectorConnectCard(
                     displayName = com.codespace.ide.agent.AgentConnectorManager.displayNameFor(svc),
                     colors = c,
-                    onConnect = { showHub = true },
+                    // PHASE 4c: setup happens HERE. The card used to set showHub = true and hand
+                    // the user to the Connectors Hub to find the service again; the hub is
+                    // unchanged for the Settings path, this surface does the same work in place.
+                    onConnect = { setupService = svc; connectCard = null },
                     onReject = {
                         connectCard = null
                         notice = "Connector request dismissed. The assistant is told on your next message."
                     },
                 )
             }
+        }
+        setupService?.let { svc ->
+            ConnectorSetupInline(
+                service = svc,
+                displayName = com.codespace.ide.agent.AgentConnectorManager.displayNameFor(svc),
+                colors = c,
+                onDone = { message ->
+                    setupService = null
+                    notice = message
+                },
+                onCancel = { setupService = null },
+            )
         }
         ChatApprovalCard()
         ChatQuestionCard()
