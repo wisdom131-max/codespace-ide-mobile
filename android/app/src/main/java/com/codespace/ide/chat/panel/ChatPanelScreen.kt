@@ -90,8 +90,12 @@ fun ChatPanelScreen(
             // A new session that could not be created opens the Sessions surface, which is the
             // one place that reports a session-table problem. Failures are never swallowed.
             onNewSession = {
-                val created = manager.createSession(projectId)
-                if (created is com.codespace.ide.chat.session.SessionCreate.Failed) showSessions = true
+                // PHASE 7: a new chat carries the current one forward instead of starting blank.
+                // Blank sessions still exist - they are created from the Sessions surface.
+                val carried = startHandoffSession(
+                    manager, ctx, projectId, activeId,
+                )
+                if (carried == null) showSessions = true
             },
             onClosePanel = onClosePanel,
             onMoveToEditor = onMoveToEditor,
@@ -489,37 +493,10 @@ private fun ChatBody(
                         showTranscripts = true
                     }
                     ChatOverflowAction.CONTINUE_IN_NEW_SESSION -> {
-                        // P6: the handoff is built from THIS session's own rows, then a new session
-                        // is created and seeded with it. The old conversation is left untouched and
-                        // stays the record; approvals and credentials are not carried.
-                        val handoff = com.codespace.ide.chat.session.SessionHandoff.build(
-                            session.ui.value.rows.mapNotNull { row ->
-                                when (row) {
-                                    is ChatRowModel.User -> com.codespace.ide.chat.session.SessionHandoff.Turn("user", row.text)
-                                    is ChatRowModel.AssistantStream -> com.codespace.ide.chat.session.SessionHandoff.Turn("assistant", row.text)
-                                    else -> null
-                                }
-                            },
-                        )
-                        // P6.C: the new session knows where it came from. The chain is numbered from
-                        // the root and keeps the root's topic, so hop five still reads as
-                        // "Session 5 from explain git" instead of an unrelated title.
-                        val lineage = com.codespace.ide.chat.session.SessionLineage.forProject(ctx, projectId)
-                        val parentTitle = com.codespace.ide.chat.session.SessionTitles
-                            .derive(session.ui.value.rows.filterIsInstance<ChatRowModel.User>().firstOrNull()?.text)
-                        val parentLink = lineage.record(activeId, null, parentTitle)
-                        val created = manager.createSession(projectId)
-                        if (created is com.codespace.ide.chat.session.SessionCreate.Created) {
-                            val successor = lineage.record(created.meta.id, activeId, parentLink.origin)
-                            manager.renameSession(projectId, created.meta.id,
-                                com.codespace.ide.chat.session.SessionLineage.label(successor))
-                            val seed = handoff.render()
-                            manager.session(projectId, created.meta.id)?.send(seed)
-                            notice = com.codespace.ide.chat.session.SessionLineage.label(successor) +
-                                " - " + com.codespace.ide.chat.session.SessionHandoff.describe(handoff)
-                        } else {
-                            notice = "Could not create the new session; this conversation is unchanged."
-                        }
+                        // PHASE 7: one implementation, shared with the plus chip.
+                        val summary = startHandoffSession(manager, ctx, projectId, activeId)
+                        notice = summary
+                            ?: "Could not create the new session; this conversation is unchanged."
                     }
                     ChatOverflowAction.READ_REPLIES_ALOUD -> {
                         // P7.D: off by default, remembered, and honest when the device cannot speak.

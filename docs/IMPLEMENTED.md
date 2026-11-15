@@ -15,6 +15,7 @@ session and still need their commit id pasted here.
 | Phase 4a: WritePolicy gates every tool call as ALLOW/STAGE/REFUSE from ToolEffectIndex; Ask refuses all side effects, Edit stages all ten file writers (not three remembered names) | _pending CI_ |
 | Phase 4b: the gate follows the approval level - Auto All writes with no diff, Auto Safe and Always Ask stage an Edit proposal; Ask stays read-only at every level | _pending CI_ |
 | Phase 4c: the connector card hosts its own setup (token field for `pat`, consent page opened from the card for `oauth`) instead of redirecting to the Connectors Hub; the Hub is unchanged for Settings | _pending CI_ |
+| Phase 7: the plus chip continues into a new session with the handoff instead of opening a blank one; blank creation stays on the Sessions surface | _pending CI_ |
 | Phase 5a: `guestPath` delegates to ToolPathResolver, so every file tool resolves a path the same way checksum/read_file disagree no more | _pending CI_ |
 
 ## Chat rebuild (owner-requested rewrite, A / WP1-WP9)
