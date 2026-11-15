@@ -13,6 +13,7 @@ session and still need their commit id pasted here.
 | Phase 2b: a turn killed with the process restores as an interrupted reply and offers an explicit **Resume** that continues the same message without resending the request; a new send retires the offer | _pending CI_ |
 | Phase 3a: every transcript write and delete runs under one lock, so a delete cannot land inside a write (the recurring ENOENT); concurrency regression test forces the old interleaving | _pending CI_ |
 | Phase 4a: WritePolicy gates every tool call as ALLOW/STAGE/REFUSE from ToolEffectIndex; Ask refuses all side effects, Edit stages all ten file writers (not three remembered names) | _pending CI_ |
+| Phase 4b: the gate follows the approval level - Auto All writes with no diff, Auto Safe and Always Ask stage an Edit proposal; Ask stays read-only at every level | _pending CI_ |
 
 ## Chat rebuild (owner-requested rewrite, A / WP1-WP9)
 

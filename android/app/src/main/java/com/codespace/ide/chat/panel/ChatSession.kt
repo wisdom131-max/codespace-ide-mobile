@@ -1305,7 +1305,11 @@ class ChatSession internal constructor(
                 // PHASE 4a: ONE gate decides allow / stage / refuse, from the tool's real
                 // effect rather than a hand-kept list. Ask refuses writes outright; Edit turns
                 // every file writer into a proposal, not just the three it used to know.
-                val writeDecision = WritePolicy.decide(mode, call.name)
+                val writeDecision = WritePolicy.decide(
+                    mode,
+                    call.name,
+                    com.codespace.ide.agent.ChatPermissionStore.level(ctx),
+                )
                 when (writeDecision) {
                     WritePolicy.Decision.REFUSE -> {
                         val refused = WritePolicy.refusalMessage(call.name)

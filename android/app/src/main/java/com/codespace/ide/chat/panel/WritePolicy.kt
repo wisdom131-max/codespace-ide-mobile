@@ -40,13 +40,31 @@ internal object WritePolicy {
 
     fun isFileWriter(toolName: String): Boolean = toolName in fileWriters
 
-    fun decide(mode: ChatMode, toolName: String): Decision {
+    /**
+     * PHASE 4b (owner instruction 2026-11-14): the APPROVAL LEVEL decides whether a write is
+     * held for review, not the mode alone.
+     *
+     *  - Auto All (`AUTO_ALL`): full ride. A write executes; no diff, no card.
+     *  - Auto Safe (`AUTO_SAFE`) and Always Ask (`MANUAL`): an Edit-mode file write is a
+     *    proposal with a card. A shell command or a git call is NOT a diff - it keeps its
+     *    existing approval gate, which is what those two levels already do.
+     *  - Ask is read-only at every level, including Auto All: that is the mode's contract.
+     */
+    fun decide(
+        mode: ChatMode,
+        toolName: String,
+        level: com.codespace.ide.agent.ChatFlowLevel = com.codespace.ide.agent.ChatFlowLevel.MANUAL,
+    ): Decision {
         val effect = com.codespace.ide.agent.ToolEffectIndex.effectOf(toolName)
         return when (mode) {
             ChatMode.ASK ->
                 if (effect == ToolEffect.SIDE_EFFECTING) Decision.REFUSE else Decision.ALLOW
             ChatMode.EDIT ->
-                if (isFileWriter(toolName)) Decision.STAGE else Decision.ALLOW
+                when {
+                    !isFileWriter(toolName) -> Decision.ALLOW
+                    level == com.codespace.ide.agent.ChatFlowLevel.AUTO_ALL -> Decision.ALLOW
+                    else -> Decision.STAGE
+                }
             ChatMode.AGENT -> Decision.ALLOW
         }
     }

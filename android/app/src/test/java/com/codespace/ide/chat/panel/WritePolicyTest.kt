@@ -2,6 +2,7 @@ package com.codespace.ide.chat.panel
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import com.codespace.ide.agent.ChatFlowLevel
 import org.junit.Test
 
 /**
@@ -70,5 +71,51 @@ class WritePolicyTest {
         assertTrue(msg.contains("read-only"))
         assertTrue(msg.contains("nothing on disk changed"))
         assertTrue(msg.contains("edit_file"))
+    }
+
+    // PHASE 4b: the approval level decides the diff, not the mode alone.
+
+    @Test
+    fun autoAllInEditWritesDirectlyWithNoDiff() {
+        assertEquals(
+            WritePolicy.Decision.ALLOW,
+            WritePolicy.decide(ChatMode.EDIT, "write_file", ChatFlowLevel.AUTO_ALL),
+        )
+        assertEquals(
+            WritePolicy.Decision.ALLOW,
+            WritePolicy.decide(ChatMode.EDIT, "apply_patch", ChatFlowLevel.AUTO_ALL),
+        )
+    }
+
+    @Test
+    fun autoSafeInEditStillShowsTheProposal() {
+        assertEquals(
+            WritePolicy.Decision.STAGE,
+            WritePolicy.decide(ChatMode.EDIT, "edit_file", ChatFlowLevel.AUTO_SAFE),
+        )
+    }
+
+    @Test
+    fun alwaysAskInEditStages() {
+        assertEquals(
+            WritePolicy.Decision.STAGE,
+            WritePolicy.decide(ChatMode.EDIT, "delete_path", ChatFlowLevel.MANUAL),
+        )
+    }
+
+    @Test
+    fun autoAllDoesNotMakeAskWritable() {
+        assertEquals(
+            WritePolicy.Decision.REFUSE,
+            WritePolicy.decide(ChatMode.ASK, "write_file", ChatFlowLevel.AUTO_ALL),
+        )
+    }
+
+    @Test
+    fun autoAllDoesNotTurnAShellCommandIntoADiff() {
+        assertEquals(
+            WritePolicy.Decision.ALLOW,
+            WritePolicy.decide(ChatMode.EDIT, "run_command", ChatFlowLevel.AUTO_SAFE),
+        )
     }
 }
