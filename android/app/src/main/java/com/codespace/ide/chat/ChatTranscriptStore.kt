@@ -46,6 +46,18 @@ interface TranscriptSink {
  */
 internal class TranscriptFiles(private val rootDir: File) {
 
+    /**
+     * PHASE 3 (owner approval 2026-11-14): ONE lock for every mutation of the transcript tree.
+     *
+     * The ENOENT that recurred on device is not a missing mkdirs - that was fixed on 2026-11-04
+     * and verified before every temp open. It is two owners touching the same conversation at
+     * once: a debounced save already running while a delete removes the folder underneath it, so
+     * the retry recreates the folder a moment later and the write "fails" on a directory that
+     * briefly existed twice. Serialising every write and every delete makes that interleaving
+     * impossible instead of merely unlikely.
+     */
+    private val fileLock = Any()
+
     fun fileFor(projectId: String, conversationId: String): File =
         File(File(rootDir, safe(projectId)), safe(conversationId) + ".txt")
 
@@ -153,7 +165,14 @@ internal class TranscriptFiles(private val rootDir: File) {
     }
 
     /** Writes the transcript; returns an error message or null. Empty list deletes. */
-    fun saveNow(projectId: String, conversationId: String, messages: List<StoredMessage>): String? {
+    fun saveNow(projectId: String, conversationId: String, messages: List<StoredMessage>): String? =
+        synchronized(fileLock) { saveLocked(projectId, conversationId, messages) }
+
+    private fun saveLocked(
+        projectId: String,
+        conversationId: String,
+        messages: List<StoredMessage>,
+    ): String? {
         return try {
             val target = fileFor(projectId, conversationId)
             val bak = backupFor(target)
