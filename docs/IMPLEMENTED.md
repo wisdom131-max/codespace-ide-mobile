@@ -10,21 +10,21 @@ session and still need their commit id pasted here.
 |---|---|
 | Phase 1: staging, commit and push are three approvals; `add -A` removed; protected-branch push needs a second confirmation; declining keeps the commit | b537e61 / GREEN 43632852707 |
 | Phase 2a: closing the last chat window parks a live runtime instead of closing it, so a turn survives the panel; a parked runtime is closed by an idle reaper once its work ends | 8dfeac3 / GREEN 43636558841 |
-| Phase 2b: a turn killed with the process restores as an interrupted reply and offers an explicit **Resume** that continues the same message without resending the request; a new send retires the offer | _pending CI_ |
-| Phase 3a: every transcript write and delete runs under one lock, so a delete cannot land inside a write (the recurring ENOENT); concurrency regression test forces the old interleaving | _pending CI_ |
-| Phase 4a: WritePolicy gates every tool call as ALLOW/STAGE/REFUSE from ToolEffectIndex; Ask refuses all side effects, Edit stages all ten file writers (not three remembered names) | _pending CI_ |
-| Phase 4b: the gate follows the approval level - Auto All writes with no diff, Auto Safe and Always Ask stage an Edit proposal; Ask stays read-only at every level | _pending CI_ |
-| Phase 4c: the connector card hosts its own setup (token field for `pat`, consent page opened from the card for `oauth`) instead of redirecting to the Connectors Hub; the Hub is unchanged for Settings | _pending CI_ |
-| Phase 7: the plus chip continues into a new session with the handoff instead of opening a blank one; blank creation stays on the Sessions surface | _pending CI_ |
-| Phase 8a: a shell command that outlives a 20s inline window returns a handle (poll with `terminal_list`, stop with `terminal_kill`) instead of a false timeout that invited a duplicate run | _pending CI_ |
-| Phase 8b: the composer chevron dispatches by entry - "Stop and Send" really cancels then sends the typed text (and says so if the request never clears), while the unbuilt Queue/Steer entries map to nothing instead of silently stopping the answer | _pending CI_ |
-| Phase 8c: a tool call whose arguments never closed is refused with the tool named and nothing executed - the old path fell back to "{}" and invoked the tool with every parameter missing; a parameterless tool is still allowed | _pending CI_ |
-| Phase 6a: a skill can be disabled without deleting it (flag persisted, older files restore enabled, disabled skills absent from the model index) | _pending CI_ |
-| Phase 6b: Settings gains a Local Skills manager - list with on/off switches, create, edit, delete with confirm, import from the phone, and a line naming the folder it reads | _pending CI_ |
-| Phase 5b: every file-mutating tool is containment-checked against the open project root before dispatch (copy/move were the only ones that were); the refusal names the path and root and says nothing was written | _pending CI_ |
-| Phase 6c: explicit "remember / forget / what do you remember" is routed as a directive naming save_memory, delete_memory or read_memory for that turn; ordinary prose that mentions memory is untouched | _pending CI_ |
-| Phase 8a: Settings > AI Agent gains a Model Catalogue - each known model with its context window (floored, not rounded up), images/pdf, tri-state tool support and the providers it is verified for, plus a footer that says an unlisted model still works and keeps its tools | _pending CI_ |
-| Phase 5a: `guestPath` delegates to ToolPathResolver, so every file tool resolves a path the same way checksum/read_file disagree no more | _pending CI_ |
+| Phase 2b: a turn killed with the process restores as an interrupted reply and offers an explicit **Resume** that continues the same message without resending the request; a new send retires the offer | db65f4c / GREEN 43660331882 |
+| Phase 3a: every transcript write and delete runs under one lock, so a delete cannot land inside a write (the recurring ENOENT); concurrency regression test forces the old interleaving | e44acb0 / GREEN 43661682327 |
+| Phase 4a: WritePolicy gates every tool call as ALLOW/STAGE/REFUSE from ToolEffectIndex; Ask refuses all side effects, Edit stages all ten file writers (not three remembered names) | 87a673e / GREEN 43662829995 |
+| Phase 4b: the gate follows the approval level - Auto All writes with no diff, Auto Safe and Always Ask stage an Edit proposal; Ask stays read-only at every level | aeb53c8 / GREEN 43665059206 |
+| Phase 4c: the connector card hosts its own setup (token field for `pat`, consent page opened from the card for `oauth`) instead of redirecting to the Connectors Hub; the Hub is unchanged for Settings | f51cca6 / GREEN 43667103869 |
+| Phase 7: the plus chip continues into a new session with the handoff instead of opening a blank one; blank creation stays on the Sessions surface | e011d1f / GREEN 43677389348 |
+| Phase 8a: a shell command that outlives a 20s inline window returns a handle (poll with `terminal_list`, stop with `terminal_kill`) instead of a false timeout that invited a duplicate run | 47f2f96 / GREEN 43684172102 |
+| Phase 8b: the composer chevron dispatches by entry - "Stop and Send" really cancels then sends the typed text (and says so if the request never clears), while the unbuilt Queue/Steer entries map to nothing instead of silently stopping the answer | 7d398fb / GREEN 43698473801 |
+| Phase 8c: a tool call whose arguments never closed is refused with the tool named and nothing executed - the old path fell back to "{}" and invoked the tool with every parameter missing; a parameterless tool is still allowed | 6147c55 / GREEN 43705466562 |
+| Phase 6a: a skill can be disabled without deleting it (flag persisted, older files restore enabled, disabled skills absent from the model index) | a443b77 / GREEN 43685790736 |
+| Phase 6b: Settings gains a Local Skills manager - list with on/off switches, create, edit, delete with confirm, import from the phone, and a line naming the folder it reads | cb4b4ca / GREEN 43688779272 |
+| Phase 5b: every file-mutating tool is containment-checked against the open project root before dispatch (copy/move were the only ones that were); the refusal names the path and root and says nothing was written | c9a9fb4 / GREEN 43690923093 |
+| Phase 6c: explicit "remember / forget / what do you remember" is routed as a directive naming save_memory, delete_memory or read_memory for that turn; ordinary prose that mentions memory is untouched | afb21b2 / GREEN 43692528320 |
+| Phase 8a: Settings > AI Agent gains a Model Catalogue - each known model with its context window (floored, not rounded up), images/pdf, tri-state tool support and the providers it is verified for, plus a footer that says an unlisted model still works and keeps its tools | 9faf89a / GREEN 43697552275 |
+| Phase 5a: `guestPath` delegates to ToolPathResolver, so every file tool resolves a path the same way checksum/read_file disagree no more | 705793a / GREEN 43666264415 |
 
 ## Chat rebuild (owner-requested rewrite, A / WP1-WP9)
 
