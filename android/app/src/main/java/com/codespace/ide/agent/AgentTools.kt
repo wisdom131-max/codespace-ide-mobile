@@ -316,6 +316,18 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     private suspend fun executeToolBody(name: String, args: JSONObject, context: Context): String {
+        // PHASE 5b: one containment gate for every file write, before the dispatch below can
+        // reach a tool that would honour an outside path. No project open means there is no
+        // boundary to enforce, and the trust gate already governs the run.
+        val boundaryRoot = com.codespace.ide.security.TrustState.activeProjectRoot(context)
+        if (boundaryRoot != null) {
+            for (raw in WriteBoundary.pathsOf(name, args)) {
+                val resolved = runCatching { ToolPathResolver.resolve(context, raw) }.getOrDefault(raw)
+                if (!com.codespace.ide.agent.FileSystemTools.isInsideEntry(boundaryRoot, resolved)) {
+                    return WriteBoundary.refusal(name, raw, boundaryRoot)
+                }
+            }
+        }
         return try {
             when (name) {
                 "run_command" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
