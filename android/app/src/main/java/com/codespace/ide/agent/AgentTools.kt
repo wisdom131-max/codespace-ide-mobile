@@ -2191,16 +2191,16 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     /** S1: a guest path joined onto the host filesystem the app can actually read. */
-    private fun guestPath(path: String, context: Context): String {
-        if (path.startsWith("/") && !path.startsWith("/root/") && !path.startsWith("/data/")) {
-            val host = com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, path)
-            if (host.exists()) return host.path
-        }
-        val direct = java.io.File(path)
-        if (direct.exists()) return direct.path
-        val mapped = com.codespace.ide.terminal.ProotInstaller.guestToHostPath(context, path)
-        return if (mapped.exists()) mapped.path else path
-    }
+    /**
+     * PHASE 5a (2026-11-14): ONE path resolver.
+     *
+     * This used to be its own heuristic - skip `/root/` and `/data/`, try the literal path,
+     * then maybe translate - while `read_file` went through [ToolPathResolver]. Two answers for
+     * one path is why checksum could report "No such file" on a file read_file had just read.
+     * Every tool now asks the same tested core (resolver/PathResolver -> HostResolution).
+     */
+    private fun guestPath(path: String, context: Context): String =
+        ToolPathResolver.resolve(context, path)
 
     /** S1: the per-project journal `journal_write` appends to. */
     private fun journalFile(context: Context): java.io.File {
