@@ -2655,6 +2655,12 @@ You can use multiple tools in sequence. When done, give a final summary.
                 round = 0, searchesUsed = 1, searchBudget = 6,
             ),
         )
+        // Project 1.11: keep the brief as typed data, so another project can consume the bucketed
+        // claims instead of scraping the rendered prose.
+        runCatching {
+            com.codespace.ide.agent.research.ResearchResults.get(context)
+                .save(query, System.currentTimeMillis(), brief)
+        }
         if (ledger.isNotEmpty() || report.results.isEmpty()) notes.append("\n\n").append(brief.render)
         val notesText = notes.toString()
         // Project 1.10: the progress line must disappear on EVERY exit path, so the panel never
