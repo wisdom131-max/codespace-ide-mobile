@@ -35,6 +35,26 @@ internal object WriteBoundary {
         return out
     }
 
+    /**
+     * GATE 1 (2026-11-15): the SAME boundary for a staged edit proposal.
+     *
+     * A proposal is not a write, so dispatch containment never saw it: [PendingChangesStore.stage]
+     * resolved the path and stored the record, and Apply wrote whatever path the record carried.
+     * A capped tool call and a proposal were therefore two different policies for one workspace.
+     * Delegates to the helper copy and move already used, so there is still one implementation.
+     */
+    fun insideProject(root: String?, path: String): Boolean =
+        com.codespace.ide.agent.FileSystemTools.isInsideEntry(root, path)
+
+    /** What the model is told when a proposal is refused. Nothing was staged. */
+    fun proposalRefusal(path: String, root: String): String =
+        "REFUSED: this edit targets $path, which is outside the open project ($root). " +
+            "Nothing was staged. Nothing was written. Open that project first, or name a path inside it."
+
+    /** What the review card says when an Apply is refused. Nothing was written. */
+    fun applyRefusal(path: String, root: String): String =
+        "outside the open project ($root) - not applied"
+
     /** What the model is told. It must not read as "try again somewhere else". */
     fun refusal(toolName: String, path: String, root: String): String =
         "REFUSED: `$toolName` targets $path, which is outside the open project ($root). " +

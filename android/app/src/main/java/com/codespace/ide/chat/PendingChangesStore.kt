@@ -243,6 +243,14 @@ object PendingChangesStore {
      */
     fun stage(rawPath: String, newContent: String, context: android.content.Context, projectRoot: String? = activeProjectRoot): String {
         val path = com.codespace.ide.agent.ToolPathResolver.resolve(context, rawPath, projectRoot)
+        // GATE 1 (2026-11-15): the proposal is checked when it is STAGED, not only when it is
+        // applied. Dispatch containment never ran for it, so an Edit-mode call could stage a
+        // path outside the project and Apply would have written it.
+        if (!com.codespace.ide.agent.WriteBoundary.insideProject(projectRoot, path)) {
+            val refusal = com.codespace.ide.agent.WriteBoundary.proposalRefusal(path, projectRoot ?: "")
+            com.codespace.ide.diagnostics.AppOutputLog.log("[chat] Stage REFUSED (outside project): " + path, "chat")
+            return refusal
+        }
         val session = activeSessionId ?: "default"
         val diskExisted = File(path).exists()
         val (base, wasOpen) = try {
@@ -339,6 +347,12 @@ object PendingChangesStore {
     private fun applyInternal(rawPath: String): ApplyOutcome {
         val path = CanonicalPaths.canonicalKey(rawPath)
         val entry = synchronized(pending) { entryFor(path) } ?: return ApplyOutcome.NotFound(path)
+        // GATE 1 (2026-11-15): checked AGAIN here, because the open project can change between
+        // staging and Apply (or the entry can be restored from a different workspace). Fail closed.
+        val root = activeProjectRoot
+        if (!com.codespace.ide.agent.WriteBoundary.insideProject(root, path)) {
+            return ApplyOutcome.Blocked(path, com.codespace.ide.agent.WriteBoundary.applyRefusal(path, root ?: ""))
+        }
         return try {
             // ── Drift verification (disk-staged entries ONLY — decision #3) ──
             if (!entry.baseDiskExisted) {
