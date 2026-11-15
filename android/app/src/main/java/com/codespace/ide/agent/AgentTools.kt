@@ -448,7 +448,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "get_secret" -> getSecret(args.getString("key"), context)
                 "detect_secrets" -> detectSecrets(args.optString("text").ifBlank { null }, args.optString("path").ifBlank { null })
                 "web_fetch" -> webFetch(args.getString("url"), args.optString("headers").ifBlank { null })
-                "web_search" -> webSearch(args.getString("query"))
+                "web_search" -> webSearch(args.getString("query"), context)
                 // M5: every memory access carries the owner's scope and the calling session,
                 // so a "current session only" setting is enforced in the tool, not just in the UI.
                 // Custom skill authoring (2026-10-31): the copilot writes reusable project
@@ -2511,7 +2511,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     /**
      * R2-R3: search that returns something to reason about, from more than one place.
      */
-    private fun webSearch(query: String): String {
+    private fun webSearch(query: String, context: Context): String {
         val fetcher = object : com.codespace.ide.agent.research.SearchRecovery.Fetcher {
             override fun get(url: String): Pair<Int, String> {
                 val conn = URL(url).openConnection() as HttpURLConnection
@@ -2525,6 +2525,17 @@ You can use multiple tools in sequence. When done, give a final summary.
                 val body = stream?.use { String(it.readNBytes(400_000), Charsets.UTF_8) } ?: ""
                 return code to body
             }
+        }
+        // Project 1.7: a follow-up continues the research it is a follow-up to. Sources already
+        // read come back from disk, so they are citable without being fetched a second time.
+        val history = com.codespace.ide.agent.research.ResearchHistory.get(context)
+        val continued = history.continuationFor(query)
+        val reused = ArrayList<com.codespace.ide.agent.research.SourceLedger.Source>()
+        continued?.sources?.forEach { s ->
+            reused.add(com.codespace.ide.agent.research.SourceLedger.note(
+                url = s.url, title = s.title, retrievedAt = s.retrievedAt,
+                publishedAt = s.publishedAt, excerpt = s.excerpt,
+            ))
         }
         val parent = com.codespace.ide.agent.research.SearchRecovery.run(query, fetcher)
         // Project 1.6: a compound question is searched as the asks it contains, but only when the
@@ -2560,11 +2571,17 @@ You can use multiple tools in sequence. When done, give a final summary.
             // 1.2: a source's KIND outranks where an engine happened to place it.
             priority = { c -> quality[c.url]?.score ?: 0 },
         )
+        val noted = ArrayList<com.codespace.ide.agent.research.SourceLedger.Source>()
         if (picked.isNotEmpty() && query.isNotBlank()) {
             picked.forEach { c ->
-                com.codespace.ide.agent.research.SourceLedger.note(
+                noted.add(com.codespace.ide.agent.research.SourceLedger.note(
                     url = c.url, title = c.title, retrievedAt = nowStamp(), excerpt = c.snippet,
-                )
+                ))
+            }
+        }
+        if (noted.isNotEmpty() || reused.isNotEmpty()) {
+            runCatching {
+                history.remember(query, System.currentTimeMillis(), (noted + reused).distinctBy { it.url })
             }
         }
         val pickedUrls = picked.map { it.url }.toHashSet()
@@ -2572,6 +2589,11 @@ You can use multiple tools in sequence. When done, give a final summary.
         val dropped = report.results.size - kept.size
         val body = com.codespace.ide.agent.research.ResultQuality.render(kept, labels)
         val notes = StringBuilder()
+        if (continued != null) {
+            notes.append("\n\nThis continues earlier research (\"").append(continued.question)
+                .append("\"), so ").append(reused.size)
+                .append(" source(s) already read were reused instead of fetched again.")
+        }
         if (extraQueries.isNotEmpty()) {
             notes.append("\n\nThe question had ").append(extraQueries.size + 1)
                 .append(" parts and the first search was thin, so each part was searched: ")
