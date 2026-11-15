@@ -2537,6 +2537,11 @@ You can use multiple tools in sequence. When done, give a final summary.
                 publishedAt = s.publishedAt, excerpt = s.excerpt,
             ))
         }
+        // Project 1.10: say what the round is doing while it does it, so a thin search that
+        // escalates to more asks does not look like a hang.
+        runCatching {
+            com.codespace.ide.agent.research.ResearchProgress.begin("Searching", 1)
+        }
         val parent = com.codespace.ide.agent.research.SearchRecovery.run(query, fetcher)
         // Project 1.6: a compound question is searched as the asks it contains, but only when the
         // first search came back thin and never more than twice - each request is mobile data.
@@ -2544,10 +2549,20 @@ You can use multiple tools in sequence. When done, give a final summary.
         val extraQueries = com.codespace.ide.agent.research.ResearchPlanner.followUpSearches(
             parent.results.size, asks)
         val round = com.codespace.ide.agent.research.ResearchCancel.generation()
-        val extraReports = extraQueries.mapNotNull { ask ->
+        runCatching {
+            if (extraQueries.isNotEmpty()) {
+                com.codespace.ide.agent.research.ResearchProgress.step(1, "Searching the question")
+            }
+        }
+        val extraReports = extraQueries.mapIndexedNotNull { i, ask ->
             // Project 1.9: Stop has to stop the spending - a queued subquestion is a request.
             if (!com.codespace.ide.agent.research.ResearchCancel.stillWanted(round)) null
-            else com.codespace.ide.agent.research.SearchRecovery.run(ask, fetcher)
+            else {
+                runCatching {
+                    com.codespace.ide.agent.research.ResearchProgress.step(i + 2, "Searching part " + (i + 2))
+                }
+                com.codespace.ide.agent.research.SearchRecovery.run(ask, fetcher)
+            }
         }
         val allResults = (parent.results + extraReports.flatMap { it.results }).distinctBy { it.url }
         val attempts = parent.attempts + extraReports.flatMap { it.attempts }
@@ -2642,6 +2657,9 @@ You can use multiple tools in sequence. When done, give a final summary.
         )
         if (ledger.isNotEmpty() || report.results.isEmpty()) notes.append("\n\n").append(brief.render)
         val notesText = notes.toString()
+        // Project 1.10: the progress line must disappear on EVERY exit path, so the panel never
+        // shows "Searching 12s" over an answer that already arrived.
+        runCatching { com.codespace.ide.agent.research.ResearchProgress.finish() }
         return if (dropped > 0) {
             body + "\n\n" + dropped + " further result(s) were the same page or a duplicate of a " +
                 "source already retrieved, so they were not listed twice." + notesText

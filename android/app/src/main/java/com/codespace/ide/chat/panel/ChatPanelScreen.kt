@@ -44,6 +44,17 @@ import kotlinx.coroutines.delay
  * "Send anyway?". Attachment chips are a WP8 placeholder (rendered by the
  * same component library when attachments return).
  */
+/**
+ * Project 1.10: the live research line, appended only while a round is running.
+ *
+ * Extracted rather than written inline in the composable, per the project's bytecode rule: the
+ * list append is a plain function call and the composable body stays small.
+ */
+private fun withResearchLine(
+    rows: List<ChatRowModel>,
+    line: String,
+): List<ChatRowModel> = if (line.isBlank()) rows else rows + ChatRowModel.InfoNote(line)
+
 @Composable
 fun ChatPanelScreen(
     projectId: String,
@@ -247,6 +258,17 @@ private fun ChatBody(
 
     // "Thinking Ns" ticker: recompute while streaming with no visible delta yet.
     var thinkTickMs by remember { mutableStateOf(0L) }
+    // Project 1.10: research progress. The search thread publishes what it is doing; this reads it
+    // on a ticker so a multi-ask round is visible while it runs, and clears when it ends.
+    var researchLine by remember { mutableStateOf("") }
+    LaunchedEffect(state.streaming) {
+        while (state.streaming) {
+            researchLine = com.codespace.ide.agent.research.ResearchProgress.snapshot()
+                ?.line(System.currentTimeMillis()) ?: ""
+            delay(500)
+        }
+        researchLine = ""
+    }
     LaunchedEffect(state.streaming, state.firstDeltaMs) {
         while (state.streaming && state.firstDeltaMs == 0L) {
             thinkTickMs = System.currentTimeMillis()
@@ -296,6 +318,7 @@ private fun ChatBody(
                 var rows = if (state.streaming && state.firstDeltaMs == 0L)
                     state.rows + listOf(ChatRowModel.Thinking(((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt()))
                 else state.rows
+                rows = withResearchLine(rows, researchLine)
                 // Batch 3: follow the newest content while the user is at the bottom, and
                 // never fight them once they scroll up. Emits nothing.
                 TranscriptAutoScroll(scroll, transcriptGrowthKey(rows), follow)
