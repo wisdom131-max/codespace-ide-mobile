@@ -21,6 +21,7 @@ session and still need their commit id pasted here.
 | Phase 6b: Settings gains a Local Skills manager - list with on/off switches, create, edit, delete with confirm, import from the phone, and a line naming the folder it reads | _pending CI_ |
 | Phase 5b: every file-mutating tool is containment-checked against the open project root before dispatch (copy/move were the only ones that were); the refusal names the path and root and says nothing was written | _pending CI_ |
 | Phase 6c: explicit "remember / forget / what do you remember" is routed as a directive naming save_memory, delete_memory or read_memory for that turn; ordinary prose that mentions memory is untouched | _pending CI_ |
+| Phase 8a: Settings > AI Agent gains a Model Catalogue - each known model with its context window (floored, not rounded up), images/pdf, tri-state tool support and the providers it is verified for, plus a footer that says an unlisted model still works and keeps its tools | _pending CI_ |
 | Phase 5a: `guestPath` delegates to ToolPathResolver, so every file tool resolves a path the same way checksum/read_file disagree no more | _pending CI_ |
 
 ## Chat rebuild (owner-requested rewrite, A / WP1-WP9)
