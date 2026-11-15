@@ -609,6 +609,13 @@ class ChatSession internal constructor(
         // A new turn supersedes a previous interruption: from here on the transcript is live
         // again and must not keep carrying the "cut off" marker.
         interruptedReplyPending = false
+        // PROJECT 1.8 (2026-11-15): SourceLedger's own doc says it is "cleared at the start of each
+        // task", and nothing called reset(), so a source read for an earlier, unrelated question
+        // kept appearing in later answers' citation lists. A new turn is the task boundary. A
+        // CONTINUATION is the same answer, so its sources stay.
+        if (continuationPrefix == null) {
+            com.codespace.ide.agent.research.SourceLedger.reset()
+        }
         val sel = selection.value
         // U1 (657 finding d): a blank model id is a pair that cannot send - say so
         // instead of putting a request on the wire that is certain to be rejected.
