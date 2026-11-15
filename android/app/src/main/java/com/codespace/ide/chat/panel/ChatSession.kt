@@ -792,6 +792,39 @@ class ChatSession internal constructor(
      * BATCH 6: Stop must also kill an ARMED retry, not just an in-flight read. Bumping the
      * generation is what makes the pending timer inert even if it wakes up afterwards.
      */
+    /**
+     * PHASE 8b: "Stop and Send" is cancel-then-send, both of which already exist.
+     *
+     * The composer offered the entry but every menu tap ran stop, so it cancelled the answer and
+     * dropped the typed text. The send waits for streaming to actually clear (a cancelled collect
+     * clears it, but not always on the same frame) and gives up honestly rather than leaving the
+     * message unsent with no word: after 3 seconds it says so.
+     */
+    fun stopAndSend(userText: String) {
+        if (userText.isBlank()) {
+            cancel()
+            return
+        }
+        cancel()
+        scope.launch {
+            var waited = 0
+            while (ui.value.streaming && waited < 60) {
+                kotlinx.coroutines.delay(50)
+                waited++
+            }
+            if (ui.value.streaming) {
+                appendRow(ChatRowModel.Failed(
+                    "Stop and Send did not run",
+                    "The reply was stopped but the request did not finish clearing, so \"" +
+                        userText.take(40) + "\" was not sent. Your text is still in the field.",
+                    false,
+                ))
+                return@launch
+            }
+            send(userText)
+        }
+    }
+
     fun cancel() {
         requestGate.bump()
         sendJob?.cancel()

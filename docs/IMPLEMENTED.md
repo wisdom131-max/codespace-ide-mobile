@@ -17,6 +17,7 @@ session and still need their commit id pasted here.
 | Phase 4c: the connector card hosts its own setup (token field for `pat`, consent page opened from the card for `oauth`) instead of redirecting to the Connectors Hub; the Hub is unchanged for Settings | _pending CI_ |
 | Phase 7: the plus chip continues into a new session with the handoff instead of opening a blank one; blank creation stays on the Sessions surface | _pending CI_ |
 | Phase 8a: a shell command that outlives a 20s inline window returns a handle (poll with `terminal_list`, stop with `terminal_kill`) instead of a false timeout that invited a duplicate run | _pending CI_ |
+| Phase 8b: the composer chevron dispatches by entry - "Stop and Send" really cancels then sends the typed text (and says so if the request never clears), while the unbuilt Queue/Steer entries map to nothing instead of silently stopping the answer | _pending CI_ |
 | Phase 6a: a skill can be disabled without deleting it (flag persisted, older files restore enabled, disabled skills absent from the model index) | _pending CI_ |
 | Phase 6b: Settings gains a Local Skills manager - list with on/off switches, create, edit, delete with confirm, import from the phone, and a line naming the folder it reads | _pending CI_ |
 | Phase 5b: every file-mutating tool is containment-checked against the open project root before dispatch (copy/move were the only ones that were); the refusal names the path and root and says nothing was written | _pending CI_ |

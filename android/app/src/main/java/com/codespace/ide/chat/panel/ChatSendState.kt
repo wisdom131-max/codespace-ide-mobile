@@ -27,7 +27,7 @@ internal enum class SendMode {
     STREAMING_WITH_TEXT,
 }
 
-internal enum class SendAction { SEND, STOP, OPEN_SETUP, OPEN_MODEL_PICKER, NONE }
+internal enum class SendAction { SEND, STOP, STOP_AND_SEND, OPEN_SETUP, OPEN_MODEL_PICKER, NONE }
 
 internal enum class SendMenuEntry(val label: String) {
     STOP_AND_SEND("Stop and Send"),
@@ -100,6 +100,18 @@ internal object ChatSendState {
      * The reference order: Stop and Send, Add to Queue, Steer with Message.
      * Stop and Send needs text; queue and steer are engine work not built yet.
      */
+    /**
+     * PHASE 8b: what a menu ENTRY does, as opposed to what the main control does.
+     *
+     * The bug this pins: every enabled menu item called stop, so "Stop and Send" was a plain
+     * Stop with a longer label. Queue and steer are unbuilt engines and must map to NONE, never
+     * to STOP - a disabled entry that cancels the answer when it is tapped is worse than absent.
+     */
+    fun actionOf(entry: SendMenuEntry): SendAction = when (entry) {
+        SendMenuEntry.STOP_AND_SEND -> SendAction.STOP_AND_SEND
+        SendMenuEntry.ADD_TO_QUEUE, SendMenuEntry.STEER -> SendAction.NONE
+    }
+
     fun streamingMenu(hasText: Boolean): List<SendMenuItem> = listOf(
         SendMenuItem(
             SendMenuEntry.STOP_AND_SEND,

@@ -451,6 +451,17 @@ private fun ChatBody(
                 }
             },
             onStop = { session.cancel() },
+            // PHASE 8b: the chevron's first entry is a real stop-then-send, not a Stop that
+            // throws the typed message away.
+            onStopAndSend = {
+                if (input.isNotBlank()) {
+                    val text = input
+                    input = ""
+                    session.stopAndSend(text)
+                } else {
+                    session.cancel()
+                }
+            },
             // The visible "Local Approvals: Auto-all" row is GONE at the owner's request
             // (spec section 4). Only the LABEL went: ChatPermissionStore is untouched and
             // AgentFlowGate still consults it before every tool call, and ChatApprovalCard
