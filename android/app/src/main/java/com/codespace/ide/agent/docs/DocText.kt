@@ -45,12 +45,24 @@ object DocText {
         return when (kindOf(name)) {
             Kind.PLAIN -> String(bytes, Charsets.UTF_8).take(MAX_OUTPUT_CHARS)
             Kind.PDF -> pdf(bytes)
-            Kind.DOCX -> office(bytes, "word/document.xml", "Word document")
+            Kind.DOCX -> docx(bytes)
             Kind.PPTX -> office(bytes, listOf("ppt/slides/slide"), "PowerPoint deck")
             Kind.XLSX -> office(bytes, "xl/worksheets/sheet1.xml", "Excel sheet")
             Kind.UNSUPPORTED -> "Not a readable document type: " + name +
                 ". The document reader handles pdf, docx, pptx, xlsx and plain text."
         }
+    }
+
+    /**
+     * PROJECT 2.1: a Word document is reported as STRUCTURE plus text. The outline is what lets the
+     * model answer "what sections does this have" and place an edit in the right one; the flat text
+     * below it is unchanged, so nothing that worked before changes behaviour.
+     */
+    private fun docx(bytes: ByteArray): String {
+        val body = office(bytes, "word/document.xml", "Word document")
+        val outline = runCatching { DocxOutline.render(bytes) }.getOrDefault("")
+        if (outline.isBlank()) return body
+        return "[document outline — headings in order]\n" + outline + "\n\n" + body
     }
 
     // ------------------------------------------------------------------ PDF
