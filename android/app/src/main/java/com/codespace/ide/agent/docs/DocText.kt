@@ -46,7 +46,7 @@ object DocText {
             Kind.PLAIN -> String(bytes, Charsets.UTF_8).take(MAX_OUTPUT_CHARS)
             Kind.PDF -> pdf(bytes)
             Kind.DOCX -> docx(bytes)
-            Kind.PPTX -> office(bytes, listOf("ppt/slides/slide"), "PowerPoint deck")
+            Kind.PPTX -> pptx(bytes)
             Kind.XLSX -> xlsx(bytes)
             Kind.UNSUPPORTED -> "Not a readable document type: " + name +
                 ". The document reader handles pdf, docx, pptx, xlsx and plain text."
@@ -74,6 +74,16 @@ object DocText {
         val grid = runCatching { XlsxWorkbook.render(bytes) }.getOrDefault("")
         if (grid.isNotBlank()) return "[workbook — sheets, cells and formulas]\n" + grid
         return office(bytes, "xl/worksheets/sheet1.xml", "Excel sheet")
+    }
+
+    /**
+     * PROJECT 2.3: a deck is reported in presentation order, with each slide's title separated from
+     * its bullets. The old flat read is kept as fallback for a deck the structure reader cannot walk.
+     */
+    private fun pptx(bytes: ByteArray): String {
+        val deck = runCatching { PptxDeck.render(bytes) }.getOrDefault("")
+        if (deck.isNotBlank()) return "[deck — slides in presentation order]\n" + deck
+        return office(bytes, listOf("ppt/slides/slide"), "PowerPoint deck")
     }
 
     // ------------------------------------------------------------------ PDF
