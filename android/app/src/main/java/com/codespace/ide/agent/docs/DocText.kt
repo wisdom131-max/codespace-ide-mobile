@@ -47,7 +47,7 @@ object DocText {
             Kind.PDF -> pdf(bytes)
             Kind.DOCX -> docx(bytes)
             Kind.PPTX -> office(bytes, listOf("ppt/slides/slide"), "PowerPoint deck")
-            Kind.XLSX -> office(bytes, "xl/worksheets/sheet1.xml", "Excel sheet")
+            Kind.XLSX -> xlsx(bytes)
             Kind.UNSUPPORTED -> "Not a readable document type: " + name +
                 ". The document reader handles pdf, docx, pptx, xlsx and plain text."
         }
@@ -63,6 +63,17 @@ object DocText {
         val outline = runCatching { DocxOutline.render(bytes) }.getOrDefault("")
         if (outline.isBlank()) return body
         return "[document outline — headings in order]\n" + outline + "\n\n" + body
+    }
+
+    /**
+     * PROJECT 2.2: a workbook is read as sheets of cells with their formulas. The old flat walk of
+     * sheet1 is kept only as a fallback for a file this reader cannot parse, so a workbook is never
+     * a dead end.
+     */
+    private fun xlsx(bytes: ByteArray): String {
+        val grid = runCatching { XlsxWorkbook.render(bytes) }.getOrDefault("")
+        if (grid.isNotBlank()) return "[workbook — sheets, cells and formulas]\n" + grid
+        return office(bytes, "xl/worksheets/sheet1.xml", "Excel sheet")
     }
 
     // ------------------------------------------------------------------ PDF
