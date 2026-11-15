@@ -134,7 +134,11 @@ internal object AgentToolWire {
         for (m in CALL_REGEX.findAll(text)) {
             val body = m.groupValues[2]
             val name = NAME_REGEX.find(body)?.groupValues?.get(1) ?: continue
-            val args = jsonArgumentsFrom(body) ?: "{}"
+            // PHASE 8c: a call whose arguments never closed is skipped here too, so the
+            // preview path and the execute path cannot disagree about what got read.
+            val outcome = argsOutcome(body)
+            if (outcome === ArgsOutcome.Unbalanced) continue
+            val args = (outcome as? ArgsOutcome.Found)?.json ?: "{}"
             found.add(Triple(m.range.first, 0, ParsedToolCall(name, args)))
         }
         for (m in HERMES_CALL_REGEX.findAll(text)) {
@@ -154,8 +158,8 @@ internal object AgentToolWire {
      * terminator. Balanced counting is the only version that survives a nested object (a patch
      * body, a JSON string argument) without guessing.
      */
-    private fun jsonArgumentsFrom(body: String): String? {
-        val key = ARGS_KEY.find(body) ?: return null
+    private fun argsOutcome(body: String): ArgsOutcome {
+        val key = ARGS_KEY.find(body) ?: return ArgsOutcome.Absent
         val start = key.range.last
         var depth = 0
         var inString = false
@@ -175,11 +179,11 @@ internal object AgentToolWire {
                 '{' -> depth++
                 '}' -> {
                     depth--
-                    if (depth == 0) return body.substring(start, i + 1)
+                    if (depth == 0) return ArgsOutcome.Found(body.substring(start, i + 1))
                 }
             }
         }
-        return null
+        return ArgsOutcome.Unbalanced
     }
 
     /**
@@ -280,13 +284,26 @@ internal object AgentToolWire {
         val echoRanges = HashSet<IntRange>()
         val echoes = ArrayList<ParsedToolCall>()
         val calls = ArrayList<ParsedToolCall>()
+        val broken = ArrayList<DetailedCall>()
         for (d in detailed) {
-            if (toolsOffered && !isEcho(d, turnContext)) calls.add(d.call)
-            else { echoes.add(d.call); echoRanges.add(d.range) }
+            if (toolsOffered && !isEcho(d, turnContext)) {
+                if (d.broken) broken.add(d) else calls.add(d.call)
+            } else { echoes.add(d.call); echoRanges.add(d.range) }
         }
         // An echo is shown as literal text (the user must see what the model repeated), so its
         // block is exempt from the strip that normally keeps protocol out of prose.
         val visible = visibleText(reply, keep = echoRanges)
+        // PHASE 8c: a call whose arguments never closed is not run, and neither is the rest of
+        // that reply: the same cut that truncated one call can truncate the next. Saying which
+        // tool was affected is the difference between a retry and a silent wrong edit.
+        if (broken.isNotEmpty()) {
+            return ToolDecision.Refused(
+                visible,
+                "A " + broken.first().call.name + " call arrived with arguments that never " +
+                    "closed, so nothing was run. Send again - a shorter task or a smaller file " +
+                    "usually finishes the call before the reply is cut.",
+            )
+        }
         if (calls.isEmpty()) return ToolDecision.Answer(visible)
 
         if (!modeRunsTools(mode)) {
@@ -395,7 +412,22 @@ internal object AgentToolWire {
         val textDialect: Boolean,
         /** The tag text exactly as the model wrote it; the echo check compares this whole block. */
         val text: String = "",
+        /**
+         * PHASE 8c: the block closed but its arguments did not parse. It must never be executed -
+         * a call read as `{}` is a real invocation of a real tool with every parameter missing.
+         */
+        val broken: Boolean = false,
     )
+
+    /** What the arguments region of a call turned out to be. */
+    internal sealed class ArgsOutcome {
+        /** A balanced JSON object: the call may run. */
+        data class Found(val json: String) : ArgsOutcome()
+        /** No `arguments` key at all: a legitimately parameterless tool. */
+        object Absent : ArgsOutcome()
+        /** The key is there and the object never closes: a truncated or corrupted call. */
+        object Unbalanced : ArgsOutcome()
+    }
 
     /** Fenced code blocks and quoted blocks are masked so nothing inside them is parsed. */
     internal fun maskQuotedAndFenced(text: String): String {
@@ -426,8 +458,23 @@ internal object AgentToolWire {
         for (m in CALL_REGEX.findAll(text)) {
             val body = m.groupValues[2]
             val name = NAME_REGEX.find(body)?.groupValues?.get(1) ?: continue
-            val args = jsonArgumentsFrom(body) ?: "{}"
-            found.add(DetailedCall(ParsedToolCall(name, args), m.range, textDialect = false, text = m.value))
+            // PHASE 8c: absent arguments stay "{}" (a tool with no parameters); a PRESENT but
+            // unbalanced object is not "no arguments", it is a call that was cut mid-JSON, and
+            // running it would invoke the tool with every parameter silently missing.
+            val args = when (val outcome = argsOutcome(body)) {
+                is ArgsOutcome.Found -> outcome.json
+                ArgsOutcome.Absent -> "{}"
+                ArgsOutcome.Unbalanced -> "{}"
+            }
+            found.add(
+                DetailedCall(
+                    ParsedToolCall(name, args),
+                    m.range,
+                    textDialect = false,
+                    text = m.value,
+                    broken = argsOutcome(body) === ArgsOutcome.Unbalanced,
+                ),
+            )
         }
         for (m in HERMES_CALL_REGEX.findAll(text)) {
             found.add(
