@@ -22,6 +22,8 @@ class ToolRegistryTest {
         "git_status", "git_diff", "detect_secrets",
         "read_memory", "list_tasks", "read_entities", "list_connectors",
         "get_errors", "get_changed_files", "request_connector", "service_read",
+        // Project 2.8: reading a media file's header is a read, so Ask may do it.
+        "media_info",
         "list_skills", "read_skill",
         "list_dir", "grep_search", "file_search", "semantic_search",
         "search_workspace_symbols", "read_project_structure",
@@ -64,8 +66,8 @@ class ToolRegistryTest {
         // 2026-11-12: 120 = 118 (git_log/git_checkpoint/git_restore/git_conflict_resolve added
         // earlier) + service_read/service_write (P3 Item 32).
         // + the seven debug tools.
-        assertEquals("every registered tool is listed exactly once", 124, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 124, ToolRegistry.names().toSet().size)
+        assertEquals("every registered tool is listed exactly once", 125, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 125, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -276,6 +278,7 @@ class ToolRegistryTest {
             "docx_edit" to (listOf("path", "content") to emptyList<String>()),
             "xlsx_write" to (listOf("path", "content") to emptyList<String>()),
             "pptx_create" to (listOf("path", "content") to emptyList<String>()),
+            "media_info" to (listOf("path") to emptyList<String>()),
             "zip_extract" to (listOf("archive") to listOf("dest", "overwrite")),
             "zip_list" to (listOf("archive") to listOf("offset", "limit")),
             "npm_info" to (listOf("name") to listOf("version")),

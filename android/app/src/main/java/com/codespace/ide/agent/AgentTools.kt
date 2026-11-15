@@ -75,6 +75,11 @@ You have access to these tools for acting on the user's environment:
    line is a bullet too. The package carries a master, two layouts and a theme, because a deck
    without them opens as a repair prompt.
    <tool>{"name":"pptx_create","arguments":{"path":"/path/deck.pptx","content":"# Roadmap\n- Ship it\n- Measure it"}}</tool>
+3h. media_info     — What an audio or video file actually is
+   Reads format, duration, sample rate and channels FROM THE HEADER (wav, flac, mp4/m4a/mov, mp3).
+   An MP3 duration is derived from one frame plus file size, so it is labelled "estimated" -
+   trust that word.
+   <tool>{"name":"media_info","arguments":{"path":"/path/recording.m4a"}}</tool>
 3c. multi_replace_string_in_file — Several such edits to ONE file in one call
    <tool>{"name":"multi_replace_string_in_file","arguments":{"path":"/path/to/file","replacements":"[{\"old_string\":\"a\",\"new_string\":\"b\"}]","replace_all":false}}</tool>
 4. list_files     — List files in a directory
@@ -239,7 +244,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "terminal_list", "terminal_kill", "job_status",
         "coverage_read", "entity_schema_read", "memory_search",
         // ZIP (2026-11-12): three tools on the one engine the app already ships.
-        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create",
+        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create", "media_info",
         // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
         "npm_info", "pypi_info", "lockfile_parse",
         // Git recovery (owner approval 2026-11-12): history, checkpoints, previewed restores, and
@@ -370,6 +375,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                     args.getString("path"), args.optString("content"), context)
                 "pptx_create" -> pptxCreate(
                     args.getString("path"), args.optString("content"), context)
+                "media_info" -> mediaInfo(args.getString("path"), context)
                 // VS Code parity aliases: same implementation, their tool name.
                 "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
                 "insert_edit_into_file" -> replaceStringInFile(
@@ -815,6 +821,34 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
         return truncMark(file.readText(), 16000)  // CH06 (P4h)
+    }
+
+    /**
+     * PROJECT 2.8: describe an audio or video file without playing it.
+     *
+     * Bounded to the first 4MB of the file: every duration this reader uses is in the header, and a
+     * phone should not load a 300MB video to answer "how long is it".
+     */
+    private fun mediaInfo(path: String, context: android.content.Context): String {
+        val resolved = resolveToolPath(context, path)
+        val file = File(resolved)
+        if (!file.isFile) return "Not found: " + resolved
+        val head = try {
+            file.inputStream().use { stream ->
+                val buffer = ByteArray(minOf(file.length(), 4L * 1024L * 1024L).toInt())
+                var read = 0
+                while (read < buffer.size) {
+                    val n = stream.read(buffer, read, buffer.size - read)
+                    if (n <= 0) break
+                    read += n
+                }
+                buffer.copyOf(read)
+            }
+        } catch (t: Throwable) {
+            return "Could not read " + resolved + ": " + (t.message ?: "unknown error")
+        }
+        val described = com.codespace.ide.agent.docs.MediaMeta.render(head, file.name)
+        return described + "\n" + resolved + " (" + file.length() + " bytes)"
     }
 
     /**

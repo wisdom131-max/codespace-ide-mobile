@@ -1048,6 +1048,17 @@ internal object ToolRegistry {
             modes = WRITE_MODES,
         ),
         ToolSpec(
+            name = "media_info",
+            displayName = "Inspecting a media file",
+            description = "Report what an audio or video file actually is, read from its header: format, " +
+                "duration, sample rate, channels. Handles wav, flac, mp4/m4a/mov and mp3. An mp3 " +
+                "duration is derived from one frame plus the file size and is labelled estimated, " +
+                "which a VBR file will prove wrong. It reads the first 4MB only and does not transcribe " +
+                "or decode anything.",
+            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{\"path\":{\"type\":\"string\"}}}",
+            modes = READ_ALL,
+        ),
+        ToolSpec(
             name = "zip_extract",
             displayName = "Extracting an archive",
             description = "Extract an archive inside the workspace. Refuses entries that would escape " +
