@@ -28,6 +28,8 @@ object SkillStore {
         val name: String,
         val description: String,
         val body: String,
+        /** PHASE 6a: a disabled skill keeps its file and text but is not offered to the model. */
+        val enabled: Boolean = true,
     )
 
     sealed class ListResult {
@@ -61,11 +63,11 @@ object SkillStore {
         val dir = skillsDir(context, projectRoot)
         if (!dir.exists() && !dir.mkdirs()) throw IllegalStateException("cannot create ${dir.absolutePath}")
         val slug = slugOf(name)
-        val payload = JSONObject()
-            .put("name", name)
-            .put("description", description)
-            .put("body", body)
-            .put("slug", slug)
+        val payload = JSONObject(
+            SkillFormat.encode(
+                SkillFormat.Record(slug = slug, name = name, description = description, body = body),
+            ),
+        )
         val file = File(dir, "$slug.json")
         val atomic = AtomicFile(file)
         val out = atomic.startWrite()
@@ -102,22 +104,50 @@ object SkillStore {
         if (skills.isEmpty()) return ""
         val sb = StringBuilder()
         sb.append("PROJECT SKILLS (call read_skill with the name to load one):\n")
-        for (s in skills) {
-            sb.append("- ").append(s.name)
-            if (s.description.isNotBlank()) sb.append(": ").append(s.description)
-            sb.append('\n')
+        // PHASE 6a: one line per ENABLED skill. A switched-off skill is kept on disk and simply
+        // not offered, so turning it back on needs no rewrite.
+        for (line in SkillFormat.indexLines(skills.map {
+            SkillFormat.Record(it.slug, it.name, it.description, it.body, it.enabled)
+        })) {
+            sb.append(line).append('\n')
         }
         return sb.toString()
     }
 
     private fun parse(text: String, fallbackSlug: String): Skill {
-        val o = JSONObject(text)
+        val r = SkillFormat.decode(text, fallbackSlug) ?: error("unreadable skill file")
         return Skill(
-            slug = o.optString("slug", fallbackSlug),
-            name = o.optString("name", fallbackSlug),
-            description = o.optString("description", ""),
-            body = o.optString("body", ""),
+            slug = r.slug,
+            name = r.name,
+            description = r.description,
+            body = r.body,
+            enabled = r.enabled,
         )
+    }
+
+    /**
+     * PHASE 6a: switch a skill off or on without touching its text. Returns false when there is no
+     * such skill, so a caller never reports a change that did not happen.
+     */
+    fun setEnabled(context: Context, projectRoot: String?, name: String, enabled: Boolean): Boolean {
+        val dir = skillsDir(context, projectRoot)
+        val slug = slugOf(name)
+        val file = File(dir, "$slug.json")
+        if (!file.exists()) return false
+        val existing = runCatching { parse(file.readText(), slug) }.getOrNull() ?: return false
+        val payload = SkillFormat.encode(
+            SkillFormat.Record(existing.slug, existing.name, existing.description, existing.body, enabled),
+        )
+        val atomic = AtomicFile(file)
+        val out = atomic.startWrite()
+        try {
+            out.write(payload.toByteArray())
+            atomic.finishWrite(out)
+        } catch (t: Throwable) {
+            atomic.failWrite(out)
+            return false
+        }
+        return true
     }
 
     /** "Run the tests" -> "run-the-tests". Stable, so a skill keeps its file across renames of case. */
