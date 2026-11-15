@@ -834,6 +834,10 @@ class ChatSession internal constructor(
 
     fun cancel() {
         requestGate.bump()
+        // Project 1.9: a research round is blocking socket reads, so a cancelled coroutine would
+        // still let its queued subquestion searches go out. Bump the generation so the loop stops
+        // before spending more of the owner's data.
+        com.codespace.ide.agent.research.ResearchCancel.bump()
         sendJob?.cancel()
         // Stop means stopped. When a 429 retry is ARMED there is no active collect to notice
         // the cancellation, so streaming would otherwise stay true and the composer would

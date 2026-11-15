@@ -2543,8 +2543,11 @@ You can use multiple tools in sequence. When done, give a final summary.
         val asks = com.codespace.ide.agent.research.ResearchPlanner.decompose(query)
         val extraQueries = com.codespace.ide.agent.research.ResearchPlanner.followUpSearches(
             parent.results.size, asks)
-        val extraReports = extraQueries.map {
-            com.codespace.ide.agent.research.SearchRecovery.run(it, fetcher)
+        val round = com.codespace.ide.agent.research.ResearchCancel.generation()
+        val extraReports = extraQueries.mapNotNull { ask ->
+            // Project 1.9: Stop has to stop the spending - a queued subquestion is a request.
+            if (!com.codespace.ide.agent.research.ResearchCancel.stillWanted(round)) null
+            else com.codespace.ide.agent.research.SearchRecovery.run(ask, fetcher)
         }
         val allResults = (parent.results + extraReports.flatMap { it.results }).distinctBy { it.url }
         val attempts = parent.attempts + extraReports.flatMap { it.attempts }
@@ -2589,6 +2592,11 @@ You can use multiple tools in sequence. When done, give a final summary.
         val dropped = report.results.size - kept.size
         val body = com.codespace.ide.agent.research.ResultQuality.render(kept, labels)
         val notes = StringBuilder()
+        if (extraReports.size < extraQueries.size) {
+            notes.append("\n\nStopped after ").append(extraReports.size + 1)
+                .append(" of ").append(extraQueries.size + 1)
+                .append(" searches because the turn was cancelled; the rest were not run.")
+        }
         if (continued != null) {
             notes.append("\n\nThis continues earlier research (\"").append(continued.question)
                 .append("\"), so ").append(reused.size)
