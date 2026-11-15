@@ -1024,6 +1024,18 @@ internal object ToolRegistry {
             modes = WRITE_MODES,
         ),
         ToolSpec(
+            name = "xlsx_write",
+            displayName = "Creating an Excel workbook",
+            description = "Create a real .xlsx from CSV content: one line per row, commas between cells, " +
+                "\"## Name\" starting a new sheet. A cell beginning with \"=\" becomes a formula, numeric " +
+                "cells stay numeric, and the workbook is marked to calculate on open. Refuses an existing " +
+                "path and any extension other than .xlsx. It does NOT edit an existing workbook, style " +
+                "cells, or add charts.",
+            schema = OBJ + ",\"required\":[\"path\",\"content\"],\"properties\":{" +
+                "\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
             name = "zip_extract",
             displayName = "Extracting an archive",
             description = "Extract an archive inside the workspace. Refuses entries that would escape " +

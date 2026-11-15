@@ -65,6 +65,11 @@ You have access to these tools for acting on the user's environment:
    through byte for byte, which is what "preserve formatting" can honestly mean here. It appends;
    it cannot rewrite a paragraph in place.
    <tool>{"name":"docx_edit","arguments":{"path":"/path/report.docx","content":"## New section\nMore words."}}</tool>
+3f. xlsx_write     — CREATE a real Excel .xlsx
+   content is CSV: one line per row, commas between cells. "## Name" starts a new sheet (default
+   Sheet1). A cell starting with "=" becomes a REAL formula, numbers stay numbers, and the
+   workbook is marked to calculate on open.
+   <tool>{"name":"xlsx_write","arguments":{"path":"/path/book.xlsx","content":"item,qty\nWidget,4\n,,\nTotal,=SUM(B2:B2)"}}</tool>
 3c. multi_replace_string_in_file — Several such edits to ONE file in one call
    <tool>{"name":"multi_replace_string_in_file","arguments":{"path":"/path/to/file","replacements":"[{\"old_string\":\"a\",\"new_string\":\"b\"}]","replace_all":false}}</tool>
 4. list_files     — List files in a directory
@@ -229,7 +234,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "terminal_list", "terminal_kill", "job_status",
         "coverage_read", "entity_schema_read", "memory_search",
         // ZIP (2026-11-12): three tools on the one engine the app already ships.
-        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit",
+        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write",
         // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
         "npm_info", "pypi_info", "lockfile_parse",
         // Git recovery (owner approval 2026-11-12): history, checkpoints, previewed restores, and
@@ -355,6 +360,8 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "docx_create" -> docxCreate(
                     args.getString("path"), args.optString("title"), args.optString("content"), context)
                 "docx_edit" -> docxEdit(
+                    args.getString("path"), args.optString("content"), context)
+                "xlsx_write" -> xlsxWrite(
                     args.getString("path"), args.optString("content"), context)
                 // VS Code parity aliases: same implementation, their tool name.
                 "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
@@ -801,6 +808,62 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
         return truncMark(file.readText(), 16000)  // CH06 (P4h)
+    }
+
+    /**
+     * PROJECT 2.6: create a workbook.
+     *
+     * Refuses an existing path for the same reason docx_create does - a create tool that silently
+     * replaces a workbook is data loss - and refuses an extension other than .xlsx.
+     */
+    private fun xlsxWrite(path: String, content: String, context: android.content.Context): String {
+        val resolved = resolveToolPath(context, path)
+        val target = File(resolved)
+        if (target.exists()) return "Refused: " + resolved + " already exists. Choose another path."
+        if (!resolved.lowercase().endsWith(".xlsx")) {
+            return "Refused: xlsx_write writes .xlsx only, and the path ends in something else."
+        }
+        val sheets = parseSheets(content)
+        if (sheets.isEmpty()) return "Nothing to write: the content had no rows."
+        val bytes = try {
+            com.codespace.ide.agent.docs.XlsxWriter.build(sheets)
+        } catch (t: Throwable) {
+            return "Failed to build the workbook: " + (t.message ?: "unknown error")
+        }
+        return try {
+            target.parentFile?.mkdirs()
+            target.writeBytes(bytes)
+            val formulas = sheets.sumOf { s -> s.rows.sumOf { row -> row.count { it.trim().startsWith("=") } } }
+            "Created " + resolved + " (" + sheets.size + " sheet(s), " + formulas +
+                " formula(s), " + bytes.size + " bytes)"
+        } catch (t: Throwable) {
+            "Failed to write " + resolved + ": " + (t.message ?: "unknown error")
+        }
+    }
+
+    /** "## Name" starts a sheet; every other line is a CSV row. */
+    private fun parseSheets(content: String): List<com.codespace.ide.agent.docs.XlsxWriter.Sheet> {
+        val sheets = ArrayList<com.codespace.ide.agent.docs.XlsxWriter.Sheet>()
+        var name = "Sheet1"
+        val rows = ArrayList<List<String>>()
+        fun flush() {
+            if (rows.isNotEmpty()) {
+                sheets.add(com.codespace.ide.agent.docs.XlsxWriter.Sheet(name, ArrayList(rows)))
+                rows.clear()
+            }
+        }
+        for (line in content.lines()) {
+            val trimmed = line.trim()
+            if (trimmed.startsWith("## ")) {
+                flush()
+                name = trimmed.removePrefix("## ").trim()
+                continue
+            }
+            if (trimmed.isEmpty()) continue
+            rows.add(trimmed.split(',').map { it.trim() })
+        }
+        flush()
+        return sheets
     }
 
     /**

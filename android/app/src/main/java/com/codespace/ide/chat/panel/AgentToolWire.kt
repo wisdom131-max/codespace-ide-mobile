@@ -364,7 +364,7 @@ internal object AgentToolWire {
     fun summary(call: ParsedToolCall): String {
         val key = when (call.name) {
             "run_command" -> "command"
-            "write_file", "docx_create", "docx_edit", "read_file", "list_files", "search_files" -> "path"
+            "write_file", "docx_create", "docx_edit", "xlsx_write", "read_file", "list_files", "search_files" -> "path"
             else -> null
         }
         val value = key?.let { k ->
@@ -389,6 +389,7 @@ internal object AgentToolWire {
         "write_file" -> "Writing a file"
         "docx_create" -> "Creating a Word document"
         "docx_edit" -> "Appending to a Word document"
+        "xlsx_write" -> "Creating an Excel workbook"
         "grep_replace_all" -> "Replacing across files"
         "read_file" -> "Reading a file"
         "list_files" -> "Listing files"
