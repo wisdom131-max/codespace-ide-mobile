@@ -52,7 +52,12 @@ class ToolDocBudgetTest {
         val catalogue = ToolRegistry.promptBlock(ChatMode.AGENT).length
         val agentOffer = ChatInstructions.build(ChatMode.AGENT, true, ToolOffer.plan(ChatMode.AGENT, "").names, "", "")
         println("[comp] catalogue=" + catalogue + " agentPrompt=" + agentOffer.length)
-        assertTrue("the registry catalogue has grown unexpectedly: " + catalogue, catalogue < 19500)
+        // 2026-11-15: raised from 19,500 to 21,500 for FIVE document and media tools added in
+        // Project Two - docx_create, docx_edit, xlsx_write, pptx_create, media_info - measured at
+        // 19,862 chars. This is conscious growth behind a tripwire, not a silent loosening: the
+        // PROMPT budget above is what the provider actually receives and it is unchanged (4,836 for
+        // Agent mode), so none of this reached a request.
+        assertTrue("the registry catalogue has grown unexpectedly: " + catalogue, catalogue < 21500)
         assertTrue("the prompt must be smaller than the catalogue it is drawn from",
             agentOffer.length < catalogue)
     }
