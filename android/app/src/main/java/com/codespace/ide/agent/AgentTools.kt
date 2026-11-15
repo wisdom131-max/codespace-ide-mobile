@@ -696,7 +696,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     // Runs INSIDE the Ubuntu proot rootfs (git, npm, apt, etc. only exist there — the bare
     // host ProcessBuilder this used to call never had those binaries on PATH). workdir, if
     // given, must be a guest-side path (e.g. "/root/myproject"), not a host Android path.
-    private fun runCommand(command: String, workdir: String?, context: Context): String {
+    private suspend fun runCommand(command: String, workdir: String?, context: Context): String {
         // C-4 (audit #2854): the chat panel advertises HOST project roots, so the
         // model passes host paths as workdir — but execOnce runs inside the proot
         // GUEST, where the host path fails the `[-d workdir]` guard SILENTLY and the
@@ -716,22 +716,15 @@ You can use multiple tools in sequence. When done, give a final summary.
         // one-shot exec (not the user's interactive shell), so the honest thing to show is
         // this feed's record of the real command, status and output - typing it into the
         // live session instead would execute it a second time.
+        // PHASE 8a: start now, wait a bounded window, then hand back a handle. A command that is
+        // still working is NOT a failure and is NOT stopped - telling the model it failed is what
+        // made it run the same command twice.
         val runId = AgentTerminalFeed.begin(command, guestWorkdir)
-        val out: String
-        try {
-            out = com.codespace.ide.terminal.ProotInstaller.execOnce(context, command, guestWorkdir)
-        } catch (t: Throwable) {
-            // Never leave a row stuck on "running", and never claim success: the run is
-            // marked FAILED with the real message, then the throw continues to the caller.
-            AgentTerminalFeed.finish(runId, t.message ?: t.toString(), failed = true)
-            throw t
+        val job = BackgroundCommands.start(context, command, guestWorkdir, runId)
+        val out = kotlinx.coroutines.withTimeoutOrNull(BackgroundCommands.INLINE_WAIT_MS) { job.await() }
+        if (out == null) {
+            return BackgroundCommands.handleText(runId)
         }
-        // An exec that produced no shell result at all is still finished (not "running").
-        AgentTerminalFeed.finish(runId, out)
-        // I2 — TERMINAL BRIDGE: last agent-run command + output are attachable in chat
-        com.codespace.ide.terminal.TerminalAiBridge.recordRun(command, out, guestWorkdir)
-        // REFRESH-FAMILY: agent shell ops (mkdir/touch/rm/git) also change the tree
-        com.codespace.ide.util.FsChangeNotifier.notifyChanged()
         return truncMark(out, 16000)  // CH06 (P4h): marked, not silent
     }
 
@@ -1500,7 +1493,7 @@ You can use multiple tools in sequence. When done, give a final summary.
      * python file beside the notebook and run with the system python3. It reports exactly that
      * rather than pretending a kernel session exists.
      */
-    private fun runNotebookCell(path: String, index: Int, context: android.content.Context): String {
+    private suspend fun runNotebookCell(path: String, index: Int, context: android.content.Context): String {
         val target = File(resolveToolPath(context, path))
         if (!target.exists()) return "File not found: $path"
         val text = try {
