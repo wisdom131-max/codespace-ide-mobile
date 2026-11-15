@@ -643,10 +643,15 @@ class ChatSession internal constructor(
         // block is capped to a quarter of the payload budget so a big tree can never
         // crowd out the conversation, and a cut block says it was cut.
         val payloadChars = com.codespace.ide.engine.ModelCatalog.payloadBudgetChars(resolveCapability(sel))
-        val wsBlock = WorkspaceContext.fit(
+        var wsBlock = WorkspaceContext.fit(
             workspaceBlock().trim(),
             (payloadChars / 4).coerceIn(0, WorkspaceContext.MAX_CHARS),
         )
+        // PHASE 6c: a memory directive is stated as a directive, not left as prose for the model
+        // to interpret. Null for an ordinary message, so nothing is added to the common path.
+        MemoryIntent.directive(MemoryIntent.classify(userText))?.let { directive ->
+            wsBlock = wsBlock + "\n\n" + directive
+        }
         // AUDIT DEFECT D: resolve the endpoint the way it is configured NOW. The selection holds
         // a cache of the URL, and a stale cache must never decide where the request goes.
         val liveBaseUrl = baseUrlForProvider(sel.providerId, sel.baseUrl)
