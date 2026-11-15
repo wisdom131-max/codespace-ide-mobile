@@ -196,6 +196,13 @@ class ChatSession internal constructor(
     private val _continuationUi = kotlinx.coroutines.flow.MutableStateFlow(ContinuationState.COMPLETE)
     internal val continuationUi: kotlinx.coroutines.flow.StateFlow<ContinuationState> = _continuationUi
 
+    /**
+     * PHASE 2b: whether this conversation is offering Resume for a turn the process killed.
+     * NONE means there is nothing to resume, so the bar stays gone.
+     */
+    private val _resumeUi = kotlinx.coroutines.flow.MutableStateFlow(TurnResume.Action.NONE)
+    internal val resumeUi: kotlinx.coroutines.flow.StateFlow<TurnResume.Action> = _resumeUi
+
     /** True between "Continue" and the first event of the continuation stream. */
     @Volatile private var continuationInFlight = false
 
@@ -276,6 +283,12 @@ class ChatSession internal constructor(
         val stored = messages.lastOrNull { it.role == "assistant" }?.finish
         lastFinish = com.codespace.ide.engine.FinishReason.fromStored(stored)
         _continuationUi.value = continuationStateFor(lastFinish)
+        // PHASE 2b: the stored `complete = false` of the last assistant row is the evidence that
+        // a turn was still in flight when the process died. That earns an explicit Resume; a
+        // conversation whose last reply finished never offers one.
+        _resumeUi.value = TurnResume.afterRestore(
+            messages.lastOrNull { it.role == "assistant" }?.complete,
+        )
     }
 
     private fun persistTranscript() {
@@ -495,8 +508,12 @@ class ChatSession internal constructor(
      */
     internal var mode: ChatMode = ChatModePersistence.toUi(initialMode)
 
-    fun send(userText: String, confirmOverBudget: Boolean = false) =
+    fun send(userText: String, confirmOverBudget: Boolean = false) {
+        // A fresh message supersedes the Resume offer: continuing an abandoned turn after the
+        // user typed something new would answer the wrong thing.
+        _resumeUi.value = TurnResume.Action.NONE
         sendCore(userText, confirmOverBudget, reuseStaged = false)
+    }
 
     /**
      * Area 6 - CONTINUE THE CUT-OFF ANSWER.
@@ -510,6 +527,18 @@ class ChatSession internal constructor(
      * dropped connection, a user Stop and a silent stream ending all stay incomplete rather than
      * being "continued" into a second answer.
      */
+    /**
+     * PHASE 2b: resumes the interrupted turn IN PLACE. It continues the same assistant message
+     * with the already-delivered text, so the request that produced the side effects is never
+     * sent again. Returns false when there is nothing to resume or a turn is already running.
+     */
+    fun resumeInterruptedTurn(): Boolean {
+        if (!TurnResume.canResume(_resumeUi.value, ui.value.streaming)) return false
+        _resumeUi.value = TurnResume.Action.NONE
+        continueTurn()
+        return true
+    }
+
     internal fun continueTurn(providerSupportsContinuation: Boolean = true): ContinuationState {
         // 2026-11-12 audit: `continuationInFlight` was written and cleared but never READ, so a
         // second Continue tap between "sent" and the first stream event started a second

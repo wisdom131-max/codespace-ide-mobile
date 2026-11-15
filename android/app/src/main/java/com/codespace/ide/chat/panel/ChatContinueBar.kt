@@ -42,6 +42,35 @@ internal fun isVisibleContinuation(state: ContinuationState): Boolean =
         // with no way to ask again for an answer the provider was willing to give.
         state == ContinuationState.CONTINUATION_FAILED
 
+/**
+ * PHASE 2b: the Resume bar for a turn the process killed. Deliberately a different bar from
+ * [ChatContinueBar]: "Continue" means the provider reached its output limit, "Resume" means the
+ * app itself was interrupted. Sharing one control would conflate two different events.
+ */
+@Composable
+internal fun ChatResumeBar(
+    action: TurnResume.Action,
+    onResume: () -> Unit,
+) {
+    if (action != TurnResume.Action.OFFER_RESUME) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = TurnResume.TITLE,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        TextButton(onClick = onResume) { Text(TurnResume.BUTTON) }
+    }
+}
+
 @Composable
 private fun ContinueBarContent(loading: Boolean, onContinue: () -> Unit) {
     Row(

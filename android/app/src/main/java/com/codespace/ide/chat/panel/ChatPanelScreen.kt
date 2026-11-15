@@ -373,6 +373,10 @@ private fun ChatBody(
         state = session.continuationUi.collectAsState().value,
         onContinue = { session.continueTurn() },
     )
+    ChatResumeBar(
+        action = session.resumeUi.collectAsState().value,
+        onResume = { session.resumeInterruptedTurn() },
+    )
     ChatInputComposer(
             value = input,
             onValueChange = { input = it },

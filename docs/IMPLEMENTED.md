@@ -9,7 +9,8 @@ session and still need their commit id pasted here.
 | Delivered | Commit / Run |
 |---|---|
 | Phase 1: staging, commit and push are three approvals; `add -A` removed; protected-branch push needs a second confirmation; declining keeps the commit | b537e61 / GREEN 43632852707 |
-| Phase 2a: closing the last chat window parks a live runtime instead of closing it, so a turn survives the panel; a parked runtime is closed by an idle reaper once its work ends | _pending CI_ |
+| Phase 2a: closing the last chat window parks a live runtime instead of closing it, so a turn survives the panel; a parked runtime is closed by an idle reaper once its work ends | 8dfeac3 / GREEN 43636558841 |
+| Phase 2b: a turn killed with the process restores as an interrupted reply and offers an explicit **Resume** that continues the same message without resending the request; a new send retires the offer | _pending CI_ |
 
 ## Chat rebuild (owner-requested rewrite, A / WP1-WP9)
 
