@@ -18,6 +18,7 @@ session and still need their commit id pasted here.
 | Phase 7: the plus chip continues into a new session with the handoff instead of opening a blank one; blank creation stays on the Sessions surface | _pending CI_ |
 | Phase 8a: a shell command that outlives a 20s inline window returns a handle (poll with `terminal_list`, stop with `terminal_kill`) instead of a false timeout that invited a duplicate run | _pending CI_ |
 | Phase 6a: a skill can be disabled without deleting it (flag persisted, older files restore enabled, disabled skills absent from the model index) | _pending CI_ |
+| Phase 6b: Settings gains a Local Skills manager - list with on/off switches, create, edit, delete with confirm, import from the phone, and a line naming the folder it reads | _pending CI_ |
 | Phase 5a: `guestPath` delegates to ToolPathResolver, so every file tool resolves a path the same way checksum/read_file disagree no more | _pending CI_ |
 
 ## Chat rebuild (owner-requested rewrite, A / WP1-WP9)

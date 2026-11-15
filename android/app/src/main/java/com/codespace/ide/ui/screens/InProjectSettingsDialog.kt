@@ -73,6 +73,9 @@ fun InProjectSettingsDialog(
     val divider  = Color(0xFF333333)
     val activeCatBg = Color(0xFF37373D)
 
+    // PHASE 6b: the skills manager, nested inside Settings so no new callback is threaded
+    // through the shell.
+    var showSkills by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var activeCategory by remember { mutableStateOf(SettingsCategory.AI_AGENT) }
 
@@ -261,7 +264,7 @@ fun InProjectSettingsDialog(
                                         lastCategory = row.category
                                     }
                                     item(key = "p_${row.id}") {
-                                        SettingsRowRenderer(row, accent, textPri, textSec, surface, divider, onOpenConnectors)
+                                        SettingsRowRenderer(row, accent, textPri, textSec, surface, divider, onOpenConnectors, { showSkills = true })
                                     }
                                 }
                             }
@@ -378,7 +381,7 @@ fun InProjectSettingsDialog(
                                         lastCategory = row.category
                                     }
                                     item(key = "l_${row.id}") {
-                                        SettingsRowRenderer(row, accent, textPri, textSec, surface, divider, onOpenConnectors)
+                                        SettingsRowRenderer(row, accent, textPri, textSec, surface, divider, onOpenConnectors, { showSkills = true })
                                     }
                                 }
                             }
@@ -388,7 +391,12 @@ fun InProjectSettingsDialog(
                 }
             }
         }
+    
+    // PHASE 6b: the skills manager, nested inside Settings.
+    if (showSkills) {
+        SkillsSettingsSheet(onDismiss = { showSkills = false })
     }
+}
 }
 
 // ── Data model for settings rows ─────────────────────────────────────
@@ -397,6 +405,7 @@ enum class SettingsCategory(val label: String) {
     COMMONLY_USED("Commonly Used"),
     AI_AGENT("AI Agent Flow"),
     CONNECTORS("Connectors"),
+    SKILLS("Skills"),
     EDITOR("Editor Features"),
     NOTIFICATIONS("Notifications"),
     TEXT_EDITOR("Text Editor"),
@@ -469,6 +478,7 @@ enum class RowType {
     EXTENSIONS_IGNORE_RECOMMENDATIONS_CHECKBOX,
     // ── P54-CONNECTORS: Connectors category rows ──
     CONNECTORS_HUB,            // opens the Connectors Hub sheet
+    SKILLS_MANAGER,            // PHASE 6b: opens the local skills sheet
     // ── B (2026-10-02): trust gate opt-in (option 2: default-trusted) ──
     MCP_TOOLS_SECTION,         // MCP / Agent Tools servers section (relocated from Extensions panel)
     TASK_NOTIFY_WINDOW_ON_COMPLETION_CHECKBOX,
@@ -535,6 +545,9 @@ private fun buildAllSettingsRows(): List<SettingsRow> = buildList {
 
     // ── P54-CONNECTORS: Connectors category (Hub relocated from header chip,
     // MCP/Agent Tools relocated from the Extensions panel) ──
+    add(SettingsRow("skills_manager", SettingsCategory.SKILLS, "Local Skills",
+        "Create, import, enable or delete a skill. Stored with the project.",
+        RowType.SKILLS_MANAGER))
     add(SettingsRow("connectors_hub", SettingsCategory.CONNECTORS, "Connectors Hub",
         "Manage GitHub, GitLab, Notion, Jira, Discord, Canva and other service connections",
         RowType.CONNECTORS_HUB))
@@ -746,6 +759,7 @@ private fun SettingsRowRenderer(
     surface: Color,
     divider: Color,
     onOpenConnectors: (() -> Unit)? = null,
+    onOpenSkills: (() -> Unit)? = null,
 ) {
     // P-SETTINGS-RESTRUCTURE (Item 1): record usage so "Commonly Used" ranking updates.
     // We record on *composition* — the user had to at least see/change the setting for
@@ -855,6 +869,7 @@ private fun SettingsRowRenderer(
             textPri, textSec, divider)
         // ── P54-CONNECTORS renderers ──
         RowType.CONNECTORS_HUB -> ConnectorsHubRow(onOpenConnectors, accent, textPri, textSec)
+        RowType.SKILLS_MANAGER -> ConnectorsHubRow(onOpenSkills, accent, textPri, textSec)
         RowType.MCP_TOOLS_SECTION -> McpToolsSectionRow()
         RowType.FACTS_MANAGER -> FactsManagerRow(accent, textPri, textSec, divider)
     }
