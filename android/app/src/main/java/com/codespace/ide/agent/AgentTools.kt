@@ -371,7 +371,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 }
             }
         }
-        return try {
+        val produced: String = try {
             when (name) {
                 "run_command" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
                 // 2026-10-31: the stub is gone. `plan` now stages a real plan in the same
@@ -751,6 +751,10 @@ You can use multiple tools in sequence. When done, give a final summary.
             val decision = ToolFailurePolicy.classify(e.message ?: "", e)
             "Error executing $name: ${e.message}\n" + ToolFailurePolicy.guidance(decision, keptResults = 0)
         }
+        // PROJECT 3.7: one recording point for every tool result, so reflection judges what the
+        // session observed rather than what the model says happened.
+        com.codespace.ide.agent.reflect.ReflectionState.recordTool(name, produced)
+        return produced
     }
 
     // ── CH06 (P4h): truncation honesty ─────────────────────────────────────
@@ -1131,13 +1135,61 @@ You can use multiple tools in sequence. When done, give a final summary.
                     )
                 )
             }
+            "reflect" -> reflectPlan(args, existing)
             "clear" -> {
                 store.clear()
+                com.codespace.ide.agent.reflect.ReflectionState.clear()
                 "Plan cleared."
             }
-            else -> "Refused: unknown action '" + action + "'. Use create, start, complete, fail, show or clear."
+            else -> "Refused: unknown action '" + action + "'." +
+                " Use create, start, complete, fail, show, reflect or clear."
         }
     }
+
+    /**
+     * PROJECT 3.7: the honest end-of-task question, answered from the record.
+     *
+     * `evidence` entries are {"claim", "level", "observed", "step"}; `criteria` entries are
+     * {"text", "level"}. Both are optional, and a claim with no observation is treated as no claim,
+     * because that is what it is.
+     */
+    private fun reflectPlan(args: org.json.JSONObject, plan: com.codespace.ide.agent.goal.TaskPlanEngine.Plan?): String {
+        val state = com.codespace.ide.agent.reflect.ReflectionState
+        args.optJSONArray("criteria")?.let { rows ->
+            for (index in 0 until rows.length()) {
+                val row = rows.optJSONObject(index) ?: continue
+                state.addCriterion(
+                    row.optString("text"),
+                    levelOf(row.optString("level")),
+                )
+            }
+        }
+        args.optJSONArray("observations")?.let { rows ->
+            for (index in 0 until rows.length()) {
+                val row = rows.optJSONObject(index) ?: continue
+                state.addEvidence(
+                    claim = row.optString("claim"),
+                    level = levelOf(row.optString("level")),
+                    observed = row.optString("observed"),
+                    subject = row.optString("step"),
+                )
+            }
+        }
+        val reflection = state.reflect(args.optString("objective").takeIf { it.isNotBlank() })
+        if (plan == null && args.optString("objective").isBlank()) {
+            return "Refused: there is no plan and no objective, so there is nothing to reflect on."
+        }
+        return com.codespace.ide.agent.reflect.ReflectionEngine.headline(reflection) + "\n" +
+            reflection.lines().joinToString("\n")
+    }
+
+    private fun levelOf(raw: String): com.codespace.ide.agent.reflect.ReflectionEngine.Level =
+        when (raw.trim().uppercase()) {
+            "IMPLEMENTED" -> com.codespace.ide.agent.reflect.ReflectionEngine.Level.IMPLEMENTED
+            "CI_GREEN", "CI" -> com.codespace.ide.agent.reflect.ReflectionEngine.Level.CI_GREEN
+            "DEVICE_VERIFIED", "DEVICE" -> com.codespace.ide.agent.reflect.ReflectionEngine.Level.DEVICE_VERIFIED
+            else -> com.codespace.ide.agent.reflect.ReflectionEngine.Level.TESTED
+        }
 
     private fun reportPlan(outcome: com.codespace.ide.agent.goal.TaskPlanEngine.Outcome): String =
         when (outcome) {

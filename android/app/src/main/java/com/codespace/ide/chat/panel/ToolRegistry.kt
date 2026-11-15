@@ -1055,10 +1055,14 @@ internal object ToolRegistry {
                 "required: say what you actually saw) and fail (with an optional recovery title) update one " +
                 "step; action=show or clear. A failed step's dependents are marked skipped rather than left " +
                 "runnable, and a plan is revised at most six times. Every call answers with the plan's " +
-                "pending, running, done, failed and skipped steps. It records intent and evidence only: it " +
-                "never executes a step.",
+                "pending, running, done, failed and skipped steps. action=reflect audits the run against " +
+                "the plan and the record of what the tools actually returned: optional criteria " +
+                "([{text, level}]) and evidence ([{claim, level, observed, step}], level one of " +
+                "IMPLEMENTED, TESTED, CI_GREEN, DEVICE_VERIFIED) are graded, a completion with no " +
+                "observation is reported as unsupported, and the answer is a verdict, not a summary. " +
+                "It records intent, evidence and judgement only: it never executes a step.",
             schema = OBJ + ",\"required\":[\"action\"],\"properties\":{" +
-                "\"action\":{\"type\":\"string\",\"enum\":[\"create\",\"start\",\"complete\",\"fail\",\"show\",\"clear\"]}," +
+                "\"action\":{\"type\":\"string\",\"enum\":[\"create\",\"start\",\"complete\",\"fail\",\"show\",\"reflect\",\"clear\"]}," +
                 "\"objective\":{\"type\":\"string\"}," +
                 "\"id\":{\"type\":\"string\"}," +
                 "\"evidence\":{\"type\":\"string\"}," +
@@ -1067,7 +1071,12 @@ internal object ToolRegistry {
                 "\"steps\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{" +
                 "\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}," +
                 "\"milestone\":{\"type\":\"string\"}," +
-                "\"dependsOn\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}}}}",
+                "\"dependsOn\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}}," +
+                "\"criteria\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{" +
+                "\"text\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"}}}}," +
+                "\"observations\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{" +
+                "\"claim\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"}," +
+                "\"observed\":{\"type\":\"string\"},\"step\":{\"type\":\"string\"}}}}}}",
             modes = READ_ALL,
         ),
         ToolSpec(
