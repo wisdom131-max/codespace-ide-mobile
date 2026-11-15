@@ -1302,7 +1302,24 @@ class ChatSession internal constructor(
                 // approval prompt - the user's Apply in the editor strip IS the
                 // authorisation, and it runs through PendingChangesStore.apply's existing
                 // drift-safe path. Agent mode keeps the gate and the direct write.
-                if (AgentToolWire.isStagedWrite(mode, call.name)) {
+                // PHASE 4a: ONE gate decides allow / stage / refuse, from the tool's real
+                // effect rather than a hand-kept list. Ask refuses writes outright; Edit turns
+                // every file writer into a proposal, not just the three it used to know.
+                val writeDecision = WritePolicy.decide(mode, call.name)
+                when (writeDecision) {
+                    WritePolicy.Decision.REFUSE -> {
+                        val refused = WritePolicy.refusalMessage(call.name)
+                        appendRow(ChatRowModel.InfoNote(refused))
+                        answered[idx] = refused
+                        results.append(AgentToolWire.resultMessage(call, refused))
+                        results.append("\n\n")
+                        resultItems.add(com.codespace.ide.agent.ToolContextTrim.Item(call.name, refused))
+                        continue
+                    }
+                    WritePolicy.Decision.ALLOW -> Unit
+                    WritePolicy.Decision.STAGE -> Unit
+                }
+                if (writeDecision == WritePolicy.Decision.STAGE) {
                     val staged = try {
                         stageProposal(ctx, call)
                     } catch (t: Throwable) {

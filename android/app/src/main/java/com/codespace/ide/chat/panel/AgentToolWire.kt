@@ -116,8 +116,7 @@ internal object AgentToolWire {
      * behind the approval gate exactly as before.
      */
     fun isStagedWrite(mode: ChatMode, toolName: String): Boolean =
-        mode == ChatMode.EDIT &&
-            (toolName == "write_file" || toolName == "grep_replace_all" || toolName == "copy_path")
+        WritePolicy.decide(mode, toolName) == WritePolicy.Decision.STAGE
 
     /** Human line for a staged proposal: the file and the size, never "applied". */
     fun stagedNote(relPath: String, chars: Int): String =

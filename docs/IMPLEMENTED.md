@@ -12,6 +12,7 @@ session and still need their commit id pasted here.
 | Phase 2a: closing the last chat window parks a live runtime instead of closing it, so a turn survives the panel; a parked runtime is closed by an idle reaper once its work ends | 8dfeac3 / GREEN 43636558841 |
 | Phase 2b: a turn killed with the process restores as an interrupted reply and offers an explicit **Resume** that continues the same message without resending the request; a new send retires the offer | _pending CI_ |
 | Phase 3a: every transcript write and delete runs under one lock, so a delete cannot land inside a write (the recurring ENOENT); concurrency regression test forces the old interleaving | _pending CI_ |
+| Phase 4a: WritePolicy gates every tool call as ALLOW/STAGE/REFUSE from ToolEffectIndex; Ask refuses all side effects, Edit stages all ten file writers (not three remembered names) | _pending CI_ |
 
 ## Chat rebuild (owner-requested rewrite, A / WP1-WP9)
 
