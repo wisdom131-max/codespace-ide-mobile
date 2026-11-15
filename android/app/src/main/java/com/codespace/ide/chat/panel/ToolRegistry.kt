@@ -1072,6 +1072,18 @@ internal object ToolRegistry {
             modes = WRITE_MODES,
         ),
         ToolSpec(
+            name = "video_frames",
+            displayName = "Taking frames from a video",
+            description = "Extract up to 60 JPEG stills from a video, planned evenly across the whole " +
+                "duration and never at 0ms or at the very end where the last frame often refuses to " +
+                "decode. Frames are written beside the video as <name>-frame01.jpg; an existing file " +
+                "is never overwritten. It does not transcribe audio or analyse the content.",
+            schema = OBJ + ",\"required\":[\"path\"],\"properties\":{" +
+                "\"path\":{\"type\":\"string\"},\"count\":{\"type\":\"integer\"}," +
+                "\"max_dimension\":{\"type\":\"integer\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
             name = "zip_extract",
             displayName = "Extracting an archive",
             description = "Extract an archive inside the workspace. Refuses entries that would escape " +

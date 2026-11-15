@@ -86,6 +86,11 @@ You have access to these tools for acting on the user's environment:
    12MP photo does not allocate 48MB. Refuses to overwrite, never upscales, and jpeg/png/webp only.
    max_dimension is the long edge in pixels; quality 1-100.
    <tool>{"name":"image_convert","arguments":{"path":"/path/photo.jpg","out_path":"/path/small.jpg","max_dimension":1024,"quality":85}}</tool>
+3j. video_frames   — Take still frames out of a video
+   Frames are planned evenly across the whole video and never at 0ms or at the very end, where the
+   last frame often refuses to decode. Frames land beside the video as <name>-frame01.jpg and an
+   existing file is never overwritten.
+   <tool>{"name":"video_frames","arguments":{"path":"/path/clip.mp4","count":4,"max_dimension":1024}}</tool>
 3c. multi_replace_string_in_file — Several such edits to ONE file in one call
    <tool>{"name":"multi_replace_string_in_file","arguments":{"path":"/path/to/file","replacements":"[{\"old_string\":\"a\",\"new_string\":\"b\"}]","replace_all":false}}</tool>
 4. list_files     — List files in a directory
@@ -250,7 +255,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "terminal_list", "terminal_kill", "job_status",
         "coverage_read", "entity_schema_read", "memory_search",
         // ZIP (2026-11-12): three tools on the one engine the app already ships.
-        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create", "media_info", "image_convert",
+        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create", "media_info", "image_convert", "video_frames",
         // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
         "npm_info", "pypi_info", "lockfile_parse",
         // Git recovery (owner approval 2026-11-12): history, checkpoints, previewed restores, and
@@ -383,6 +388,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                     args.getString("path"), args.optString("content"), context)
                 "media_info" -> mediaInfo(args.getString("path"), context)
                 "image_convert" -> imageConvert(args, context)
+                "video_frames" -> videoFrames(args, context)
                 // VS Code parity aliases: same implementation, their tool name.
                 "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
                 "insert_edit_into_file" -> replaceStringInFile(
@@ -828,6 +834,71 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
         return truncMark(file.readText(), 16000)  // CH06 (P4h)
+    }
+
+    /**
+     * PROJECT 2.11: still frames from a video.
+     *
+     * The retriever is released in a finally block: leaving one open holds a native decoder, and on
+     * a phone that is a leak the app cannot afford. Every frame is bounded by the same
+     * power-of-two sampler the image tool uses, and the count is clamped before anything decodes.
+     */
+    private fun videoFrames(args: org.json.JSONObject, context: android.content.Context): String {
+        val srcPath = args.getString("path")
+        val source = File(resolveToolPath(context, srcPath))
+        if (!source.isFile) return "Not found: " + srcPath
+        val count = com.codespace.ide.agent.docs.FramePlan.clampCount(args.optInt("count", 3))
+        val maxDimension = if (args.has("max_dimension")) args.optInt("max_dimension", 0) else 0
+        val retriever = android.media.MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(source.absolutePath)
+            val durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: 0L
+            if (durationMs <= 0) return "Could not read a duration from " + srcPath + "."
+            val plan = com.codespace.ide.agent.docs.FramePlan.timestamps(durationMs, count)
+            if (plan.isEmpty()) return "Nothing to do: the video is too short to plan frames."
+            val done = ArrayList<String>()
+            plan.forEachIndexed { index, atMs ->
+                val name = com.codespace.ide.agent.docs.FramePlan.frameName(source.name, index, "jpg")
+                val target = File(source.parentFile, name)
+                if (target.exists()) {
+                    done.add(name + " (skipped, already exists)")
+                    return@forEachIndexed
+                }
+                val frame = try {
+                    retriever.getFrameAtTime(atMs * 1000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                } catch (t: Throwable) {
+                    null
+                }
+                if (frame == null) {
+                    done.add(name + " (frame unavailable)")
+                    return@forEachIndexed
+                }
+                val (w, h) = com.codespace.ide.agent.docs.ImagePipeline.targetSize(
+                    frame.width, frame.height, maxDimension)
+                val scaled = if (w > 0 && h > 0 && (w != frame.width || h != frame.height))
+                    android.graphics.Bitmap.createScaledBitmap(frame, w, h, true) else frame
+                try {
+                    target.outputStream().use { out ->
+                        scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, out)
+                    }
+                    done.add(name + " at " + (atMs / 1000) + "s (" + scaled.width + "x" + scaled.height + ")")
+                } catch (t: Throwable) {
+                    done.add(name + " (write failed: " + (t.message ?: "unknown") + ")")
+                } finally {
+                    if (scaled !== frame) scaled.recycle()
+                    frame.recycle()
+                }
+            }
+            "Frames from " + source.name + " (" + (durationMs / 1000) + "s): " + done.joinToString("; ")
+        } catch (t: Throwable) {
+            "Could not read " + srcPath + ": " + (t.message ?: "unknown error")
+        } finally {
+            try {
+                retriever.release()
+            } catch (ignored: Throwable) {
+            }
+        }
     }
 
     /**

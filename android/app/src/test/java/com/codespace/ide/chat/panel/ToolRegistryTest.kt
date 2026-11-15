@@ -66,8 +66,8 @@ class ToolRegistryTest {
         // 2026-11-12: 120 = 118 (git_log/git_checkpoint/git_restore/git_conflict_resolve added
         // earlier) + service_read/service_write (P3 Item 32).
         // + the seven debug tools.
-        assertEquals("every registered tool is listed exactly once", 126, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 126, ToolRegistry.names().toSet().size)
+        assertEquals("every registered tool is listed exactly once", 127, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 127, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -280,6 +280,7 @@ class ToolRegistryTest {
             "pptx_create" to (listOf("path", "content") to emptyList<String>()),
             "media_info" to (listOf("path") to emptyList<String>()),
             "image_convert" to (listOf("path", "out_path") to listOf("max_dimension", "quality")),
+            "video_frames" to (listOf("path") to listOf("count", "max_dimension")),
             "zip_extract" to (listOf("archive") to listOf("dest", "overwrite")),
             "zip_list" to (listOf("archive") to listOf("offset", "limit")),
             "npm_info" to (listOf("name") to listOf("version")),

@@ -113,6 +113,7 @@ internal object ToolMetaIndex {
         "pptx_create" to ToolMeta(ToolCategory.EDIT, listOf("powerpoint", "pptx", "slides", "deck", "presentation"), true),
         "media_info" to ToolMeta(ToolCategory.SEARCH, listOf("audio", "video", "duration", "media", "metadata")),
         "image_convert" to ToolMeta(ToolCategory.EDIT, listOf("image", "convert", "resize", "shrink", "thumbnail"), true),
+        "video_frames" to ToolMeta(ToolCategory.EDIT, listOf("video", "frame", "still", "thumbnail", "extract"), true),
         "get_errors" to ToolMeta(ToolCategory.EDIT, listOf("error", "diagnostic", "compile", "warning", "lint")),
         "get_changed_files" to ToolMeta(ToolCategory.GIT, listOf("changed", "modified", "git", "status", "diff")),
         "git_status" to ToolMeta(ToolCategory.GIT, listOf("status", "changed", "modified", "dirty")),
