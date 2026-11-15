@@ -81,6 +81,11 @@ You have access to these tools for acting on the user's environment:
    and EXIF orientation. An MP3 duration is derived from one frame plus file size, so it is labelled
    "estimated" - trust that word.
    <tool>{"name":"media_info","arguments":{"path":"/path/recording.m4a"}}</tool>
+3i. image_convert   — Convert or shrink an image, WITHOUT decoding it at full size
+   Reads only the bounds first, then decodes at a power-of-two sub-sample and scales exactly, so a
+   12MP photo does not allocate 48MB. Refuses to overwrite, never upscales, and jpeg/png/webp only.
+   max_dimension is the long edge in pixels; quality 1-100.
+   <tool>{"name":"image_convert","arguments":{"path":"/path/photo.jpg","out_path":"/path/small.jpg","max_dimension":1024,"quality":85}}</tool>
 3c. multi_replace_string_in_file — Several such edits to ONE file in one call
    <tool>{"name":"multi_replace_string_in_file","arguments":{"path":"/path/to/file","replacements":"[{\"old_string\":\"a\",\"new_string\":\"b\"}]","replace_all":false}}</tool>
 4. list_files     — List files in a directory
@@ -245,7 +250,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "terminal_list", "terminal_kill", "job_status",
         "coverage_read", "entity_schema_read", "memory_search",
         // ZIP (2026-11-12): three tools on the one engine the app already ships.
-        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create", "media_info",
+        "zip_create", "zip_extract", "zip_list", "docx_create", "docx_edit", "xlsx_write", "pptx_create", "media_info", "image_convert",
         // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
         "npm_info", "pypi_info", "lockfile_parse",
         // Git recovery (owner approval 2026-11-12): history, checkpoints, previewed restores, and
@@ -377,6 +382,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "pptx_create" -> pptxCreate(
                     args.getString("path"), args.optString("content"), context)
                 "media_info" -> mediaInfo(args.getString("path"), context)
+                "image_convert" -> imageConvert(args, context)
                 // VS Code parity aliases: same implementation, their tool name.
                 "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
                 "insert_edit_into_file" -> replaceStringInFile(
@@ -822,6 +828,61 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
         return truncMark(file.readText(), 16000)  // CH06 (P4h)
+    }
+
+    /**
+     * PROJECT 2.10: convert or shrink an image with bounded memory.
+     *
+     * Bounds first, so the decode is never full-size; the sub-sample is a power of two because that
+     * is all the decoder honours; the exact scale afterwards finishes the job. Never overwrites and
+     * never upscales - inventing pixels and then charging the user disk for them is not a feature.
+     */
+    private fun imageConvert(args: org.json.JSONObject, context: android.content.Context): String {
+        val srcPath = args.getString("path")
+        val outPath = args.optString("out_path")
+        if (outPath.isBlank()) return "image_convert needs out_path: refusing to overwrite the source."
+        val source = File(resolveToolPath(context, srcPath))
+        if (!source.isFile) return "Not found: " + srcPath
+        val target = File(resolveToolPath(context, outPath))
+        if (target.absolutePath == source.absolutePath) return "Refused: out_path is the input file."
+        if (target.exists()) return "Refused: " + outPath + " already exists. Choose another out_path."
+        val format = com.codespace.ide.agent.docs.ImagePipeline.formatOf(outPath)
+        if (format.isEmpty()) return "Refused: out_path must end in .jpg, .jpeg, .png or .webp."
+        val maxDimension = if (args.has("max_dimension")) args.optInt("max_dimension", 0) else 0
+        val quality = com.codespace.ide.agent.docs.ImagePipeline.clampQuality(args.optInt("quality", 85))
+
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(source.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return srcPath + " is not an image Android can read."
+        val sample = com.codespace.ide.agent.docs.ImagePipeline.sampleSizeFor(
+            bounds.outWidth, bounds.outHeight, if (maxDimension > 0) maxDimension else maxOf(bounds.outWidth, bounds.outHeight))
+        val decode = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+        val bitmap = try {
+            android.graphics.BitmapFactory.decodeFile(source.absolutePath, decode)
+        } catch (t: OutOfMemoryError) {
+            return "Out of memory decoding " + srcPath + " at sample " + sample + ". Ask for a smaller max_dimension."
+        } ?: return "Android could not decode " + srcPath + "."
+        val (tw, th) = com.codespace.ide.agent.docs.ImagePipeline.targetSize(
+            bitmap.width, bitmap.height, if (maxDimension > 0) maxDimension else maxOf(bitmap.width, bitmap.height))
+        val scaled = if (tw == bitmap.width && th == bitmap.height) bitmap
+            else android.graphics.Bitmap.createScaledBitmap(bitmap, tw, th, true)
+        val compression = when (format) {
+            "png" -> android.graphics.Bitmap.CompressFormat.PNG
+            "webp" -> android.graphics.Bitmap.CompressFormat.WEBP
+            else -> android.graphics.Bitmap.CompressFormat.JPEG
+        }
+        return try {
+            target.parentFile?.mkdirs()
+            target.outputStream().use { out -> scaled.compress(compression, quality, out) }
+            if (scaled !== bitmap) scaled.recycle()
+            bitmap.recycle()
+            "Wrote " + outPath + " (" + format + ", " + tw + "x" + th + ", from " + bounds.outWidth + "x" +
+                bounds.outHeight + ", sample " + sample + ", " + target.length() + " bytes)"
+        } catch (t: Throwable) {
+            if (scaled !== bitmap) scaled.recycle()
+            bitmap.recycle()
+            "Failed to write " + outPath + ": " + (t.message ?: "unknown error")
+        }
     }
 
     /**

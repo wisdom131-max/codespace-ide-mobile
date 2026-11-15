@@ -35,7 +35,7 @@ internal object WritePolicy {
      */
     private val fileWriters: Set<String> = setOf(
         "write_file", "create_file", "insert_edit_into_file", "multi_replace_string_in_file",
-        "edit_file", "apply_patch", "grep_replace_all", "copy_path", "move_path", "delete_path", "docx_create", "docx_edit", "xlsx_write", "pptx_create",
+        "edit_file", "apply_patch", "grep_replace_all", "copy_path", "move_path", "delete_path", "docx_create", "docx_edit", "xlsx_write", "pptx_create", "image_convert",
     )
 
     fun isFileWriter(toolName: String): Boolean = toolName in fileWriters

@@ -1060,6 +1060,18 @@ internal object ToolRegistry {
             modes = READ_ALL,
         ),
         ToolSpec(
+            name = "image_convert",
+            displayName = "Converting or shrinking an image",
+            description = "Convert an image to jpeg, png or webp and shrink it to a long edge of " +
+                "max_dimension pixels. It reads the bounds first and decodes at a power-of-two " +
+                "sub-sample, so a 12MP photo does not allocate 48MB. Refuses to overwrite the source " +
+                "or an existing out_path, and never upscales. It does not rotate, crop, or read text.",
+            schema = OBJ + ",\"required\":[\"path\",\"out_path\"],\"properties\":{" +
+                "\"path\":{\"type\":\"string\"},\"out_path\":{\"type\":\"string\"}," +
+                "\"max_dimension\":{\"type\":\"integer\"},\"quality\":{\"type\":\"integer\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
             name = "zip_extract",
             displayName = "Extracting an archive",
             description = "Extract an archive inside the workspace. Refuses entries that would escape " +
