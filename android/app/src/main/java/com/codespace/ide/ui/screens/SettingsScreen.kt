@@ -298,6 +298,9 @@ fun SettingsScreen(
             // both places, reading the same store, which is a disagreement waiting to happen.
             HorizontalDivider()
 
+            // ── Voice (Project 2.27) ─────────────────────────────────────────
+            com.codespace.ide.agent.voice.VoiceSettingsSection()
+
             // ── Security ─────────────────────────────────────────────────────
             HorizontalDivider()
 

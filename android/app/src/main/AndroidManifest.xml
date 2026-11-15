@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Project 2.20: voice mode captures audio itself, with a runtime prompt the user can refuse. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Storage permissions for reading/writing project files -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
