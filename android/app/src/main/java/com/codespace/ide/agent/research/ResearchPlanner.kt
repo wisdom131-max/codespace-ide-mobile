@@ -115,6 +115,67 @@ object ResearchPlanner {
         return missing.take(limit).map { term -> "$question $term" }
     }
 
+    /**
+     * PROJECT 1.6 (2026-11-15): QUESTION DECOMPOSITION, bounded and deterministic.
+     *
+     * An agent loop does not do this for the model: in VS Code's chat agent the model chooses its own
+     * searches, which is exactly why a model that skips decomposition searches once and answers
+     * from the first page. The repo already knows that failure mode ("treats the first search
+     * result as definitive"). Doing it here means it happens whether or not the model remembered,
+     * and it is testable without a network.
+     *
+     * Two guards keep this from producing noise:
+     *  - a part must carry at least two content tokens on its own, so "add and remove items" is not
+     *    split into "how do I add" plus "remove items";
+     *  - parts that are near-copies of each other (token overlap of 0.7 or more) collapse to one - a
+     *    reworded repeat of the same ask is one search, not two.
+     *
+     * Returns an empty list when the question is genuinely one ask, because rewording a single
+     * question into two searches is cost with no return.
+     */
+    fun decompose(question: String, limit: Int = 3): List<String> {
+        val text = question.trim()
+        if (text.isEmpty()) return emptyList()
+        // Two separator classes, because they mean different things. A comparison names two
+        // alternatives, so a one-word part ("LiveData") is a real ask. An additive split is
+        // ordinary prose, so a thin part is a fragment and is dropped - an extra search costs the
+        // owner mobile data, and under-splitting is the cheaper mistake.
+        val comparison = COMPARISON.containsMatchIn(text)
+        val parts = (if (comparison) COMPARISON else ADDITIVE).split(text)
+            .map { it.trim().trim(',', '.', '?', '!') }
+            .filter { it.isNotEmpty() }
+        if (parts.size < 2) return emptyList()
+        val minimum = if (comparison) 1 else 2
+        val kept = ArrayList<String>(limit)
+        for (part in parts) {
+            if (tokens(part).size < minimum) continue
+            val dup = kept.any { other -> overlap(tokens(part), tokens(other)) >= 0.7 }
+            if (!dup) kept.add(part)
+            if (kept.size == limit) break
+        }
+        return if (kept.size < 2) emptyList() else kept
+    }
+
+    /** "X vs Y", "X versus Y", "X compared with Y": two named alternatives. */
+    private val COMPARISON = Regex(
+        "\\s+(?:versus|vs\\.?|compared\\s+(?:with|to))\\s+",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** "X and Y", "X as well as Y", "X; Y": two asks in one sentence. */
+    private val ADDITIVE = Regex(
+        "\\s+(?:and|as\\s+well\\s+as|plus)\\s+|\\s*;\\s*",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Jaccard overlap of two token sets, 0.0 to 1.0. */
+    private fun overlap(a: Set<String>, b: Set<String>): Double {
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+        val shared = a.count { it in b }
+        val union = a.size + b.size - shared
+        return if (union == 0) 0.0 else shared.toDouble() / union
+    }
+
     /** Whether another round is allowed: bounded by rounds, searches and the caller's own budget. */
     fun allowAnotherRound(round: Int, searchesUsed: Int, searchBudget: Int): Boolean =
         round < MAX_ROUNDS && searchesUsed < searchBudget
