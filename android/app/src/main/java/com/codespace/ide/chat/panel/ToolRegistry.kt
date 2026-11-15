@@ -1000,6 +1000,19 @@ internal object ToolRegistry {
             modes = WRITE_MODES,
         ),
         ToolSpec(
+            name = "docx_create",
+            displayName = "Creating a Word document",
+            description = "Create a real .docx from markdown-ish content: \"# \", \"## \", \"### \" become " +
+                "heading 1-3, \"- \" a bullet, anything else a paragraph. Heading styles are written, so " +
+                "the document's structure survives and reading it back shows its outline. Refuses an " +
+                "existing path and any extension other than .docx. It does NOT produce .doc, .odt or " +
+                ".pdf, and cannot add tables, images or footnotes.",
+            schema = OBJ + ",\"required\":[\"path\",\"content\"],\"properties\":{" +
+                "\"path\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}," +
+                "\"content\":{\"type\":\"string\"}}}",
+            modes = WRITE_MODES,
+        ),
+        ToolSpec(
             name = "zip_extract",
             displayName = "Extracting an archive",
             description = "Extract an archive inside the workspace. Refuses entries that would escape " +

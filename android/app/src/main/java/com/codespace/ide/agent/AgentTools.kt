@@ -55,6 +55,11 @@ You have access to these tools for acting on the user's environment:
    replace_all is true; on zero or several matches the call is refused with the count and the
    file is left untouched, so include enough surrounding lines to be unique.
    <tool>{"name":"replace_string_in_file","arguments":{"path":"/path/to/file","old_string":"exact text","new_string":"replacement","replace_all":false}}</tool>
+3d. docx_create    — CREATE a real Word .docx (not a text file with a .docx name)
+   content is markdown-ish: "# " heading 1, "## " heading 2, "### " heading 3, "- " bullet,
+   any other line is a paragraph. Heading styles are written so the document's structure
+   survives: reading it back with read_file lists its outline.
+   <tool>{"name":"docx_create","arguments":{"path":"/path/report.docx","title":"Report","content":"# Summary\nThe build is green."}}</tool>
 3c. multi_replace_string_in_file — Several such edits to ONE file in one call
    <tool>{"name":"multi_replace_string_in_file","arguments":{"path":"/path/to/file","replacements":"[{\"old_string\":\"a\",\"new_string\":\"b\"}]","replace_all":false}}</tool>
 4. list_files     — List files in a directory
@@ -219,7 +224,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         "terminal_list", "terminal_kill", "job_status",
         "coverage_read", "entity_schema_read", "memory_search",
         // ZIP (2026-11-12): three tools on the one engine the app already ships.
-        "zip_create", "zip_extract", "zip_list",
+        "zip_create", "zip_extract", "zip_list", "docx_create",
         // Package Intelligence (owner approval 2026-11-12): read-only inspection, one of them offline.
         "npm_info", "pypi_info", "lockfile_parse",
         // Git recovery (owner approval 2026-11-12): history, checkpoints, previewed restores, and
@@ -341,6 +346,9 @@ You can use multiple tools in sequence. When done, give a final summary.
                 // these tools read the raw string as a HOST File.
                 "read_file" -> readFile(args.getString("path"), context)
                 "write_file" -> writeFile(args.getString("path"), args.getString("content"), context)
+                // PROJECT 2.4: a real Word document, with heading styles that survive a re-read.
+                "docx_create" -> docxCreate(
+                    args.getString("path"), args.optString("title"), args.optString("content"), context)
                 // VS Code parity aliases: same implementation, their tool name.
                 "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
                 "insert_edit_into_file" -> replaceStringInFile(
@@ -786,6 +794,42 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
         return truncMark(file.readText(), 16000)  // CH06 (P4h)
+    }
+
+    /**
+     * PROJECT 2.4: create a Word document.
+     *
+     * Deliberately refuses to overwrite: a create tool that silently replaces an existing document
+     * is a data-loss bug wearing a convenience label. Say the path exists and let the caller choose.
+     */
+    private fun docxCreate(
+        path: String,
+        title: String,
+        content: String,
+        context: android.content.Context,
+    ): String {
+        val resolved = resolveToolPath(context, path)
+        val target = File(resolved)
+        if (target.exists()) return "Refused: " + resolved + " already exists. Choose another path."
+        if (!resolved.lowercase().endsWith(".docx")) {
+            return "Refused: docx_create writes .docx only, and the path ends in something else."
+        }
+        val bytes = try {
+            com.codespace.ide.agent.docs.DocxWriter.build(
+                title = title,
+                blocks = com.codespace.ide.agent.docs.DocxWriter.blocksOf(content),
+            )
+        } catch (t: Throwable) {
+            return "Failed to build the document: " + (t.message ?: "unknown error")
+        }
+        return try {
+            target.parentFile?.mkdirs()
+            target.writeBytes(bytes)
+            val outline = com.codespace.ide.agent.docs.DocxOutline.outline(bytes)
+            "Created " + resolved + " (" + bytes.size + " bytes, " + outline.size + " heading(s))"
+        } catch (t: Throwable) {
+            "Failed to write " + resolved + ": " + (t.message ?: "unknown error")
+        }
     }
 
     private fun writeFile(path: String, content: String, context: android.content.Context): String {

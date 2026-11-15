@@ -64,8 +64,8 @@ class ToolRegistryTest {
         // 2026-11-12: 120 = 118 (git_log/git_checkpoint/git_restore/git_conflict_resolve added
         // earlier) + service_read/service_write (P3 Item 32).
         // + the seven debug tools.
-        assertEquals("every registered tool is listed exactly once", 120, ToolRegistry.names().size)
-        assertEquals("no duplicate ids", 120, ToolRegistry.names().toSet().size)
+        assertEquals("every registered tool is listed exactly once", 121, ToolRegistry.names().size)
+        assertEquals("no duplicate ids", 121, ToolRegistry.names().toSet().size)
     }
 
     @Test
@@ -271,6 +271,8 @@ class ToolRegistryTest {
             "read_skill" to (listOf("name") to emptyList<String>()),
             "delete_skill" to (listOf("name") to emptyList<String>()),
             "zip_create" to (listOf("sources", "dest") to listOf("overwrite")),
+            // Project 2.4: creates a real .docx; title is optional, the body is required.
+            "docx_create" to (listOf("path", "content") to listOf("title")),
             "zip_extract" to (listOf("archive") to listOf("dest", "overwrite")),
             "zip_list" to (listOf("archive") to listOf("offset", "limit")),
             "npm_info" to (listOf("name") to listOf("version")),

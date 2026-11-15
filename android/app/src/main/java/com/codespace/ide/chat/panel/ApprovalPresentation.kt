@@ -28,6 +28,7 @@ internal object ApprovalPresentation {
     private val titles = mapOf(
         "run_command" to "Run command",
         "write_file" to "Write file",
+        "docx_create" to "Create a Word document",
         "read_file" to "Read file",
         "list_files" to "List files",
         "search_files" to "Search files",
@@ -52,6 +53,7 @@ internal object ApprovalPresentation {
     private val glyphs = mapOf(
         "run_command" to "\u2318",
         "write_file" to "\u270E",
+        "docx_create" to "\u270E",
         "read_file" to "\u25A4",
         "install_package" to "\u2692",
         "git_commit_push" to "\u2387",
