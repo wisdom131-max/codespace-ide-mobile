@@ -312,3 +312,35 @@ duplicate-reply behaviour in the running app is unchanged and unproven. That wor
 claimed.
 
 Not verified: no device test, no APK build, and CI has not run against this branch yet.
+
+## Stage 4.8 — the delivery ledger behind the rules (implemented, locally tested)
+
+**Root cause.** Stage 4.7's four rules were pure functions with no state: `ChatSession` asked
+`startAction` and `mayComplete`, but nothing recorded which execution had already answered, nothing
+survived the process, and no boundary asked "is this execution still allowed to write here".
+
+**What changed.** `DeliveryLedger` holds that state and delegates every decision to `ReplyOwnership`.
+It is asked at three real boundaries in `ChatSession`: `beginSubmission` on the send path (after the
+generation bump, before any row is built), `isCancelled` on the event path (after the generation
+check), and `mayAppendAnswer` immediately after `mayComplete` for a completed answer. `cancel()` now
+cancels the execution as well as bumping the generation.
+
+**Identity.** An execution id is derived per submission (`exec-<gen>-<hash of the text>`), so a
+re-delivered click or a recreated view carries the identity it already used and starts nothing. The
+session identity is `sessionIdForDelivery`, defaulted to the project id. A submission in the same
+session replaces the running execution and closes it; a submission in another session does not.
+
+**Persisted.** `DeliveryStore` writes identities and states only (no prompt, no answer, no key) to
+`reply-delivery.json` through a temp file and a rename, capped at 200. A missing file is empty; an
+unreadable one is UNKNOWN, which never appends and never authorises a replay.
+
+**Tested.** 21 cases on the ledger's boundaries, including simultaneous completions (exactly one
+winner across eight threads), a cancelled execution refused after restart, a corrupt record granting
+no replay, and identity isolation per session. 3,303 tests locally, `BackupTarTest` the only failure,
+unchanged.
+
+**Not done.** The ledger is constructed inside `ChatSession` without a `DeliveryStore`, so nothing is
+persisted in the running app yet: the store is implemented and tested, not attached. No ViewModel-level
+integration test exists (constructing `ChatSession` in JVM with the real fakes is the next step), and
+nothing is device-verified. Tool-dispatch exactly-once still runs on the existing
+`ToolDispatchGuard`/ledger plus content-addressed write ids; ownership does not replace it.

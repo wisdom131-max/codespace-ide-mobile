@@ -84,6 +84,8 @@ class ChatSession internal constructor(
      */
     private val baseUrlForProvider: (providerId: String, fallback: String) -> String =
         { _, fallback -> fallback },
+    /** STAGE 4.8: the session identity a reply must belong to. Blank falls back to the project. */
+    private val sessionIdForDelivery: String = "",
     /** WP6: ordered key-slot names with stored keys for a provider (primary first). */
     private val poolSlotsFor: (providerId: String) -> List<String> = { emptyList() },
     /** WP6: automatic key failover is OPT-IN (silent switching burns credits). */
@@ -173,6 +175,16 @@ class ChatSession internal constructor(
      * submission this guards against).
      */
     private val requestGate = RequestGate()
+
+    /**
+     * STAGE 4.8: the delivery ledger. ReplyOwnership holds the rules; this holds the state they need,
+     * and [`deliverySession`] is what "another session" means for this instance.
+     */
+    private val delivery = DeliveryLedger()
+    private var activeExecId: String = ""
+
+    private val deliverySession: String
+        get() = sessionIdForDelivery.ifBlank { projectId }
     private val sendGeneration: Int
         get() = requestGate.current
     /** Automatic 429 re-attempts used for the CURRENT send. */
@@ -746,6 +758,11 @@ class ChatSession internal constructor(
         }
         requestGate.bump()
         val gen = requestGate.bump()
+        // STAGE 4.8: a submission event that arrives twice (a re-delivered click, a recreated view)
+        // carries the identity it already used, so the second one starts no second execution.
+        val execId = "exec-" + gen + "-" + userText.hashCode().toString(16)
+        if (!delivery.beginSubmission(deliverySession, execId)) return
+        activeExecId = execId
         // Every send marks the ledger: a source recorded during this turn is shown under THIS
         // answer. Reading the size (not clearing) keeps a source from an earlier turn intact for
         // the answer that already cites it.
@@ -833,6 +850,9 @@ class ChatSession internal constructor(
     }
 
     fun cancel() {
+        // STAGE 4.8: cancellation invalidates this execution's right to deliver anything further,
+        // including a callback that is already in flight when the user presses Stop.
+        delivery.cancel(activeExecId)
         requestGate.bump()
         // Project 1.9: a research round is blocking socket reads, so a cancelled coroutine would
         // still let its queued subquestion searches go out. Bump the generation so the loop stops
@@ -1038,6 +1058,7 @@ class ChatSession internal constructor(
         // before it can touch rows, tool calls or the buffer. This is what stops a stopped or
         // replaced stream from appending to a newer answer.
         if (requestGate.stale(gen)) return
+        if (delivery.isCancelled(activeExecId)) return
         when (ev) {
             is EngineEvent.Delta -> {
                 if (retryKeepLen > 0) {
@@ -1062,6 +1083,9 @@ class ChatSession internal constructor(
             }
             is EngineEvent.Completed -> {
                 if (!ReplyOwnership.mayComplete(gen, lastCompletedGen, !requestGate.stale(gen))) return
+                // STAGE 4.8: the answer is appended once per execution, into its own session. A
+                // repeated completion event, or a completion belonging to another session, stops here.
+                if (!delivery.mayAppendAnswer(activeExecId, deliverySession)) return
                 // Area 6: the provider's verdict decides whether this turn may be called
                 // finished. A ceiling marks the reply incomplete through the SAME sticky flag
                 // that already survives every later save, so a reopen cannot upgrade a cut-off
