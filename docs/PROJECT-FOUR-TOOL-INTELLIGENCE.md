@@ -273,3 +273,42 @@ an identity and are not counted twice; a disagreement is reported without choosi
 Deferred, with reasons: duplicate archive entry names cannot be produced by the JDK zip writer used in
 tests, so that path is implemented but has no fixture; APK-internal dex verification and device
 behaviour remain unverified; no additional parallel model requests were introduced.
+
+## Stage 4.7 Completion — live routing, research surface, provider context, reply identity
+
+**A. Fresh verification is now in the live gate (implemented, locally tested).** `OutcomeVerifier`
+routes git state-changing tools (`git_commit_push`, `git_commit`, `git_checkout`, `git_switch`,
+`git_add`, `git_stage`) through `GitFreshVerifier` when a project is open, and `zip_extract` through
+`ArchiveDestinationVerifier` with the archive and destination resolved against the open project. A
+fresh read that cannot be made returns unknown, never the tool's own acknowledgement; only with no
+project open does the text parse stand in, and then it can only refute. `git_status` still parses its
+own output, because that output is itself a fresh read. Verification runs no write, so it cannot
+repeat the side effect. The resulting verdict reaches `PrereqLedger` through the existing gate, so a
+refuted verification cannot satisfy a dependent capability.
+
+**B. Research claim status reaches the result (implemented, locally tested).** `ResearchSynthesis.build`
+now judges every claim the contradiction scan produced against the sources actually read, and the
+brief carries `reconciled` verdicts plus a "Claims and their sources" section that names the status,
+the source id and, for anything unconfirmed, an explicit instruction not to present it as settled.
+`ResearchResults` persists the same rows and still loads results saved before this change. There is no
+research results screen in the repository to bind to, so the Compose presentation is deferred rather
+than duplicated.
+
+**C. Signal 11 now has real data (implemented, locally tested).** `ProviderContext` holds a snapshot of
+the open workspace id and the state of each service a tool needs, as CONNECTED, DISCONNECTED,
+NOT_CONFIGURED, UNKNOWN or NOT_APPLICABLE. Signal 11 therefore means: "is the service behind this tool
+usable in this workspace right now", sourced from that snapshot and from a tool-to-provider table
+(`use_connector`/`list_connectors` → connectors, `git_commit_push` → github, mcp tools → mcp). A
+snapshot older than five minutes is discarded as stale; no snapshot means unknown. It stores names and
+states only, never a token, and a connected provider adds score but cannot change eligibility.
+
+**D. Reply identity rules added to the existing guard (rules locally tested, wiring deferred).** Four
+identity rules were added to `ReplyOwnership`: an answer is appended once per execution id, a tool call
+dispatches once per call id, a reply for another session is not appended, and a restore does not
+re-add an answer the transcript already holds. The failure paths they target are a repeated send, a
+duplicate continuation, a replayed tool call, recovery after a completed answer, and a late reply after
+a session change. They are additive; `ChatSession`'s delivery path is **not** rewired in this stage, so
+duplicate-reply behaviour in the running app is unchanged and unproven. That work is deferred, not
+claimed.
+
+Not verified: no device test, no APK build, and CI has not run against this branch yet.

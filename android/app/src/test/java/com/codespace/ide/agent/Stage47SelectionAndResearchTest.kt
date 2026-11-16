@@ -84,7 +84,10 @@ class Stage47SelectionAndResearchTest {
         val choice = rank(listOf("web_search", "grep_search"), provider = { it != "web_search" }, network = { false })
         val unconnected = choice.ranked.first { it.tool == "web_search" }
         assertTrue(unconnected.eligible)
-        assertTrue(unconnected.signals.any { it.name == "provider" && it.why.contains("not connected") })
+        assertTrue(
+            "an unconnected provider is stated and costs credit, but never eligibility",
+            unconnected.signals.any { it.name == "provider" && it.earned == 0 && (it.why.contains("disconnected") || it.why.contains("not connected")) },
+        )
     }
 
     @Test

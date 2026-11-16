@@ -92,6 +92,8 @@ internal object ToolSuitability {
         networkAvailable: Boolean? = null,
         /** Whether the tool's provider is connected. Null is unknown, never assumed either way. */
         providerConnected: (String) -> Boolean? = { _ -> null },
+        /** Signal 11: the recorded workspace/provider state, when a snapshot exists. */
+        providerState: (String) -> ProviderContext.State? = { name -> ProviderContext.stateOf(name) },
         /** Remaining time budget for this turn, when the session has one. */
         timeBudgetMs: Long? = null,
     ): Choice {
@@ -185,12 +187,15 @@ internal object ToolSuitability {
                     )
                 )
             }
-            val provider = providerConnected(name)
-            when (provider) {
-                true -> reasons.add(Signal("provider", W_PROVIDER, W_PROVIDER, "its provider is connected"))
-                false -> reasons.add(Signal("provider", W_PROVIDER, 0, "its provider is not connected, so a call would fail"))
-                null -> reasons.add(Signal("provider", W_PROVIDER, 0, "provider availability is unknown"))
-            }
+            // STAGE 4.7 COMPLETION: the recorded workspace state wins over a caller's shorthand,
+            // and an absent snapshot stays unknown rather than being assumed either way.
+            val state = providerState(name)
+                ?: providerConnected(name)?.let { if (it) ProviderContext.State.CONNECTED else ProviderContext.State.DISCONNECTED }
+                ?: ProviderContext.State.UNKNOWN
+            val providerEarned = if (state == ProviderContext.State.CONNECTED ||
+                state == ProviderContext.State.NOT_APPLICABLE
+            ) W_PROVIDER else 0
+            reasons.add(Signal("provider", W_PROVIDER, providerEarned, ProviderContext.phrase(state)))
             val destructive = ToolMetaIndex.metaFor(spec).destructive
             if (destructive) {
                 reasons.add(Signal("safer alternative", W_DESTRUCTIVE, -W_DESTRUCTIVE, "it can change or remove things"))

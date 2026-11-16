@@ -50,6 +50,8 @@ object ClaimReconciliation {
     fun reconcile(
         claims: List<ContradictionScan.Claim>,
         sources: List<SourceLedger.Source>,
+        /** Subjects the contradiction scan already found two sources disagreeing on. */
+        disputedSubjects: Set<String> = emptySet(),
     ): Report {
         if (sources.isEmpty()) {
             return Report(
@@ -64,6 +66,7 @@ object ClaimReconciliation {
         val identity = identityOf(sources)
         val notes = ArrayList<String>()
 
+        val disputedKeys = disputedSubjects.map { keyOf(it) }.toSet()
         val verdicts = claims.map { claim ->
             val source = byId[claim.sourceId]
             if (source == null) {
@@ -93,7 +96,7 @@ object ClaimReconciliation {
                 keyOf(other.value) != keyOf(claim.value) && other.sourceId in independent
             }
             when {
-                disagreeing.isNotEmpty() -> Verdict(
+                key in disputedKeys || disagreeing.isNotEmpty() -> Verdict(
                     claim.subject, claim.value, claim.sourceId, Support.CONFLICTING, independent, emptyList(),
                     "sources disagree on " + claim.subject + "; none is being chosen",
                 )
