@@ -43,6 +43,10 @@ internal object OrchestrationResume {
                     why = "the plan has been revised since; the evidence may not describe it"
                     Disposition.BLOCKED
                 }
+                entry.revision <= 0 && revision > 0 -> {
+                    why = "it does not say which plan revision it belongs to"
+                    Disposition.BLOCKED
+                }
                 entry.failed && entry.sideEffect -> {
                     why = "it failed after it may have changed something; confirm before trying again"
                     Disposition.NEEDS_APPROVAL

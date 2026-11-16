@@ -162,3 +162,23 @@ Twelve further cases (durable roundtrip, corrupt file, bounded tail, settled wri
 retryable read, foreign conversation, stale revision, duplicate id, held step, failure isolation,
 cancellation, trace). Full suite 3,157 tests, one failure: `BackupTarTest`, unchanged and
 pre-existing.
+
+## Stage 4.4 — an interrupted turn says what it left behind (implemented)
+
+Stage 4.3 made delegated waves resumable and left the chat turn without an answer: a process death
+mid-plan kept steps marked RUNNING and nobody could tell a finished write from one that never ran.
+
+`TurnRecovery` reads the plan and the durable ledger and answers four ways, reusing
+`OrchestrationResume` instead of a second classifier: PROVEN (evidence exists), UNKNOWN (a write that
+may or may not have landed, which must be confirmed before it repeats), OPEN (safe to run again), and
+BLOCKED (proved in another conversation, or under a plan revision this one is not). One sentence
+reaches the transcript; it never says "resumed" when nothing was.
+
+Two rules got sharper on the way. A successful read is proved *and* retry-safe, which the resume
+classifier had expressed as one label; and a record that does not say which plan revision it belongs
+to is now BLOCKED rather than trusted, because "I do not know which plan this was" is not evidence.
+
+`task_plan action=show` now appends the proof: which capabilities the ledger actually records, which
+ones are blocked, and the interruption sentence when there is one. That is the same plan block the
+Chevron tree already renders, so the dependency state is visible without a new surface and without
+touching the grouped /tools catalogue.

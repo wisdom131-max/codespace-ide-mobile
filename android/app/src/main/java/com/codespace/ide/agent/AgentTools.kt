@@ -1138,6 +1138,31 @@ You can use multiple tools in sequence. When done, give a final summary.
      * rather than inferring it from a run of tool calls. Nothing here executes a step: the plan is a
      * record of intent and evidence, and calling it cannot run, approve or widen anything.
      */
+    /**
+     * Stage 4.4: the plan block also states what the ledger proves. A step can say DONE while a
+     * prerequisite never ran, and the reader deserves to see the difference without opening logs.
+     */
+    private fun proofLines(plan: com.codespace.ide.agent.goal.TaskPlanEngine.Plan): String {
+        val entries = com.codespace.ide.agent.runtime.PrereqLedger.snapshot()
+        if (entries.isEmpty()) return ""
+        val proved = entries.filter { !it.failed }
+        val broken = entries.filter { it.failed }
+        val status = com.codespace.ide.agent.runtime.TurnRecovery.report(
+            plan, entries,
+            com.codespace.ide.agent.runtime.PrereqLedger.session(),
+            com.codespace.ide.agent.runtime.PrereqLedger.planRevision(),
+        )
+        return buildString {
+            if (proved.isNotEmpty()) {
+                append("\nproved: ").append(proved.joinToString(", ") { it.capability + " by " + it.solvedBy })
+            }
+            if (broken.isNotEmpty()) {
+                append("\nblocked: ").append(broken.joinToString(", ") { it.capability })
+            }
+            com.codespace.ide.agent.runtime.TurnRecovery.note(status)?.let { append("\n").append(it) }
+        }
+    }
+
     private suspend fun taskPlan(args: org.json.JSONObject, context: Context): String {
         val store = com.codespace.ide.agent.goal.PlanState
         val action = args.optString("action", "show").lowercase()
@@ -1160,7 +1185,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 if (steps.isEmpty()) return "Refused: no usable steps were given."
                 reportPlan(com.codespace.ide.agent.goal.TaskPlanEngine.create(args.optString("objective"), steps))
             }
-            "show" -> existing?.let { renderPlan(it) } ?: "No plan is active."
+            "show" -> existing?.let { renderPlan(it) + proofLines(it) } ?: "No plan is active."
             "start" -> {
                 val plan = existing ?: return "Refused: there is no plan to start a step in."
                 reportPlan(com.codespace.ide.agent.goal.TaskPlanEngine.start(plan, args.optString("id")))
