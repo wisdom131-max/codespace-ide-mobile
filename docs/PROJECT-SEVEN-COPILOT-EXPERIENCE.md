@@ -402,6 +402,8 @@ both are listed under manual verification instead of being claimed.
 
 ## Checkpoint 6 — Copy target restored to 30x24dp at the owner's request; Area 7.8
 
+**CI: run `43952601203` on `60bd32d`, 26/26 steps, success.**
+
 ### The Copy button is 30x24dp because the owner said so
 
 Checkpoint 5 expanded the Copy glyph's touch target to Material's 48dp interactive size. The owner reviewed
