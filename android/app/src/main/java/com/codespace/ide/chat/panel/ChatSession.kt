@@ -378,6 +378,12 @@ class ChatSession internal constructor(
             // STAGE 5.4 PART 2: read when the request is built, not when the session is created.
             // The engine is constructed from the constructor, before this property exists.
             exchanges = { toolExchanges.snapshot() },
+            // PROJECT SIX 6.3D: the retained summary survives a restart, keyed by this session and
+            // redacted on the way to disk. No context (JVM tests) means memory-only retention, said
+            // plainly rather than assumed to work.
+            summaryStore = appContext?.let {
+                com.codespace.ide.engine.SummaryStore(java.io.File(it.filesDir, "chat-retention"))
+            },
         )
 
     private fun adapterFor(providerId: String): ProviderAdapter =
