@@ -76,18 +76,77 @@ output untouched, unreadable task state is UNKNOWN, progress counts only reporte
 keys, empty carry says "nothing was carried", carry counts kinds and surfaces unresolved + inert
 exchanges, labels recovered from a rendered summary, and the handoff line of the real path.
 
+## Checkpoint 2 — 7.3 and 7.4/7.5 bound to the real surfaces, 7.9 started
+
+### 7.3 — the Thinking Tree now reads its states from the rows
+
+`CopilotBindings.taskState` maps a REAL `ChatRowModel.ToolActivity` to a state, and the mapping is
+deliberately conservative:
+
+| Row says | State | Why |
+|---|---|---|
+| `ok = false` | FAILED | the executor's own verdict |
+| text says refused / not run / declined | BLOCKED | it never ran, so "failed after running" would be a lie |
+| text says uncertain / no response / may have run | UNKNOWN | neither success nor failure was established |
+| `ok = true` and nothing else | **ACTIVE** | `ok` means "did not report failure", not "finished" |
+| `[failed]`/`error` in the detail | FAILED | the detail carries the failure |
+
+`ChatCards` now renders the group header through `CopilotBindings.groupHeader(...)`, so the header
+carries a counted line ("0 of 3 done · 1 with no state reported"), and each child through
+`childLine(...)`, which spells the state out: `[running]`, `[failed]`, `[refused]`, `[outcome unknown]`.
+Identity is the runtime's own row id, so a streaming update cannot renumber a step. The chevron
+grouping and the separate `/tools` catalogue remain two different features, untouched.
+
+### 7.4 / 7.5 — the tool row is bounded and its outcome is stated
+
+The row is created in `ChatSession.runTools` from the real call, and its detail now goes through
+`CopilotPresentation.toolRow`, so the panel cannot receive an unbounded argument dump: the cut is
+applied at creation and the row text states how much was omitted. `CopilotBindings.outcomeOf` /
+`nextAction` classify the finished step, so a refused step says it never ran and may be adjusted and
+retried, while an uncertain step says it may have run and offers verification instead of a retry.
+
+Honest note: an earlier pass had already added `ToolResultPresentation` for this row (styling, "(partial)"
+marker). This checkpoint adds the execution-truth classification and the bound, and does not replace it.
+
+### 7.9 — first accessibility fixes, from a real audit of this file
+
+| Finding | Fix |
+|---|---|
+| the tree chevron was the only tap target, roughly 12dp | the whole header Row is the control, `heightIn(min = 48.dp)`, `fillMaxWidth` |
+| two competing clickables inside the header | inner ones removed, one gesture, one announcement |
+| TalkBack read "▸" and a summary with no meaning | merged semantics with a description naming the group, its counts and the expand gesture |
+| single tool row had the same tiny chevron target | same 48dp treatment plus a description naming the step and its outcome |
+| status conveyed by colour | every state already renders a word; `statusText` makes the words distinct and tested |
+| no labels for message rows | `messageLabel` (bounded to 200 characters) ready for the message composables |
+
+Not done in this checkpoint: contrast measurement, text-scale layouts, landscape/small-screen review,
+dialog/bottom-sheet semantics, streaming announcement throttling, and the message-row labels are not
+yet bound to their composables.
+
+## Tests (checkpoint 2)
+
+15 cases in `Stage72BindingsTest`, built on real `ChatRowModel` rows and the real `ActivityGrouping`
+output: `ok = true` never reads as done, `ok = false` is failed, a refusal is blocked and retryable after
+adjustment, an uncertain step refuses a plain retry, task identity is the runtime id, the group header
+counts only reported states, child lines spell states out, a 10,000-character result is bounded with both
+numbers, an unfinished step claims no success, TalkBack labels name step + state + gesture, group
+expanded/collapsed announcements, bounded message descriptions, the 48dp constant, and one distinct word
+per state.
+
 ## Not delivered in this pass — stated plainly
 
 Project Seven is **not complete**. The following areas were not implemented here:
 
 - **7.1** typography/spacing/contrast sweep and TalkBack labelling of message rows.
 - **7.2** composer and keyboard refinements beyond what already ships.
-- **7.3** binding `CopilotPresentation.taskTree` into the Thinking Tree composable.
-- **7.4** wiring `toolRow` into the tool-result row builder (the helper exists and is tested; the row
-  path is untouched).
+- **7.3** ~~binding~~ — DONE in checkpoint 2 (header, child lines, ids).
+- **7.4** ~~wiring `toolRow`~~ — DONE in checkpoint 2 at the row creation site; execution truth added.
+
 - **7.6** provider/model picker wording from `ProviderCatalogue` reasons.
 - **7.8** research and document presentation.
-- **7.9** the accessibility and performance pass (48dp targets, contrast, recomposition).
+- **7.9** started in checkpoint 2 (48dp header targets, TalkBack descriptions, non-colour state words).
+  Still open: contrast measurement, text scaling, landscape/small screens, dialog semantics, streaming
+  announcement throttling, long-message performance.
 - **7.10** voice surfacing (no greetings were added, and none exist).
 - **7.11** the full cross-surface integration verification.
 

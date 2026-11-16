@@ -368,3 +368,7 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
 | P7 first pass - bounded tool rows (7.4) | `toolRow` flattens and cuts at 600 chars stating both numbers. Helper tested; the tool-result row is NOT yet rewired to it. |
 | P7 first pass - task states (7.3) | `taskState` (unknown word -> UNKNOWN, never DONE), `taskTree` on runtime ids, `progress` counting only reported states. Presenter tested; the Thinking Tree is NOT yet bound. |
 | P7 first pass - carried context (7.7) | `carriedContext` + `kindsFromRenderedSummary`; `startHandoffSession` now returns what the successor carries, retention-on-disk checked, exchange count 0 because the path does not expose it. WIRED. |
+
+| P7 cp2 - 7.3 tree binding | `CopilotBindings.taskState/taskNode/groupHeader/childLine`; `ChatCards` header counts reported states, children spell the state out, identity is the runtime row id. `ok=true` is ACTIVE, never DONE. 7 cases. Locally tested. |
+| P7 cp2 - 7.4/7.5 tool row | Row detail bounded at creation via `CopilotPresentation.toolRow`; `outcomeOf`/`nextAction` give YES/NO/UNKNOWN, refusal never ran and retryable, uncertain may-have-run and not retryable. Locally tested. |
+| P7 cp2 - 7.9 accessibility | Tree header and single tool row are 48dp `fillMaxWidth` controls with merged semantics descriptions; inner competing clickables removed; `CopilotAccessibility` supplies tool/group/message labels and one distinct word per state. 8 cases. Locally tested; NOT device-verified. |
