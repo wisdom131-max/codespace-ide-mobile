@@ -63,6 +63,13 @@ internal object ToolCapabilityPlan {
         val ids = ArrayList<String>()
         // Reads almost always come first in real work, and a read that was not offered is a wasted
         // round trip rather than a failure, so it is only required when the request says "read".
+        // 4.2: a plain search is a capability too. "Where is this used?" asked for nothing before
+        // this line, so the coverage report had nothing to say about a one-tool request.
+        if (has("find", "grep", "locate", "where is", "where the", "used in", "search files") ||
+            (has("search") && !has("search the web", "look up", "documentation", "docs for"))
+        ) {
+            ids.add("find")
+        }
         if (has("rename", "refactor", "replace", "substitute")) {
             ids.add("find")
             ids.add("replace")

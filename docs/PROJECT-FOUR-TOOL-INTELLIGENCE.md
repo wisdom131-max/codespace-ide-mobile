@@ -71,3 +71,42 @@ generated actions, and this project does not import one.
 
 Not adopted, with reasons: generated-skill execution (no approval story), device-automation actions
 (out of the IDE's scope and outside its permission model).
+
+## Stage 4.2 — capability and dependency awareness (implemented)
+
+Stage 4.1 could say whether a capability exists. It could not say what must happen first, nor
+whether a request that needs four capabilities is doable at all. Both are now represented.
+
+**Prerequisite metadata** lives in `ToolPrerequisites`: a capability graph (replace needs find;
+unzip needs the archive inspected; test and edit carry OPTIONAL hints only) plus a tool-to-capability
+table so a real call can satisfy a prerequisite. Prerequisites are metadata about work, not
+permission: nothing there can approve, expose or widen a tool.
+
+**Planning** lives in `DependencyPlanner`: it computes the closure of a request, orders it into
+waves, refuses a cycle before anything runs (naming the loop), marks a dependent IMPOSSIBLE when a
+required prerequisite is unreachable in this mode, and BLOCKED when one already failed. Optional
+edges never become waves, so an optional step can never turn into a mandatory call.
+
+**Whole-request coverage** lives in `ToolTaskCoverage`: it reuses `ToolCapabilityPlan.assess`, adds
+the dependency plan, and reports what can be done, what cannot, why, and whether the complete
+request is executable. Partial support is never reported as complete.
+
+**Enforcement** is in the existing gate: `RuntimeBridge.prerequisiteRefusal` refuses a call whose
+capability has an unsatisfied REQUIRED prerequisite, quoting the reason and the failed evidence.
+`PrereqLedger` records what actually succeeded (with output as evidence) or failed, and
+`afterDispatch` feeds it from real tool outcomes. The refusal happens BEFORE the mode, approval, MCP
+and role checks, so a satisfied prerequisite still has to pass every one of them: a dependency can
+never grant permission, and MCP's hard boundary including AUTO_ALL is untouched.
+
+**Health** is used only to break ties between candidates that already serve the same capability
+(`ToolTaskCoverage.choose`). It never adds a tool a mode does not expose, never disables one, and
+never overrides suitability.
+
+Tests: 26 cases in `ToolPrerequisiteTest` covering the metadata table, waves, cycles, impossible and
+blocked dependents, satisfaction, the gate in both directions, failed-prerequisite messaging, and the
+three health rules. Full suite: 3,127 tests, one failure, `BackupTarTest.failureMessageCarriesRealTotals`
+(expected 2, got 0), which reproduces on a clean tree and passes in CI.
+
+Known limitations: the wave computation is not yet wired to execute waves itself (the model still
+drives calls one at a time, in order); `PrereqLedger` is session memory, so a process restart forgets
+what was satisfied; and the prerequisite table is deliberately small.

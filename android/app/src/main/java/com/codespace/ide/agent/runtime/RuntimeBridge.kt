@@ -47,7 +47,34 @@ internal object RuntimeBridge {
      * here can approve or deny a tool: that is [com.codespace.ide.agent.ToolDispatchGuard] and the
      * approval UI, and a second answer to "may this run" is how two answers start disagreeing.
      */
+    /**
+     * STAGE 4.2: a capability with an unsatisfied REQUIRED prerequisite is refused here, by name.
+     *
+     * This is a dependency check, not a permission. The call would still have to pass the mode,
+     * approval, MCP and role gates afterwards; this only stops work that cannot succeed yet, so the
+     * model is told "find the match first" instead of silently changing nothing.
+     */
+    fun prerequisiteRefusal(toolName: String): String? {
+        val capability = com.codespace.ide.chat.panel.ToolPrerequisites.capabilityOf(toolName)
+            ?: return null
+        val missing = com.codespace.ide.chat.panel.ToolPrerequisites.requiredOf(capability)
+            .filter { !PrereqLedger.satisfied(it.of) }
+        if (missing.isEmpty()) return null
+        val blocked = missing.firstOrNull { PrereqLedger.failed(it.of) }
+        if (blocked != null) {
+            val detail = PrereqLedger.entry(blocked.of)?.evidence ?: "no detail"
+            return "Refused: " + capability + " cannot run because " + blocked.of + " failed this turn (" +
+                detail + "). Report what is blocked instead of retrying."
+        }
+        val first = missing.first()
+        return "Refused: " + capability + " needs " + first.of + " first" +
+            (if (first.why.isBlank()) "" else " (" + first.why + ")") +
+            ". Do that, then call " + toolName + " again."
+    }
+
     fun beforeDispatch(plan: TaskPlanEngine.Plan?, toolName: String): String? {
+        val prerequisite = prerequisiteRefusal(toolName)
+        if (prerequisite != null) return prerequisite
         if (plan == null) return null
         val running = plan.steps.filter { it.status == TaskPlanEngine.Status.RUNNING }
         val dead = plan.unreachable().map { it.id }.toSet()
@@ -87,6 +114,15 @@ internal object RuntimeBridge {
         failed: Boolean,
         sessionId: String? = null,
     ): Dispatch {
+        // 4.2: the ledger remembers what actually succeeded, and what failed, because a dependent
+        // capability is gated on evidence rather than on intent.
+        com.codespace.ide.chat.panel.ToolPrerequisites.capabilityOf(name)?.let { capability ->
+            if (failed) {
+                PrereqLedger.recordFailure(capability, name, output)
+            } else {
+                PrereqLedger.record(capability, name, output)
+            }
+        }
         ReflectionState.recordTool(name, output)
         val plan = com.codespace.ide.agent.goal.PlanState.plan(sessionId) ?: return Dispatch(name, output, failed)
         val running = plan.steps.firstOrNull { it.status == TaskPlanEngine.Status.RUNNING }
