@@ -42,3 +42,24 @@ again on a clean tree) and is separately tracked. It does not reproduce in CI.
 - Cancelling the conversation cancels delegated work by coroutine cancellation; a delegated task that
   was mid-write is reported by the ledger as uncertain, not silently retried.
 - Nothing is device-verified. No APK was built.
+
+## Closure (16 November 2026)
+
+CI verdict for this report commit `deb7865`: run 43783420508, green. With that verdict Project Three's
+runtime integration is **CI-GREEN** and its documentation is complete.
+
+Status per label, deliberately separated:
+
+| Layer | IMPLEMENTED | TESTED | CI-GREEN | DEVICE-VERIFIED | COMPLETE |
+|---|---|---|---|---|---|
+| Plan gates live dispatch | yes | yes | yes | no | yes |
+| Observed-result recording | yes | yes | yes | no | yes |
+| Self-healing on tool failure | yes | yes | yes | no | yes |
+| Delegation via `task_plan action=delegate` | yes | yes | yes | no | yes |
+| Reflection over real evidence | yes | yes | yes | no | yes |
+| Automatic role selection by the planner | no | no | n/a | no | no |
+| Parallel delegated execution | no (board decides, executor is serial) | partially | n/a | no | no |
+
+COMPLETE here means "the runtime behaviour exists, is tested and its build is green". It does not mean
+device-verified: manual device rounds remain parked by the owner's instruction, and the two rows marked
+no are real gaps, not phrasing.
