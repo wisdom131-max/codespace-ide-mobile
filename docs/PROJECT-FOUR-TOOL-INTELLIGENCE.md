@@ -412,3 +412,59 @@ wire shape. Runtime tool dispatch remains NOT runtime-tested; it needs Robolectr
 
 **Local results.** 3,326 tests, `BackupTarTest.failureMessageCarriesRealTotals` the only failure, unchanged
 and pre-existing. Dev-debug compile and D8 dex green. Not CI-green (branch unpushed), not device-verified.
+
+## Stage 4.8 validation — CI-green, not device-verified
+
+**Code commit:** `50505e8` on `stage-4.8`.
+**Ancestry:** `9754f66 → 9811e02 → 63591b0 → e67820e → 59d1b2b → 50505e8`.
+**CI:** run `43838917586`, workflow "Build Android APK", job `build`, verdict **success**, tested SHA
+`50505e8b`. The workflow triggers on pushes to `main`, tags and pull requests only, so the branch push
+started nothing and the run was dispatched on ref `stage-4.8`, the same way the Stage 4.7 verdict was
+obtained. Remote head equals the tested SHA.
+
+**What the delivery layer does.** `DeliveryStore` is attached to the real `ChatSession` construction path,
+one store per conversation under `filesDir/chat-delivery/<conversation>/`, restored lazily on first use and
+written atomically behind a temp-file rename. A submission's identity is (generation, submission moment,
+text), so a legitimate re-ask after a restart is a new submission rather than a refused repeat. Answer
+ownership lives in the existing `ReplyOwnership`; `DeliveryLedger` only remembers.
+
+- **Duplicate and stale answers.** A repeated completion for an execution that already delivered is
+  refused, and a completion belonging to another session cannot append into this one.
+- **Cancellation.** `cancel()` closes delivery for the running execution as well as bumping the
+  generation, so a late callback cannot append after the user stopped the turn.
+- **Restoration.** A completed execution restored from disk does not redeliver its answer. A restored or
+  unknown execution state authorizes no writes.
+
+**Continuation.** A continuation re-sends the delivered text as its prefix, and the Delta path appended a
+second answer row while the interrupted one stayed, so the opening text appeared twice. The flag meant to
+mark a continuation turn was also false at that point: it was set on the Continue path and cleared by the
+ordinary send path that a continuation travels too. Both fixed in `50505e8`: the flag is derived in one
+place from the prefix (`continuationTurn = !continuationPrefix.isNullOrBlank()`), and a continuation
+absorbs every answer row whose text its final answer contains. Containment, not "drop the last row", is
+what removes the older copy; it holds across several segments and cannot consume a separate legitimate
+answer, a tool progress row, a tool result or a refusal note.
+
+**Tool-round ownership fix.** The delivery right is consumed only for `ToolDecision.Answer`. A completed
+tool round is not an answer, so it no longer swallows the answer that the post-tool continuation delivers.
+
+**Tests.** Continuation integration over the real `ChatSession` and fake transport: normal answer then
+continuation, repeated Continue tap while parked, cancellation before the continuation completes, a fresh
+instance that cannot continue a turn it never started, and a new submission after a completed
+continuation. Two legitimate submissions produce two executions and two answers with no loosened
+assertions. Existing Stage 4.8 coverage (submission, answer delivery, cancellation, session isolation,
+restoration) still passes.
+
+**Tool dispatch is component-tested, not runtime-tested.** `ChatSession.runTools` returns "Tool execution
+is unavailable in this build." when `appContext` is null, and the project has no Robolectric or
+instrumentation suite, so no JVM test drives a real dispatch through the ViewModel without faking the
+gate. What is covered is the machinery that path calls: `ToolDispatchGuard` over a real `ToolCallLedger`
+(same id dispatches once, a new id runs, an interrupted call is refused rather than retried),
+`WriteCallIdentity.idFor` stability, `ToolBatchPlan.duplicates`, and `AgentToolWire.decide` on the real
+wire shape. Runtime tool dispatch stays unproven.
+
+**Local results.** 3,326 tests; `BackupTarTest.failureMessageCarriesRealTotals` remains the only failure,
+unchanged and independently reproducible on a clean tree (expected 2, got 0), and it passes in CI — treated
+as a sandbox artifact, not hidden. Dev-debug compile and D8/DEX checks pass locally.
+
+**Status.** IMPLEMENTED: yes. LOCALLY TESTED: yes. CI-GREEN: yes, run `43838917586`. DEVICE-VERIFIED:
+**no**. No APK was built or installed and nothing was run on the device.
