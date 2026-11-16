@@ -381,3 +381,8 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
 | P7 cp4 - 7.6B errors | `listError` classifies network/auth/rate-limit/empty/malformed/custom; tests assert no status codes, no credentials and no silent-switch claim. Not wired to a fetch path, because none exists. 3 cases. |
 | P7 cp4 - 7.9A truncation | Source rows keep their single-line layout and gain a merged contentDescription with the full title, domain and opens action. No visual change. |
 | P7 cp4 - 7.9C dialog titles | `RowActionsDialog`, `FilterDialog`, `KeysManagerDialog` titles marked `semantics { heading() }`. `ChatLogDialog` open for a dedicated pass. |
+
+| P7 cp5 - 7.9C closed | `ChatLogDialog` title carries `semantics { heading() }`; all four Project Seven dialog titles are headings. Semantics-only, no pixels changed. Manual TalkBack check listed. |
+| P7 cp5 - 7.1D scroll | `ChatScrollFollow.shouldFollow` (follow within 96dp of the live end, never after the reader scrolled back), WIRED in `ChatPanelScreen` on row count + streaming; cancelled scroll swallowed. 5 cases. |
+| P7 cp5 - 7.1C copy target | `CopyIconRow` gains `minimumInteractiveComponentSize()` (48dp touch area, glyph unmoved) and `role = Button`. Copy payload audited: message text only; code Copy keeps the whole block. Manual tap/TalkBack check listed. |
+| P7 cp5 - 7.1/7.2 audit | Message typing, incomplete/ceiling marking, memoised Markdown, capped code with full copy, one-send and duplicate-reply protection, cancellation and stale-event generation bump, tool-to-round identity, announcement policy: verified as already correct in existing code and suites; not rebuilt. |

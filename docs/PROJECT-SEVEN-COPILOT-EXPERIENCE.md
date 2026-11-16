@@ -325,6 +325,79 @@ custom endpoints keeping capabilities unknown.
 5. Long response (10k+) with the tree expanded: scrolling stays smooth.
 6. Picker keyboard: Tab reaches rows, Enter selects, Escape dismisses and focus returns to the chip.
 
+## Checkpoint 5 — 7.9 closed, and the three 7.1 defects the audit actually found
+
+### 7.9C closed: `ChatLogDialog`
+
+Its title was plain body text, so TalkBack read it inline and heading navigation could not reach it. One
+modifier (`semantics { heading() }`) on the existing `Text`, weight and layout untouched. Every Project
+Seven dialog title is now a heading: `RowActionsDialog`, `FilterDialog`, `KeysManagerDialog`,
+`ChatLogDialog`.
+
+### 7.1D — the message list had NO follow behaviour at all
+
+The transcript is a `Column` with `verticalScroll(rememberScrollState())`. Nothing followed new content, so
+a streaming reply could grow entirely below the fold and the user had to scroll manually to read it.
+Following unconditionally would be the opposite defect: it yanks the reader to the bottom while they are
+reading earlier content.
+
+The rule is now explicit and tested: follow only when the reader is within one line (96dp) of the live end;
+otherwise keep still. `ChatScrollFollow.shouldFollow` holds the comparison, `ChatPanelScreen` uses it in a
+`LaunchedEffect` keyed on row count and streaming, and a cancelled scroll (the reader taking over) is
+swallowed rather than surfaced as an error. No new state, no change to the list's appearance.
+
+### 7.1C — the copy glyph was roughly a 30x24dp target
+
+Measured from the code: a micro-font glyph with 8dp/4dp padding. It now carries
+`minimumInteractiveComponentSize()` (Material's 48dp touch area, applied without resizing or moving the
+glyph) and `role = Role.Button`, so TalkBack announces a button and `onClickLabel = "Copy message"`
+supplies the action. The copy row looks identical; its target grew.
+
+Copy content itself was audited and is correct: `CopyIconRow` receives the message text and nothing else,
+so no UI label can be folded in, and a code block's Copy still copies the WHOLE block while the display is
+capped by `TextRenderLimits` (that distinction was already correct and is documented in the block itself).
+
+### 7.1 A/B/E and 7.2 — audited, found already correct, not rebuilt
+
+This is the honest part of the checkpoint: most of 7.1 and 7.2 already works, and rewriting it would have
+been the redesign this brief forbids.
+
+| Requirement | Where it lives | Evidence |
+|---|---|---|
+| message types distinguished by data, not text | `ChatRowModel` sealed rows (`User`, `AssistantStream` with `StreamKind`, `Failed`, `InfoNote`, `ToolActivity`, `Sources`, `Attachments`) | renderer switches on the type |
+| incomplete vs complete replies | `ChatSession` sticky incomplete flag; M1 keeps an interruption incomplete until the next send | `ChatSessionInterruptTest`, `FinishRestorationTest` |
+| output-limited replies | the ceiling marks the reply incomplete through the same sticky flag | `ChatSession` ceiling path |
+| Markdown | `MarkdownParser.parse` memoised on the exact text | `MarkdownView` |
+| large code blocks | `TextRenderLimits.cap` draws a head and states the cut; copy keeps the source | the block's own comment and cap note |
+| one send per action, no duplicate replies | `DeliveryLedger` / `ReplyOwnership` on the real session paths | Stage 4.8 suites |
+| cancellation reaching the active request | `ChatSession.cancel()` cancels the execution and bumps the generation | Stage 4.8 suites |
+| stale stream events | generation bump + ownership check | Stage 4.8 suites |
+| tool messages tied to their reply | tool rows are created inside the executing round with round/step ids | `Stage72BindingsTest` |
+| streaming announcements | `CopilotAccessibility.announcement`, 400-character policy | `Stage79AnnouncementTest` |
+
+Not rebuilt, and not claimed as newly implemented.
+
+### 7.2 C/D — keyboard, focus and input integrity: manual checks, not code changes
+
+The composer is approved and was not touched. Focus after send, modifier restoration, attachment
+association and back-button behaviour need a real device; the exact checks are listed below.
+
+## Tests (checkpoint 5)
+
+5 new cases in `Stage71ScrollFollowTest`: at the bottom follows, within one line follows, scrolled back does
+not follow, an unscrollable list follows, and the tolerance is one line rather than half the screen.
+The dialog heading and the 48dp copy target are semantics-only changes and cannot be asserted from a JVM;
+both are listed under manual verification instead of being claimed.
+
+## Manual verification still required
+
+1. Read a reply, scroll up, keep reading while more text streams: the view must NOT jump.
+2. Stay at the bottom while a reply streams: it must follow, once per row change.
+3. Copy glyph: a thumb tap anywhere in its 48dp area copies; TalkBack says "button, Copy message".
+4. Dialog titles: TalkBack announces "Chat log, heading" and heading navigation reaches it.
+5. Font scale 1.3 and 2.0, landscape, narrow width: unchanged components wrap without clipping.
+6. Picker keyboard, streaming announcement silence, long-response scrolling (unchanged from checkpoint 4).
+
 ## Not delivered in this pass — stated plainly
 
 Project Seven is **not complete**. The following areas were not implemented here:
