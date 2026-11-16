@@ -376,3 +376,8 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
 | P7 cp3 - 7.9A contrast | `ContrastAudit` measures the real `ChatTokens` pairs for both themes; nine pass AA, the hairline divider fails 3:1 and is documented as decorative (tested), `strongBorder` derives a compliant edge for meaningful borders. 6 cases. Locally tested; visual verification on device outstanding. |
 | P7 cp3 - 7.9E announcements | `CopilotAccessibility.announcement`: start, every 400 chars, and every terminal transition; small growth silent; bounded tail. 6 cases. Helper tested; not yet called from the render path. |
 | P7 cp3 - 7.6 picker | Header shows `Provider·Model` in `ModelPickerSection` (WIRED) with a TalkBack description; `ModelPickerPresentation` gives capability honesty, custom-endpoint non-assumption, optional alternatives and `selectionAfterDismiss`. 9 cases. Selection logic untouched. |
+
+| P7 cp4 - 7.6A list state | Audit: no network fetch exists, so no loading state was invented. `listNote` (WIRED in `ChatPanelScreen`, null renders nothing) states a never-reported endpoint and an empty list truthfully. 4 cases. |
+| P7 cp4 - 7.6B errors | `listError` classifies network/auth/rate-limit/empty/malformed/custom; tests assert no status codes, no credentials and no silent-switch claim. Not wired to a fetch path, because none exists. 3 cases. |
+| P7 cp4 - 7.9A truncation | Source rows keep their single-line layout and gain a merged contentDescription with the full title, domain and opens action. No visual change. |
+| P7 cp4 - 7.9C dialog titles | `RowActionsDialog`, `FilterDialog`, `KeysManagerDialog` titles marked `semantics { heading() }`. `ChatLogDialog` open for a dedicated pass. |

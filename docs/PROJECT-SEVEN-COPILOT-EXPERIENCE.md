@@ -238,6 +238,90 @@ brief ("distinguish provider identity from model identity"), it is one string pl
 description, and it is listed here so it can be vetoed and reverted on its own without touching anything
 else.
 
+## Checkpoint 4 — 7.6 list honesty and the rest of 7.9 that could be fixed without redesign
+
+### Finding that removes work instead of adding it: there is no live model fetch
+
+7.6 A asks for an honest loading state. The audit found there is nothing to be loading: `ModelPickerData`
+assembles the list from the preset default, the owner's saved ids, and the ids the endpoint reported on
+the *last* fetch, all read from disk synchronously in `ChatPanelScreen`. Adding a spinner or a
+"Loading models…" line would be theatre, and would claim a request the app never makes. It was not added.
+
+What was added is the sentence that is actually true when a list is thin:
+
+- endpoint has never reported a list: "This endpoint has not reported its model list. Rows marked Other
+  are the built-in catalogue, not a promise about what the endpoint serves."
+- nothing stored at all: "No models are stored for this provider yet. Add one, or pick from the catalogue."
+- store unreadable: no note, because `ModelListUnreadableNotice` already says it better and offers Retry.
+- otherwise: no note. A normal picker looks exactly as it did.
+
+`listNote` is wired in `ChatPanelScreen` from the reads that actually happened, and the section renders it
+only when non-null, so the approved layout is byte-identical in the ordinary case.
+
+### 7.6 B — error states, classified and secret-free
+
+`ModelPickerPresentation.listError` covers network, authentication, rate limit, empty, malformed and
+custom-endpoint failures. Tests assert that no message contains a status code, an `Authorization` or
+`Bearer` fragment, or a promise that something was switched. Auth and rate-limit messages state that the
+selection is unchanged; the custom-endpoint message keeps capabilities explicitly unknown.
+
+Honest limitation: the picker itself makes no request, so these are the sentences available to whichever
+surface does fetch later. They are not wired to a fetch path that does not exist.
+
+### 7.9 A — truncation that hides information, fixed non-visually
+
+Source rows draw the title with `maxLines = 1` and an ellipsis. At a large font scale that ellipsis eats
+the part that identifies the source. The row is intentional in the layout, so it was left alone
+visually; the row now carries a merged `contentDescription` with the full title and domain and the fact
+that it opens. Appearance is unchanged; TalkBack reads what the screen cannot show.
+
+### 7.9 C — dialog titles were body text
+
+Audited `RowActionsDialog`, `FilterDialog` and `KeysManagerDialog`: each draws a title as ordinary text,
+so TalkBack reads it inline and heading navigation cannot reach it. All three titles now carry
+`semantics { heading() }`. Nothing visual changed.
+
+`ChatLogDialog` was inspected and its title is drawn inside the same column as its actions; adding a
+heading there is safe but it was left for a dedicated pass rather than changed blind, and is listed below.
+
+### 7.9 D / E — verified, not changed
+
+- Message bodies are already read verbatim by TalkBack, which is what a reader wants. `messageLabel`
+  truncates to 200 characters and is therefore only suitable for compact summaries and navigation; it was
+  deliberately NOT applied to message bodies, because truncating the assistant's answer for a screen
+  reader would be worse than reading it in full.
+- Copy rows are separate composables with their own click action, so they stay independently reachable and
+  are not merged into the message.
+- `MarkdownView` already memoises parsing on the exact text (`remember(text)`), code blocks are capped by
+  `TextRenderLimits`, and streaming rows update one Text node. No repeated parsing or retained per-token
+  state was found, so nothing was restructured for performance.
+
+### 7.9 B — narrow screens and landscape: documented, not redesigned
+
+The layout is column-based with `fillMaxWidth` rows and no fixed text heights in the chat surfaces. The
+things that would break at a narrow width are the composer and attachment strip, which are approved and
+were not touched. Manual checks are listed below rather than pre-emptively restyling approved components.
+
+## Tests (checkpoint 4)
+
+7 new cases in `Stage76ListStateTest`: no note for a healthy list, "not reported" note never claiming a
+load, unreadable left to its own notice, the empty-list sentence, one distinct message per error kind with
+no status codes or credentials in any of them, auth and rate-limit stating the selection is unchanged, and
+custom endpoints keeping capabilities unknown.
+
+## Manual verification still required (unchanged from checkpoint 3, plus)
+
+1. Font scale 1.3 and 2.0: source rows ellipsise visually but read in full to TalkBack; tree header and
+   tool row wrap without clipping; no control below 48dp.
+2. Landscape and narrow width: composer, message list, expanded tree and picker remain reachable; nothing
+   hides behind the keyboard or navigation bar.
+3. Dialogs: TalkBack announces each title as a heading; focus enters the dialog, stays within it, and
+   returns to the invoking control on dismiss. `ChatLogDialog` needs its heading added and checked.
+4. Streaming with TalkBack: silence between 400-character announcements, one announcement per terminal
+   transition.
+5. Long response (10k+) with the tree expanded: scrolling stays smooth.
+6. Picker keyboard: Tab reaches rows, Enter selects, Escape dismisses and focus returns to the chip.
+
 ## Not delivered in this pass — stated plainly
 
 Project Seven is **not complete**. The following areas were not implemented here:
