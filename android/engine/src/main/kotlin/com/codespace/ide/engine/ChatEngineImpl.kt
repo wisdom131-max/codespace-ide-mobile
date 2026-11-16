@@ -23,7 +23,7 @@ class ChatEngineImpl(
      * request carries the pairing a provider needs instead of prose about it. Empty by default, which
      * is byte-identical to the old behaviour.
      */
-    private val exchanges: List<ToolExchange> = emptyList(),
+    private val exchanges: () -> List<ToolExchange> = { emptyList() },
 ) : ChatEngine {
 
     private val state = SessionState(sessionId)
@@ -111,7 +111,7 @@ class ChatEngineImpl(
         // The count is kept for the Chat Log, where it is diagnostic data rather than chat noise.
         lastFitDroppedMessages = fit.droppedMessages
         lastFitDroppedChars = fit.droppedChars
-        val payload = adapter.payloadWithHistory(window, userText, attachments, config, exchanges)
+        val payload = adapter.payloadWithHistory(window, userText, attachments, config, exchanges())
         val overBudget = BudgetGuard.checkPayload(payload.length, config.maxPayloadChars)
         if (overBudget != null && !config.confirmOverBudget) {
             state.append(ChatRole.ASSISTANT, "", MessageState.ERROR)
@@ -236,7 +236,7 @@ class ChatEngineImpl(
                 if (flip == null) throw inner
                 retriedCeilingField = true
                 attemptCfg = attemptCfg.copy(maxTokensField = flip)
-                attemptPayload = adapter.payloadWithHistory(window, userText, attachments, attemptCfg, exchanges)
+                attemptPayload = adapter.payloadWithHistory(window, userText, attachments, attemptCfg, exchanges())
                 parser = SseParser()
                 done = false
             }

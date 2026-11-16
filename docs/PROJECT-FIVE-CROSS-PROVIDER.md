@@ -333,6 +333,50 @@ unknown limit stays unknown, and no history is trimmed automatically. Interrupti
 audited only as far as existing Stage 4.8/5.2 protections reach; no new replay mechanism was added.
 Custom endpoints are refused rather than guessed at.
 
+## Stage 5.4 part 2 — the producer is wired (IMPLEMENTED, LOCALLY TESTED)
+
+`chat/provider/ToolExchangeLog.kt`, written from `ChatSession.noteAndRecord` and read when the request
+is built.
+
+**Where it is written.** `ChatSession.noteAndRecord` is the single point in the app where a tool result
+is recorded, and it already held everything needed: the parsed call (name, arguments), the call's index
+in its batch, and the result text the user sees. The log is keyed by the provider's own call id when the
+wire carried one, or by a stable synthetic id `wire-<turn>-<index>` when it did not, so a replayed stream
+cannot create a second entry for one call and a retry cannot either. The status is read from the same
+text the transcript shows, so "Unsure" in the row and UNCERTAIN on the wire cannot disagree:
+`UNSURE:` and `CANCELLED` are UNCERTAIN, `FAILED` is FAILED, `REFUSED` is REFUSED, blank is UNCERTAIN
+(an outcome nobody can read is not evidence of success), everything else is OK. The log is bounded at 60
+entries and drops the oldest, because a long session must not grow it without limit on a phone.
+
+**How it reaches the engine.** `ChatEngineImpl` takes a SUPPLIER, not a captured list:
+`exchanges: () -> List<ToolExchange>`, read at payload time. A snapshot captured at construction would
+be empty for the turn in progress, and the engine is constructed from `ChatSession`'s constructor.
+
+**Two defects this found, both real.**
+1. The first wiring stored the log as an ordinary `val` below `buildEngine(...)` in the constructor, so
+   the log was null when the engine was built. The repo's own `ChatModeRestartTest` caught it with five
+   failures. A `by lazy` did not help (the delegate holder itself was not yet assigned); passing a
+   supplier is the correct fix, and it also fixes the staleness a captured list would have had.
+2. The engine's retry payload call site still passed the supplier object rather than calling it, which
+   the compiler caught.
+
+**Tests.** 12 cases in `app/Stage54bProducerTest`: OK/FAILED/UNCERTAIN/REFUSED mapping, cancelled and
+blank results treated as uncertain, a replayed id recorded once, the provider's own id preserved, an
+incomplete call carried as incomplete, the bound keeping the newest entries, call order, and an
+end-to-end case where a log built from transcript results drives `ChatEngineImpl.send` and the payload
+the fake transport received contains exactly two `tool_call_id` entries with `UNSURE` on the write.
+
+**Results.** 3,278 app tests with `BackupTarTest.failureMessageCarriesRealTotals` the only failure;
+engine suite 230 tests with none failing; dev-debug compile and D8 dex green. Not CI-green; not
+device-verified.
+
+**Known limitations.** `ChatSession`'s tool execution needs an Android `Context`, so no JVM test drives
+a real tool call through `runTools` into the log; the end-to-end case starts from the same result texts
+the log records, not from `AgentTools.executeTool`. Refusals that never reach `noteAndRecord` are not
+logged (`recordRefused` exists for a future call site). The log is session-scoped, not persisted: after
+a process restart the exchanges start empty, which is honest but means a restored session's first
+request does not carry older pairs. Area E context reduction remains unimplemented.
+
 ## Next stage (5.5)
 
 Cross-provider tool compatibility and streaming normalisation: normalise tool definitions and tool-call

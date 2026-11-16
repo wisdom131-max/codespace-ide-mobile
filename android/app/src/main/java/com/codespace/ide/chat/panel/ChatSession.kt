@@ -210,6 +210,18 @@ class ChatSession internal constructor(
     @Volatile internal var lastContinuation: ContinuationPlan? = null
 
     /** Area 6: the last provider verdict for THIS session, for the turn summary and continuation. */
+    /**
+     * STAGE 5.4 PART 2: every finished tool call of this session, so the next request can carry the
+     * call/result pair instead of prose about it. Written at the single recording point below.
+     */
+    private val toolExchanges = com.codespace.ide.chat.provider.ToolExchangeLog()
+
+    /**
+     * STAGE 5.4 PART 2: which turn we are on, so a synthetic call id is stable for the same call and
+     * cannot collide with a later turn's call of the same index.
+     */
+    private var turnSerial: Int = 0
+
     @Volatile internal var lastFinish: com.codespace.ide.engine.FinishReason =
         com.codespace.ide.engine.FinishReason.UNKNOWN
 
@@ -343,7 +355,14 @@ class ChatSession internal constructor(
     }
 
     private fun buildEngine(providerId: String = selection.value.providerId): ChatEngineImpl =
-        ChatEngineImpl(projectId, transportFactory(), adapterFor(providerId))
+        ChatEngineImpl(
+            projectId,
+            transportFactory(),
+            adapterFor(providerId),
+            // STAGE 5.4 PART 2: read when the request is built, not when the session is created.
+            // The engine is constructed from the constructor, before this property exists.
+            exchanges = { toolExchanges.snapshot() },
+        )
 
     private fun adapterFor(providerId: String): ProviderAdapter =
         if (providerId == "gemini") GeminiAdapter()
@@ -509,6 +528,8 @@ class ChatSession internal constructor(
     internal var mode: ChatMode = ChatModePersistence.toUi(initialMode)
 
     fun send(userText: String, confirmOverBudget: Boolean = false) {
+        // STAGE 5.4 PART 2: a new turn, so this turn's synthetic call ids cannot collide with the last.
+        turnSerial++
         // A fresh message supersedes the Resume offer: continuing an abandoned turn after the
         // user typed something new would answer the wrong thing.
         _resumeUi.value = TurnResume.Action.NONE
@@ -1322,6 +1343,12 @@ class ChatSession internal constructor(
                     else if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
                         AgentToolWire.firstLine(out)
                 ))
+                toolExchanges.record(
+                    id = "wire-" + turnSerial + "-" + idx,
+                    name = call.name,
+                    argumentsJson = call.argumentsJson,
+                    output = out,
+                )
                 answered[idx] = out
                 // Guard (c): a tool result joins the echo corpus for the REST of this turn.
                 turnContext.add(out)

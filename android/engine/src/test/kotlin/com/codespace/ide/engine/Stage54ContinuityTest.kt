@@ -149,7 +149,7 @@ class Stage54ContinuityTest {
                 return flow { emit("data: [DONE]\n\n") }
             }
         }
-        val engine = ChatEngineImpl("s54", transport, OpenAIAdapter(), listOf(ok, unsure))
+        val engine = ChatEngineImpl("s54", transport, OpenAIAdapter()) { listOf(ok, unsure) }
         engine.send("next", emptyList(), env).toList()
         assertTrue("the request carries the calls", seen.contains(""""tool_call_id":"call-1""""))
         assertTrue("and the unsure one says so", seen.contains("UNSURE"))
