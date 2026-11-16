@@ -308,11 +308,12 @@ fun SourcesRow(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = if (safe.size == 1) "1 source" else safe.size.toString() + " sources",
+            text = ResearchPresentation.header(safe.size),
             style = MaterialTheme.typography.labelSmall,
             color = c.textSecondary,
         )
-        safe.forEach { s ->
+        val bounded = ResearchPresentation.bound(safe)
+        bounded.shown.forEach { s ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -327,7 +328,7 @@ fun SourcesRow(
                     // is correct for the layout and wrong for the reader. The full title and domain are
                     // provided to TalkBack, so nothing important is lost and the row looks identical.
                     .semantics(mergeDescendants = true) {
-                        contentDescription = s.title + ", " + s.domain + ", opens the source"
+                        contentDescription = ResearchPresentation.label(s)
                     },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -348,6 +349,9 @@ fun SourcesRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+        ResearchPresentation.overflowLine(bounded.hidden)?.let { line ->
+            Text(line, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
         }
     }
 }
