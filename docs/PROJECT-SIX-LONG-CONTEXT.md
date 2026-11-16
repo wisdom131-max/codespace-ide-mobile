@@ -5,7 +5,7 @@ summary: Stage 6.1 landss provider-aware context compatibility in the engine, an
 
 # Project Six — Long Context Management
 
-## Stage 6.1 — context compatibility (IMPLEMENTED, LOCALLY TESTED)
+## Stage 6.1 — context compatibility (IMPLEMENTED, LOCALLY TESTED, CI-GREEN)
 
 `engine/ContextPreparer.kt`, recorded on every send as `ChatEngineImpl.lastContextDecision`.
 
@@ -64,3 +64,7 @@ and a real send recording the decision it took.
 - `OVERFLOW` is reported, not blocked at the request layer: the send still runs and the provider's own
   error is what the user sees next. Making the engine refuse before dispatch is the next small step.
 - Limits come from the bundled catalogue; nothing is probed at runtime.
+
+## CI
+
+Run `43892624026` (job `build`, 25 steps, none failed) succeeded on `52d264b`, which carries this stage.

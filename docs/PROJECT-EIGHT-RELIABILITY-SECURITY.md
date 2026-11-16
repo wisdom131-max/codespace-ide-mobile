@@ -31,3 +31,7 @@ Full secret scanning in CI, dependency and supply-chain review, permission-model
 network-hardening review (cleartext and host binding), redaction coverage across every log sink,
 side-effect verification on fresh state, and structured security sign-off. Project Eight is substantially
 open.
+
+## CI
+
+Run `43892624026` (job `build`) succeeded on `52d264b`, which carries the output bounding and the audit.

@@ -5,7 +5,7 @@ summary: Stage 7.4 ships one honest line about what happened to the conversation
 
 # Project Seven — Copilot Experience Improvements
 
-## Stage 7.4 — context and session visibility (IMPLEMENTED, LOCALLY TESTED)
+## Stage 7.4 — context and session visibility (IMPLEMENTED, LOCALLY TESTED, CI-GREEN)
 
 `ChatSession.appendRow(ChatRowModel.InfoNote(...))` after the send completes.
 
@@ -29,3 +29,7 @@ presentation, 7.5 partial/interrupted/output-limited rendering, 7.6 error explan
 controls, 7.8 provider/model capability explanations, 7.9 approval interactions, 7.10 research source
 presentation, 7.11 documents and media, 7.12 restoration and continuation, 7.13 accessibility and
 low-resource performance, 7.14 voice-chat readiness. Stage 7.4 is one item of fourteen.
+
+## CI
+
+Run `43892624026` (job `build`, 25 steps, none failed) succeeded on `52d264b`, which carries this stage.
