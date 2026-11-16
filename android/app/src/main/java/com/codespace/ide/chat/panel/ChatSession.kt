@@ -84,8 +84,11 @@ class ChatSession internal constructor(
      */
     private val baseUrlForProvider: (providerId: String, fallback: String) -> String =
         { _, fallback -> fallback },
-    /** STAGE 4.8: the session identity a reply must belong to. Blank falls back to the project. */
-    private val sessionIdForDelivery: String = "",
+    /**
+     * STAGE 4.8: where delivery identities are persisted. Null builds one from [appContext] for this
+     * conversation, which is what the app does; tests inject their own.
+     */
+    private val deliveryStore: DeliveryStore? = null,
     /** WP6: ordered key-slot names with stored keys for a provider (primary first). */
     private val poolSlotsFor: (providerId: String) -> List<String> = { emptyList() },
     /** WP6: automatic key failover is OPT-IN (silent switching burns credits). */
@@ -180,11 +183,28 @@ class ChatSession internal constructor(
      * STAGE 4.8: the delivery ledger. ReplyOwnership holds the rules; this holds the state they need,
      * and [`deliverySession`] is what "another session" means for this instance.
      */
-    private val delivery = DeliveryLedger()
+    private val delivery = DeliveryLedger(
+        deliveryStore ?: appContext?.let {
+            DeliveryStore.at(java.io.File(java.io.File(it.filesDir, "chat-delivery"), conversationId))
+        }
+    )
     private var activeExecId: String = ""
+    private var deliveryRestored = false
 
+    /**
+     * Read what a previous process left behind, once, the first time a delivery decision is needed.
+     * Structure only, and an unreadable record restores nothing - which leaves an execution UNKNOWN
+     * rather than "delivered" or "safe to replay".
+     */
+    private fun restoreDeliveryOnce() {
+        if (deliveryRestored) return
+        deliveryRestored = true
+        delivery.restore()
+    }
+
+    /** STAGE 4.8: a reply belongs to the conversation that asked for it. */
     private val deliverySession: String
-        get() = sessionIdForDelivery.ifBlank { projectId }
+        get() = conversationId
     private val sendGeneration: Int
         get() = requestGate.current
     /** Automatic 429 re-attempts used for the CURRENT send. */
@@ -760,7 +780,12 @@ class ChatSession internal constructor(
         val gen = requestGate.bump()
         // STAGE 4.8: a submission event that arrives twice (a re-delivered click, a recreated view)
         // carries the identity it already used, so the second one starts no second execution.
-        val execId = "exec-" + gen + "-" + userText.hashCode().toString(16)
+        // The identity of a submission is (generation, the moment it was made, the text). The moment
+        // matters: without it, asking the same question again after a restart - or a minute later -
+        // would reuse a completed identity and be refused, which would be silencing a real question.
+        val submittedAt = System.currentTimeMillis()
+        val execId = "exec-" + gen + "-" + submittedAt + "-" + userText.hashCode().toString(16)
+        restoreDeliveryOnce()
         if (!delivery.beginSubmission(deliverySession, execId)) return
         activeExecId = execId
         // Every send marks the ledger: a source recorded during this turn is shown under THIS
@@ -852,7 +877,10 @@ class ChatSession internal constructor(
     fun cancel() {
         // STAGE 4.8: cancellation invalidates this execution's right to deliver anything further,
         // including a callback that is already in flight when the user presses Stop.
-        delivery.cancel(activeExecId)
+        if (activeExecId.isNotBlank()) {
+            restoreDeliveryOnce()
+            delivery.cancel(activeExecId)
+        }
         requestGate.bump()
         // Project 1.9: a research round is blocking socket reads, so a cancelled coroutine would
         // still let its queued subquestion searches go out. Bump the generation so the loop stops
@@ -1085,6 +1113,7 @@ class ChatSession internal constructor(
                 if (!ReplyOwnership.mayComplete(gen, lastCompletedGen, !requestGate.stale(gen))) return
                 // STAGE 4.8: the answer is appended once per execution, into its own session. A
                 // repeated completion event, or a completion belonging to another session, stops here.
+                restoreDeliveryOnce()
                 if (!delivery.mayAppendAnswer(activeExecId, deliverySession)) return
                 // Area 6: the provider's verdict decides whether this turn may be called
                 // finished. A ceiling marks the reply incomplete through the SAME sticky flag

@@ -344,3 +344,36 @@ persisted in the running app yet: the store is implemented and tested, not attac
 integration test exists (constructing `ChatSession` in JVM with the real fakes is the next step), and
 nothing is device-verified. Tool-dispatch exactly-once still runs on the existing
 `ToolDispatchGuard`/ledger plus content-addressed write ids; ownership does not replace it.
+
+### Stage 4.8 completion — the store is attached and the runtime is tested
+
+**Root cause, restated exactly.** `DeliveryLedger` existed but was constructed with no store, so
+nothing survived a process; and no test ever drove `ChatSession` itself, so "the boundary is wired" was
+a claim about source lines rather than behaviour.
+
+**Where the store is built.** `ChatSession` takes an optional `deliveryStore`; when it is absent (the
+app path) the ledger writes to `filesDir/chat-delivery/<conversationId>/reply-delivery.json`, so delivery
+state is session-scoped by construction. The record is read once, lazily, the first time a delivery
+decision is needed. It holds execution id, session id, state and timestamp: no prompt, no answer, no key.
+
+**Identity.** A submission's identity is `exec-<generation>-<submission time>-<text hash>`. The
+submission time was added during this work because without it a second instance reusing generation 1
+with the same text produced an identity already recorded as completed, and the question was silently
+refused. That is a real bug the integration test caught, not a test artefact.
+
+**Integration tests (11).** Real `ChatSession` over the temp-file store: one submission delivers one
+answer; a repeated tap while in flight runs one execution; a legitimate second question is answered;
+cancellation refuses a late answer; a stale request writes nothing into another conversation; a restored
+instance starts empty and answers a re-ask once; a corrupt record still sends; a missing record is a
+fresh start and is written; two conversations keep their own answers; nothing is left pending after a
+completed answer. Assertions are on transcript rows and wire attempts, so a duplicate answer row fails.
+
+**Findings from the audit.** The double-tap guard only applies while a request is in flight
+(`sendJob?.isActive`), which is correct but narrower than "repeated taps are always deduplicated".
+`ReplyOwnership.mayComplete` already stops a repeated completion event; the ledger now stops a repeated
+append as well. Continuation, output-limit recovery and tool dispatch are unchanged and still rest on
+`ToolDispatchGuard` plus content-addressed write ids; no gap was confirmed there, so nothing was
+rewritten.
+
+Local: 3,315 tests, `BackupTarTest` the only failure, unchanged; D8 dex and dev-debug compile green.
+Not CI-green for this commit, not device-verified, no APK.
