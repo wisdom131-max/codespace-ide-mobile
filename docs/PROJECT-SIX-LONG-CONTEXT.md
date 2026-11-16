@@ -5,6 +5,79 @@ summary: Stage 6.1 landss provider-aware context compatibility in the engine, an
 
 # Project Six — Long Context Management
 
+## Stage 6.2 — evidence-based summarisation, bounded retention, continuation (IMPLEMENTED, LOCALLY TESTED)
+
+`engine/ConversationSummary.kt` plus the wiring in `ChatEngineImpl` and the continuation handoff.
+
+### The design constraint, stated first
+
+A summary must not be able to invent a fact. So this is **extractive, not abstractive**: every line is a
+verbatim excerpt of a message or of a tool result that exists, carrying the ids it came from. No model
+writes prose about the conversation, so nothing that was never said can appear in a summary. The cost is
+real and stated: extraction cannot compress forty turns into three sentences. It can keep them bounded,
+labelled and attributable.
+
+Classification uses **literal markers only** (`FAILED`, `REFUSED`, `NOT RUN`, `UNSURE`, `TODO:`, `Decided:`,
+`unverified`, a path, a hash, a number) checked with failures and uncertainty ahead of description. A
+line with no supporting evidence keeps the neutral label `OTHER` rather than being promoted into a claim.
+
+### What is preserved, and how
+
+| Requirement | Mechanism |
+|---|---|
+| decisions, facts, instructions, unresolved tasks | labelled excerpts, `DECISION` / `FACT` / `INSTRUCTION` / `OPEN_TASK` |
+| tool calls, results, statuses, provenance | each `ToolExchange` becomes a line with its status (`OK`, `FAILED`, `UNCERTAIN`, `REFUSED`) and `(incomplete)` when it was |
+| uncertainty and failures never resolved away | `FAILURE` and `UNCERTAINTY` labels, and they outrank chatter when the bound bites |
+| originals vs generated | the rendered block starts `GENERATED SUMMARY of earlier turns (excerpts, not verbatim; the original session remains the record)` and travels as a `SYSTEM` message with the synthetic id `summary-6.2` |
+| bounded retention | `SummaryLedger`: 24 lines, 6,000 chars rendered, the summary capped at a **quarter of the send budget** |
+| repeated summarisation | a message id already in the ledger is never summarised again |
+| lost tool exchanges | exchanges are rendered from their own list, not through the window, and the summary restates their statuses |
+
+### Budget discipline, and the bug it caught
+
+The summary is part of the request, so it is **counted inside** the budget, not added on top: the window
+is re-fitted once against what is left, and the summary is capped at 25% of that budget. The repo's own
+`LearnedLimitTest.theWallIsHitOnceThenRespected` failed while this was wrong, with a 2,012-char payload
+against a 1,020-char learned wall. That is the test doing its job, and the fix is in the engine, not in
+the assertion.
+
+### Continuation (Stage 6.2B)
+
+`Continuation` carries the summary, the exchange list as **data**, and a label built by
+`Continuation.labelFor(n, origin)` -> `Session 2 from git`. The existing P6 continuation path was extended
+rather than duplicated: `SessionHandoff` gained a `generatedSummary` field rendered in its own section,
+`ChatSession.generatedSummary` exposes what the engine retained, and `startHandoffSession` passes it, so
+the plus button and "Continue in New Session" now start the successor with what the predecessor had to
+leave out.
+
+**Historical calls are never re-executed.** There is no executor in `Continuation`, no tool name to call
+and no approval to inherit: the exchanges are inert records rendered as context lines. Replaying a write
+because a session boundary moved would be exactly the duplicate side effect the rest of this codebase
+spends its effort preventing.
+
+### Tests
+
+16 engine cases (`Stage62SummaryTest`) and 3 app cases (`Stage62HandoffSummaryTest`): instruction verbatim,
+failure labelled, refused/unsure statuses preserved, uncertainty preserved, open work preserved, neutral
+label when there is no evidence, the rendered block saying it is generated, a long line cut with the cut
+stated, the line bound keeping safety lines first, re-summarising not duplicating, the ledger bound
+admitting what fell off, the continuation's hop label and inert exchanges, a real send carrying
+`GENERATED SUMMARY` to the provider, an untouched window producing no summary at all, and a summary that
+only contains text that was actually said.
+
+### Limitations, honestly
+
+- **No compression.** Old detail is retained as excerpts, then dropped by the bound. Nothing is condensed
+  into a shorter statement of the same meaning.
+- Summaries are **not persisted**: a process restart starts with an empty ledger, so a restored session
+  reconstructs from the transcript instead.
+- Exchanges reach a continuation as labelled text inside the summary, **not** as provider tool pairs; a new
+  session's engine starts with an empty exchange list by design, so nothing can be replayed.
+- Continuation is UI-level (`startHandoffSession`, the plus chip and the overflow item). No JVM test drives
+  the manager, because it needs Android storage.
+- With an unknown model limit, nothing is trimmed and therefore nothing is summarised; retention is the
+  history setting's business.
+
 ## Stage 6.1 — context compatibility (IMPLEMENTED, LOCALLY TESTED, CI-GREEN)
 
 `engine/ContextPreparer.kt`, recorded on every send as `ChatEngineImpl.lastContextDecision`.
