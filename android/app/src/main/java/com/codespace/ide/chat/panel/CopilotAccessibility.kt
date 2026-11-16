@@ -37,6 +37,38 @@ object CopilotAccessibility {
         return who + ": " + short
     }
 
+    /**
+     * PROJECT SEVEN 7.9E — what to ANNOUNCE while text streams in.
+     *
+     * Announcing every token is worse than announcing nothing: TalkBack drowns the user in fragments of
+     * half-written sentences and the actually important events - done, failed, interrupted - are lost in
+     * the noise. So the stream is announced in meaningful steps only: the first words, then every
+     * [ANNOUNCE_EVERY_CHARS] characters, plus every terminal transition.
+     */
+    const val ANNOUNCE_EVERY_CHARS = 400
+
+    fun announcement(
+        previous: String?,
+        next: String,
+        finished: Boolean = false,
+        failed: Boolean = false,
+        interrupted: Boolean = false,
+    ): String? {
+        if (failed) return "Response failed. " + boundedTail(next)
+        if (interrupted) return "Response interrupted. " + boundedTail(next)
+        if (finished) return "Response complete. " + boundedTail(next)
+        if (next.isBlank()) return null
+        if (previous == null || previous.isBlank()) return "Assistant is replying."
+        // Re-announcing on every small update is the failure mode this exists to prevent.
+        if (next.length - previous.length < ANNOUNCE_EVERY_CHARS) return null
+        return "Assistant is still replying, " + next.length + " characters so far."
+    }
+
+    private fun boundedTail(text: String): String {
+        val one = text.replace('\n', ' ').trim()
+        return if (one.length <= 120) one else "… " + one.takeLast(120)
+    }
+
     /** A status that reads the same with colour removed: the word carries the state. */
     fun statusText(state: CopilotPresentation.TaskState): String = when (state) {
         CopilotPresentation.TaskState.DONE -> "done"
