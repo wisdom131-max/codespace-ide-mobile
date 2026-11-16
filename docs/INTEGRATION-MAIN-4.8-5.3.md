@@ -72,7 +72,7 @@ Ancestry on `main` after integration:
 
 ## Verification on the integrated tree
 
-- app unit suite **0 tests, 0 failures** (the `BackupTarTest` case now skips here with a printed
+- app unit suite **3408 tests, 0 failures** (the `BackupTarTest` case now skips here with a printed
   reason and still asserts on an unprivileged runner); engine suite **278 tests, 0 failures**.
 - `:app:compileDevDebugKotlin` and `:app:dexBuilderDevDebug` green (D8 is the check a green compile
   does not give: a non-local return out of an inline lambda compiles and then fails dexing).
