@@ -37,12 +37,18 @@ enum class SummaryKind {
 }
 
 data class SummaryLine(
-    val kind: SummaryKind,
+    /** Decides `render` order among equals: retention must not shuffle what was said. */
+    val seq: Int = 0,
     /** Verbatim excerpt, cut with a stated marker rather than paraphrased. */
     val text: String,
     /** Message ids this line was taken from. Empty is impossible: a line always came from somewhere. */
     val sourceIds: List<String>,
     val role: String,
+    val kind: SummaryKind = SummaryKind.OTHER,
+    /** PROJECT SIX 6.3A: how sure the conversation was, read from its own wording. */
+    val status: ClaimStatus = ClaimStatus.UNKNOWN,
+    /** PROJECT SIX 6.3A: original or generated, so restored text can never pass as the user's. */
+    val origin: LineOrigin = LineOrigin.MESSAGE,
 )
 
 data class ConversationSummary(
@@ -62,7 +68,12 @@ data class ConversationSummary(
             "remains the record).\n"
         val body = StringBuilder()
         for (line in lines) {
-            val row = "- [" + line.kind.name + "] " + line.text + "\n"
+            val sure = when (line.status) {
+                ClaimStatus.ASSUMED -> " [assumed]"
+                ClaimStatus.UNRESOLVED -> " [unresolved]"
+                else -> ""
+            }
+            val row = "- [" + line.kind.name + "] " + line.text + sure + "\n"
             if (head.length + body.length + row.length > maxChars) {
                 body.append("- [").append(SummaryKind.OTHER.name)
                     .append("] further earlier turns omitted from this summary to keep it bounded.\n")
@@ -104,6 +115,7 @@ object Summariser {
     ): ConversationSummary {
         val lines = ArrayList<SummaryLine>()
         val covered = ArrayList<String>()
+        var seq = 0
         for (m in dropped) {
             if (m.text.isBlank()) continue
             covered.add(m.id)
@@ -112,10 +124,13 @@ object Summariser {
                 val kind = classify(piece, m.role)
                 lines.add(
                     SummaryLine(
-                        kind = kind,
+                        seq = seq++,
                         text = excerpt(piece.trim()),
                         sourceIds = listOf(m.id),
                         role = m.role.name.lowercase(),
+                        kind = kind,
+                        status = ClaimStatus.of(piece),
+                        origin = LineOrigin.MESSAGE,
                     )
                 )
             }
@@ -125,16 +140,24 @@ object Summariser {
         for (x in exchanges) {
             lines.add(
                 SummaryLine(
-                    kind = if (x.status == ExchangeStatus.OK) SummaryKind.TOOL_RESULT else SummaryKind.FAILURE,
+                    seq = seq++,
                     text = excerpt(x.name + " -> " + x.status.name + (if (x.complete) "" else " (incomplete)") +
                         ": " + x.output.replace("\n", " ")),
                     sourceIds = listOf(x.callId),
                     role = "tool",
+                    kind = if (x.status == ExchangeStatus.OK) SummaryKind.TOOL_RESULT else SummaryKind.FAILURE,
+                    // An exchange states its own outcome; a refusal is resolved, an uncertain call is not.
+                    status = when (x.status) {
+                        ExchangeStatus.OK -> ClaimStatus.CONFIRMED
+                        ExchangeStatus.UNCERTAIN -> ClaimStatus.UNRESOLVED
+                        else -> ClaimStatus.CONFIRMED
+                    },
+                    origin = LineOrigin.TOOL_EXCHANGE,
                 )
             )
         }
         // Priority: instructions, failures and open work outlive idle chatter when the bound bites.
-        val ordered = lines.sortedBy { priority(it.kind) }
+        val ordered = lines.sortedWith(compareBy({ priority(it.kind) }, { it.seq }))
         val kept = if (ordered.size <= maxLines) ordered else ordered.take(maxLines)
         return ConversationSummary(kept, covered)
     }
@@ -200,6 +223,7 @@ class SummaryLedger(
     private var lines = ArrayList<SummaryLine>()
     private var revision = 0
     private var droppedForBound = 0
+    private var superseded = 0
 
     val current: ConversationSummary get() = ConversationSummary(lines.toList(), covered.toList(), revision)
 
@@ -210,8 +234,29 @@ class SummaryLedger(
     fun absorb(summary: ConversationSummary): ConversationSummary {
         revision += 1
         covered.addAll(summary.coveredIds)
-        val fresh = summary.lines.filterNot { l -> lines.any { it.text == l.text && it.kind == l.kind } }
-        lines = ArrayList((lines + fresh))
+        val next = ArrayList(lines)
+        for (fresh in summary.lines) {
+            if (next.any { it.text == fresh.text && it.kind == fresh.kind }) continue
+            // PROJECT SIX 6.3B: a NEWER statement of the same subject replaces the older one instead of
+            // sitting beside it. Without this the summary accumulates "decision: X" and "decision: Y"
+            // with no way to tell which one the work now follows. Only the same subject and the same
+            // kind are superseded: an earlier FAILURE is evidence and is never overwritten by a later
+            // success, it is kept so the record shows the failure happened.
+            if (fresh.kind in SUPERSEDABLE) {
+                val words = subjectWords(fresh)
+                if (words.isNotEmpty()) {
+                    val old = next.indexOfFirst {
+                        it.kind == fresh.kind && similar(subjectWords(it), words)
+                    }
+                    if (old >= 0) {
+                        next.removeAt(old)
+                        superseded += 1
+                    }
+                }
+            }
+            next.add(fresh)
+        }
+        lines = ArrayList(next.sortedBy { it.seq })
         if (lines.size > maxLines) {
             val excess = lines.size - maxLines
             droppedForBound += excess
@@ -223,12 +268,63 @@ class SummaryLedger(
     fun render(maxChars: Int = ConversationSummary.MAX_RENDER_CHARS): String {
         val base = current.render(maxChars)
         if (base.isEmpty()) return ""
-        return if (droppedForBound == 0) base
-        else base + "- [" + SummaryKind.OTHER.name + "] " + droppedForBound +
-            " older labelled line(s) fell off the retention bound.\n"
+        var out = base
+        if (superseded > 0) {
+            out += "- [" + SummaryKind.OTHER.name + "] " + superseded +
+                " older statement(s) of the same subject were replaced by a newer one.\n"
+        }
+        if (droppedForBound > 0) {
+            out += "- [" + SummaryKind.OTHER.name + "] " + droppedForBound +
+                " older labelled line(s) fell off the retention bound.\n"
+        }
+        return out
     }
 
     fun coveredIds(): Set<String> = covered.toSet()
+
+    /** How many older statements a newer one replaced. Read by tests and by the retained file. */
+    fun supersededCount(): Int = superseded
+
+    companion object {
+        /** Kinds where a later statement about the same subject is a correction, not an addition. */
+        private val SUPERSEDABLE = setOf(
+            SummaryKind.DECISION, SummaryKind.INSTRUCTION, SummaryKind.FACT, SummaryKind.OPEN_TASK,
+        )
+
+        private val STOP = setOf(
+            "the", "and", "for", "that", "with", "this", "from", "into", "have", "must", "never",
+            "will", "does", "not", "are", "was", "were", "but", "can", "its", "it's", "than", "then",
+        )
+
+        /**
+         * The distinctive words a line is about, order-insensitive.
+         *
+         * Two sentences about the same thing ("keep the branch stage-5.3 unmerged" and "keep the branch
+         * stage-5.3 on hold") share most of these; two unrelated ones do not. Deliberately crude and
+         * deliberately conservative: it is a duplicate detector, not an understanding of meaning, so it
+         * prefers keeping both lines over deleting one that might still matter.
+         */
+        fun subjectWords(line: SummaryLine): Set<String> =
+            line.text.lowercase()
+                .split(Regex("[^a-z0-9_.-]+"))
+                .filter { it.length >= 4 && it !in STOP }
+                .toSet()
+
+        /**
+         * Same subject = at least three distinctive words in common AND 60% of the SMALLER vocabulary
+         * shared. Containment rather than union: a correction usually adds words ("on hold instead"),
+         * so a union test would refuse exactly the corrections this exists to catch.
+         */
+        fun similar(a: Set<String>, b: Set<String>): Boolean {
+            if (a.isEmpty() || b.isEmpty()) return false
+            val shared = a.count { it in b }
+            val smaller = maxOf(a.size, b.size)
+            return shared >= 3 && shared.toDouble() / smaller >= 0.6
+        }
+
+        /** Kept for callers that want a printable subject. */
+        fun subjectKey(line: SummaryLine): String = subjectWords(line).sorted().joinToString(" ")
+    }
 }
 
 /**

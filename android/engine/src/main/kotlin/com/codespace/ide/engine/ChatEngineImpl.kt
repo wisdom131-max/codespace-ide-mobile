@@ -19,6 +19,12 @@ class ChatEngineImpl(
     private val transport: ChatTransport,
     private val adapter: ProviderAdapter = OpenAIAdapter(),
     /**
+     * PROJECT SIX 6.3D: where the retained summary lives between process lifetimes. Null means
+     * "retention is memory-only" (JVM tests, or no writable directory) and says so rather than
+     * pretending a summary survives a restart.
+     */
+    private val summaryStore: SummaryStore? = null,
+    /**
      * STAGE 5.4: tool call/result pairs already run in this turn, rendered per provider so the next
      * request carries the pairing a provider needs instead of prose about it. Empty by default, which
      * is byte-identical to the old behaviour.
@@ -29,6 +35,9 @@ class ChatEngineImpl(
     companion object {
         /** A synthetic id, so nothing can mistake the summary for a real transcript row. */
         const val SUMMARY_ID = "summary-6.2"
+
+        /** Synthetic id for the verbatim retrieval block: never a transcript row, never a tool call. */
+        const val RETRIEVED_ID = "retrieved-6.3"
     }
 
     private val state = SessionState(sessionId)
@@ -38,6 +47,38 @@ class ChatEngineImpl(
 
     /** The summary carried on the last send, or empty when nothing has been summarised. */
     val lastSummaryText: String get() = summaryLedger.render()
+
+    /**
+     * What happened to retention, if anything did. A restoration, a rebuild or an unreadable file is
+     * reported here rather than swallowed: an owner whose summary vanished deserves to know it was
+     * rebuilt, and one whose file was corrupt deserves to know it was ignored.
+     */
+    @Volatile
+    var lastRetentionNote: String? = null
+        private set
+
+    /** Last send's verbatim retrieval block, or empty. Never re-executed: it is text. */
+    @Volatile
+    var lastRetrievedText: String = ""
+        private set
+
+    init {
+        // Restoring is reading. A corrupt or foreign file is ignored with a reason and the ledger is
+        // rebuilt from the messages this session still has - never patched up from guesses.
+        summaryStore?.let { store ->
+            when (val load = store.load(sessionId)) {
+                is SummaryStore.Load.Ok -> {
+                    summaryLedger.absorb(load.summary)
+                    lastRetentionNote = "Restored " + load.summary.lines.size +
+                        " retained line(s) from this session's stored summary."
+                }
+                is SummaryStore.Load.Corrupt ->
+                    lastRetentionNote = "Stored summary ignored (" + load.reason +
+                        "); it will be rebuilt from the conversation."
+                SummaryStore.Load.Empty -> lastRetentionNote = null
+            }
+        }
+    }
 
     /** Ids already represented by a summary, so a turn is never summarised twice. */
     val summarisedIds: Set<String> get() = summaryLedger.coveredIds()
@@ -64,6 +105,14 @@ class ChatEngineImpl(
             private set
     var lastFitDroppedChars: Int = 0
         private set
+
+    /**
+     * The ids that already travel in the window, plus anything the summary already says. Retrieval
+     * quotes what is MISSING, so a turn in the window (or already summarised word for word) is not
+     * quoted twice: repetition spends budget the request needs.
+     */
+    private fun refit1Ids(fit: HistoryBudget.Fit, summaryText: String): Set<String> =
+        if (summaryText.isEmpty()) fit.messages.map { it.id }.toSet() else fit.messages.map { it.id }.toSet()
 
     private fun limitKey(config: EngineConfig): String =
         config.baseUrl.lowercase() + "|" + config.modelId.lowercase()
@@ -130,21 +179,41 @@ class ChatEngineImpl(
         if (dropped.isNotEmpty() && !summaryLedger.alreadyCovered(dropped)) {
             val built = Summariser.summarise(dropped, exchanges())
             summaryLedger.absorb(built)
+            // A failed save is reported as "not retained", never as success.
+            if (summaryStore != null && !summaryStore.save(sessionId, summaryLedger.current, summaryLedger.coveredIds())) {
+                lastRetentionNote = "Retention is memory-only for this session: the summary could not be written."
+            }
         }
         // A summary may never eat the request it rides in: it is capped at a quarter of the budget the
         // endpoint allows, so the newest turn and a slice of recent history always have room.
         val summaryCap = (budgetChars / 4).coerceIn(0, ConversationSummary.MAX_RENDER_CHARS)
         val summaryText = if (summaryCap < 200) "" else summaryLedger.render(summaryCap)
+        // PROJECT SIX 6.3C: when the question matches an older turn that is no longer in the window,
+        // quote that turn back verbatim inside its own eighth of the budget. Reading, not re-running:
+        // the retrieved text is a ChatMessage excerpt and there is no executor on this path.
+        val retrievalCap = (budgetChars / 8).coerceAtMost(800)
+        val retrieved = if (retrievalCap < 120 || dropped.isEmpty()) Retrieved.EMPTY
+                        else HistoryRetriever.retrieve(
+                            query = userText,
+                            candidates = dropped,
+                            excludeIds = refit1Ids(fit, summaryText),
+                            budgetChars = retrievalCap,
+                            alreadyQuoted = summaryText,
+                        )
+        val retrievedText = retrieved.render()
+        lastRetrievedText = retrievedText
+        val auxText = summaryText + retrievedText
         // The summary is COUNTED, not added on top: it is part of the request, so the window it rides
         // with is re-fitted once against what is left of the budget. One pass only - repeatedly
         // shrinking a conversation to fit its own summary is the loop that never converges.
-        val refit = if (summaryText.isEmpty()) fit else HistoryBudget.fit(
-            eligible, mode, systemChars = summaryText.length,
-            budgetChars = (budgetChars - summaryText.length).coerceAtLeast(1),
+        val refit = if (auxText.isEmpty()) fit else HistoryBudget.fit(
+            eligible, mode, systemChars = auxText.length,
+            budgetChars = (budgetChars - auxText.length).coerceAtLeast(1),
         )
-        val window = if (summaryText.isEmpty()) refit.messages else listOf(
-            ChatMessage(id = SUMMARY_ID, role = ChatRole.SYSTEM, text = summaryText)
-        ) + refit.messages
+        val head = ArrayList<ChatMessage>()
+        if (summaryText.isNotEmpty()) head.add(ChatMessage(id = SUMMARY_ID, role = ChatRole.SYSTEM, text = summaryText))
+        if (retrievedText.isNotEmpty()) head.add(ChatMessage(id = RETRIEVED_ID, role = ChatRole.SYSTEM, text = retrievedText))
+        val window = if (head.isEmpty()) refit.messages else head + refit.messages
         val effectiveFit = refit
         // Deliberately NOT an event: HistoryTrimmed was removed on 2026-11-02 because a transcript
         // row narrating an engine decision gives the owner nothing to act on (see EngineModels).
