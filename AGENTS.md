@@ -60,6 +60,8 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 ---
 
 ## CHANGE LOG
+### [2026-11-16 11:40 WAT] [LOCAL] PROJECT FIVE STAGE 5.1 — provider capability intelligence. `chat/provider/ProviderCapabilities.kt`: `ProviderCapability`/`ModelLimits` with nullable limits (unknown is never guessed), `ProviderCatalogue` for the shipped families (Gemini flash+pro, Anthropic Opus; unknown ids resolve to `unknown()`), `TaskRequirement` + `ProviderSelector.assess` returning SUITABLE/RISKY/UNSUITABLE with reasons, and `choose` which returns the user's own model plus at most one offered alternative — no code path switches provider silently. 11 new cases; 3,219 tests on branch stage-5.1 with `BackupTarTest` the only failure; dev-debug compile + D8 dex green; NOT CI-green (branch unpushed), not device-verified. Record: docs/PROJECT-FIVE-CROSS-PROVIDER.md.
+
 
 ### [2026-10-17 16:05 WAT] [CI-GREEN 39043403910 @ 2c9e9a9] BATCH5 SHIPPED (advisor GO, each item own commit): P1 KeyProbe false-positive fix + P2 remove-root pure matching + P3 JDAP-DIAG logging; artifact supersedes 9d4b7ca [BATCH5]
 
