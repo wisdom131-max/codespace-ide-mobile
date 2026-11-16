@@ -26,7 +26,21 @@ class ChatEngineImpl(
     private val exchanges: () -> List<ToolExchange> = { emptyList() },
 ) : ChatEngine {
 
+    companion object {
+        /** A synthetic id, so nothing can mistake the summary for a real transcript row. */
+        const val SUMMARY_ID = "summary-6.2"
+    }
+
     private val state = SessionState(sessionId)
+
+    /** PROJECT SIX 6.2: labelled retention of the turns that left the window. */
+    private val summaryLedger = SummaryLedger()
+
+    /** The summary carried on the last send, or empty when nothing has been summarised. */
+    val lastSummaryText: String get() = summaryLedger.render()
+
+    /** Ids already represented by a summary, so a turn is never summarised twice. */
+    val summarisedIds: Set<String> get() = summaryLedger.coveredIds()
 
     /**
      * LEARNED LIMITS: a limit the provider stated about itself, remembered per model+host.
@@ -106,26 +120,45 @@ class ChatEngineImpl(
         val mode = HistoryMode.parse(config.historyMode)
         // Fit to a LEARNED limit when we have one; systemChars 0 because the prompt rides outside
         // the window and the 85% headroom is the allowance for it.
-        val fit = HistoryBudget.fit(
-            eligible, mode,
-            systemChars = 0,
-            budgetChars = if (config.requestCharsBudget > 0) config.requestCharsBudget
-                          else learnedBudgetChars(config),
+        val budgetChars = if (config.requestCharsBudget > 0) config.requestCharsBudget
+                          else learnedBudgetChars(config)
+        val fit = HistoryBudget.fit(eligible, mode, systemChars = 0, budgetChars = budgetChars)
+        // PROJECT SIX 6.2: turns about to leave the window are summarised BEFORE they go, once each,
+        // and the summary rides at the head of the request clearly labelled as generated. A message
+        // already represented by the ledger is not summarised a second time on a later send.
+        val dropped = eligible.filter { m -> fit.messages.none { it.id == m.id } }
+        if (dropped.isNotEmpty() && !summaryLedger.alreadyCovered(dropped)) {
+            val built = Summariser.summarise(dropped, exchanges())
+            summaryLedger.absorb(built)
+        }
+        // A summary may never eat the request it rides in: it is capped at a quarter of the budget the
+        // endpoint allows, so the newest turn and a slice of recent history always have room.
+        val summaryCap = (budgetChars / 4).coerceIn(0, ConversationSummary.MAX_RENDER_CHARS)
+        val summaryText = if (summaryCap < 200) "" else summaryLedger.render(summaryCap)
+        // The summary is COUNTED, not added on top: it is part of the request, so the window it rides
+        // with is re-fitted once against what is left of the budget. One pass only - repeatedly
+        // shrinking a conversation to fit its own summary is the loop that never converges.
+        val refit = if (summaryText.isEmpty()) fit else HistoryBudget.fit(
+            eligible, mode, systemChars = summaryText.length,
+            budgetChars = (budgetChars - summaryText.length).coerceAtLeast(1),
         )
-        val window = fit.messages
+        val window = if (summaryText.isEmpty()) refit.messages else listOf(
+            ChatMessage(id = SUMMARY_ID, role = ChatRole.SYSTEM, text = summaryText)
+        ) + refit.messages
+        val effectiveFit = refit
         // Deliberately NOT an event: HistoryTrimmed was removed on 2026-11-02 because a transcript
         // row narrating an engine decision gives the owner nothing to act on (see EngineModels).
         // The count is kept for the Chat Log, where it is diagnostic data rather than chat noise.
-        lastFitDroppedMessages = fit.droppedMessages
+        lastFitDroppedMessages = effectiveFit.droppedMessages
         // PROJECT SIX 6.1: say what happened to the history, using only limits the catalogue knows.
         lastContextDecision = ContextPreparer.decide(
             capability = ModelCatalog.capabilityFor(config.providerId, config.modelId),
             charsInWindow = window.sumOf { it.text.length },
-            droppedMessages = fit.droppedMessages,
-            droppedChars = fit.droppedChars,
+            droppedMessages = effectiveFit.droppedMessages,
+            droppedChars = effectiveFit.droppedChars,
             maxOutputTokens = config.maxResponseTokens.coerceAtLeast(0),
         )
-        lastFitDroppedChars = fit.droppedChars
+        lastFitDroppedChars = effectiveFit.droppedChars
         val payload = adapter.payloadWithHistory(window, userText, attachments, config, exchanges())
         val overBudget = BudgetGuard.checkPayload(payload.length, config.maxPayloadChars)
         if (overBudget != null && !config.confirmOverBudget) {

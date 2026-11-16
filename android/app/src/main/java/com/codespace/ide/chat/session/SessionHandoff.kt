@@ -39,10 +39,21 @@ object SessionHandoff {
         /** Origin of the chain, and this session's position in it ("Session 2 from Git"). */
         val originLabel: String = "",
         val sessionNumber: Int = 1,
+        /**
+         * PROJECT SIX 6.2B: the generated summary the source session was already carrying, if any.
+         * Kept in its own field and its own section so it can never be read as something the user
+         * said: the text inside it is labelled by kind, and the section header repeats that it is
+         * generated. Tool outcomes inside it are CONTEXT, never work to redo.
+         */
+        val generatedSummary: String = "",
     ) {
         /** The first message of the linked session. Readable, and honest about what it is. */
         fun render(): String = buildString {
             append("Continuing from an earlier conversation (\"").append(label).append("\").\n")
+            if (generatedSummary.isNotBlank()) {
+                append("\n## Generated summary of earlier turns (not verbatim; the earlier session is the record)\n")
+                append(generatedSummary).append("\n")
+            }
             append("This is a handoff, not the transcript: only what still matters is carried over.\n")
             section("Decisions already made", decisions)
             section("Constraints that still apply", constraints)
@@ -120,6 +131,7 @@ object SessionHandoff {
         label: String? = null,
         sessionNumber: Int = 1,
         originLabel: String = "",
+        generatedSummary: String = "",
     ): Handoff {
         val safe = turns.filter { !isSecret(it.text) }
         fun pick(re: Regex): List<String> = safe
@@ -158,6 +170,7 @@ object SessionHandoff {
                 .map { it.text }.distinct().take(MAX_ITEMS).toList(),
             originLabel = originLabel,
             sessionNumber = if (sessionNumber < 1) 1 else sessionNumber,
+            generatedSummary = generatedSummary,
         )
     }
 

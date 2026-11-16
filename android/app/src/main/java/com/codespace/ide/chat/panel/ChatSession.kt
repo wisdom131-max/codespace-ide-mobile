@@ -160,6 +160,13 @@ class ChatSession internal constructor(
     private var engine: ChatEngineImpl = buildEngine()
 
     /**
+     * PROJECT SIX 6.2B: the generated summary this session is carrying, or "". Read by the
+     * continuation so a new session starts with what the old one had to leave out, instead of an
+     * empty page. Empty until a window has actually been reduced.
+     */
+    val generatedSummary: String get() = engine.lastSummaryText
+
+    /**
      * BATCH 4: true once the restore ATTEMPT has finished (successfully or not). Nothing
      * is written to disk before that, or a conversation opened and immediately saved by
      * the collector below would overwrite the very history it is about to load.

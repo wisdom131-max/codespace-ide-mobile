@@ -22,7 +22,8 @@ internal fun startHandoffSession(
     projectId: String,
     activeId: String,
 ): String? {
-    val source = manager.session(projectId, activeId)?.ui?.value?.rows.orEmpty()
+    val active = manager.session(projectId, activeId)
+    val source = active?.ui?.value?.rows.orEmpty()
     val handoff = com.codespace.ide.chat.session.SessionHandoff.build(
         source.mapNotNull { row ->
             when (row) {
@@ -31,6 +32,9 @@ internal fun startHandoffSession(
                 else -> null
             }
         },
+        // PROJECT SIX 6.2B: what the old session had to leave out of its window travels with the
+        // handoff, labelled as generated.
+        generatedSummary = active?.generatedSummary.orEmpty(),
     )
     val lineage = com.codespace.ide.chat.session.SessionLineage.forProject(context, projectId)
     val parentTitle = com.codespace.ide.chat.session.SessionTitles
