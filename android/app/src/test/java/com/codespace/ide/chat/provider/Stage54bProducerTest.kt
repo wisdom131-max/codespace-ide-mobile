@@ -157,4 +157,20 @@ class Stage54bProducerTest {
         assertTrue(seen.contains("REFUSED"))
         assertTrue("the refusal did not stop the real result going too", seen.contains("contents"))
     }
+
+    @Test
+    fun `a huge tool output is cut and the cut is stated`() {
+        val log = ToolExchangeLog()
+        log.record("call-1", "read_file", "{}", "x".repeat(9_000))
+        val out = log.snapshot().single().output
+        assertTrue(out.length < 9_000)
+        assertTrue("the model must be told it was truncated", out.contains("truncated 5000 chars"))
+    }
+
+    @Test
+    fun `a short output is untouched`() {
+        val log = ToolExchangeLog()
+        log.record("call-1", "read_file", "{}", "small")
+        assertEquals("small", log.snapshot().single().output)
+    }
 }

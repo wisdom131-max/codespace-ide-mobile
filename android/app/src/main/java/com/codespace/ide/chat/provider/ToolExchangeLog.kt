@@ -37,7 +37,7 @@ class ToolExchangeLog(private val limit: Int = 60) {
             name = name,
             argumentsJson = argumentsJson,
             status = statusOf(output),
-            output = output,
+            output = bound(output),
             complete = complete,
         )
         trim()
@@ -71,7 +71,18 @@ class ToolExchangeLog(private val limit: Int = 60) {
         }
     }
 
+    /**
+     * A single tool output can be megabytes (a whole file, a build log). Sending that back verbatim on
+     * every later request is how one call quietly eats a context window, so it is cut here and the cut
+     * is STATED in the text - an omission the model is not told about would be a lie by silence.
+     */
+    private fun bound(output: String): String =
+        if (output.length <= MAX_OUTPUT_CHARS) output
+        else output.take(MAX_OUTPUT_CHARS) + "\n[truncated " + (output.length - MAX_OUTPUT_CHARS) + " chars]"
+
     companion object {
+        const val MAX_OUTPUT_CHARS = 4_000
+
         /**
          * The status the executor's own words imply. Anything unrecognised is UNCERTAIN, never OK:
          * an outcome this app cannot read is not evidence of success.

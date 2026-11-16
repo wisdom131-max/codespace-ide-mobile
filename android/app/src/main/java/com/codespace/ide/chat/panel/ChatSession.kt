@@ -222,6 +222,9 @@ class ChatSession internal constructor(
      */
     private var turnSerial: Int = 0
 
+    /** The last context sentence shown, so a long session is not narrated the same fact every send. */
+    private var lastContextNotice: String? = null
+
     /**
      * STAGE 5.4 PART 3: the one place a call's exchange id is formed, so the executed path and the
      * refused path agree and a call cannot be recorded twice under two different ids.
@@ -812,6 +815,14 @@ class ChatSession internal constructor(
         sendJob = scope.launch {
             try {
                 engine.send(userText, attachments, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, attachments, confirmOverBudget, gen) }
+                // PROJECT SEVEN 7.4 (with PROJECT SIX 6.1): if the request had to leave turns behind, or
+                // could not fit, say so once. Silent history loss is the thing this line exists to stop.
+                engine.lastContextDecision?.notice?.let { note ->
+                    if (note != lastContextNotice) {
+                        lastContextNotice = note
+                        appendRow(ChatRowModel.InfoNote(note))
+                    }
+                }
             } catch (_: CancellationException) {
                 // Cooperative cancel: partial text is already in the rows.
                 ui.value = ui.value.copy(streaming = false)

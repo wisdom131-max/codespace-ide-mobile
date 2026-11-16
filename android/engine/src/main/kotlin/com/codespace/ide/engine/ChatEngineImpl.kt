@@ -40,7 +40,14 @@ class ChatEngineImpl(
 
     /** Last send's drop count, for diagnostics. Never rendered as a transcript row. */
     var lastFitDroppedMessages: Int = 0
-        private set
+
+        /**
+         * PROJECT SIX 6.1: what the last send did to the history, and why. The app reads it to show
+         * ONE honest line when turns were left out, or nothing when nothing needs saying.
+         */
+        @Volatile
+        var lastContextDecision: ContextPreparer.Decision? = null
+            private set
     var lastFitDroppedChars: Int = 0
         private set
 
@@ -110,6 +117,14 @@ class ChatEngineImpl(
         // row narrating an engine decision gives the owner nothing to act on (see EngineModels).
         // The count is kept for the Chat Log, where it is diagnostic data rather than chat noise.
         lastFitDroppedMessages = fit.droppedMessages
+        // PROJECT SIX 6.1: say what happened to the history, using only limits the catalogue knows.
+        lastContextDecision = ContextPreparer.decide(
+            capability = ModelCatalog.capabilityFor(config.providerId, config.modelId),
+            charsInWindow = window.sumOf { it.text.length },
+            droppedMessages = fit.droppedMessages,
+            droppedChars = fit.droppedChars,
+            maxOutputTokens = config.maxResponseTokens.coerceAtLeast(0),
+        )
         lastFitDroppedChars = fit.droppedChars
         val payload = adapter.payloadWithHistory(window, userText, attachments, config, exchanges())
         val overBudget = BudgetGuard.checkPayload(payload.length, config.maxPayloadChars)
