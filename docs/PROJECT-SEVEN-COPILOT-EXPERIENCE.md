@@ -135,6 +135,11 @@ per state.
 
 ## Checkpoint 3 — 7.9 measured contrast and 7.6 picker wording
 
+**CI: run `43923652452` on `df2ba3e`, 26/26 steps, success.** An earlier dispatch (`43923037166` on
+`0edf5d3`) was queued without ever being assigned a runner, the same stall seen before on this repo;
+it was superseded by the replacement run rather than being counted as a result.
+
+
 ### 7.9A — contrast, measured instead of guessed
 
 `ContrastAudit` computes the WCAG ratio from the actual `ChatTokens` values the renderer uses, for both
