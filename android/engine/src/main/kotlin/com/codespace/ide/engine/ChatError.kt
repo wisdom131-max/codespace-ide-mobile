@@ -10,6 +10,23 @@ package com.codespace.ide.engine
 sealed class ChatError(val userVerdict: String, val retryable: Boolean) {
 
     /**
+     * STAGE 5.3b: the evidence behind this verdict — status, provider code/type, Retry-After,
+     * sanitized message and which shape it came from.
+     *
+     * It is written once, by [ErrorTaxonomy], at the moment the provider's answer is read, and only
+     * read afterwards. It exists because the verdict alone cannot answer questions the app legitimately
+     * has: a 400 may be a context overrun or a malformed request, and "out of quota" is not a
+     * temporary rate limit. Null means the classifier had no provider body to read, in which case
+     * nothing may be invented from the verdict.
+     */
+    var facts: ProviderErrorFacts? = null
+        private set
+
+    /** Called by the classifier only. Later stages must never rewrite what the provider said. */
+    internal fun attachFacts(f: ProviderErrorFacts): ChatError = also { facts = f }
+
+
+    /**
      * 429: wait card with the provider's Retry-After when present. The earlier copy said
      * "Wait 30" - the raw number, no unit - whenever the header was present.
      */
@@ -183,6 +200,23 @@ object ErrorTaxonomy {
         endpointPath: String? = null,
         providerLabel: String = "",
         keySlotName: String = "",
+        providerId: String = "",
+        modelId: String = "",
+    ): ChatError {
+        // The evidence is extracted FIRST, so even the branches that only use the status carry the
+        // provider's own code, type and sanitized message into the app.
+        val facts = ProviderErrors.extract(providerId, status, body, headers, modelId)
+        val verdict = verdictFor(status, headers, body, endpointPath, providerLabel, keySlotName)
+        return verdict.attachFacts(facts)
+    }
+
+    private fun verdictFor(
+        status: Int,
+        headers: Map<String, String>,
+        body: String,
+        endpointPath: String?,
+        providerLabel: String,
+        keySlotName: String,
     ): ChatError {
         return when {
             status == 429 -> ChatError.RateLimited(retryAfterSec(headers))
@@ -213,7 +247,8 @@ object ErrorTaxonomy {
     }
 
     /** Network-layer failures (connect/read timeouts, mid-stream EOF). */
-    fun network(detail: String): ChatError = ChatError.Network(brief(detail))
+    fun network(detail: String): ChatError =
+        ChatError.Network(brief(detail)).attachFacts(ProviderErrors.fromThrowable(java.io.IOException(detail)))
 
     /**
      * The provider's own sentence for a 401/403, sanitized. OpenRouter-shaped bodies carry

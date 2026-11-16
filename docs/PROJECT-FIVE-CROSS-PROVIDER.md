@@ -216,6 +216,54 @@ triggered from a context error. `SideEffectRecovery` is wired to the gateway out
 write. No live provider was contacted, so real provider error bodies remain unverified against the
 shapes above.
 
+## Stage 5.3b — the evidence reaches the app (IMPLEMENTED, LOCALLY TESTED)
+
+The limitation Stage 5.3 recorded — "`ChatError` carries no status or provider code, so the app planner
+only knows what a verdict already implies" — is closed.
+
+**Where the information was lost.** `ChatEngineImpl` caught `TransportHttpException` and called
+`ErrorTaxonomy.classify(status, headers, body, path, providerLabel, keySlotName)`. That function read
+the body for wording and for a token limit, then threw the rest away: the provider's `code`/`type`, the
+parsed `Retry-After`, the raw status and the sanitized message never left the engine. So the app saw
+`ChatError.BadRequest("...")` and could not tell a context overrun from a malformed request, and
+`ChatError.RateLimited(sec)` could not tell a temporary limit from an exhausted quota.
+
+**The typed carrier.** `ChatError` now holds `facts: ProviderErrorFacts?`, written once by the
+classifier (`attachFacts`, `private set`, `internal` setter) and read by the app. It is null when no
+provider body was read — for example a locally built `ChatError.Server(500)` — and null means nothing
+may be inferred. `ErrorTaxonomy.classify` extracts the facts BEFORE choosing the verdict, so even the
+status-only branches carry them, and `ChatEngineImpl` now passes `providerId` and `modelId` so the
+facts name the provider and model that were actually used. `ErrorTaxonomy.network` attaches transport
+facts the same way.
+
+**Runtime integration.** `ChatSession` builds the failure row with `ChatFailureAdvice.adviceFor(err)`
+instead of `noteFor(err)`, and `adviceFor` reads `err.facts` first, falling back to what a bare verdict
+proves, then to the existing `ProviderRetry` sentence. `planFor(err)` exposes the whole decision for
+callers that want the action rather than the sentence. The retry arithmetic is untouched:
+`ProviderRetry` remains the single policy for attempt ceilings, backoff and the Retry-After cap.
+
+**One classification correction.** A `400` whose body yields no code, type or message is now UNKNOWN
+rather than INVALID_REQUEST. "The request was rejected" is not "the request was malformed", and
+inventing the second from the first turned an unreadable custom endpoint into a permanent-failure
+claim about the user's own message. Unambiguous statuses (401, 403, 402, 404, 408, 413, 429, 5xx) still
+classify without a body.
+
+**Tests.** 10 cases in `engine/Stage53bTypedFactsTest` (retry-after and code carried through, key
+rejection code, context overrun inside a 400, HTML body safe, custom body unknown, credential stripped,
+transport facts, no evidence invents nothing, planner answers from facts, quota not turned into a wait)
+and 9 in `app/Stage53bErrorPathTest` (context asked for reduction, malformed request called permanent,
+temporary limit keeps a plain row, long Retry-After explained, quota asks the user, rejected key names
+the key, unknown custom endpoint never invented into a retry, executed write outranks the provider
+error, verdict without evidence still answers). Both suites start at `ErrorTaxonomy.classify`, which is
+the production engine boundary, and end at `ChatFailureAdvice`, which is what `ChatSession` renders.
+
+**Results.** 3,266 app tests with `BackupTarTest.failureMessageCarriesRealTotals` the only failure;
+engine suite green. Dev-debug compile and D8 dex green. Not CI-green; not device-verified.
+
+**Still limited.** Context reduction remains advised, never automatic. `SideEffectRecovery` still
+performs no new read-back for an uncertain write inside `ChatSession`. No live provider was contacted,
+so the real error bodies remain unverified against these shapes — only the documented formats are.
+
 ## Next stage (5.4)
 
 Cross-provider tool compatibility and streaming normalisation: normalise tool definitions and tool-call

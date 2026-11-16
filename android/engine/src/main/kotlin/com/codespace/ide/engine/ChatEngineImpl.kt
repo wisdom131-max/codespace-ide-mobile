@@ -245,7 +245,9 @@ class ChatEngineImpl(
             val err = ErrorTaxonomy.classify(
                 t.status, t.headers, t.body, EndpointUrls.redactedPath(requestUrl),
                 providerLabel = attemptCfg.providerId,
-                keySlotName = attemptCfg.keySlotName)
+                keySlotName = attemptCfg.keySlotName,
+                providerId = attemptCfg.providerId,
+                modelId = attemptCfg.modelId)
             if (err is ChatError.PromptTooLarge && err.limit != null) {
                 // 85% headroom: the reply needs room too, and re-hitting the wall by one token is
                 // how an owner concludes the app is broken.

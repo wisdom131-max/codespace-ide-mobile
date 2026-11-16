@@ -1142,7 +1142,7 @@ class ChatSession internal constructor(
                 // Item 36: the retry verdict is folded INTO the failure card rather than appended
                 // as a second row - one error, one card, and the card stays the last row so the
                 // failure is still visibly the last thing that happened.
-                appendRow(ChatStatusMapping.rowForError(err, ChatFailureAdvice.noteFor(err)))
+                appendRow(ChatStatusMapping.rowForError(err, ChatFailureAdvice.adviceFor(err)))
                 ui.value = ui.value.copy(streaming = false)
             }
         }

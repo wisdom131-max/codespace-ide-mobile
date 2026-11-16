@@ -131,7 +131,11 @@ object ProviderErrors {
             facts.status == 413 -> ErrorClass.CONTEXT_EXCEEDED
             facts.status == 429 -> ErrorClass.RATE_LIMITED
             facts.status == 404 -> ErrorClass.UNSUPPORTED_CAPABILITY
-            facts.status == 400 || facts.status == 422 -> ErrorClass.INVALID_REQUEST
+            // A 400 means "the request was rejected", which is NOT the same as "the request was
+            // malformed": without the provider's own code or words, the reason is unknown and must
+            // stay unknown rather than become a permanent-failure claim about the user's message.
+            facts.status == 400 || facts.status == 422 ->
+                if (hay.isBlank()) ErrorClass.UNKNOWN else ErrorClass.INVALID_REQUEST
             facts.status in 500..599 -> ErrorClass.PROVIDER_UNAVAILABLE
             else -> ErrorClass.UNKNOWN
         }

@@ -4,6 +4,7 @@ import com.codespace.ide.engine.ChatError
 import com.codespace.ide.engine.ProviderErrorFacts
 import com.codespace.ide.engine.ProviderRetry
 import com.codespace.ide.engine.RecoveryAction
+import com.codespace.ide.engine.RecoveryPlan
 import com.codespace.ide.engine.RecoveryPlanner
 
 /**
@@ -71,11 +72,25 @@ object ChatFailureAdvice {
     }
 
     /** The facts a verdict already proves, or null when it proves none. */
-    private fun factsFor(err: ChatError): ProviderErrorFacts? = when (err) {
+    private fun factsFor(err: ChatError): ProviderErrorFacts? = err.facts ?: when (err) {
         is ChatError.RateLimited -> ProviderErrorFacts(status = 429, retryAfterSec = err.retryAfterSec)
         is ChatError.OutOfCredits -> ProviderErrorFacts(status = 402, code = "insufficient_quota")
         is ChatError.Auth -> ProviderErrorFacts(status = 401, message = err.detail)
         else -> null
+    }
+
+    /**
+     * The full decision, for callers that want the action and not only the sentence. The engine's
+     * facts win; only a verdict with no evidence falls back to what the verdict itself proves.
+     */
+    fun planFor(
+        err: ChatError,
+        attempt: Int = 1,
+        externalWriteDone: Boolean = false,
+        alternativeModel: String? = null,
+    ): RecoveryPlan? {
+        val facts = factsFor(err) ?: return null
+        return RecoveryPlanner.plan(facts, attempt, externalWriteDone, alternativeModel)
     }
 
     /**
