@@ -14,8 +14,13 @@ on:
 jobs:
   keepalive:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
+      # The probe lives in scripts/, so the job needs the repo. Without this the step ran a path that
+      # did not exist and reported "No such file or directory" as a backend failure - a probe failing
+      # for a reason that has nothing to do with the backend, which is the confusion this job exists
+      # to avoid.
+      - uses: actions/checkout@v4
       - name: Ping Supabase Postgres with a real query
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
