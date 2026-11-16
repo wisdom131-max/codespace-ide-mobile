@@ -64,6 +64,26 @@ internal fun startHandoffSession(
         com.codespace.ide.chat.session.SessionLineage.label(successor),
     )
     manager.session(projectId, created.meta.id)?.send(handoff.render())
-    return com.codespace.ide.chat.session.SessionLineage.label(successor) +
-        " - " + com.codespace.ide.chat.session.SessionHandoff.describe(handoff)
+    // PROJECT SEVEN 7.7: tell the owner WHAT was carried, counted from the summary the successor
+    // actually received, instead of a bare "continued". Retention-on-disk is checked, not assumed.
+    val carried = CopilotPresentation.carriedContext(
+        label = com.codespace.ide.chat.session.SessionLineage.label(successor),
+        kinds = CopilotPresentation.kindsFromRenderedSummary(handoff.generatedSummary),
+        exchangeCount = 0,
+        retainedOnDisk = handoffRetentionFileExists(context, activeId),
+    )
+    return CopilotPresentation.carriedContextLine(carried)
+}
+
+/**
+ * True when this session's retained summary is already on disk. A false answer is not an error: a
+ * session that never had to compress its window has nothing stored yet, and the notice says so rather
+ * than promising a summary that is not there.
+ */
+private fun handoffRetentionFileExists(context: Context, sessionId: String): Boolean {
+    val dir = java.io.File(context.filesDir, "chat-retention")
+    if (!dir.isDirectory) return false
+    val safe = sessionId.replace(Regex("[^A-Za-z0-9._-]"), "_").take(40)
+    val tag = Integer.toHexString(sessionId.hashCode())
+    return java.io.File(dir, safe + "-" + tag + ".summary").exists()
 }
