@@ -20,6 +20,11 @@ jobs:
           # new APK always has a HIGHER versionCode than the installed one.
           fetch-depth: 0
 
+      - name: Backend health probe regression check
+        # The keep-alive probe must retry a cold start and must fail on non-2xx. Its own checks run
+        # here so a change to that behaviour cannot pass review unnoticed.
+        run: bash scripts/test-backend-health-probe.sh
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:

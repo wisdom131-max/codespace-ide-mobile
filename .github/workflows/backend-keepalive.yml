@@ -25,8 +25,13 @@ jobs:
           echo "[$(date -u)] Supabase keep-alive query succeeded — activity clock reset."
 
       - name: Ping Render backend health (warmth log)
-        run: |
-          echo "[$(date -u)] Curling Render health endpoint..."
-          curl -sS --max-time 60 -o /dev/null -w "Render health HTTP:%{http_code} time:%{time_total}s\n" \
-            https://codespace-ide-backend.onrender.com/api/v1/health
-          echo "[$(date -u)] Keep-alive run complete."
+        # Retries a Render free-tier cold start instead of calling it an outage, and treats any
+        # non-2xx as a FAILURE. See scripts/backend-health-probe.sh for why both rules exist.
+        env:
+          PROBE_URL: https://codespace-ide-backend.onrender.com/api/v1/health
+          PROBE_ATTEMPTS: "3"
+          PROBE_TIMEOUT: "120"
+        run: bash scripts/backend-health-probe.sh
+
+      - name: Probe behaviour regression check
+        run: bash scripts/test-backend-health-probe.sh
