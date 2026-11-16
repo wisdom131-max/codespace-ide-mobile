@@ -327,9 +327,11 @@ engine suite green. Dev-debug compile and D8 dex green. Not CI-green; not device
 
 **Known limitations.** The producer side is not wired: `ChatSession` keeps its own transcript and does
 not yet build `ToolExchange` lists from it across turns, so the exchanges are available and tested but
-reach the engine only when a caller supplies them. Context-window compatibility (Area E) is NOT
-implemented beyond what Stage 5.3 established: known limits are used where the catalogue has them, an
-unknown limit stays unknown, and no history is trimmed automatically. Interruption replay (Area D) was
+reach the engine only when a caller supplies them. Context-window compatibility (Area E) was NOT implemented in Stage 5.4 itself. It is now implemented in
+Project Six Stage 6.1 (`docs/PROJECT-SIX-LONG-CONTEXT.md`), which is where it belongs: Five built the tool
+pairing that must survive reduction, Six decides how much conversation may be sent and reports every
+reduction. The relationship is stated in both reports so neither project can quietly claim the other's
+work. Interruption replay (Area D) was
 audited only as far as existing Stage 4.8/5.2 protections reach; no new replay mechanism was added.
 Custom endpoints are refused rather than guessed at.
 
