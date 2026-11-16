@@ -313,9 +313,36 @@ You can use multiple tools in sequence. When done, give a final summary.
             executeToolBody(name, args, context)
         }
         val failed = com.codespace.ide.agent.runtime.RuntimeBridge.failureText(produced)
-        com.codespace.ide.agent.runtime.RuntimeBridge.afterDispatch(name, produced, failed)
-        if (!failed) return produced
-        return withRecovery(name, args, produced, context)
+        // STAGE 4.5: a file change is checked against the filesystem before it is called a change,
+        // and the model is told which of the two it is holding. The check reads; it never re-runs
+        // the write, because proving a write by repeating it is how work gets done twice.
+        val sideEffect = if (failed) {
+            com.codespace.ide.agent.SideEffectVerifier.Verification(
+                com.codespace.ide.agent.SideEffectVerifier.Result.NOT_CHECKABLE, "")
+        } else {
+            com.codespace.ide.agent.SideEffectVerifier.verify(
+                name,
+                args,
+                com.codespace.ide.resolver.PathResolver.activeProjectRoot(context),
+            )
+        }
+        val validation = com.codespace.ide.agent.ResultValidator.validate(name, produced, threw = null)
+        val verdict = if (sideEffect.result == com.codespace.ide.agent.SideEffectVerifier.Result.REFUTED) {
+            com.codespace.ide.agent.ResultValidator.Validation(
+                com.codespace.ide.agent.ResultValidator.Outcome.UNACKNOWLEDGED,
+                sideEffect.note,
+                satisfiesPrerequisite = false,
+                establishesSomething = false,
+            )
+        } else {
+            validation
+        }
+        com.codespace.ide.agent.runtime.RuntimeBridge.afterDispatch(name, produced, failed, validation = verdict)
+        if (failed) return withRecovery(name, args, produced, context)
+        val note = (listOf(com.codespace.ide.agent.ResultValidator.note(name, verdict), sideEffect.note)
+            .filter { it.isNotBlank() && it != validation.reason })
+        if (note.isEmpty()) return produced
+        return produced + "\n\n" + note.joinToString("\n")
     }
 
     /**

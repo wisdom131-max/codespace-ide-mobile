@@ -113,14 +113,33 @@ internal object RuntimeBridge {
         output: String,
         failed: Boolean,
         sessionId: String? = null,
+        validation: com.codespace.ide.agent.ResultValidator.Validation? = null,
     ): Dispatch {
+        // Stage 4.5: the result is measured before it becomes evidence. A truncated listing or a
+        // validator that could not read the output is not the same thing as a broken tool, so only
+        // genuine outcome problems reach health.
+        val verdict = validation ?: com.codespace.ide.agent.ResultValidator.validate(name, output, threw = null)
+        if (verdict.countsAgainstTool) {
+            com.codespace.ide.chat.panel.ToolHealth.recordFailure(name)
+        } else if (verdict.validated) {
+            com.codespace.ide.chat.panel.ToolHealth.recordSuccess(name)
+        }
         // 4.2: the ledger remembers what actually succeeded, and what failed, because a dependent
         // capability is gated on evidence rather than on intent.
         com.codespace.ide.chat.panel.ToolPrerequisites.capabilityOf(name)?.let { capability ->
             if (failed) {
                 PrereqLedger.recordFailure(capability, name, output)
             } else {
-                PrereqLedger.record(capability, name, output)
+                if (verdict.satisfiesPrerequisite) {
+                    PrereqLedger.record(capability, name, output, validation = verdict.name)
+                } else {
+                    // Recorded, but not as proof: a dependent call must not be built on it.
+                    PrereqLedger.recordFailure(
+                        capability,
+                        name,
+                        verdict.name + ": " + verdict.reason,
+                    )
+                }
             }
         }
         ReflectionState.recordTool(name, output)

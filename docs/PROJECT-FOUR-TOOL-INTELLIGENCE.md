@@ -182,3 +182,26 @@ to is now BLOCKED rather than trusted, because "I do not know which plan this wa
 ones are blocked, and the interruption sentence when there is one. That is the same plan block the
 Chevron tree already renders, so the dependency state is visible without a new surface and without
 touching the grouped /tools catalogue.
+
+## Stage 4.5 — a result is not evidence until it is checked (implemented)
+
+Stages 4.1–4.4 assumed that a tool which returned had done the work. This stage separates the two
+questions and makes the second one decide.
+
+`ToolOutputContract` holds a deliberately small set of output contracts (write acknowledgement words,
+test-result markers, which tools may legitimately return nothing). `ResultValidator` composes those
+with the existing `ToolResultCheck` into one verdict: valid, legitimately empty, unexpected empty,
+malformed, partial, unacknowledged, failed, or validator-failed. A validator bug is never evidence
+about the tool, and a truncated result is real but cannot satisfy a prerequisite that needs the whole
+answer.
+
+`SideEffectVerifier` reads the filesystem after a write, move or directory creation: the file is
+there, or it is not; for a whole-file write, its contents match what was asked for. It reads only, so
+proving a write cannot duplicate it, and an unresolvable relative path says nothing rather than
+refusing a change that may have landed.
+
+The live gate now: validates the result, appends one plain-language caveat for the model, and records
+the verdict in `PrereqLedger`. Only `valid` and `empty valid` satisfy a capability, so an
+unacknowledged write blocks its dependent call instead of looking like proof. Tool health receives
+only genuine outcome problems; truncation, cancellation and validator failures no longer demote a
+tool.

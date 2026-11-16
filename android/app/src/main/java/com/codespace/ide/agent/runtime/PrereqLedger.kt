@@ -28,6 +28,8 @@ internal object PrereqLedger {
         /** True when the call changed something, so repeating it would duplicate the change. */
         val sideEffect: Boolean = false,
         val at: Long = 0L,
+        /** Stage 4.5: what the validator made of the result that produced this entry. */
+        val validation: String = "valid",
     )
 
     private const val CAP = 64
@@ -70,7 +72,13 @@ internal object PrereqLedger {
     fun snapshot(): List<Entry> = entries.values.toList()
 
     @Synchronized
-    fun record(capability: String, solvedBy: String, evidence: String, sideEffect: Boolean = false) {
+    fun record(
+        capability: String,
+        solvedBy: String,
+        evidence: String,
+        sideEffect: Boolean = false,
+        validation: String = "valid",
+    ) {
         val key = capability.trim()
         if (key.isEmpty()) return
         if (entries.size >= CAP && !entries.containsKey(key)) {
@@ -84,6 +92,7 @@ internal object PrereqLedger {
             revision = revision,
             sideEffect = sideEffect,
             at = System.currentTimeMillis(),
+            validation = validation,
         )
         store?.save(entries.values.toList())
     }
@@ -109,7 +118,17 @@ internal object PrereqLedger {
     }
 
     @Synchronized
-    fun satisfied(capability: String): Boolean = entries[capability]?.failed == false
+    /**
+     * Stage 4.5: a capability counts as satisfied only when the call SUCCEEDED and the result passed
+     * validation. An unacknowledged write, an unexpected empty answer, a partial listing or a result
+     * the validator could not read all leave the capability unsatisfied, so a dependent call is
+     * refused instead of being built on nothing.
+     */
+    fun satisfied(capability: String): Boolean {
+        val entry = entries[capability] ?: return false
+        if (entry.failed) return false
+        return entry.validation == "valid" || entry.validation == "empty valid"
+    }
 
     @Synchronized
     fun failed(capability: String): Boolean = entries[capability]?.failed == true
@@ -118,7 +137,10 @@ internal object PrereqLedger {
     fun entry(capability: String): Entry? = entries[capability]
 
     @Synchronized
-    fun satisfiedSet(): Set<String> = entries.values.filter { !it.failed }.map { it.capability }.toSet()
+    fun satisfiedSet(): Set<String> = entries.values
+        .filter { !it.failed && (it.validation == "valid" || it.validation == "empty valid") }
+        .map { it.capability }
+        .toSet()
 
     @Synchronized
     fun failedSet(): Set<String> = entries.values.filter { it.failed }.map { it.capability }.toSet()
