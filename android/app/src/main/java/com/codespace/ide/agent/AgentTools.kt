@@ -303,9 +303,57 @@ You can use multiple tools in sequence. When done, give a final summary.
         context: Context,
         callId: String? = null,
     ): String {
-        return executeGated(dispatchGuard(context), name, args, args.withPathHints(), callId) {
+        // PROJECT THREE RUNTIME: the plan gets the first and last word on a call, and a failure is
+        // offered to the recovery planner once. Both are adapters around the existing gate below,
+        // which still owns "may this body run again".
+        com.codespace.ide.agent.runtime.RuntimeBridge
+            .beforeDispatch(com.codespace.ide.agent.goal.PlanState.plan(), name)
+            ?.let { return it }
+        val produced = executeGated(dispatchGuard(context), name, args, args.withPathHints(), callId) {
             executeToolBody(name, args, context)
         }
+        val failed = com.codespace.ide.agent.runtime.RuntimeBridge.failureText(produced)
+        com.codespace.ide.agent.runtime.RuntimeBridge.afterDispatch(name, produced, failed)
+        if (!failed) return produced
+        return withRecovery(name, args, produced, context)
+    }
+
+    /**
+     * PROJECT THREE RUNTIME: one recovery attempt, for the failures the planner considers eligible.
+     *
+     * Only a repair the planner marked automatic runs here, which already excludes anything that
+     * writes, anything whose outcome is unknown, anything out of attempts, and everything at all in
+     * Ask. The repair is dispatched through the same body the first call used, so it cannot reach a
+     * tool the registry would not expose; it does not re-enter this function, so a failing repair
+     * cannot start a second recovery.
+     */
+    private suspend fun withRecovery(
+        name: String,
+        args: JSONObject,
+        original: String,
+        context: Context,
+    ): String {
+        val destructive = com.codespace.ide.chat.panel.ToolRegistry.spec(name)?.let {
+            com.codespace.ide.chat.panel.ToolMetaIndex.metaFor(it).destructive
+        } ?: true
+        val failure = com.codespace.ide.agent.heal.RecoveryPlanner.Failure(
+            tool = name,
+            error = original,
+            category = com.codespace.ide.agent.heal.RecoveryPlanner.Category.UNKNOWN,
+            sideEffecting = destructive,
+            outcomeKnown = true,
+            attemptsSoFar = 0,
+            mode = com.codespace.ide.agent.runtime.RuntimeSession.healMode(),
+        )
+        val recovery = com.codespace.ide.agent.runtime.RuntimeBridge.recover(
+            failure = failure,
+            execute = { retryName, _ -> executeToolBody(retryName, args, context) },
+            repairsAlreadyTried = 0,
+        )
+        if (!recovery.applied) return original
+        val kind = recovery.appliedKind?.name ?: "repair"
+        val verdict = if (recovery.validated) "validated" else "NOT validated"
+        return original + "\n\nRecovered (" + kind + ", " + verdict + "):\n" + recovery.output
     }
 
     /**
@@ -397,7 +445,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "image_convert" -> imageConvert(args, context)
                 "video_frames" -> videoFrames(args, context)
                 "image_ocr" -> imageOcr(args, context)
-                "task_plan" -> taskPlan(args)
+                "task_plan" -> taskPlan(args, context)
                 // VS Code parity aliases: same implementation, their tool name.
                 "create_file" -> createFile(args.getString("path"), args.getString("content"), context)
                 "insert_edit_into_file" -> replaceStringInFile(
@@ -1090,7 +1138,7 @@ You can use multiple tools in sequence. When done, give a final summary.
      * rather than inferring it from a run of tool calls. Nothing here executes a step: the plan is a
      * record of intent and evidence, and calling it cannot run, approve or widen anything.
      */
-    private fun taskPlan(args: org.json.JSONObject): String {
+    private suspend fun taskPlan(args: org.json.JSONObject, context: Context): String {
         val store = com.codespace.ide.agent.goal.PlanState
         val action = args.optString("action", "show").lowercase()
         val existing = store.plan()
@@ -1136,6 +1184,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 )
             }
             "reflect" -> reflectPlan(args, existing)
+            "delegate" -> delegateOnce(args, existing, context)
             "clear" -> {
                 store.clear()
                 com.codespace.ide.agent.reflect.ReflectionState.clear()
@@ -1153,6 +1202,90 @@ You can use multiple tools in sequence. When done, give a final summary.
      * {"text", "level"}. Both are optional, and a claim with no observation is treated as no claim,
      * because that is what it is.
      */
+    /**
+     * PROJECT THREE RUNTIME: hand named work to a specialist role, once.
+     *
+     * What this is NOT: a second permission system. The permitted set is exactly what the current
+     * mode already exposes, a role can only narrow it, and a task that would change the project is
+     * refused unless that tool is already auto-approved for this session. A subagent therefore
+     * cannot do anything the user's own session could not do without being asked.
+     */
+    private suspend fun delegateOnce(
+        args: org.json.JSONObject,
+        plan: com.codespace.ide.agent.goal.TaskPlanEngine.Plan?,
+        context: Context,
+    ): String {
+        val rows = args.optJSONArray("steps")
+            ?: return "Refused: give the delegated work as steps, each with role, title and tool."
+        val mode = when (com.codespace.ide.agent.runtime.RuntimeSession.mode()) {
+            com.codespace.ide.agent.runtime.RuntimeSession.MODE_AGENT ->
+                com.codespace.ide.chat.panel.ChatMode.AGENT
+            com.codespace.ide.agent.runtime.RuntimeSession.MODE_EDIT ->
+                com.codespace.ide.chat.panel.ChatMode.EDIT
+            else -> com.codespace.ide.chat.panel.ChatMode.ASK
+        }
+        val permitted = com.codespace.ide.chat.panel.ToolRegistry.exposedNames(mode).toSet()
+        val requests = ArrayList<com.codespace.ide.agent.subagents.DelegationScheduler.Request>()
+        for (index in 0 until rows.length()) {
+            val row = rows.optJSONObject(index) ?: continue
+            val step = row.optString("step").takeIf { it.isNotBlank() }
+            if (step != null && plan?.step(step) == null) {
+                return "Refused: step '" + step + "' is not in the plan; a delegated task must serve a real step."
+            }
+            requests.add(
+                com.codespace.ide.agent.subagents.DelegationScheduler.Request(
+                    roleId = row.optString("role"),
+                    title = row.optString("title"),
+                    planStepId = step,
+                    reads = row.optJSONArray("reads")?.let { a ->
+                        (0 until a.length()).map { a.optString(it) }.toSet()
+                    } ?: emptySet(),
+                    writes = row.optJSONArray("writes")?.let { a ->
+                        (0 until a.length()).map { a.optString(it) }.toSet()
+                    } ?: emptySet(),
+                    tool = row.optString("tool"),
+                    args = row.optJSONObject("args")?.toString() ?: "{}",
+                )
+            )
+        }
+        if (requests.isEmpty()) return "Refused: no usable delegated steps were given."
+        val delegated = com.codespace.ide.agent.runtime.RuntimeBridge.delegate(
+            board = com.codespace.ide.agent.subagents.DelegationScheduler.Board(allowedTools = permitted),
+            requests = requests,
+            permitted = permitted,
+            metaOf = { name ->
+                com.codespace.ide.chat.panel.ToolRegistry.spec(name)?.let {
+                    com.codespace.ide.chat.panel.ToolMetaIndex.metaFor(it)
+                }
+            },
+            execute = { task ->
+                if (task.tool.isBlank()) {
+                    "Refused: this delegated task names no tool."
+                } else if (task.tool == "task_plan") {
+                    "Refused: a delegated agent may not start its own plan."
+                } else {
+                    val spec = com.codespace.ide.chat.panel.ToolRegistry.spec(task.tool)
+                        ?: return@delegate "Refused: '" + task.tool + "' is not a tool here."
+                    val meta = com.codespace.ide.chat.panel.ToolMetaIndex.metaFor(spec)
+                    val autoOk = com.codespace.ide.agent.ChatPermissionStore
+                        .isAutoApproved(context, task.tool)
+                    if (meta.destructive && !autoOk) {
+                        "Refused: " + task.tool + " changes the project and needs the owner's " +
+                            "approval; a subagent does not ask on the owner's behalf."
+                    } else {
+                        executeTool(task.tool, org.json.JSONObject(task.args), context)
+                    }
+                }
+            },
+        )
+        val report = com.codespace.ide.agent.subagents.DelegationScheduler.report(delegated.board)
+        val results = delegated.results.entries.joinToString("\n") { "- " + it.key + ": " + it.value.take(400) }
+        val refusals = if (delegated.refusals.isEmpty()) "" else
+            "\nrefused:\n" + delegated.refusals.joinToString("\n") { "- " + it }
+        return delegated.summary() + "\n" + report +
+            (if (results.isBlank()) "" else "\nresults:\n" + results) + refusals
+    }
+
     private fun reflectPlan(args: org.json.JSONObject, plan: com.codespace.ide.agent.goal.TaskPlanEngine.Plan?): String {
         val state = com.codespace.ide.agent.reflect.ReflectionState
         args.optJSONArray("criteria")?.let { rows ->

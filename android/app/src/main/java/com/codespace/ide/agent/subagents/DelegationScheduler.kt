@@ -52,6 +52,15 @@ internal object DelegationScheduler {
         val writes: Set<String> = emptySet(),
         /** Caller-supplied identity for dedupe; blank derives one from the request. */
         val dedupe: String = "",
+        /**
+         * PROJECT THREE RUNTIME: the tool this task runs and its arguments, JSON-encoded.
+         *
+         * The scheduler is still a scheduler: it never executes anything. Carrying the work on the
+         * task is what lets the caller's executor run exactly what the board approved, in the order
+         * the board allowed, instead of re-deriving it from prose.
+         */
+        val tool: String = "",
+        val args: String = "",
     )
 
     data class Task(
@@ -68,6 +77,9 @@ internal object DelegationScheduler {
         val evidence: String = "",
         val note: String = "",
         val verified: Boolean = false,
+        /** The work this task stands for. Blank on a task created before the runtime existed. */
+        val tool: String = "",
+        val args: String = "",
         val enqueuedAt: Long = 0L,
         val startedAt: Long? = null,
         val endedAt: Long? = null,
@@ -168,7 +180,14 @@ internal object DelegationScheduler {
                 )
                 return@forEach
             }
-            val blockers = writeConflicts(current, request)
+            val blockers = writeConflicts(current, request).toMutableList()
+            // A task names the tool it will run. If that tool is not in the role's own narrowed set,
+            // the request is refused here rather than discovered by the executor, because "the
+            // scheduler approved it" must mean "the role may do this".
+            val asked = request.tool.trim()
+            if (asked.isNotEmpty() && asked !in scope.tools) {
+                blockers.add("role '" + scope.role.id + "' may not use '" + asked + "' in this session")
+            }
             val id = "sa" + current.seq
             val task = Task(
                 id = id,
@@ -181,6 +200,8 @@ internal object DelegationScheduler {
                 tools = scope.tools,
                 state = if (blockers.isEmpty()) State.QUEUED else State.BLOCKED,
                 note = blockers.joinToString("; "),
+                tool = request.tool.trim(),
+                args = request.args,
                 enqueuedAt = now,
                 epochAtEnqueue = current.epoch,
             )

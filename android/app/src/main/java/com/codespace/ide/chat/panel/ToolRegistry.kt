@@ -1053,7 +1053,9 @@ internal object ToolRegistry {
             description = "Keep a task plan while you work. action=create takes an objective and steps " +
                 "(each with id, title, optional dependsOn and milestone); action=start, complete (evidence " +
                 "required: say what you actually saw) and fail (with an optional recovery title) update one " +
-                "step; action=show or clear. A failed step's dependents are marked skipped rather than left " +
+                "step; action=delegate hands work to a specialist role (role, title, tool, args, reads, " +
+                "writes, step) with the session's own permissions as the ceiling; action=reflect reports " +
+                "what the evidence actually supports; action=show or clear. A failed step's dependents are marked skipped rather than left " +
                 "runnable, and a plan is revised at most six times. Every call answers with the plan's " +
                 "pending, running, done, failed and skipped steps. action=reflect audits the run against " +
                 "the plan and the record of what the tools actually returned: optional criteria " +
@@ -1062,7 +1064,7 @@ internal object ToolRegistry {
                 "observation is reported as unsupported, and the answer is a verdict, not a summary. " +
                 "It records intent, evidence and judgement only: it never executes a step.",
             schema = OBJ + ",\"required\":[\"action\"],\"properties\":{" +
-                "\"action\":{\"type\":\"string\",\"enum\":[\"create\",\"start\",\"complete\",\"fail\",\"show\",\"reflect\",\"clear\"]}," +
+                "\"action\":{\"type\":\"string\",\"enum\":[\"create\",\"start\",\"complete\",\"fail\",\"show\",\"reflect\",\"delegate\",\"clear\"]}," +
                 "\"objective\":{\"type\":\"string\"}," +
                 "\"id\":{\"type\":\"string\"}," +
                 "\"evidence\":{\"type\":\"string\"}," +
@@ -1071,6 +1073,10 @@ internal object ToolRegistry {
                 "\"steps\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{" +
                 "\"id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}," +
                 "\"milestone\":{\"type\":\"string\"}," +
+                    "\"role\":{\"type\":\"string\"},\"tool\":{\"type\":\"string\"}," +
+                    "\"args\":{\"type\":\"object\"},\"step\":{\"type\":\"string\"}," +
+                    "\"reads\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}," +
+                    "\"writes\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}," +
                 "\"dependsOn\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}}," +
                 "\"criteria\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{" +
                 "\"text\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"}}}}," +

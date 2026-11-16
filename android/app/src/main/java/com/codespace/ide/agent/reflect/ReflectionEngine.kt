@@ -231,6 +231,11 @@ internal object ReflectionEngine {
             .map { it.id + " '" + it.title + "' (dependency skipped)" }
         plan?.unreachable()?.forEach { remaining.add(it.id + " '" + it.title + "' can no longer run") }
         plan?.ready()?.forEach { remaining.add(it.id + " '" + it.title + "' is ready but not done") }
+        // A step that was started and never finished is remaining work even though it is not ready
+        // and not unreachable, which is exactly the case a "did it work?" report must not lose.
+        plan?.steps?.filter { it.status == TaskPlanEngine.Status.RUNNING }?.forEach {
+            remaining.add(it.id + " '" + it.title + "' is still running")
+        }
 
         val plannedTitles = steps.map { it.id + " " + it.title }
         val completedTitles = done.map { step ->

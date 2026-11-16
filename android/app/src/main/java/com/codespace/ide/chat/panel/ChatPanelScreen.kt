@@ -170,6 +170,7 @@ private fun ChatBody(
         // Project 3.2: a task plan belongs to the conversation that made it, so two sessions cannot
         // overwrite each other's plan and both look finished.
         com.codespace.ide.agent.goal.PlanState.claim(activeId)
+        com.codespace.ide.agent.reflect.ReflectionState.claim(activeId)
         onDispose { }
     }
     // U1 (build 657 findings a/d): the OPENING selection is RESOLVED from what the
@@ -254,6 +255,11 @@ private fun ChatBody(
     var chatMode by remember(projectId, activeId) {
         mutableStateOf(ChatModePersistence.load(manager, projectId, activeId))
     }
+    // The recovery planner needs the live mode: a dispatch before any claim is treated as Ask.
+    androidx.compose.runtime.LaunchedEffect(chatMode) {
+        com.codespace.ide.agent.runtime.RuntimeSession.claimMode(chatMode.name)
+    }
+
     var showSelect by remember { mutableStateOf(false) }
     var showKeys by remember { mutableStateOf(false) }
     var showChatLog by remember { mutableStateOf(false) }

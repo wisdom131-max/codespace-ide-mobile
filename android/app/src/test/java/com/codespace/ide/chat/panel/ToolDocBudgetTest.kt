@@ -57,7 +57,10 @@ class ToolDocBudgetTest {
         // 19,862 chars. This is conscious growth behind a tripwire, not a silent loosening: the
         // PROMPT budget above is what the provider actually receives and it is unchanged (4,836 for
         // Agent mode), so none of this reached a request.
-        assertTrue("the registry catalogue has grown unexpectedly: " + catalogue, catalogue < 21500)
+        // 2026-11-16: raised from 21,500 to 22,500 for the runtime work on task_plan (delegate and
+        // reflect, with the delegated fields declared), measured at 21,662. The prompt budget above
+        // is unchanged, so this growth is catalogue-only and still never sent to a provider.
+        assertTrue("the registry catalogue has grown unexpectedly: " + catalogue, catalogue < 22500)
         assertTrue("the prompt must be smaller than the catalogue it is drawn from",
             agentOffer.length < catalogue)
     }
