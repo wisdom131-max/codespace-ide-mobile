@@ -327,6 +327,8 @@ custom endpoints keeping capabilities unknown.
 
 ## Checkpoint 5 — 7.9 closed, and the three 7.1 defects the audit actually found
 
+**CI: run `43947449477` on `4d3641f`, 26/26 steps, success.**
+
 ### 7.9C closed: `ChatLogDialog`
 
 Its title was plain body text, so TalkBack read it inline and heading navigation could not reach it. One
