@@ -1278,7 +1278,7 @@ class ChatSession internal constructor(
             // AgentTools.executeTool, which is still the only door to a side effect.
             val claimedCalls = HashSet<String>()
             suspend fun executeOnce(idx: Int): String = try {
-                val normalised = com.codespace.ide.chat.provider.ToolCallNormaliser
+                val normalised = com.codespace.ide.chat.provider.WireCalls
                     .fromWire("copilot", listOf(calls[idx])).single()
                 val outcome = com.codespace.ide.chat.provider.ToolExecutionGateway.run(
                     normalised,

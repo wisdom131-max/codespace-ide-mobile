@@ -26,6 +26,7 @@ package com.codespace.ide.engine
  */
 class AnthropicAdapter : ProviderAdapter {
     override val providerId = "anthropic"
+    override val streamKind = StreamProvider.ANTHROPIC
 
     /** Base OR full path; the Messages path is appended exactly once. */
     override fun endpoint(config: EngineConfig): String =

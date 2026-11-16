@@ -1,5 +1,24 @@
 package com.codespace.ide.chat.provider
 
+import com.codespace.ide.engine.CallVerdict
+import com.codespace.ide.engine.NormalisedToolCall
+import com.codespace.ide.engine.ToolCallNormaliser
+
+enum class ToolOutcome { SUCCESS, FAILED, CANCELLED }
+
+/**
+ * The provider's answer, tied back to the call it belongs to. `result` is the tool's own text; this
+ * type never invents one, and a `FAILED` result stays failed.
+ */
+data class ToolResultEnvelope(
+    val callId: String,
+    val name: String,
+    val outcome: ToolOutcome,
+    val result: String,
+    val error: String? = null,
+    val cancelled: Boolean = false,
+)
+
 /**
  * PROJECT FIVE, STAGE 5.2 — the door every provider's tool call walks through.
  *

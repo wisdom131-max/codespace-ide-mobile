@@ -93,6 +93,58 @@ tree as a sandbox artifact. Dev-debug compile and D8 dex green. CI-green: run `4
 
 **Component-tested versus runtime-tested.** The gateway boundary, normalisers and stream state machine are component-tested with fake executors and fake payloads. The `ChatSession` wiring compiles and is exercised only as far as existing component tests reach: `runTools` needs an Android `Context`, so no JVM test drives a real dispatch. No live provider was contacted, so real Gemini/Anthropic/OpenAI stream behaviour remains unverified.
 
+## Stage 5.2b — the normaliser reaches the live path (IMPLEMENTED, LOCALLY TESTED, RUNTIME-TESTED IN THE ENGINE)
+
+`4ea3b96` added the normalisers and wired `ToolExecutionGateway` into `ChatSession`, but
+`ProviderStreamNormaliser` ran only in unit tests. Tracing the real route showed why that mattered:
+native tool calls never reached it.
+
+**The live route, before this commit.**
+
+1. `ChatSession.send` -> `ChatEngineImpl.send` (`engine/ChatEngineImpl.kt`).
+2. `transport.stream(url, headers, payload)` (`engine/ChatTransport.kt`).
+3. `SseParser.feed(chunk)` (`engine/SseParser.kt`) -> one `data:` payload at a time.
+4. Per payload: `ProviderAdapter.endReason`, `extractDelta`, `isDoneSentinel` (`GeminiAdapter`, `OpenAIAdapter`, `AnthropicAdapter`).
+5. Deltas -> `EngineEvent.Delta`; end -> `Completed` / `Truncated` / `Failed`.
+6. `ChatSession` collects events and appends the text to the reply row.
+7. `AgentToolWire.decide(text)` -> `parse` -> `ChatSession.runTools` -> `ToolExecutionGateway` -> `AgentTools.executeTool`.
+
+Tool calls were therefore only ever the TEXT protocol. A native `functionCall` / `tool_calls` /
+`tool_use` payload has no text delta, so `extractDelta` returned null and the call was silently
+dropped — the adapter was blind to it by design.
+
+**What this commit changed.**
+
+- The dialects moved into the engine (`engine/ToolCalls.kt`, `engine/ProviderStreamNormaliser.kt`),
+  because that is where the payloads arrive. The engine stays dependency-free, so a hand-rolled
+  `engine/JsonLite.kt` replaced `org.json`: an `org.json` jar in this module would collide with
+  Android's own `org.json` at dex time.
+- `ProviderAdapter.streamKind` (default null) lets an adapter name its dialect; Gemini, OpenAI and
+  Anthropic override it. Their existing parsing is untouched.
+- `ChatEngineImpl` feeds every payload to the normaliser alongside the adapter. A call is rendered
+  into the same text protocol the reply path already parses only once it is COMPLETE, so the route
+  after the engine is unchanged and there is still exactly one path to `AgentTools.executeTool`.
+- A call still arriving when the transport stops is never rendered; the user gets one
+  `EngineEvent.Truncated("tool_call_incomplete", ...)` instead of a silently dropped action.
+- The app keeps only what is app's: `chat/provider/WireCalls.kt` (text wire -> normalised call) and
+  `ToolExecutionGateway` (validate, claim once per round, delegate to `AgentTools.executeTool`).
+
+**The live route, after.** Steps 1-3 unchanged; step 4 also runs the normaliser; step 5 carries any
+completed native call inside the reply text; steps 6-7 unchanged. A partial call cannot execute
+because it is never rendered; an unknown tool cannot execute because the gateway refuses it against
+`AgentTools.toolNames()`.
+
+**Runtime evidence.** `engine/src/test/kotlin/com/codespace/ide/engine/Stage52RuntimeStreamTest.kt`
+drives the real `ChatEngineImpl.send` with a fake `ChatTransport`, the real `SseParser` and the real
+adapters: a Gemini `functionCall` arrives as one parseable call, a complete Anthropic `tool_use`
+becomes exactly one call, an incomplete one becomes none, a text-only OpenAI stream is untouched, and
+a replayed payload yields one call.
+
+**Still not proven.** `ChatSession.runTools` needs an Android `Context`, so the step from reply text to
+`AgentTools.executeTool` remains component-tested only; no Robolectric or instrumentation suite was
+added. No live provider was contacted, so real streaming against Gemini, Anthropic or an
+OpenAI-compatible endpoint remains unverified and needs a device round.
+
 ## Next stage (5.3)
 
 Cross-provider tool compatibility and streaming normalisation: normalise tool definitions and tool-call

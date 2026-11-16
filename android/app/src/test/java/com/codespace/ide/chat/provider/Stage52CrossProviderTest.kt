@@ -1,6 +1,13 @@
 package com.codespace.ide.chat.provider
 
 import com.codespace.ide.chat.panel.ParsedToolCall
+import com.codespace.ide.engine.CallVerdict
+import com.codespace.ide.engine.NormalisedToolCall
+import com.codespace.ide.engine.ProviderStreamNormaliser
+import com.codespace.ide.engine.StreamEnd
+import com.codespace.ide.engine.StreamEvent
+import com.codespace.ide.engine.StreamProvider
+import com.codespace.ide.engine.ToolCallNormaliser
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -18,10 +25,8 @@ class Stage52CrossProviderTest {
 
     @Test
     fun geminiFunctionCallBecomesANormalisedCall() {
-        val json = JSONObject(
-            """{"candidates":[{"content":{"parts":[{"text":"reading"},{"functionCall":
+        val json = """{"candidates":[{"content":{"parts":[{"text":"reading"},{"functionCall":
             {"name":"read_file","args":{"path":"a.kt"}}}]}}]}"""
-        )
         val calls = ToolCallNormaliser.fromGemini(json)
         assertEquals(1, calls.size)
         assertEquals("read_file", calls[0].name)
@@ -33,11 +38,9 @@ class Stage52CrossProviderTest {
 
     @Test
     fun openAiToolCallsKeepTheProviderIdAndArgumentsString() {
-        val json = JSONObject(
-            """{"choices":[{"message":{"tool_calls":[{"id":"call_9","function":
+        val json = """{"choices":[{"message":{"tool_calls":[{"id":"call_9","function":
             {"name":"write_file","arguments":"{\"path\":\"b.kt\",\"text\":\"x\"}"}},
             {"id":"call_10","function":{"name":"read_file","arguments":"{\"path\":\"c.kt\"}"}}]}}]}"""
-        )
         val calls = ToolCallNormaliser.fromOpenAI(json)
         assertEquals(listOf("call_9", "call_10"), calls.map { it.id })
         assertEquals("write_file", calls[0].name)
@@ -46,10 +49,8 @@ class Stage52CrossProviderTest {
 
     @Test
     fun anthropicToolUseBlocksBecomeCallsAndTextBlocksDoNot() {
-        val json = JSONObject(
-            """{"content":[{"type":"text","text":"let me look"},
+        val json = """{"content":[{"type":"text","text":"let me look"},
             {"type":"tool_use","id":"toolu_1","name":"read_file","input":{"path":"d.kt"}}]}"""
-        )
         val calls = ToolCallNormaliser.fromAnthropic(json)
         assertEquals(1, calls.size)
         assertEquals("toolu_1", calls[0].id)
@@ -59,10 +60,10 @@ class Stage52CrossProviderTest {
     @Test
     fun aAndaHalfThreeProvidersAgreeOnTheSameIdentity() {
         val g = ToolCallNormaliser.fromGemini(
-            JSONObject("""{"candidates":[{"content":{"parts":[{"functionCall":{"name":"read_file","args":{"path":"x"}}}]}}]}""")
+            ("""{"candidates":[{"content":{"parts":[{"functionCall":{"name":"read_file","args":{"path":"x"}}}]}}]}""")
         ).single()
         val o = ToolCallNormaliser.fromOpenAI(
-            JSONObject("""{"choices":[{"message":{"tool_calls":[{"id":"c1","function":{"name":"read_file","arguments":"{\"path\":\"x\"}"}}]}}]}""")
+            ("""{"choices":[{"message":{"tool_calls":[{"id":"c1","function":{"name":"read_file","arguments":"{\"path\":\"x\"}"}}]}}]}""")
         ).single()
         assertEquals("same name and arguments, same verdict regardless of provider",
             ToolCallNormaliser.verdict(g, known), ToolCallNormaliser.verdict(o, known))
@@ -70,7 +71,7 @@ class Stage52CrossProviderTest {
 
     @Test
     fun multipleCallsInOneResponseAllArrive() {
-        val calls = ToolCallNormaliser.fromWire("copilot", listOf(
+        val calls = WireCalls.fromWire("copilot", listOf(
             ParsedToolCall("read_file", """{"path":"a"}"""),
             ParsedToolCall("read_file", """{"path":"b"}"""),
         ))
@@ -80,14 +81,14 @@ class Stage52CrossProviderTest {
 
     @Test
     fun anUnclosedArgumentObjectIsNotACompleteCall() {
-        val call = ToolCallNormaliser.fromWire("copilot", listOf(ParsedToolCall("write_file", """{"path":"a","text":"x""")))
+        val call = WireCalls.fromWire("copilot", listOf(ParsedToolCall("write_file", """{"path":"a","text":"x""")))
         assertFalse(call[0].complete)
         assertTrue(ToolCallNormaliser.verdict(call[0], known) is CallVerdict.Rejected)
     }
 
     @Test
     fun aCallWithNoNameIsRejected() {
-        val call = ToolCallNormaliser.fromWire("copilot", listOf(ParsedToolCall("", "{}")))
+        val call = WireCalls.fromWire("copilot", listOf(ParsedToolCall("", "{}")))
         assertFalse(call[0].complete)
         assertTrue(ToolCallNormaliser.verdict(call[0], known) is CallVerdict.Rejected)
     }
@@ -98,7 +99,7 @@ class Stage52CrossProviderTest {
     fun anUnknownToolNeverReachesTheExecutor() = runBlocking {
         var called = false
         val outcome = ToolExecutionGateway.run(
-            ToolCallNormaliser.fromWire("copilot", listOf(ParsedToolCall("deploy_everything", "{}"))).single(),
+            WireCalls.fromWire("copilot", listOf(ParsedToolCall("deploy_everything", "{}"))).single(),
             known, HashSet(),
         ) { _, _, _ -> called = true; "should not happen" }
         assertFalse(outcome.executed)
@@ -126,7 +127,7 @@ class Stage52CrossProviderTest {
     @Test
     fun theGatewayRunsThroughTheExecutorItIsGivenAndNormalisesTheResult() = runBlocking {
         var seenArgs: String? = null
-        val call = ToolCallNormaliser.fromWire("copilot", listOf(ParsedToolCall("read_file", """{"path":"a.kt"}"""))).single()
+        val call = WireCalls.fromWire("copilot", listOf(ParsedToolCall("read_file", """{"path":"a.kt"}"""))).single()
         val outcome = ToolExecutionGateway.run(call, known, HashSet()) { name, args, _ ->
             seenArgs = "$name:$args"; "file contents"
         }

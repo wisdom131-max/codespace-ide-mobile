@@ -116,6 +116,13 @@ class ChatEngineImpl(
         val builder = StringBuilder()
         var endReason: String = ""
         var parser = SseParser()
+        // STAGE 5.2: native tool calls (Gemini functionCall, OpenAI tool_calls, Anthropic tool_use)
+        // never reached execution before - they were dropped because nothing read them. They are
+        // normalised here and rendered into the SAME text protocol the reply path already parses,
+        // so there is still exactly one route to AgentTools.executeTool. A call is rendered only
+        // once it is COMPLETE: a half-received argument object is never made executable.
+        val normaliser = adapter.streamKind?.let { ProviderStreamNormaliser(it) }
+        var nativeCallsRendered = 0
         var done = false
         // Resolved ONCE: the same URL is requested and, on failure, named in the verdict.
         val requestUrl = adapter.endpoint(config)
@@ -136,6 +143,16 @@ class ChatEngineImpl(
                     // "finish_reason":"length" often carries no text at all.
                     adapter.endReason(data)?.let { endReason = it }
                     val delta = adapter.extractDelta(data)
+                    if (normaliser != null) {
+                        for (ev in normaliser.feed(data)) {
+                            if (ev is StreamEvent.ToolCallCompleted && ev.call.complete) {
+                                val block = nativeCallMarkup(ev.call)
+                                builder.append(block)
+                                nativeCallsRendered++
+                                emit(EngineEvent.Delta(block))
+                            }
+                        }
+                    }
                     if (delta != null) {
                         builder.append(delta)
                         emit(EngineEvent.Delta(delta))
@@ -153,6 +170,15 @@ class ChatEngineImpl(
                 }
             }
             if (!done) {
+                // The transport stopped: anything still half-received is closed as incomplete and
+                // never rendered, so it cannot execute.
+                normaliser?.finish()?.filterIsInstance<StreamEvent.Ended>()?.firstOrNull {
+                    it.reason == StreamEnd.INCOMPLETE_TOOL_CALL
+                }?.let {
+                    if (nativeCallsRendered == 0) {
+                        emit(EngineEvent.Truncated("tool_call_incomplete", toolCallIncompleteNote))
+                    }
+                }
                 for (data in parser.finish()) {
                     adapter.endReason(data)?.let { endReason = it }
                     val delta = adapter.extractDelta(data)
@@ -253,5 +279,20 @@ class ChatEngineImpl(
             emit(EngineEvent.Failed(ErrorTaxonomy.network(t.message ?: "connection failed")))
         }
     }
+
+
+    /**
+     * STAGE 5.2: a complete native tool call, rendered as the markup the reply path already parses.
+     * The arguments are embedded as the OBJECT they are, never re-quoted as a string.
+     */
+    private fun nativeCallMarkup(call: NormalisedToolCall): String {
+        val name = call.name.replace("\"", "")
+        val args = if (call.argumentsJson.isBlank()) "{}" else call.argumentsJson
+        return "\n<tool_call>{\"name\":\"$name\",\"arguments\":$args}</tool_call>\n"
+    }
+
+    private val toolCallIncompleteNote =
+        "A tool call was cut off before it finished arriving, so it was not run."
+
 
 }

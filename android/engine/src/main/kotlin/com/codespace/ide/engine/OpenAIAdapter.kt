@@ -8,6 +8,7 @@ package com.codespace.ide.engine
  */
 class OpenAIAdapter : ProviderAdapter {
     override val providerId = "openai"
+    override val streamKind = StreamProvider.OPENAI
 
     /** Base OR full path: EndpointUrls accepts both and never duplicates a segment. */
     override fun endpoint(config: EngineConfig): String =

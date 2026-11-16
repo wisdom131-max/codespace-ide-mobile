@@ -12,6 +12,7 @@ package com.codespace.ide.engine
  */
 class GeminiAdapter : ProviderAdapter {
     override val providerId = "gemini"
+    override val streamKind = StreamProvider.GEMINI
 
     override fun endpoint(config: EngineConfig): String =
         EndpointUrls.geminiStream(config.baseUrl, config.modelId)

@@ -1,6 +1,5 @@
-package com.codespace.ide.chat.provider
+package com.codespace.ide.engine
 
-import org.json.JSONObject
 
 /**
  * PROJECT FIVE, STAGE 5.2 — the stream, said the same way by every provider.
@@ -53,7 +52,7 @@ class ProviderStreamNormaliser(private val provider: StreamProvider) {
 
     fun feed(payload: String): List<StreamEvent> {
         if (finished != null) return emptyList()
-        val json = runCatching { JSONObject(payload) }.getOrNull()
+        val json = JsonLite.obj(JsonLite.parse(payload))
             ?: return listOf(StreamEvent.Failed("the provider sent something that is not an event"))
         return when (provider) {
             StreamProvider.GEMINI -> feedGemini(json)
@@ -112,21 +111,21 @@ class ProviderStreamNormaliser(private val provider: StreamProvider) {
 
     // ---- Gemini -------------------------------------------------------------------------------
 
-    private fun feedGemini(json: JSONObject): List<StreamEvent> {
+    private fun feedGemini(root: Map<String, Any?>): List<StreamEvent> {
         val out = ArrayList<StreamEvent>()
-        json.optJSONObject("error")?.let {
-            return listOf(StreamEvent.Failed(it.optString("message").take(240)))
+        JsonLite.obj(root["error"])?.let {
+            return listOf(StreamEvent.Failed(JsonLite.str(it["message"]).take(240)))
         }
-        val cand = json.optJSONArray("candidates")?.optJSONObject(0)
-        val parts = cand?.optJSONObject("content")?.optJSONArray("parts")
+        val cand = JsonLite.obj(JsonLite.arr(root["candidates"])?.firstOrNull())
+        val parts = JsonLite.arr(JsonLite.obj(cand?.get("content"))?.get("parts"))
         if (parts != null) {
-            for (i in 0 until parts.length()) {
-                val p = parts.optJSONObject(i) ?: continue
-                p.optString("text").takeIf { it.isNotEmpty() }?.let { out.add(StreamEvent.TextDelta(it)) }
-                val fc = p.optJSONObject("functionCall") ?: continue
-                val name = fc.optString("name").trim()
-                val args = fc.optJSONObject("args")?.toString() ?: "{}"
-                val id = fc.optString("id").takeIf { it.isNotBlank() }
+            for (i in parts.indices) {
+                val p = JsonLite.obj(parts[i]) ?: continue
+                JsonLite.str(p["text"]).takeIf { it.isNotEmpty() }?.let { out.add(StreamEvent.TextDelta(it)) }
+                val fc = JsonLite.obj(p["functionCall"]) ?: continue
+                val name = JsonLite.str(fc["name"]).trim()
+                val args = JsonLite.obj(fc["args"])?.let { JsonLite.write(it) } ?: "{}"
+                val id = JsonLite.str(fc["id"]).takeIf { it.isNotBlank() }
                     ?: ToolCallNormaliser.syntheticId("gemini", i, name, args)
                 if (!startedIds.add(id)) continue // replayed part
                 out.add(StreamEvent.ToolCallStarted(id, name))
@@ -137,10 +136,10 @@ class ProviderStreamNormaliser(private val provider: StreamProvider) {
                 )
             }
         }
-        json.optJSONObject("usageMetadata")?.let { u ->
-            out.add(StreamEvent.Usage(u.optInt("promptTokenCount", 0), u.optInt("candidatesTokenCount", 0)))
+        JsonLite.obj(root["usageMetadata"])?.let { u ->
+            out.add(StreamEvent.Usage(JsonLite.int(u["promptTokenCount"]), JsonLite.int(u["candidatesTokenCount"])))
         }
-        when (cand?.optString("finishReason").orEmpty().uppercase()) {
+        when (JsonLite.str(cand?.get("finishReason")).uppercase()) {
             "STOP" -> out.addAll(end(StreamEnd.NATURAL))
             "MAX_TOKENS" -> out.addAll(end(StreamEnd.OUTPUT_LIMIT))
             "SAFETY", "RECITATION", "BLOCKLIST" ->
@@ -152,40 +151,41 @@ class ProviderStreamNormaliser(private val provider: StreamProvider) {
 
     // ---- OpenAI-compatible --------------------------------------------------------------------
 
-    private fun feedOpenAI(json: JSONObject): List<StreamEvent> {
+    private fun feedOpenAI(root: Map<String, Any?>): List<StreamEvent> {
         val out = ArrayList<StreamEvent>()
-        json.optJSONObject("error")?.let {
-            return listOf(StreamEvent.Failed(it.optString("message").take(240)))
+        JsonLite.obj(root["error"])?.let {
+            return listOf(StreamEvent.Failed(JsonLite.str(it["message"]).take(240)))
         }
-        val choice = json.optJSONArray("choices")?.optJSONObject(0) ?: return out
-        val delta = choice.optJSONObject("delta") ?: choice.optJSONObject("message")
-        delta?.optString("content")?.takeIf { it.isNotEmpty() }?.let { out.add(StreamEvent.TextDelta(it)) }
-        delta?.optString("reasoning_content")?.takeIf { it.isNotEmpty() }
+        val choice = JsonLite.obj(JsonLite.arr(root["choices"])?.firstOrNull()) ?: return out
+        val delta = JsonLite.obj(choice["delta"]) ?: JsonLite.obj(choice["message"])
+        JsonLite.str(delta?.get("content")).takeIf { it.isNotEmpty() }
+            ?.let { out.add(StreamEvent.TextDelta(it)) }
+        JsonLite.str(delta?.get("reasoning_content")).takeIf { it.isNotEmpty() }
             ?.let { out.add(StreamEvent.ReasoningDelta(it)) }
-        val calls = delta?.optJSONArray("tool_calls")
+        val calls = JsonLite.arr(delta?.get("tool_calls"))
         if (calls != null) {
-            for (i in 0 until calls.length()) {
-                val c = calls.optJSONObject(i) ?: continue
-                val index = c.optInt("index", i)
-                val fn = c.optJSONObject("function") ?: continue
+            for (i in calls.indices) {
+                val c = JsonLite.obj(calls[i]) ?: continue
+                val index = JsonLite.int(c["index"], i)
+                val fn = JsonLite.obj(c["function"]) ?: continue
                 val p = pending.getOrPut(index) {
-                    val name = fn.optString("name").trim()
-                    val id = c.optString("id").takeIf { it.isNotBlank() }
+                    val name = JsonLite.str(fn["name"]).trim()
+                    val id = JsonLite.str(c["id"]).takeIf { it.isNotBlank() }
                         ?: ToolCallNormaliser.syntheticId("openai", index, name, "")
                     Pending(id, name, StringBuilder())
                 }
-                if (p.name.isBlank() && fn.optString("name").isNotBlank()) {
+                if (p.name.isBlank() && JsonLite.str(fn["name"]).isNotBlank()) {
                     // Some gateways send the name in a later chunk than the id.
-                    pending[index] = Pending(p.id, fn.optString("name").trim(), p.args)
-                    out.add(StreamEvent.ToolCallStarted(p.id, fn.optString("name").trim()))
+                    pending[index] = Pending(p.id, JsonLite.str(fn["name"]).trim(), p.args)
+                    out.add(StreamEvent.ToolCallStarted(p.id, JsonLite.str(fn["name"]).trim()))
                 } else if (startedIds.add(p.id)) {
                     out.add(StreamEvent.ToolCallStarted(p.id, p.name))
                 }
-                val frag = fn.optString("arguments")
+                val frag = JsonLite.str(fn["arguments"])
                 if (frag.isNotEmpty()) {
                     if (p.args.length + frag.length > MAX_PENDING_ARGS) {
                         pending.remove(index)
-                        out.add(StreamEvent.Failed("tool arguments exceeded ${MAX_PENDING_ARGS} characters"))
+                        out.add(StreamEvent.Failed("tool arguments exceeded $MAX_PENDING_ARGS characters"))
                     } else {
                         p.args.append(frag)
                         out.add(StreamEvent.ToolCallArgsDelta(p.id, frag))
@@ -193,10 +193,10 @@ class ProviderStreamNormaliser(private val provider: StreamProvider) {
                 }
             }
         }
-        json.optJSONObject("usage")?.let { u ->
-            out.add(StreamEvent.Usage(u.optInt("prompt_tokens", 0), u.optInt("completion_tokens", 0)))
+        JsonLite.obj(root["usage"])?.let { u ->
+            out.add(StreamEvent.Usage(JsonLite.int(u["prompt_tokens"]), JsonLite.int(u["completion_tokens"])))
         }
-        when (choice.optString("finish_reason")) {
+        when (JsonLite.str(choice["finish_reason"])) {
             "stop" -> out.addAll(end(StreamEnd.NATURAL))
             "length" -> out.addAll(end(StreamEnd.OUTPUT_LIMIT))
             "tool_calls", "function_call" -> {
@@ -226,44 +226,46 @@ class ProviderStreamNormaliser(private val provider: StreamProvider) {
 
     // ---- Anthropic ----------------------------------------------------------------------------
 
-    private fun feedAnthropic(json: JSONObject): List<StreamEvent> {
+    private fun feedAnthropic(root: Map<String, Any?>): List<StreamEvent> {
         val out = ArrayList<StreamEvent>()
-        when (json.optString("type")) {
+        when (JsonLite.str(root["type"])) {
             "error" -> return listOf(
-                StreamEvent.Failed(json.optJSONObject("error")?.optString("message")?.take(240) ?: "provider error")
+                StreamEvent.Failed(JsonLite.str(JsonLite.obj(root["error"])?.get("message")).take(240)
+                    .ifEmpty { "provider error" })
             )
             "content_block_start" -> {
-                val i = json.optInt("index", pending.size)
-                val block = json.optJSONObject("content_block") ?: return out
-                when (block.optString("type")) {
-                    "text" -> block.optString("text").takeIf { it.isNotEmpty() }
+                val i = JsonLite.int(root["index"], pending.size)
+                val block = JsonLite.obj(root["content_block"]) ?: return out
+                when (JsonLite.str(block["type"])) {
+                    "text" -> JsonLite.str(block["text"]).takeIf { it.isNotEmpty() }
                         ?.let { out.add(StreamEvent.TextDelta(it)) }
                     "tool_use" -> {
-                        val name = block.optString("name").trim()
-                        val id = block.optString("id").takeIf { it.isNotBlank() }
+                        val name = JsonLite.str(block["name"]).trim()
+                        val id = JsonLite.str(block["id"]).takeIf { it.isNotBlank() }
                             ?: ToolCallNormaliser.syntheticId("anthropic", i, name, "")
                         if (pending.size < MAX_PENDING_CALLS) pending[i] = Pending(id, name, StringBuilder())
                         if (startedIds.add(id)) out.add(StreamEvent.ToolCallStarted(id, name))
-                        block.optJSONObject("input")?.let { input ->
-                            if (input.length() > 0) {
-                                pending[i]?.args?.append(input.toString())
-                                out.add(StreamEvent.ToolCallArgsDelta(id, input.toString()))
+                        JsonLite.obj(block["input"])?.let { input ->
+                            if (input.isNotEmpty()) {
+                                val text = JsonLite.write(input)
+                                pending[i]?.args?.append(text)
+                                out.add(StreamEvent.ToolCallArgsDelta(id, text))
                             }
                         }
                     }
                 }
             }
             "content_block_delta" -> {
-                val i = json.optInt("index", 0)
-                val d = json.optJSONObject("delta") ?: return out
-                when (d.optString("type")) {
-                    "text_delta" -> d.optString("text").takeIf { it.isNotEmpty() }
+                val i = JsonLite.int(root["index"], 0)
+                val d = JsonLite.obj(root["delta"]) ?: return out
+                when (JsonLite.str(d["type"])) {
+                    "text_delta" -> JsonLite.str(d["text"]).takeIf { it.isNotEmpty() }
                         ?.let { out.add(StreamEvent.TextDelta(it)) }
-                    "thinking_delta" -> d.optString("thinking").takeIf { it.isNotEmpty() }
+                    "thinking_delta" -> JsonLite.str(d["thinking"]).takeIf { it.isNotEmpty() }
                         ?.let { out.add(StreamEvent.ReasoningDelta(it)) }
                     "input_json_delta" -> {
                         val p = pending[i] ?: return out
-                        val frag = d.optString("partial_json")
+                        val frag = JsonLite.str(d["partial_json"])
                         if (p.args.length + frag.length > MAX_PENDING_ARGS) {
                             pending.remove(i)
                             out.add(StreamEvent.Failed("tool arguments exceeded ${MAX_PENDING_ARGS} characters"))
@@ -275,7 +277,7 @@ class ProviderStreamNormaliser(private val provider: StreamProvider) {
                 }
             }
             "content_block_stop" -> {
-                val i = json.optInt("index", 0)
+                val i = JsonLite.int(root["index"], 0)
                 val p = pending.remove(i) ?: return out
                 val args = p.args.toString().ifBlank { "{}" }
                 val complete = p.name.isNotBlank() && ToolCallNormaliser.argsBalanced(args)
@@ -287,9 +289,9 @@ class ProviderStreamNormaliser(private val provider: StreamProvider) {
                 )
             }
             "message_delta" -> {
-                val stop = json.optJSONObject("delta")?.optString("stop_reason").orEmpty()
-                json.optJSONObject("usage")?.let { u ->
-                    out.add(StreamEvent.Usage(u.optInt("input_tokens", 0), u.optInt("output_tokens", 0)))
+                val stop = JsonLite.str(JsonLite.obj(root["delta"])?.get("stop_reason"))
+                JsonLite.obj(root["usage"])?.let { u ->
+                    out.add(StreamEvent.Usage(JsonLite.int(u["input_tokens"]), JsonLite.int(u["output_tokens"])))
                 }
                 when (stop) {
                     "end_turn", "stop_sequence" -> out.addAll(end(StreamEnd.NATURAL))
