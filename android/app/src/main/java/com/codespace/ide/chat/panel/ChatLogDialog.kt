@@ -19,6 +19,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -82,7 +84,12 @@ internal fun ChatLogDialog(onDismiss: () -> Unit) {
                     "Chat log",
                     color = c.text,
                     fontSize = ChatTokens.FONT_BODY.sp,
-                    modifier = Modifier.weight(1f),
+                    // PROJECT SEVEN 7.9C (closed): the dialog's title was plain body text, so TalkBack
+                    // read it inline and heading navigation could not reach it. One modifier, no pixels
+                    // changed - the row still fills the width next to the copy action.
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { heading() },
                 )
                 Text(
                     if (copied) "Copied" else "Copy report",

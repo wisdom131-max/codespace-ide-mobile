@@ -1,6 +1,7 @@
 package com.codespace.ide.chat.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
@@ -53,6 +57,11 @@ fun CopyIconRow(
             color = if (copied) c.accent else c.textSecondary,
             fontSize = ChatTokens.FONT_MICRO.sp,
             modifier = Modifier
+                // PROJECT SEVEN 7.1C: the glyph's own bounds were roughly 30x24dp. Material's minimum
+                // interactive size expands the TOUCH area to 48dp without moving or resizing the glyph,
+                // so the approved copy row looks identical and becomes reachable with a thumb.
+                .minimumInteractiveComponentSize()
+                .semantics { role = Role.Button }
                 .clickable(onClickLabel = "Copy message") {
                     clipboard.setText(AnnotatedString(text))
                     copied = true
