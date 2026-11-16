@@ -22,7 +22,8 @@ internal fun startHandoffSession(
     projectId: String,
     activeId: String,
 ): String? {
-    val source = manager.session(projectId, activeId)?.ui?.value?.rows.orEmpty()
+    val active = manager.session(projectId, activeId)
+    val source = active?.ui?.value?.rows.orEmpty()
     val handoff = com.codespace.ide.chat.session.SessionHandoff.build(
         source.mapNotNull { row ->
             when (row) {
@@ -31,11 +32,30 @@ internal fun startHandoffSession(
                 else -> null
             }
         },
+        // PROJECT SIX 6.2B: what the old session had to leave out of its window travels with the
+        // handoff, labelled as generated.
+        generatedSummary = active?.generatedSummary.orEmpty(),
     )
     val lineage = com.codespace.ide.chat.session.SessionLineage.forProject(context, projectId)
     val parentTitle = com.codespace.ide.chat.session.SessionTitles
         .derive(source.filterIsInstance<ChatRowModel.User>().firstOrNull()?.text)
     val parentLink = lineage.record(activeId, null, parentTitle)
+    // PROJECT SIX 6.4: a second tap must not mint a second successor carrying the same summary. An
+    // existing EMPTY successor is reused; one that already holds a turn is a conversation of its own,
+    // so branching again is legitimate and a new session is created.
+    val reuse = com.codespace.ide.chat.session.HandoffGuard.decide(
+        parentId = activeId,
+        existingChildren = lineage.childrenOf(activeId).map { it to activeId },
+        rowsInChild = { child -> manager.session(projectId, child)?.ui?.value?.rows?.size ?: 0 },
+        labelFor = { child ->
+            com.codespace.ide.chat.session.SessionLineage.label(
+                lineage.linkOf(child) ?: com.codespace.ide.chat.session.SessionLineage.Link(child, activeId, 2, "session"),
+            )
+        },
+    )
+    if (reuse is com.codespace.ide.chat.session.HandoffGuard.Decision.Reuse) {
+        return "Continuing in " + reuse.label + " - it already carries this conversation's context."
+    }
     val created = manager.createSession(projectId)
     if (created !is com.codespace.ide.chat.session.SessionCreate.Created) return null
     val successor = lineage.record(created.meta.id, activeId, parentLink.origin)

@@ -69,6 +69,13 @@ class SessionLineage(
     fun linkOf(sessionId: String): Link? = read().firstOrNull { it.sessionId == sessionId }
 
     /**
+     * PROJECT SIX 6.4: successors already recorded for [parentId], newest first. Used by the handoff
+     * guard so the plus button reuses an empty successor instead of minting a second copy of it.
+     */
+    fun childrenOf(parentId: String): List<String> =
+        read().filter { it.parentId == parentId }.sortedByDescending { it.seq }.map { it.sessionId }
+
+    /**
      * Record [sessionId] as the successor of [parentId].
      *
      * The sequence and the origin come from the PARENT's own link, so hop five still counts from the

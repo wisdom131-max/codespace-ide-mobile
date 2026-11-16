@@ -28,8 +28,29 @@ interface ProviderAdapter {
         config: EngineConfig,
     ): String = payload(window, userText, config)
 
+    /**
+     * STAGE 5.4: the request body with this turn's tool exchanges rendered for this provider.
+     *
+     * The default sends the plain history, which is the honest behaviour for an adapter that has not
+     * opted in: it never claims to carry tool pairs it does not know how to express.
+     */
+    fun payloadWithHistory(
+        window: List<ChatMessage>,
+        userText: String,
+        attachments: List<ChatAttachment>,
+        config: EngineConfig,
+        exchanges: List<ToolExchange>,
+    ): String = payload(window, userText, attachments, config)
+
     /** Next visible text delta from one SSE data payload; null if none. */
     fun extractDelta(data: String): String?
+
+    /**
+     * STAGE 5.2: the stream dialect this adapter speaks, so the engine can normalise native
+     * tool-call events that do not arrive as reply text. Null means "text protocol only" - the
+     * default, and the behaviour every existing adapter keeps unless it opts in.
+     */
+    val streamKind: StreamProvider? get() = null
 
     /** True when this payload is the provider's stream-end sentinel. */
     fun isDoneSentinel(data: String): Boolean

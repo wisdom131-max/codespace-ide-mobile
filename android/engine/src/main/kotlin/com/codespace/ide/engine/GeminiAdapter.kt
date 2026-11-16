@@ -12,6 +12,7 @@ package com.codespace.ide.engine
  */
 class GeminiAdapter : ProviderAdapter {
     override val providerId = "gemini"
+    override val streamKind = StreamProvider.GEMINI
 
     override fun endpoint(config: EngineConfig): String =
         EndpointUrls.geminiStream(config.baseUrl, config.modelId)
@@ -144,5 +145,19 @@ class GeminiAdapter : ProviderAdapter {
             }
         }
         return sb.toString()
+    }
+
+    /** STAGE 5.4: the same body, with this turn's tool call/result pairs spliced in. */
+    override fun payloadWithHistory(
+        window: List<ChatMessage>,
+        userText: String,
+        attachments: List<ChatAttachment>,
+        config: EngineConfig,
+        exchanges: List<ToolExchange>,
+    ): String {
+        val base = payload(window, userText, attachments, config)
+        val rendered = ConversationContinuity.render(StreamProvider.GEMINI, exchanges)
+        if (rendered !is RenderedHistory.Ok) return base
+        return ConversationContinuity.splice(base, "contents", rendered.json)
     }
 }

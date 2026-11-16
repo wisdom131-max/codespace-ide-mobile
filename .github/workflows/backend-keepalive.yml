@@ -14,8 +14,13 @@ on:
 jobs:
   keepalive:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
+      # The probe lives in scripts/, so the job needs the repo. Without this the step ran a path that
+      # did not exist and reported "No such file or directory" as a backend failure - a probe failing
+      # for a reason that has nothing to do with the backend, which is the confusion this job exists
+      # to avoid.
+      - uses: actions/checkout@v4
       - name: Ping Supabase Postgres with a real query
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -25,8 +30,13 @@ jobs:
           echo "[$(date -u)] Supabase keep-alive query succeeded — activity clock reset."
 
       - name: Ping Render backend health (warmth log)
-        run: |
-          echo "[$(date -u)] Curling Render health endpoint..."
-          curl -sS --max-time 60 -o /dev/null -w "Render health HTTP:%{http_code} time:%{time_total}s\n" \
-            https://codespace-ide-backend.onrender.com/api/v1/health
-          echo "[$(date -u)] Keep-alive run complete."
+        # Retries a Render free-tier cold start instead of calling it an outage, and treats any
+        # non-2xx as a FAILURE. See scripts/backend-health-probe.sh for why both rules exist.
+        env:
+          PROBE_URL: https://codespace-ide-backend.onrender.com/api/v1/health
+          PROBE_ATTEMPTS: "3"
+          PROBE_TIMEOUT: "120"
+        run: bash scripts/backend-health-probe.sh
+
+      - name: Probe behaviour regression check
+        run: bash scripts/test-backend-health-probe.sh

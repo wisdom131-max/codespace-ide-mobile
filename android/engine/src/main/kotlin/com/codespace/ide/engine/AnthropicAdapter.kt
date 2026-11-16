@@ -26,6 +26,7 @@ package com.codespace.ide.engine
  */
 class AnthropicAdapter : ProviderAdapter {
     override val providerId = "anthropic"
+    override val streamKind = StreamProvider.ANTHROPIC
 
     /** Base OR full path; the Messages path is appended exactly once. */
     override fun endpoint(config: EngineConfig): String =
@@ -193,5 +194,19 @@ class AnthropicAdapter : ProviderAdapter {
             }
         }
         return sb.toString()
+    }
+
+    /** STAGE 5.4: the same body, with this turn's tool call/result pairs spliced in. */
+    override fun payloadWithHistory(
+        window: List<ChatMessage>,
+        userText: String,
+        attachments: List<ChatAttachment>,
+        config: EngineConfig,
+        exchanges: List<ToolExchange>,
+    ): String {
+        val base = payload(window, userText, attachments, config)
+        val rendered = ConversationContinuity.render(StreamProvider.ANTHROPIC, exchanges)
+        if (rendered !is RenderedHistory.Ok) return base
+        return ConversationContinuity.splice(base, "messages", rendered.json)
     }
 }

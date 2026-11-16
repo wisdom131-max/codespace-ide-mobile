@@ -165,6 +165,13 @@ class ChatSession internal constructor(
     private var engine: ChatEngineImpl = buildEngine()
 
     /**
+     * PROJECT SIX 6.2B: the generated summary this session is carrying, or "". Read by the
+     * continuation so a new session starts with what the old one had to leave out, instead of an
+     * empty page. Empty until a window has actually been reduced.
+     */
+    val generatedSummary: String get() = engine.lastSummaryText
+
+    /**
      * BATCH 4: true once the restore ATTEMPT has finished (successfully or not). Nothing
      * is written to disk before that, or a conversation opened and immediately saved by
      * the collector below would overwrite the very history it is about to load.
@@ -244,6 +251,27 @@ class ChatSession internal constructor(
     @Volatile internal var lastContinuation: ContinuationPlan? = null
 
     /** Area 6: the last provider verdict for THIS session, for the turn summary and continuation. */
+    /**
+     * STAGE 5.4 PART 2: every finished tool call of this session, so the next request can carry the
+     * call/result pair instead of prose about it. Written at the single recording point below.
+     */
+    private val toolExchanges = com.codespace.ide.chat.provider.ToolExchangeLog()
+
+    /**
+     * STAGE 5.4 PART 2: which turn we are on, so a synthetic call id is stable for the same call and
+     * cannot collide with a later turn's call of the same index.
+     */
+    private var turnSerial: Int = 0
+
+    /** The last context sentence shown, so a long session is not narrated the same fact every send. */
+    private var lastContextNotice: String? = null
+
+    /**
+     * STAGE 5.4 PART 3: the one place a call's exchange id is formed, so the executed path and the
+     * refused path agree and a call cannot be recorded twice under two different ids.
+     */
+    private fun exchangeId(idx: Int): String = "wire-" + turnSerial + "-" + idx
+
     @Volatile internal var lastFinish: com.codespace.ide.engine.FinishReason =
         com.codespace.ide.engine.FinishReason.UNKNOWN
 
@@ -377,7 +405,20 @@ class ChatSession internal constructor(
     }
 
     private fun buildEngine(providerId: String = selection.value.providerId): ChatEngineImpl =
-        ChatEngineImpl(projectId, transportFactory(), adapterFor(providerId))
+        ChatEngineImpl(
+            projectId,
+            transportFactory(),
+            adapterFor(providerId),
+            // STAGE 5.4 PART 2: read when the request is built, not when the session is created.
+            // The engine is constructed from the constructor, before this property exists.
+            exchanges = { toolExchanges.snapshot() },
+            // PROJECT SIX 6.3D: the retained summary survives a restart, keyed by this session and
+            // redacted on the way to disk. No context (JVM tests) means memory-only retention, said
+            // plainly rather than assumed to work.
+            summaryStore = appContext?.let {
+                com.codespace.ide.engine.SummaryStore(java.io.File(it.filesDir, "chat-retention"))
+            },
+        )
 
     private fun adapterFor(providerId: String): ProviderAdapter =
         if (providerId == "gemini") GeminiAdapter()
@@ -543,6 +584,8 @@ class ChatSession internal constructor(
     internal var mode: ChatMode = ChatModePersistence.toUi(initialMode)
 
     fun send(userText: String, confirmOverBudget: Boolean = false) {
+        // STAGE 5.4 PART 2: a new turn, so this turn's synthetic call ids cannot collide with the last.
+        turnSerial++
         // A fresh message supersedes the Resume offer: continuing an abandoned turn after the
         // user typed something new would answer the wrong thing.
         _resumeUi.value = TurnResume.Action.NONE
@@ -831,6 +874,14 @@ class ChatSession internal constructor(
         sendJob = scope.launch {
             try {
                 engine.send(userText, attachments, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, attachments, confirmOverBudget, gen) }
+                // PROJECT SEVEN 7.4 (with PROJECT SIX 6.1): if the request had to leave turns behind, or
+                // could not fit, say so once. Silent history loss is the thing this line exists to stop.
+                engine.lastContextDecision?.notice?.let { note ->
+                    if (note != lastContextNotice) {
+                        lastContextNotice = note
+                        appendRow(ChatRowModel.InfoNote(note))
+                    }
+                }
             } catch (_: CancellationException) {
                 // Cooperative cancel: partial text is already in the rows.
                 ui.value = ui.value.copy(streaming = false)
@@ -1223,7 +1274,7 @@ class ChatSession internal constructor(
                 // Item 36: the retry verdict is folded INTO the failure card rather than appended
                 // as a second row - one error, one card, and the card stays the last row so the
                 // failure is still visibly the last thing that happened.
-                appendRow(ChatStatusMapping.rowForError(err, ChatFailureAdvice.noteFor(err)))
+                appendRow(ChatStatusMapping.rowForError(err, ChatFailureAdvice.adviceFor(err)))
                 ui.value = ui.value.copy(streaming = false)
             }
         }
@@ -1353,13 +1404,28 @@ class ChatSession internal constructor(
             // P4.B: execution itself is coordinated. Independent read-only calls run together and
             // bounded; every write, command, connector and MCP call stays strictly sequential and in
             // plan order. Answers are collected by index, so the transcript order is the plan's.
+            // STAGE 5.2: every provider's call reaches the executor through one gateway. The
+            // gateway refuses a call that names no registered tool, that never finished arriving,
+            // or that repeats one already claimed in this round - and then hands the rest to
+            // AgentTools.executeTool, which is still the only door to a side effect.
+            val claimedCalls = HashSet<String>()
             suspend fun executeOnce(idx: Int): String = try {
-                com.codespace.ide.agent.AgentTools.executeTool(
-                    calls[idx].name, org.json.JSONObject(calls[idx].argumentsJson), ctx,
-                    // GATE 2: a write carries an id derived from what it asks for, so the
-                    // persisted ledger can answer a repeat instead of applying it twice.
-                    callId = com.codespace.ide.chat.panel.WriteCallIdentity.idFor(
-                        calls[idx].name, calls[idx].argumentsJson))
+                val normalised = com.codespace.ide.chat.provider.WireCalls
+                    .fromWire("copilot", listOf(calls[idx])).single()
+                val outcome = com.codespace.ide.chat.provider.ToolExecutionGateway.run(
+                    normalised,
+                    com.codespace.ide.agent.AgentTools.toolNames(),
+                    claimedCalls,
+                ) { name, argsJson, _ ->
+                    com.codespace.ide.agent.AgentTools.executeTool(
+                        name, org.json.JSONObject(argsJson), ctx,
+                        // GATE 2: a write carries an id derived from what it asks for, so the
+                        // persisted ledger can answer a repeat instead of applying it twice.
+                        callId = com.codespace.ide.chat.panel.WriteCallIdentity.idFor(
+                            name, argsJson))
+                }
+                outcome.result?.result
+                    ?: ("FAILED: " + (outcome.refusal ?: "the call could not run"))
             } catch (t: Throwable) {
                 "FAILED: " + (t.message ?: "unknown error")
             }
@@ -1383,9 +1449,17 @@ class ChatSession internal constructor(
                     )
                 }.getOrNull()
                 appendRow(ChatRowModel.InfoNote(
-                    (if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
+                    (if (out.startsWith(com.codespace.ide.chat.provider.ToolResultNormaliser.UNCERTAIN_PREFIX))
+                        "Unsure - "
+                    else if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
                         AgentToolWire.firstLine(out)
                 ))
+                toolExchanges.record(
+                    id = exchangeId(idx),
+                    name = call.name,
+                    argumentsJson = call.argumentsJson,
+                    output = out,
+                )
                 answered[idx] = out
                 // Guard (c): a tool result joins the echo corpus for the REST of this turn.
                 turnContext.add(out)
@@ -1448,6 +1522,9 @@ class ChatSession internal constructor(
                     WritePolicy.Decision.REFUSE -> {
                         val refused = WritePolicy.refusalMessage(call.name)
                         appendRow(ChatRowModel.InfoNote(refused))
+                        // PART 3A: refused BEFORE the executor was reached. The model is told so, and
+                        // the log keeps it distinct from a tool that ran and failed.
+                        toolExchanges.recordRefused(exchangeId(idx), call.name, call.argumentsJson, refused)
                         answered[idx] = refused
                         results.append(AgentToolWire.resultMessage(call, refused))
                         results.append("\n\n")
@@ -1487,6 +1564,8 @@ class ChatSession internal constructor(
                             "no answer in 10 minutes" else "you declined"
                     appendRow(ChatRowModel.InfoNote("Skipped " + call.name + " - " + why))
                     answered[idx] = "NOT RUN (" + why + ")"
+                    toolExchanges.recordRefused(
+                        exchangeId(idx), call.name, call.argumentsJson, "NOT RUN (" + why + ")")
                     results.append(AgentToolWire.resultMessage(call, "NOT RUN (" + why + ")"))
                     results.append("\n\n")
                     continue

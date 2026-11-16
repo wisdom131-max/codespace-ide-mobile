@@ -8,6 +8,7 @@ package com.codespace.ide.engine
  */
 class OpenAIAdapter : ProviderAdapter {
     override val providerId = "openai"
+    override val streamKind = StreamProvider.OPENAI
 
     /** Base OR full path: EndpointUrls accepts both and never duplicates a segment. */
     override fun endpoint(config: EngineConfig): String =
@@ -169,5 +170,19 @@ class OpenAIAdapter : ProviderAdapter {
             }
         }
         return sb.toString()
+    }
+
+    /** STAGE 5.4: the same body, with this turn's tool call/result pairs spliced in. */
+    override fun payloadWithHistory(
+        window: List<ChatMessage>,
+        userText: String,
+        attachments: List<ChatAttachment>,
+        config: EngineConfig,
+        exchanges: List<ToolExchange>,
+    ): String {
+        val base = payload(window, userText, attachments, config)
+        val rendered = ConversationContinuity.render(StreamProvider.OPENAI, exchanges)
+        if (rendered !is RenderedHistory.Ok) return base
+        return ConversationContinuity.splice(base, "messages", rendered.json)
     }
 }
