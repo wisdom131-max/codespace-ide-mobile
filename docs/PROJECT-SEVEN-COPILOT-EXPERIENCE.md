@@ -133,6 +133,82 @@ numbers, an unfinished step claims no success, TalkBack labels name step + state
 expanded/collapsed announcements, bounded message descriptions, the 48dp constant, and one distinct word
 per state.
 
+## Checkpoint 3 — 7.9 measured contrast and 7.6 picker wording
+
+### 7.9A — contrast, measured instead of guessed
+
+`ContrastAudit` computes the WCAG ratio from the actual `ChatTokens` values the renderer uses, for both
+themes, over the ten pairs the chat really draws. The result, first run:
+
+| Pair | Dark | Light | AA |
+|---|---|---|---|
+| body text on background | 11.25:1 | 16.67:1 | pass |
+| body text on surface | 10.33:1 | 15.29:1 | pass |
+| secondary text on surface | 5.65:1 | 4.89:1 | pass |
+| secondary text on background | 6.15:1 | 5.33:1 | pass |
+| accent on surface | 4.99:1 | 5.79:1 | pass |
+| error on error surface | 4.57:1 | 4.83:1 | pass |
+| warning on warning surface | 6.24:1 | 5.14:1 | pass |
+| success on surface | 7.52:1 | 4.73:1 | pass |
+| **hairline border on surface** | **1.60:1** | **1.41:1** | **fails 3:1** |
+
+The one failure is real and it is a divider, not a control: WCAG 1.4.11 covers controls and states, so
+the hairline stays a hairline (tested as such, so it cannot silently drift), and `strongBorder` derives a
+3:1-capable border from the palette's own direction for edges that DO carry meaning, such as a focused
+input. Tests assert both the exemption and the derived border.
+
+### 7.9E — streaming announcements
+
+`CopilotAccessibility.announcement` announces the start of a reply, then at most once per 400 characters,
+plus every terminal transition (complete, failed, interrupted) with a bounded tail. Small growth is
+silent, which is the point: announcing per token drowns the events that matter.
+
+### 7.6 — the picker names provider and model separately
+
+`ModelPickerSection`'s header said "Model". It now shows `Google Gemini · Gemini 2.5 Pro` and carries a
+TalkBack description stating what is in effect ("Using ... Choosing another model replaces it.").
+`ModelPickerPresentation` supplies the rest of the wording from the existing `PickerModel` data:
+
+- capability lines never invent a value: an unknown context window reads "not known for this model. VN
+  Code will not invent one";
+- a custom endpoint opens with "its capabilities are not verified. Nothing here assumes them", and its
+  reasoning line reads "not known for this endpoint" rather than "not offered";
+- an alternative is offered as "Try ... instead? Nothing changes unless you pick it.";
+- dismissing without choosing keeps the previous selection (`selectionAfterDismiss`), tested;
+- an empty search says "The list is filtered, not empty", so a filter never reads as a provider failure.
+
+No selection logic was added: `ModelPickerSpec` and Project Five's catalogue remain the only source, and
+nothing here can switch provider, model, endpoint or key on its own.
+
+## Tests (checkpoint 3)
+
+21 new cases:
+- `Stage79ContrastTest` (6): the ratio formula against known values (21:1, 1:1), every text pair AA in
+  both themes, the derived strong border reaching 3:1 in both themes, the hairline documented as
+  decorative, and the audit reporting the pairs it measured.
+- `Stage79AnnouncementTest` (6): first token announces the start, small growth is silent, a 460-character
+  jump announces once with progress, all three terminal transitions announce, the tail is bounded, an
+  empty update is silent.
+- `Stage76PickerPresentationTest` (9): provider/model identity separate, no-selection stated, unknown
+  context said to be unknown, custom endpoint capabilities assumed by nothing, reasoning support stated
+  not guessed, alternatives offered as choices, dismissal keeps the selection, unsupported lines invent
+  no limit, empty search is a filter not a failure.
+
+## Manual verification still required for 7.9
+
+These cannot be measured from a JVM, and are not claimed:
+
+1. Font scale 1.3 and 2.0 (Settings, Display, Font size): tree header, tool row and picker header must
+   wrap without clipping; no control may fall below 48dp.
+2. Landscape and a narrow column: composer, message list and expanded tree remain reachable; nothing
+   hides behind the keyboard or navigation bar.
+3. TalkBack: focus enters the tree header, reads the group counts, expands, and returns focus to the
+   header after a dialog dismisses.
+4. Streaming with TalkBack on: confirm silence between the 400-character announcements and one
+   announcement per terminal transition.
+5. Long response (10k+ characters) with the tree expanded: scrolling stays smooth, no frame stalls at
+   the bound.
+
 ## Not delivered in this pass — stated plainly
 
 Project Seven is **not complete**. The following areas were not implemented here:
@@ -142,9 +218,12 @@ Project Seven is **not complete**. The following areas were not implemented here
 - **7.3** ~~binding~~ — DONE in checkpoint 2 (header, child lines, ids).
 - **7.4** ~~wiring `toolRow`~~ — DONE in checkpoint 2 at the row creation site; execution truth added.
 
-- **7.6** provider/model picker wording from `ProviderCatalogue` reasons.
+- **7.6** started in checkpoint 3: header, capability honesty, alternative framing, dismissal.
+  Still open: loading/error/unavailable states of the live model fetch, keyboard navigation inside the
+  picker, and binding the remaining capability lines into every row.
 - **7.8** research and document presentation.
-- **7.9** started in checkpoint 2 (48dp header targets, TalkBack descriptions, non-colour state words).
+- **7.9** partially done: checkpoint 2 (48dp targets, TalkBack, state words) and checkpoint 3 (measured
+  contrast, strong border, streaming announcements). Manual device checks listed above remain.
   Still open: contrast measurement, text scaling, landscape/small screens, dialog semantics, streaming
   announcement throttling, long-message performance.
 - **7.10** voice surfacing (no greetings were added, and none exist).
