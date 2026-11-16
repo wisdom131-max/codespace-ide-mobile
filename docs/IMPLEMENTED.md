@@ -346,3 +346,13 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
 | P6.2B continuation | `Continuation` (label `Session 2 from git`, inert exchange records, no executor/approval inheritance) wired through `SessionHandoff.generatedSummary` + `ChatSession.generatedSummary` + `startHandoffSession`, so the successor starts with what the predecessor left out. 3 app cases. UI path only; no JVM test drives the manager. CI-green: run `43896451765` on `78d51e4`. Not device-verified. |
 
 | Backend prober (`backend-keepalive`) | Cold-start red run fixed: `scripts/backend-health-probe.sh` retries with a 120s cold-start timeout, `--fail` so a 503 can never pass, non-zero exit when all attempts fail; `scripts/test-backend-health-probe.sh` covers six behaviours and runs in both workflows. CI-green: run `43903082582` (HTTP 200 in 42.4s) on `7ee6868`. Not the same thing as ProviderCapabilities, ToolHealth, ProviderSelector or Project Five error intelligence. |
+
+| P6.3A provenance + certainty | `SummaryLine` carries `status` (CONFIRMED/ASSUMED/UNRESOLVED/UNKNOWN, negatives checked first), `origin` (MESSAGE/TOOL_EXCHANGE/CARRIED_SUMMARY) and `seq`; rendered text marks `[assumed]` / `[unresolved]`. Locally tested. |
+
+| P6.3B corrections | `SummaryLedger.absorb` supersedes a NEWER statement of the same subject (3 shared distinctive words + 60% containment), never supersedes failures, states how many were replaced; duplicates still stored once. Locally tested. |
+
+| P6.3C retrieval | `HistoryRetriever` quotes older turns VERBATIM under `RETRIEVED FROM EARLIER TURNS`, eighth of the budget, max 3 turns, never re-quotes the window or the summary, no executor on the path. Locally tested. |
+
+| P6.3D retention store | `SummaryStore(filesDir/chat-retention)`: atomic temp+rename, session-keyed with foreign-session refusal, corrupt reported with a reason and rebuilt, 20-session bound, secret redaction, `false` when unwritable. Wired through `ChatSession.buildEngine`. Locally tested. |
+
+| P6.4 handoff guard | `HandoffGuard` reuses an empty successor instead of minting a duplicate "Session 2 from git"; a successor that already holds a turn is a conversation of its own, so a new branch is created. Wired into `startHandoffSession` via `SessionLineage.childrenOf`. 4 app cases. Locally tested. |
