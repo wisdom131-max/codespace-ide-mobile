@@ -238,7 +238,10 @@ brief ("distinguish provider identity from model identity"), it is one string pl
 description, and it is listed here so it can be vetoed and reverted on its own without touching anything
 else.
 
-## Checkpoint 4 — 7.6 list honesty and the rest of 7.9 that could be fixed without redesign
+## Checkpoint 4 — 7.6 list honesty
+
+**CI: run `43938472824` on `5c3f59e`, 26/26 steps, success.**
+ and the rest of 7.9 that could be fixed without redesign
 
 ### Finding that removes work instead of adding it: there is no live model fetch
 
