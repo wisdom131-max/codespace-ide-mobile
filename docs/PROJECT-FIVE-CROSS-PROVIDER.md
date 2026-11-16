@@ -26,7 +26,7 @@ new format was invented; this file plus a changelog entry plus an `IMPLEMENTED.m
 - No provider capability model existed: nothing knew a context window, a tool-call guarantee or a
   structured-output restriction. That was the honest gap.
 
-## Stage 5.1 — provider and model capability intelligence (IMPLEMENTED, LOCALLY TESTED)
+## Stage 5.1 — provider and model capability intelligence (IMPLEMENTED, LOCALLY TESTED, CI-GREEN)
 
 `chat/provider/ProviderCapabilities.kt`
 
@@ -60,10 +60,14 @@ an unknown model are risky; a verified gap (Anthropic structured output) is unus
 is never switched even when it cannot work; a suitable choice offers no alternative; the offered
 alternative genuinely fits and can call tools; restrictions are reportable.
 
+**CI.** Branch `stage-5.1` pushed, remote head `27a08b6`. The workflow triggers on `main`, tags and pull
+requests, so the branch push started nothing and run `43850633942` was dispatched on ref `stage-5.1`; job
+`build` (25 steps) **success** on SHA `27a08b6`. CI validates the build and the JVM suite in a real
+Gradle environment; it is not device verification and it does not exercise a live provider.
+
 **Results.** 3,219 tests on this branch (main plus Stage 5.1; the Stage 4.8 tests live on `stage-4.8`),
 `BackupTarTest.failureMessageCarriesRealTotals` the only failure, unchanged and reproducible on a clean
-tree as a sandbox artifact. Dev-debug compile and D8 dex green. Not CI-green: the branch has not been
-pushed. Not device-verified.
+tree as a sandbox artifact. Dev-debug compile and D8 dex green. CI-green: run `43850633942`. Not device-verified.
 
 ## Next stage (5.2)
 
