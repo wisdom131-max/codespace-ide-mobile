@@ -1,5 +1,6 @@
 package com.codespace.ide.agent
 
+import com.codespace.ide.agent.runtime.EvidenceStore
 import java.security.MessageDigest
 
 /**
@@ -43,8 +44,39 @@ object EvidenceReconciler {
     private const val CAP = 200
     private val last = LinkedHashMap<String, Observation>()
 
+    /** STAGE 4.7: when a store is attached, an observation outlives the process that made it. */
+    private var store: EvidenceStore? = null
+
     @Synchronized
-    fun clear() = last.clear()
+    internal fun attach(candidate: EvidenceStore) {
+        if (store != null) return
+        store = candidate
+        // A restored observation is a memory of what was seen, not a fact about the file now.
+        candidate.load().observations.forEach { (resource, observation) ->
+            if (!last.containsKey(resource)) last[resource] = observation
+        }
+    }
+
+    @Synchronized
+    fun clear() {
+        last.clear()
+        store?.clear()
+        store = null
+    }
+
+    /** Test seam: forget what this process observed, leaving the stored file untouched. */
+    @Synchronized
+    internal fun clearMemoryForTest() {
+        last.clear()
+        store = null
+    }
+
+    /** Test seam: read a store as a fresh process would. */
+    @Synchronized
+    internal fun attachFreshForTest(candidate: EvidenceStore) {
+        store = null
+        attach(candidate)
+    }
 
     @Synchronized
     fun observed(): Map<String, Observation> = HashMap(last)
@@ -111,5 +143,6 @@ object EvidenceReconciler {
             last.remove(last.keys.first())
         }
         last[resource] = observation
+        store?.save(HashMap(last))
     }
 }

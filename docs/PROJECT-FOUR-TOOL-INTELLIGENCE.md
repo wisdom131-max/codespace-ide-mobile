@@ -232,3 +232,44 @@ Limits, stated plainly: observation digests live in memory for the session, so a
 a process restart is not detected; `git_commit_push` verification reads the log text the tool returned
 rather than re-running git; archive extraction completeness uses the paths already on disk; and the
 contracts, verifier coverage and scoring signals cover the tools whose behaviour is known, not all 130.
+
+## Stage 4.7 — evidence that persists, state that is re-read (implemented, local only)
+
+Status labels used here: researched, implemented, locally tested. Not CI-green (the stage is on a
+branch and has not been pushed, so no workflow has run), not device-verified.
+
+**A. Persistent observations.** `EvidenceStore` keeps the last observation of each resource in
+`filesDir/evidence-observations.json`, written to a temp file and renamed so a kill cannot leave half a
+record, bounded to 200 resources, and read defensively: a corrupt or half-written file yields nothing
+plus a reason. `EvidenceReconciler.attach` restores those observations at first use, so a contradiction
+seen before a restart is still seen after it. A restored observation is a memory of what was seen, not a
+fact about the file now: it can only say "this disagrees with before".
+
+**B. Fresh git state.** `GitFreshVerifier` reads the repository again, read-only (`status --porcelain`,
+`rev-parse`, `log -1`), and hands the output to the same `GitStateVerifier` parser so both paths agree
+on what a state is. An empty porcelain status is a clean tree, not an unreadable one; a directory that
+is not a repository, or a missing one, is unknown and never verified. At most four short-timeout
+commands per call; no write is ever run to check a write. Tests use real temporary repositories.
+
+**C. Fresh archive destination.** `ArchiveDestinationVerifier` opens the archive read-only with
+`ZipFile` and walks the destination, comparing entries, types and declared sizes. Missing entries are
+incomplete, nothing-on-disk is refuted, a directory where a file belongs is the wrong type, a short file
+is refuted, path traversal is refused outright, corrupt differs from unsupported, and an unreadable
+destination is unknown rather than success. It never extracts, writes or overwrites.
+
+**D. Complete suitability signals.** `ToolSuitability` now scores eleven signals: capability, request
+wording, validatable output, prerequisite readiness, health, safer alternative, cost, network need and
+availability, expected time, device resource weight, and provider connection. Each reads declared
+metadata (`ToolMeta` cost class, category) or runtime state supplied by the caller; anything undeclared
+earns zero and says "unknown" instead of guessing. Eligibility is unchanged and still absolute: mode,
+registration and capability only.
+
+**E. Research claim reconciliation.** `ClaimReconciliation` judges the claims `ContradictionScan`
+already produces against the sources `SourceLedger` actually fetched: supported, independently
+supported, conflicting, unsupported (the quoted text is not in the cited source), unverified (no source,
+or a source never fetched), insufficient (nothing was fetched). Two copies of the same publication share
+an identity and are not counted twice; a disagreement is reported without choosing a winner.
+
+Deferred, with reasons: duplicate archive entry names cannot be produced by the JDK zip writer used in
+tests, so that path is implemented but has no fixture; APK-internal dex verification and device
+behaviour remain unverified; no additional parallel model requests were introduced.
