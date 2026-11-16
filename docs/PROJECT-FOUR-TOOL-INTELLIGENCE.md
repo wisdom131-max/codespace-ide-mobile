@@ -138,3 +138,27 @@ Still not done, and deliberately: the orchestrator's parallelism is used by dele
 main chat loop still issues model tool calls one at a time, because parallelising arbitrary model
 calls needs per-call identity in the transcript, which is Stage 4.4 work. The Thinking Tree shows the
 existing per-step activity lines; it does not yet render "waiting for prerequisite" as its own state.
+
+### 4.3 second pass — resume, duplicates and the reason on screen
+
+The first pass ran the waves and wrote the ledger. This pass closes the gaps that only show up when
+a run is interrupted.
+
+- **Resume is enforced, not described.** `Orchestrator.run(prior = ...)` reads what the durable ledger
+  proved. A capability that is settled is skipped, so a completed write is never repeated; a
+  write whose outcome is uncertain is *held* and named, never guessed at; a cheap read may be tried
+  again. Evidence from another conversation, or from an older plan revision, blocks instead of
+  counting.
+- **Duplicates lose.** A step id is claimed once per run; the second dispatch of the same id is
+  refused and recorded, which covers a model retry and two workers naming the same task.
+- **A failure stops the chain, not the turn.** Steps that depend on the failed capability are
+  skipped by name; steps that never depended on it still run, once. One replan is the limit, and a
+  second failure is reported rather than retried.
+- **The reason is on screen.** `OrchestrationTrace` keeps the last 16 lines of orchestration and the
+  delegation path feeds it, so "held: an earlier edit may already have landed" is visible in the
+  same block as the plan, separate from the grouped `/tools` catalogue.
+
+Twelve further cases (durable roundtrip, corrupt file, bounded tail, settled write, uncertain write,
+retryable read, foreign conversation, stale revision, duplicate id, held step, failure isolation,
+cancellation, trace). Full suite 3,157 tests, one failure: `BackupTarTest`, unchanged and
+pre-existing.

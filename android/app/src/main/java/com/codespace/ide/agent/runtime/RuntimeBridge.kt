@@ -279,7 +279,14 @@ internal object RuntimeBridge {
                     )
                     Orchestrator.StepResult(ok, output.take(400), verified = ok)
                 },
-            ).run(listOf(steps))
+                trace = { line -> OrchestrationTrace.add(line) },
+            ).run(
+                waves = listOf(steps),
+                prior = PrereqLedger.snapshot(),
+                session = PrereqLedger.session(),
+                revision = PrereqLedger.planRevision(),
+            )
+            OrchestrationTrace.add("wave done: " + run.summary())
             if (!run.ok) break
         }
         val leftovers = current.tasks.filter {

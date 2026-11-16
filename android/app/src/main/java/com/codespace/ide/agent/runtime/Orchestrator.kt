@@ -24,6 +24,9 @@ import kotlinx.coroutines.sync.withPermit
  *    no caller can mistake it for a success.
  *  - Parallelism is a device setting, not an ambition: the default is 2 on a small phone.
  */
+/** One replan per run. A second failure is reported, not retried. */
+private const val MAX_REPLANS = 1
+
 internal class Orchestrator(
     private val maxParallel: Int = defaultParallelism(),
     private val isCancelled: () -> Boolean = { false },
@@ -65,14 +68,37 @@ internal class Orchestrator(
     }
 
     /** Results so far, plus the peak number of operations that ran at once. */
-    suspend fun run(waves: List<List<Step>>): Report {
+    suspend fun run(
+        waves: List<List<Step>>,
+        prior: List<PrereqLedger.Entry> = emptyList(),
+        session: String = "",
+        revision: Int = -1,
+    ): Report {
         val results = LinkedHashMap<String, StepResult>()
         val cancelled = ArrayList<String>()
         val skipped = ArrayList<String>()
         val failed = HashSet<String>()
+        val held = ArrayList<String>()
+        val claimed = HashSet<String>()
         var peak = 1
+        var replans = 0
 
-        var stop = false
+        // STAGE 4.3: what an earlier run already proved. A capability that is DONE is not run again,
+        // which is how a resumed turn avoids repeating a write that already landed; a capability
+        // whose side effect is uncertain waits for the owner instead of being guessed at.
+        val resume = OrchestrationResume.plan(prior, session, revision)
+        val settled = resume.settled().map { it.capability }.toSet()
+        val needsOwner = resume.needsOwner().map { it.capability }.toSet()
+
+        fun block(step: Step): String? = when {
+            !claimed.add(step.id) -> "duplicate: this run already dispatched " + step.id
+            step.capability in settled -> "already done: " + step.capability + " was proven before"
+            step.capability in needsOwner && step.writes.isNotEmpty() ->
+                "held: an earlier " + step.capability + " may already have landed, so it needs the owner"
+            step.dependsOn.any { it in failed } -> "blocked: " + step.capability + " needs " + step.dependsOn.filter { it in failed }.joinToString(", ")
+            else -> null
+        }
+
         for ((index, wave) in waves.withIndex()) {
             if (isCancelled()) {
                 wave.forEach { cancelled.add(it.id) }
@@ -82,53 +108,84 @@ internal class Orchestrator(
             }
             val ready = ArrayList<Step>()
             wave.forEach { step ->
-                if (step.dependsOn.any { it in failed }) {
-                    skipped.add(step.id)
-                    failed.add(step.capability)
-                    trace("blocked: " + step.id + " needs " + step.dependsOn.filter { it in failed }.joinToString(", "))
-                } else {
+                val why = block(step)
+                if (why == null) {
                     ready.add(step)
+                } else {
+                    if (why.startsWith("held")) held.add(step.id) else skipped.add(step.id)
+                    if (why.startsWith("blocked")) failed.add(step.capability)
+                    trace(step.id + ": " + why)
                 }
             }
             if (ready.isEmpty()) continue
 
             val (exclusive, shared) = ready.partition { it.exclusive || it.writes.isNotEmpty() }
+            var waveFailed = false
 
             if (shared.isNotEmpty()) {
                 val gate = Semaphore(maxParallel.coerceAtLeast(1))
                 val active = shared.size.coerceAtMost(maxParallel)
                 if (active > peak) peak = active
-                trace("running " + shared.size + " read-only step(s)" + if (active > 1) " in parallel" else "")
+                trace("wave " + (index + 1) + ": " + shared.size + " read-only step(s)" +
+                    if (active > 1) ", up to " + active + " at once" else "")
                 val done = coroutineScope {
                     shared.map { step ->
-                        async {
-                            gate.withPermit { runOne(step, results, cancelled, failed) }
-                        }
+                        async { gate.withPermit { runOne(step, results, cancelled, failed) } }
                     }.awaitAll()
                 }
-                if (done.any { !it }) stop = true
+                if (done.any { !it }) waveFailed = true
             }
 
-            // Writes and destructive calls are serial on purpose. One at a time, in plan order.
+            // Writes and destructive calls are serial on purpose: one at a time, in plan order.
             for (step in exclusive) {
                 if (isCancelled()) {
                     cancelled.add(step.id)
+                    waveFailed = true
                     break
                 }
                 trace("running " + step.id + " alone (it changes something)")
                 if (!runOne(step, results, cancelled, failed)) {
-                    stop = true
+                    waveFailed = true
                     break
                 }
             }
-            if (stop) {
-                // Nothing later is attempted: the remaining waves are recorded as skipped rather
-                // than left looking like work that merely has not started yet.
-                waves.drop(index + 1).flatten().forEach { skipped.add(it.id) }
-                trace("stopped after wave " + (index + 1) + ": a step failed")
+
+            if (waveFailed) {
+                // A failure stops the chain, not the turn. Everything later that depends on what
+                // failed is skipped and named; everything independent still gets its one chance.
+                trace("wave " + (index + 1) + " failed; replanning what is left")
+                val later = waves.drop(index + 1).flatten()
+                val runnable = ArrayList<Step>()
+                later.forEach { step ->
+                    val why = block(step)
+                    if (why == null) runnable.add(step) else {
+                        if (why.startsWith("held")) {
+                            if (step.id !in held) held.add(step.id)
+                        } else if (step.id !in skipped) {
+                            skipped.add(step.id)
+                        }
+                        if (why.startsWith("blocked")) failed.add(step.capability)
+                        trace(step.id + ": " + why)
+                    }
+                }
+                if (replans++ >= MAX_REPLANS) {
+                    trace("stopped: one replan is the limit")
+                    runnable.forEach { if (it.id !in skipped) skipped.add(it.id) }
+                    break
+                }
+                trace("replanned: " + runnable.size + " independent step(s) still stand")
+                for (step in runnable) {
+                    if (isCancelled()) {
+                        cancelled.add(step.id)
+                        continue
+                    }
+                    runOne(step, results, cancelled, failed)
+                }
                 break
             }
         }
+        // Held work is not pending: it is waiting on a person, and saying so is the point.
+        held.forEach { if (it !in skipped) skipped.add(it) }
         return finish(results, cancelled, skipped, peak)
     }
 

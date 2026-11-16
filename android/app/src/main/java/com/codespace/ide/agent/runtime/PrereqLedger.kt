@@ -65,6 +65,8 @@ internal object PrereqLedger {
     }
 
     @Synchronized
+    fun session(): String = session
+    fun planRevision(): Int = revision
     fun snapshot(): List<Entry> = entries.values.toList()
 
     @Synchronized
