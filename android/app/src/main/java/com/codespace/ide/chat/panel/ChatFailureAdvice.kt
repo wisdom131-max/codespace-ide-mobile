@@ -1,7 +1,10 @@
 package com.codespace.ide.chat.panel
 
 import com.codespace.ide.engine.ChatError
+import com.codespace.ide.engine.ProviderErrorFacts
 import com.codespace.ide.engine.ProviderRetry
+import com.codespace.ide.engine.RecoveryAction
+import com.codespace.ide.engine.RecoveryPlanner
 
 /**
  * Item 36 - WHAT A FAILURE MEANS FOR THE NEXT ATTEMPT, in the user's own words.
@@ -29,6 +32,50 @@ object ChatFailureAdvice {
         val decision = ProviderRetry.decide(err, attempt = attempt, sideEffectDone = externalWriteDone)
         if (decision.retry) return null
         return decision.why
+    }
+
+    /**
+     * STAGE 5.3: the same question, answered with the provider error model.
+     *
+     * [ProviderRetry] can only ask "is this retryable", because [ChatError] carries no status, code or
+     * provider type. Where the verdict itself implies those facts (a 429 with its Retry-After, an
+     * out-of-credits 402, a rejected key 401) they are handed to [RecoveryPlanner], which can tell a
+     * quota exhaustion from a temporary limit, and a context overrun from a malformed request. The
+     * result is still only a sentence: nothing is sent on the user's behalf.
+     */
+    fun adviceFor(
+        err: ChatError,
+        attempt: Int = 1,
+        externalWriteDone: Boolean = false,
+        alternativeModel: String? = null,
+    ): String? {
+        val facts = factsFor(err) ?: return noteFor(err, attempt, externalWriteDone)
+        val plan = RecoveryPlanner.plan(
+            facts, attempt,
+            sideEffectPossible = externalWriteDone,
+            alternativeModel = alternativeModel,
+        )
+        return when (plan.action) {
+            RecoveryAction.USER_ACTION_REQUIRED,
+            RecoveryAction.CONFIGURATION_REQUIRED,
+            RecoveryAction.CONTEXT_REDUCTION_REQUIRED,
+            RecoveryAction.ALTERNATIVE_MODEL_AVAILABLE,
+            RecoveryAction.OPERATION_OUTCOME_UNKNOWN,
+            RecoveryAction.PERMANENT_FAILURE,
+            -> plan.why
+            RecoveryAction.RETRY_SAFE, RecoveryAction.WAIT_AND_RETRY ->
+                // The plain row is kept for a failure the user can simply retry.
+                if (plan.retryable) null else plan.why
+            RecoveryAction.CANCELLED -> null
+        }
+    }
+
+    /** The facts a verdict already proves, or null when it proves none. */
+    private fun factsFor(err: ChatError): ProviderErrorFacts? = when (err) {
+        is ChatError.RateLimited -> ProviderErrorFacts(status = 429, retryAfterSec = err.retryAfterSec)
+        is ChatError.OutOfCredits -> ProviderErrorFacts(status = 402, code = "insufficient_quota")
+        is ChatError.Auth -> ProviderErrorFacts(status = 401, message = err.detail)
+        else -> null
     }
 
     /**

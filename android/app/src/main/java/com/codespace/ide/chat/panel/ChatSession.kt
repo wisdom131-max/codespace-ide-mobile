@@ -1317,7 +1317,9 @@ class ChatSession internal constructor(
                     )
                 }.getOrNull()
                 appendRow(ChatRowModel.InfoNote(
-                    (if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
+                    (if (out.startsWith(com.codespace.ide.chat.provider.ToolResultNormaliser.UNCERTAIN_PREFIX))
+                        "Unsure - "
+                    else if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
                         AgentToolWire.firstLine(out)
                 ))
                 answered[idx] = out

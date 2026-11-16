@@ -37,19 +37,28 @@ object WireCalls {
 
 /** Turns whatever the executor returned into an envelope, without upgrading anything to success. */
 object ToolResultNormaliser {
+
+    /** Marker for "the executor did not come back cleanly". Not a success, not a clean failure. */
+    const val UNCERTAIN_PREFIX = "UNSURE: "
+
+    /** The result for a tool that threw: the effect may or may not have landed. */
+    fun uncertain(call: NormalisedToolCall, why: String): String =
+        UNCERTAIN_PREFIX + why.lineSequence().first().take(240)
     fun fromExecution(call: NormalisedToolCall, output: String): ToolResultEnvelope {
-        val failed = output.startsWith("FAILED", ignoreCase = true)
+        val uncertain = output.startsWith(UNCERTAIN_PREFIX, ignoreCase = true)
+        val failed = !uncertain && output.startsWith("FAILED", ignoreCase = true)
         val cancelled = output.startsWith("CANCELLED", ignoreCase = true)
         return ToolResultEnvelope(
             callId = call.id,
             name = call.name,
             outcome = when {
+                uncertain -> ToolOutcome.UNCERTAIN
                 cancelled -> ToolOutcome.CANCELLED
                 failed -> ToolOutcome.FAILED
                 else -> ToolOutcome.SUCCESS
             },
             result = output,
-            error = if (failed || cancelled) output.lineSequence().first().take(240) else null,
+            error = if (failed || cancelled || uncertain) output.lineSequence().first().take(240) else null,
             cancelled = cancelled,
         )
     }

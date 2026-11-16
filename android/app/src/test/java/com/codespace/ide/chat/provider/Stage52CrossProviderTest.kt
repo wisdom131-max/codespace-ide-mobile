@@ -148,10 +148,13 @@ class Stage52CrossProviderTest {
     }
 
     @Test
-    fun aThrowingExecutorBecomesAFailureNotASuccess() = runBlocking {
+    fun aThrowingExecutorBecomesAnUncertainResultNotASuccess() = runBlocking {
         val call = NormalisedToolCall("id-3", "run_command", """{"command":"x"}""", "copilot", true)
         val outcome = ToolExecutionGateway.run(call, known, HashSet()) { _, _, _ -> throw IllegalStateException("boom") }
-        assertEquals(ToolOutcome.FAILED, outcome.result!!.outcome)
+        // STAGE 5.3 changed this contract on purpose: a throw means the executor did not come back
+        // cleanly, so the effect is UNKNOWN. Calling it FAILED invited a retry that could duplicate
+        // a side effect that had already landed.
+        assertEquals(ToolOutcome.UNCERTAIN, outcome.result!!.outcome)
     }
 
     @Test

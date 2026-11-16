@@ -4,7 +4,7 @@ import com.codespace.ide.engine.CallVerdict
 import com.codespace.ide.engine.NormalisedToolCall
 import com.codespace.ide.engine.ToolCallNormaliser
 
-enum class ToolOutcome { SUCCESS, FAILED, CANCELLED }
+enum class ToolOutcome { SUCCESS, FAILED, CANCELLED, UNCERTAIN }
 
 /**
  * The provider's answer, tied back to the call it belongs to. `result` is the tool's own text; this
@@ -59,10 +59,12 @@ object ToolExecutionGateway {
                 refusal = "this call already ran in this round",
             )
         }
+        // STAGE 5.3: a throwing executor is not a clean failure. For anything that can change state
+        // the effect is unknown, so it is reported as UNCERTAIN and never retried automatically.
         val output = try {
             execute(call.name, call.argumentsJson, call.id)
         } catch (t: Throwable) {
-            "FAILED: " + (t.message ?: "unknown error")
+            ToolResultNormaliser.uncertain(call, t.message ?: "the tool did not finish")
         }
         return Outcome(call, executed = true, result = ToolResultNormaliser.fromExecution(call, output))
     }

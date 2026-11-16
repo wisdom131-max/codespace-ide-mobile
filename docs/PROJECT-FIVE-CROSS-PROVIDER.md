@@ -158,7 +158,65 @@ with a fake transport) and `Stage52CrossProviderTest` (component tests). CI is n
 no Android runtime, no UI, no real network to Gemini, Anthropic or an OpenAI-compatible endpoint.
 `ChatSession.runTools` remains component-tested only, because it needs an Android `Context`.
 
-## Next stage (5.3)
+## Stage 5.3 — error intelligence and recovery (IMPLEMENTED, LOCALLY TESTED)
+
+`engine/ProviderErrorModel.kt`, `chat/provider/SideEffectRecovery.kt`, and the advice path in
+`chat/panel/ChatFailureAdvice.kt`.
+
+**The evidence, not the guess.** `ProviderErrors.extract` reads the three real shapes — Gemini
+`{"error":{"code","status","message"}}`, Anthropic `{"type":"error","error":{"type","message"}}`,
+OpenAI-compatible `{"error":{"message","type","code"}}` — into `ProviderErrorFacts`, and `classify`
+reads the provider's own code, type and message BEFORE the status, because a 400 can be a context
+overrun (recoverable by shortening) or a malformed request (not recoverable at all). A symbolic code
+wins over Gemini's numeric one. A body that matches nothing stays `UNKNOWN`; a malformed body is read
+only from the status. Transport failures classify from their message (timeout, DNS, reset, offline,
+TLS). `Redaction` strips keys, bearer tokens and credential-bearing query strings from every message
+that could be shown or logged.
+
+**The decision.** `RecoveryPlanner.plan` returns one of RETRY_SAFE, WAIT_AND_RETRY,
+USER_ACTION_REQUIRED, CONFIGURATION_REQUIRED, CONTEXT_REDUCTION_REQUIRED, ALTERNATIVE_MODEL_AVAILABLE,
+OPERATION_OUTCOME_UNKNOWN, PERMANENT_FAILURE, CANCELLED, with a sentence and, where relevant, a wait.
+The retry arithmetic is NOT re-implemented: the attempt ceiling, backoff and the cap on a provider's
+Retry-After stay in the existing `ProviderRetry.waitOrNull`/`backoff`. An `OPERATION_OUTCOME_UNKNOWN`
+outranks every other consideration.
+
+**Side-effect safety.** `ToolOutcome` gained `UNCERTAIN`. A throwing executor is no longer reported as
+`FAILED`: `ToolExecutionGateway` now returns `UNSURE: ...`, `ToolResultNormaliser` maps it to
+`UNCERTAIN`, and `ChatSession` shows it as "Unsure -" instead of "Done -". `SideEffectRecovery` turns
+the outcome plus an optional `SideEffectVerifier` verdict into NEVER_STARTED, COMPLETED,
+VERIFIED_FAILED or UNCERTAIN, and `mayRetry` refuses a completed or uncertain write while still
+allowing an uncertain read. The execution door is unchanged: `AgentTools.executeTool`, once per
+claimed call.
+
+**User-facing advice.** `ChatFailureAdvice.adviceFor` maps the verdicts that already imply facts (429
+with its Retry-After, 402, 401) into the planner, so a temporary limit keeps the plain row, a long
+Retry-After is explained rather than held open, quota exhaustion asks the user to act, and an
+already-executed write suppresses every retry suggestion. Nothing is ever sent on the user's behalf,
+and no provider or model is switched: an alternative is an `alternativeModel` field, an offer.
+
+**Tests.** 20 cases in `engine/Stage53ErrorRecoveryTest` (three formats, custom unknown, malformed
+body, overloaded vs limited, redaction in messages and query strings, throwable classes, and every
+decision: key rejection, temporary limit, Retry-After, absurd Retry-After, quota, attempt ceiling,
+context overrun, unknown limits, alternative offer, no silent switch, side-effect override, dropped
+stream, malformed request). 13 cases in `app/Stage53SideEffectRecoveryTest` (throwing write is
+uncertain, uncertain write refused, uncertain read allowed, verified completion, refuted write
+retryable, refused call never started, and the advice sentences). One Stage 5.2 case was REWRITTEN,
+not weakened: `aThrowingExecutorBecomesAFailureNotASuccess` became
+`aThrowingExecutorBecomesAnUncertainResultNotASuccess`, because the old expectation is exactly the bug
+this stage fixes.
+
+**Results.** 3,257 app tests with `BackupTarTest.failureMessageCarriesRealTotals` the only failure;
+engine suite green. Dev-debug compile and D8 dex green. Not CI-green; not device-verified.
+
+**Known limitations.** `ChatError` carries no status or provider code, so the app planner only knows
+what a verdict already implies; full fact extraction runs at the engine boundary and is not yet
+surfaced as a typed event. Context reduction is advised, not performed: no automatic history trim is
+triggered from a context error. `SideEffectRecovery` is wired to the gateway outcome and the existing
+`SideEffectVerifier` type, but no new read-back is performed inside `ChatSession` for an uncertain
+write. No live provider was contacted, so real provider error bodies remain unverified against the
+shapes above.
+
+## Next stage (5.4)
 
 Cross-provider tool compatibility and streaming normalisation: normalise tool definitions and tool-call
 event shapes per provider, prove providers cannot bypass `AgentTools.executeTool`, and normalise
