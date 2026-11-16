@@ -924,6 +924,14 @@ private fun ProviderModelDialog(
                     providerId = current.providerId,
                     current = current,
                     models = pickerModels,
+                    // 7.6 A/B: derived from the reads that actually happened. No spinner is invented,
+                    // because this picker does not fetch over the network at all.
+                    listNote = ModelPickerPresentation.listNote(
+                        liveIdsKnown = (liveRead as? com.codespace.ide.chat.CustomEndpointStore.ModelRead.Loaded)
+                            ?.ids?.isNotEmpty() == true,
+                        unreadable = modelListsUnreadable,
+                        shown = pickerModels.size,
+                    ),
                     effort = ModelPickerData.effortFor(current.providerId),
                     onPick = { picked ->
                         // The SAME onApply the dialog already used, so the picked model is the

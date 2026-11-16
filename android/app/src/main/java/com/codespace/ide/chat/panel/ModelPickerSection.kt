@@ -39,6 +39,8 @@ internal fun ModelPickerSection(
     models: List<PickerModel>,
     effort: Effort,
     onPick: (PickerModel) -> Unit,
+    /** 7.6 A/B: a truthful sentence about the list's origin and age, or null to show nothing. */
+    listNote: String? = null,
 ) {
     val c = ChatTokens.LocalChatColors.current
     var query by remember(providerId) { mutableStateOf("") }
@@ -76,6 +78,14 @@ internal fun ModelPickerSection(
                     )
                 },
         )
+        if (listNote != null) {
+            Text(
+                listNote,
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
         ModelSearchField(query = query, onQuery = { query = it })
         state.rows.forEach { row ->
             when (row) {

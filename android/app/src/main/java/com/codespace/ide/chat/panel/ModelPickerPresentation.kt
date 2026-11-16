@@ -60,6 +60,35 @@ internal object ModelPickerPresentation {
         return out
     }
 
+    /**
+     * 7.6 A/B — the state of the model list itself.
+     *
+     * MEASURED FINDING: this picker performs NO network fetch. The list is assembled from the preset
+     * default, the ids the owner saved, and the ids the endpoint reported on the LAST fetch, all read
+     * from disk synchronously. A spinner here would be theatre, and a "Loading models..." line would
+     * claim work the app is not doing. So the honest state is a sentence about the data's age:
+     * a fresh install has no live list, and the catalogue below is a catalogue, not the endpoint's offer.
+     */
+    fun listNote(liveIdsKnown: Boolean, unreadable: Boolean, shown: Int): String? = when {
+        unreadable -> null // the unreadable notice already says this, and says it better
+        shown == 0 -> "No models are stored for this provider yet. Add one, or pick from the catalogue."
+        !liveIdsKnown -> "This endpoint has not reported its model list. Rows marked Other are the built-in " +
+            "catalogue, not a promise about what the endpoint serves."
+        else -> null
+    }
+
+    /** Never a raw transport error: classifies it, and never quotes headers or keys. */
+    fun listError(kind: ErrorKind): String = when (kind) {
+        ErrorKind.NETWORK -> "Could not reach the endpoint. Your saved selection is unchanged. Retry, or check the connection."
+        ErrorKind.AUTH -> "The endpoint rejected the stored key. Your selection is unchanged; open Keys to fix it."
+        ErrorKind.RATE_LIMIT -> "The endpoint is rate limiting. Nothing was switched; retry later."
+        ErrorKind.EMPTY -> "The endpoint answered with no models. The catalogue below still works."
+        ErrorKind.MALFORMED -> "The endpoint's answer was not a model list. Nothing was changed."
+        ErrorKind.CUSTOM_ENDPOINT -> "This custom endpoint did not answer as expected. Its capabilities stay unknown."
+    }
+
+    enum class ErrorKind { NETWORK, AUTH, RATE_LIMIT, EMPTY, MALFORMED, CUSTOM_ENDPOINT }
+
     /** The empty search state, which must not read like a provider failure. */
     fun emptySearch(query: String): String =
         if (query.isBlank()) "No models are available from this provider right now."

@@ -322,7 +322,13 @@ fun SourcesRow(
                             runCatching { opener.openUri(s.url) }
                         }
                     }
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = 4.dp)
+                    // PROJECT SEVEN 7.9A: at a large font scale the single-line title ellipsises, which
+                    // is correct for the layout and wrong for the reader. The full title and domain are
+                    // provided to TalkBack, so nothing important is lost and the row looks identical.
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = s.title + ", " + s.domain + ", opens the source"
+                    },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
