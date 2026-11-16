@@ -158,7 +158,7 @@ with a fake transport) and `Stage52CrossProviderTest` (component tests). CI is n
 no Android runtime, no UI, no real network to Gemini, Anthropic or an OpenAI-compatible endpoint.
 `ChatSession.runTools` remains component-tested only, because it needs an Android `Context`.
 
-## Stage 5.3 — error intelligence and recovery (IMPLEMENTED, LOCALLY TESTED)
+## Stage 5.3 — error intelligence and recovery (IMPLEMENTED, LOCALLY TESTED, CI-GREEN)
 
 `engine/ProviderErrorModel.kt`, `chat/provider/SideEffectRecovery.kt`, and the advice path in
 `chat/panel/ChatFailureAdvice.kt`.
@@ -216,7 +216,7 @@ triggered from a context error. `SideEffectRecovery` is wired to the gateway out
 write. No live provider was contacted, so real provider error bodies remain unverified against the
 shapes above.
 
-## Stage 5.3b — the evidence reaches the app (IMPLEMENTED, LOCALLY TESTED)
+## Stage 5.3b — the evidence reaches the app (IMPLEMENTED, LOCALLY TESTED, CI-GREEN)
 
 The limitation Stage 5.3 recorded — "`ChatError` carries no status or provider code, so the app planner
 only knows what a verdict already implies" — is closed.
@@ -263,6 +263,22 @@ engine suite green. Dev-debug compile and D8 dex green. Not CI-green; not device
 **Still limited.** Context reduction remains advised, never automatic. `SideEffectRecovery` still
 performs no new read-back for an uncertain write inside `ChatSession`. No live provider was contacted,
 so the real error bodies remain unverified against these shapes — only the documented formats are.
+
+## CI — Stage 5.3 branch
+
+`stage-5.3` was pushed from `13d415b` with `52f36e1` (error intelligence and recovery) and `6b95b70`
+(typed facts past the engine boundary). The workflow triggers only on `main`, tags and pull requests, so
+the branch push started nothing; run `43868731369` was dispatched on ref `stage-5.3` and its job `build`
+succeeded on SHA `6b95b70`. `52f36e1` is covered by the same run because it is an ancestor of the tested
+SHA, which is what a single-run verdict on a linear branch means.
+
+The job's own test steps ran the JVM unit suites and the ChatEngine contract suites, so
+`Stage53ErrorRecoveryTest`, `Stage53bTypedFactsTest`, `Stage53SideEffectRecoveryTest` and
+`Stage53bErrorPathTest` were all executed in the CI environment rather than only here.
+
+**What CI proves and does not prove.** CI proves the tree compiles and those suites pass on a clean
+Gradle runner at `6b95b70`. It does not prove device behaviour, and it contacted no provider: the error
+bodies exercised are the documented formats, not live responses.
 
 ## Next stage (5.4)
 
