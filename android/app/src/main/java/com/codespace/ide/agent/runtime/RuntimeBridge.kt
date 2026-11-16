@@ -233,28 +233,54 @@ internal object RuntimeBridge {
         // A bounded loop: every pass either starts work or is the last pass, so a scheduler that
         // returns nothing runnable cannot spin here.
         var spins = 0
+        // STAGE 4.3: the wave the scheduler computes is now the wave that RUNS. Read-only tasks in
+        // one wave go together (bounded); a task that writes runs alone, after the readers. Every
+        // task still goes through `execute`, which is the real dispatch path, so mode, approval, MCP
+        // and role checks are untouched by running two things at once.
         while (spins++ < DelegationScheduler.MAX_TASKS + 2) {
             val wave = DelegationScheduler.wave(current)
             if (wave.isEmpty()) break
-            for (task in wave) {
-                current = DelegationScheduler.start(current, task.id, now())
-                val output = runCatching { execute(task) }
-                    .getOrElse { "task failed: " + (it.message ?: "no message") }
-                val ok = !ToolFailureProbe.looksFailed(output)
-                current = if (ok) {
-                    DelegationScheduler.complete(
-                        board = current,
-                        id = task.id,
-                        evidence = output.take(400),
-                        verified = !ToolFailureProbe.looksFailed(output),
-                        now = now(),
-                    )
-                } else {
-                    DelegationScheduler.fail(current, task.id, output.take(400), now())
-                }
-                results[task.id] = output
-                ReflectionState.recordTool("subagent:" + task.roleId, output)
+            val steps = wave.map { task ->
+                Orchestrator.Step(
+                    id = task.id,
+                    capability = task.id,
+                    tool = task.tool,
+                    reads = task.reads,
+                    writes = task.writes,
+                    exclusive = task.isWriter,
+                )
             }
+            val byId = wave.associateBy { it.id }
+            val run = Orchestrator(
+                execute = { step ->
+                    val task = byId[step.id]!!
+                    current = DelegationScheduler.start(current, task.id, now())
+                    val output = runCatching { execute(task) }
+                        .getOrElse { "task failed: " + (it.message ?: "no message") }
+                    val ok = !ToolFailureProbe.looksFailed(output)
+                    current = if (ok) {
+                        DelegationScheduler.complete(
+                            board = current,
+                            id = task.id,
+                            evidence = output.take(400),
+                            verified = true,
+                            now = now(),
+                        )
+                    } else {
+                        DelegationScheduler.fail(current, task.id, output.take(400), now())
+                    }
+                    results[task.id] = output
+                    ReflectionState.recordTool("subagent:" + task.roleId, output)
+                    ReflectionState.addEvidence(
+                        claim = "delegated " + task.roleId + ": " + task.title,
+                        level = ReflectionEngine.Level.IMPLEMENTED,
+                        observed = task.tool + ": " + output.take(160),
+                        subject = task.planStepId.orEmpty(),
+                    )
+                    Orchestrator.StepResult(ok, output.take(400), verified = ok)
+                },
+            ).run(listOf(steps))
+            if (!run.ok) break
         }
         val leftovers = current.tasks.filter {
             it.state == DelegationScheduler.State.QUEUED || it.state == DelegationScheduler.State.BLOCKED

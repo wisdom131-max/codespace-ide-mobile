@@ -110,3 +110,31 @@ three health rules. Full suite: 3,127 tests, one failure, `BackupTarTest.failure
 Known limitations: the wave computation is not yet wired to execute waves itself (the model still
 drives calls one at a time, in order); `PrereqLedger` is session memory, so a process restart forgets
 what was satisfied; and the prerequisite table is deliberately small.
+
+## Stage 4.3 — orchestration that runs, evidence that survives (implemented)
+
+Stage 4.2 could compute waves and refuse a call whose prerequisite was missing. The waves were a
+diagram: execution was still one call at a time, and the ledger forgot everything when the activity
+died. Two changes close that.
+
+**Waves execute.** `Orchestrator` takes the waves and runs them. Read-only steps in a wave run
+concurrently behind a semaphore (default 2 on a device with four or fewer cores, never more than 3);
+a step that writes or is destructive runs alone, after the readers. A failure records the failed
+capability, stops later waves, and marks them skipped by name instead of leaving them looking
+unstarted. A step that throws is a failure, not a pass. Cancellation is checked before every start
+and reported as CANCELLED, never as success. `RuntimeBridge.delegate` now hands its wave to the
+orchestrator, so delegated work is the first real user of it, and every task still goes through the
+same `execute` lambda and therefore the same gate, approval, MCP and role checks.
+
+**Evidence survives.** `PrereqStore` writes the ledger to `filesDir/prereq-ledger.json` using the
+`ToolCallLedger` convention: a temp file and a rename, bounded to 200 entries, 240 characters of
+evidence per entry, structure only and no transcripts. `PrereqLedger.attach` binds it per
+conversation and plan revision; a corrupt file is reported as untrusted and yields nothing rather
+than being guessed at. `OrchestrationResume` classifies what came back: a completed write is DONE and
+is not repeated, a failed write that may have landed NEEDS_APPROVAL, a cheap read is RETRY_SAFE, and
+anything proved under another conversation or an older plan revision is BLOCKED.
+
+Still not done, and deliberately: the orchestrator's parallelism is used by delegation only. The
+main chat loop still issues model tool calls one at a time, because parallelising arbitrary model
+calls needs per-call identity in the transcript, which is Stage 4.4 work. The Thinking Tree shows the
+existing per-step activity lines; it does not yet render "waiting for prerequisite" as its own state.

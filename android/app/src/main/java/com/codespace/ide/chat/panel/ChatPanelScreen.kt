@@ -162,6 +162,7 @@ private fun ChatBody(
         if (readAloud && !showVoice) speech.speak(row.text)
     }
     // Attribution: the journal is process-wide, so the session that owns this screen claims it.
+    val localCtx = androidx.compose.ui.platform.LocalContext.current
     DisposableEffect(projectId, activeId) {
         com.codespace.ide.agent.AgentWriteJournal.activeSessionId = activeId
         // M5: memory reads/writes are attributed to this conversation, so "current session only"
@@ -171,6 +172,13 @@ private fun ChatBody(
         // overwrite each other's plan and both look finished.
         com.codespace.ide.agent.goal.PlanState.claim(activeId)
         com.codespace.ide.agent.reflect.ReflectionState.claim(activeId)
+        // Stage 4.3: prerequisite evidence outlives the process, so a resumed conversation does not
+        // have to prove the same things again - and does not re-run a write that already landed.
+        com.codespace.ide.agent.runtime.PrereqLedger.attach(
+            com.codespace.ide.agent.runtime.PrereqStore.get(localCtx.applicationContext),
+            activeId,
+            com.codespace.ide.agent.goal.PlanState.plan(activeId)?.revision ?: 0,
+        )
         onDispose { }
     }
     // U1 (build 657 findings a/d): the OPENING selection is RESOLVED from what the

@@ -22,6 +22,12 @@ internal object PrereqLedger {
         val solvedBy: String,
         val evidence: String,
         val failed: Boolean = false,
+        /** Stage 4.3: which conversation and plan revision this belongs to. */
+        val session: String = "",
+        val revision: Int = 0,
+        /** True when the call changed something, so repeating it would duplicate the change. */
+        val sideEffect: Boolean = false,
+        val at: Long = 0L,
     )
 
     private const val CAP = 64
@@ -29,16 +35,55 @@ internal object PrereqLedger {
     private val entries = LinkedHashMap<String, Entry>()
 
     @Synchronized
-    fun clear() = entries.clear()
+    fun clear() {
+        entries.clear()
+        store?.clear()
+    }
+
+    /** Stage 4.3: the durable copy. Null means "this run keeps its evidence in memory only". */
+    @Volatile
+    private var store: PrereqStore? = null
+
+    @Volatile
+    private var session: String = ""
+
+    @Volatile
+    private var revision: Int = 0
+
+    /** Bind the durable store and adopt anything it already holds for this conversation. */
+    @Synchronized
+    fun attach(durable: PrereqStore?, sessionId: String?, planRevision: Int, adopt: Boolean = true) {
+        store = durable
+        session = sessionId.orEmpty()
+        revision = planRevision
+        if (adopt && durable != null) {
+            durable.load().entries.forEach { restored ->
+                if (restored.session.isNotBlank() && session.isNotBlank() && restored.session != session) return@forEach
+                entries[restored.capability] = restored.copy(session = session.ifBlank { restored.session }, revision = if (planRevision > 0) planRevision else restored.revision)
+            }
+        }
+    }
 
     @Synchronized
-    fun record(capability: String, solvedBy: String, evidence: String) {
+    fun snapshot(): List<Entry> = entries.values.toList()
+
+    @Synchronized
+    fun record(capability: String, solvedBy: String, evidence: String, sideEffect: Boolean = false) {
         val key = capability.trim()
         if (key.isEmpty()) return
         if (entries.size >= CAP && !entries.containsKey(key)) {
             entries.remove(entries.keys.first())
         }
-        entries[key] = Entry(key, solvedBy, evidence.trim().take(240))
+        entries[key] = Entry(
+            capability = key,
+            solvedBy = solvedBy,
+            evidence = evidence.trim().take(240),
+            session = session,
+            revision = revision,
+            sideEffect = sideEffect,
+            at = System.currentTimeMillis(),
+        )
+        store?.save(entries.values.toList())
     }
 
     @Synchronized
@@ -48,7 +93,17 @@ internal object PrereqLedger {
         if (entries.size >= CAP && !entries.containsKey(key)) {
             entries.remove(entries.keys.first())
         }
-        entries[key] = Entry(key, solvedBy, reason.trim().take(240), failed = true)
+        entries[key] = Entry(
+            capability = key,
+            solvedBy = solvedBy,
+            evidence = reason.trim().take(240),
+            failed = true,
+            session = session,
+            revision = revision,
+            sideEffect = true,
+            at = System.currentTimeMillis(),
+        )
+        store?.save(entries.values.toList())
     }
 
     @Synchronized
