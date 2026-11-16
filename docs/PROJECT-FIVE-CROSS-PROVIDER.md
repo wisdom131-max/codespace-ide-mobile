@@ -280,7 +280,60 @@ The job's own test steps ran the JVM unit suites and the ChatEngine contract sui
 Gradle runner at `6b95b70`. It does not prove device behaviour, and it contacted no provider: the error
 bodies exercised are the documented formats, not live responses.
 
-## Next stage (5.4)
+## Stage 5.4 — tool pairs survive a provider change (IMPLEMENTED, LOCALLY TESTED)
+
+`engine/ConversationContinuity.kt`, a `payloadWithHistory` hook on `ProviderAdapter`, overrides in
+Gemini/OpenAI/Anthropic, and one new constructor argument on `ChatEngineImpl`.
+
+**The gap, verified.** The request history was `List<ChatMessage>`: role plus text, nothing else. A tool
+call and its result therefore had NO representation in a request. The model was given prose about a
+tool run, not a call/result pair, so Anthropic (which requires pairing) and OpenAI (which keys on ids)
+were being sent a history that could not express what had happened. Stage 5.2 made a call reach the
+executor; it did not make the exchange reach the next request.
+
+**The canonical type.** `ToolExchange(callId, name, argumentsJson, status, output, complete)` with
+`ExchangeStatus` OK / FAILED / UNCERTAIN / REFUSED. `resultText()` prefixes the status in plain words, so
+an uncertain write is never presented to a model as a success. `dedupe` keeps the first occurrence of an
+id, so a replayed stream cannot produce two calls with one identity.
+
+**Per-provider rendering.**
+- Gemini: one `model` turn of `functionCall` parts followed by one `user` turn of `functionResponse`
+  parts, which is the order Gemini requires.
+- OpenAI-compatible: an `assistant` message with `tool_calls`, then one `role:"tool"` message per
+  `tool_call_id`, in order.
+- Anthropic: `tool_use` blocks in the assistant turn and `tool_result` blocks in the user turn, with
+  `is_error: true` for anything that was not OK.
+- An unknown endpoint (`streamKind == null`) is REFUSED with a reason naming how many results cannot be
+  sent, rather than having them dropped silently. An adapter that has not opted in keeps sending the
+  plain history, so nothing claims a capability it lacks.
+
+**How it reaches the wire.** `ConversationContinuity.splice` appends the rendered objects to the
+provider's own message array, bracket- and string-aware so a `]` inside message text cannot truncate a
+request. The adapters keep their existing builders; they gained `payloadWithHistory` overrides instead
+of a second request builder. `ChatEngineImpl` takes `exchanges` (default empty, byte-identical to the
+old behaviour) and passes it to both the main and the retry payload call, so a retry after a failure
+also carries the pair.
+
+**Tests.** 15 cases in `engine/Stage54ContinuityTest`: Gemini call-then-response order, OpenAI ids and
+one tool message per call, Anthropic pairing plus `is_error` on exactly the failed result, status words
+never softened, an incomplete call never rendered as a call, an unknown endpoint refused instead of
+dropped, dedupe by id, splice with a bracket inside text, splice with no such key, the three adapter
+bodies, an adapter that has not opted in, and the end-to-end case where `ChatEngineImpl.send` puts the
+pair on the transport payload. That last one is the runtime evidence: it asserts what a fake transport
+actually received.
+
+**Results.** 3,266 app tests with `BackupTarTest.failureMessageCarriesRealTotals` the only failure;
+engine suite green. Dev-debug compile and D8 dex green. Not CI-green; not device-verified.
+
+**Known limitations.** The producer side is not wired: `ChatSession` keeps its own transcript and does
+not yet build `ToolExchange` lists from it across turns, so the exchanges are available and tested but
+reach the engine only when a caller supplies them. Context-window compatibility (Area E) is NOT
+implemented beyond what Stage 5.3 established: known limits are used where the catalogue has them, an
+unknown limit stays unknown, and no history is trimmed automatically. Interruption replay (Area D) was
+audited only as far as existing Stage 4.8/5.2 protections reach; no new replay mechanism was added.
+Custom endpoints are refused rather than guessed at.
+
+## Next stage (5.5)
 
 Cross-provider tool compatibility and streaming normalisation: normalise tool definitions and tool-call
 event shapes per provider, prove providers cannot bypass `AgentTools.executeTool`, and normalise

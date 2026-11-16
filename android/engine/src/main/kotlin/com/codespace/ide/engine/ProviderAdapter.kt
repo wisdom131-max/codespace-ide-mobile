@@ -28,6 +28,20 @@ interface ProviderAdapter {
         config: EngineConfig,
     ): String = payload(window, userText, config)
 
+    /**
+     * STAGE 5.4: the request body with this turn's tool exchanges rendered for this provider.
+     *
+     * The default sends the plain history, which is the honest behaviour for an adapter that has not
+     * opted in: it never claims to carry tool pairs it does not know how to express.
+     */
+    fun payloadWithHistory(
+        window: List<ChatMessage>,
+        userText: String,
+        attachments: List<ChatAttachment>,
+        config: EngineConfig,
+        exchanges: List<ToolExchange>,
+    ): String = payload(window, userText, attachments, config)
+
     /** Next visible text delta from one SSE data payload; null if none. */
     fun extractDelta(data: String): String?
 
