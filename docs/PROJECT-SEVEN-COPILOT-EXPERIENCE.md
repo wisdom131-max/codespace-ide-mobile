@@ -400,6 +400,69 @@ both are listed under manual verification instead of being claimed.
 5. Font scale 1.3 and 2.0, landscape, narrow width: unchanged components wrap without clipping.
 6. Picker keyboard, streaming announcement silence, long-response scrolling (unchanged from checkpoint 4).
 
+## Checkpoint 6 — Copy target restored to 30x24dp at the owner's request; Area 7.8
+
+### The Copy button is 30x24dp because the owner said so
+
+Checkpoint 5 expanded the Copy glyph's touch target to Material's 48dp interactive size. The owner reviewed
+it and asked for the original size back. That is a design decision, not a defect to argue with, so it was
+reverted exactly:
+
+- `minimumInteractiveComponentSize()` removed, and its import removed with it.
+- The click area is the glyph plus its own padding again: 14dp glyph + 8dp horizontal padding = **30dp**
+  wide; 16dp glyph + 4dp vertical padding = **24dp** tall.
+- The glyph itself was never resized or moved, so the visible row is byte-identical to before checkpoint 5.
+- `role = Role.Button` and `onClickLabel = "Copy message"` were kept: they cost no pixels and still tell
+  TalkBack what the control does.
+- No parent hitbox, gesture layer or invisible expansion was added to defeat the request.
+
+`CopyTarget` publishes the numbers and `Stage71CopyTargetTest` pins them, including a source guard that fails
+if `minimumInteractiveComponentSize` reappears in `CopyIconRow.kt`. That guard exists because this size was
+already changed once by an accessibility pass; the owner's decision now outranks it in code.
+
+Everything else from the accessibility work stays: tree and tool-row 48dp targets, dialog headings,
+source-row TalkBack descriptions, the contrast audit and `strongBorder`, and the 400-character streaming
+announcement policy.
+
+### 7.8 A/B — sources: audited, mostly already correct, one real gap closed
+
+`ResearchSources.sanitise` already does the honest work, and it was verified rather than rebuilt: it drops
+URLs that cannot be opened, removes duplicates by normalised URL, derives a missing domain from the URL, and
+falls back to the domain (then the URL) when a title is blank. Sources are attached to the answer that
+produced them, not to the session, so they cannot drift to a later reply.
+
+The gap was size. `SourcesRow` drew every item, and research can return a hundred. It now renders at most 40
+and states the rest: "+60 more sources are cited in the answer but not listed here." Nothing is silently
+dropped, the number is exact, and the ordinary answer draws exactly as before because the line is null when
+nothing was omitted.
+
+`ResearchPresentation` also supplies the header count (including "No sources"), the per-source TalkBack
+sentence (title, domain, and whether it opens or cannot be opened), and `emptyNote` for research that
+returned nothing usable, which is a result rather than a success.
+
+### 7.8 C/D — documents and media: no presentation invented
+
+The audit found no fabricated surface to fix. Document and media work happens through existing tools whose
+rows carry their own execution status (running, ok, failed, blocked, uncertain) and whose detail is bounded at
+creation. No claim of full document inspection, image analysis, transcription or video inspection exists in
+the presentation layer, and none was added: there is no such capability behind it. Extraction partiality is
+carried by the tool's own result status, which the row already distinguishes rather than smoothing into
+"done".
+
+### 7.8 E/F — large content and accessibility
+
+Large source lists are bounded as above. Long extracted text is bounded by `TextRenderLimits` at creation with
+the cut stated, and copy keeps the full source. Source semantics keep the full title available to TalkBack
+even though the row ellipsises it at one line, which was checkpoint 4 work and is unchanged.
+
+## Tests (checkpoint 6)
+
+12 new cases: `Stage71CopyTargetTest` (4) pins 30x24dp, asserts neither dimension reaches 48dp, fails if the
+Material expansion returns to the file, and asserts the role and action label survive. `Stage78ResearchPresentationTest`
+(8) covers an unbounded list drawing normally, a 100-item list bounding to 40 with the exact 60 stated,
+exactly-at-the-bound withholding nothing, the per-source description, missing metadata stated rather than
+blank, an unopenable URL described as such, honest header counts, and empty research reported as a result.
+
 ## Not delivered in this pass — stated plainly
 
 Project Seven is **not complete**. The following areas were not implemented here:
