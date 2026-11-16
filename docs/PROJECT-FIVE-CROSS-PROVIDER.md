@@ -381,7 +381,7 @@ logged (`recordRefused` exists for a future call site). The log is session-scope
 a process restart the exchanges start empty, which is honest but means a restored session's first
 request does not carry older pairs. Area E context reduction remains unimplemented.
 
-## Stage 5.4 part 3 — refusals reach the log (IMPLEMENTED, LOCALLY TESTED)
+## Stage 5.4 part 3 — refusals reach the log (IMPLEMENTED, LOCALLY TESTED, CI-GREEN)
 
 **What was missing.** Part 2 recorded only calls that actually ran, because `noteAndRecord` is only
 reached by calls the gate allowed. A call refused by `WritePolicy` (Ask mode and writes, Edit and a
@@ -409,6 +409,12 @@ dependency download, which the owner's data constraints require approval for. Th
 recorded here rather than papered over with a shim. Gateway-level refusals that arrive as
 `"FAILED: <refusal>"` still record FAILED rather than REFUSED, because the executor's text does not
 distinguish them; that is a known imprecision, not a claim.
+
+## CI — Stage 5.4 part 3
+
+Run `43888770297` (job `build`, 25 steps, none failed) succeeded on `f44dac6`, which carries the refusal
+recording and the three new cases. Verified the same way as earlier stages: manual dispatch on ref
+`stage-5.3`, because the workflow does not trigger on branch pushes.
 
 ## CI — Stage 5.4 parts 1 and 2
 
