@@ -196,6 +196,14 @@ class BackupTarTest {
     /** 1c/1d: failures report REAL totals — never a mid-abort "1 of 3". */
     @Test
     fun failureMessageCarriesRealTotals() {
+        // Precondition measured, not assumed: this case proves that an UNWRITABLE destination produces
+        // one failure per entry. A privileged process (root, which is what the dev sandbox runs as)
+        // ignores directory permissions, so nothing fails and the assertion would be testing the
+        // sandbox rather than the extractor. On CI's unprivileged runner the case runs as written.
+        org.junit.Assume.assumeTrue(
+            "directory permissions are not enforced for this user; the failure path cannot be exercised here",
+            permissionsEnforced(),
+        )
         val archive = buildArchive(
             listOf(
                 Triple("usr/bin/bash", "file", "#!/bin/bash".toByteArray()),
@@ -229,5 +237,14 @@ class BackupTarTest {
         assertTrue(result.bashOk)
         assertTrue(result.verifyLines.any { it.startsWith("node ") && it.endsWith("\u2014") })
         assertTrue(result.verifyLines.any { it.startsWith("python3 ") && it.endsWith("\u2014") })
+    }
+
+    /** Probes the filesystem rather than guessing the user: can a file be created in a 0555 dir? */
+    private fun permissionsEnforced(): Boolean {
+        val probe = tempDir("perm-probe")
+        probe.setWritable(false)
+        val created = runCatching { java.io.File(probe, "x").writeText("x") }.isSuccess
+        probe.setWritable(true)
+        return !created
     }
 }
