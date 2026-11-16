@@ -50,3 +50,44 @@ instead of 2. That is the environment, not the extractor.
 It is no longer labelled harmless and left at that: the case now probes the filesystem
 (`permissionsEnforced()`) and skips with a printed reason where permissions cannot bite. On CI's
 unprivileged runner it runs exactly as before, with no assertion weakened.
+
+## Result
+
+| Step | SHA |
+|---|---|
+| starting `main` | `9754f666` |
+| merge Project Four Stage 4.8 | `9d94455` |
+| merge Projects Five + Six | `58f6baa` |
+| integration candidate (tested by CI) | `55d36fd` |
+| `main` after fast-forward | `55d36fd` |
+
+Ancestry on `main` after integration:
+
+```
+9754f66 ──┬── 9811e02 … 50505e8 4a96def ──┐   Project Four Stage 4.8
+          │                              ├── 9d94455 ──┐
+          └── 27a08b6 … 46c6c75 a67a238 ──────────────┴── 58f6baa ── 55d36fd
+              Projects Five + Six                (merged)     (main)
+```
+
+## Verification on the integrated tree
+
+- app unit suite **0 tests, 0 failures** (the `BackupTarTest` case now skips here with a printed
+  reason and still asserts on an unprivileged runner); engine suite **278 tests, 0 failures**.
+- `:app:compileDevDebugKotlin` and `:app:dexBuilderDevDebug` green (D8 is the check a green compile
+  does not give: a non-local return out of an inline lambda compiles and then fails dexing).
+- Cross-project checks by suite, not by hope: duplicate replies and delivery ownership
+  (`DeliveryLedger`/`ReplyOwnership` cases), duplicate tool execution and exchange loss
+  (`Stage54bProducerTest`, `ToolExchangeLog`), provider history serialisation
+  (`Stage54ContinuityTest`, payload assertions), session and retention leakage
+  (`Stage63RetentionTest` cross-session case), handoff behaviour (`Stage63HandoffGuardTest`), and
+  context budgeting (`LearnedLimitTest`, `Stage62SummaryTest`).
+- CI on the exact candidate `55d36fd`: run **43910173612**, job `build`, success.
+
+## What this is not
+
+Integration-tested and CI-green is not device-verified. No APK was built or installed, nothing was run
+on the phone, no live provider was contacted, and tools remain component-tested only where they need an
+Android `Context`. Every limitation recorded per project in `IMPLEMENTED.md` still applies: no summary
+compression, continuation untested below the UI, vocabulary-based retrieval and superseding, retained
+files outliving a deleted session until they age out, `runTools` not exercised on the JVM.
