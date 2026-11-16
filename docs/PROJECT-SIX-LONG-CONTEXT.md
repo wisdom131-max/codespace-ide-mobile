@@ -5,7 +5,7 @@ summary: Stage 6.1 landss provider-aware context compatibility in the engine, an
 
 # Project Six — Long Context Management
 
-## Stage 6.3 — retention, recovery and historical retrieval (IMPLEMENTED, LOCALLY TESTED)
+## Stage 6.3 — retention, recovery and historical retrieval (IMPLEMENTED, CI-GREEN 43904909584 @ a08fd16)
 
 6.2 answered "can a summary invent a fact?" (no: it is extractive). 6.3 answers the two questions that
 leaves open: **how sure is a line?** and **where did it come from after a restart?**
@@ -109,7 +109,7 @@ being ignored with a reason then rebuilt.
 | context recovery | rebuild from messages; unavailable content is stated, not invented |
 | output and storage bounds | 24 lines, 6,000 chars, 20 sessions, 400-char retrieval quotes |
 
-**Verdict: Project Six is closed for implementation, component tests and CI on `stage-5.3`.** It is NOT
+**Verdict: Project Six is closed for implementation, component tests and CI (run 43904909584 on `a08fd16`).** It is NOT
 device-verified, and the limitations below are real.
 
 ### Limitations
