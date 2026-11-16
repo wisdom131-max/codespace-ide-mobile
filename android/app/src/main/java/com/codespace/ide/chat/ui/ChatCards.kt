@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +26,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -208,23 +211,34 @@ fun ToolActivityRow(
             .background(c.surface)
             .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            // PROJECT SEVEN 7.9: the whole header is the control, at least 48dp tall. The chevron on
+            // its own was roughly a 12dp tap target, which is unusable with a thumb and invisible to
+            // TalkBack as anything but a triangle.
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = com.codespace.ide.chat.panel.CopilotAccessibility.MIN_TOUCH_DP.dp)
+                .clickable { expanded = !expanded }
+                .semantics(mergeDescendants = true) {
+                    contentDescription = p.title + ". " +
+                        (if (p.kind == com.codespace.ide.chat.panel.ToolResultPresentation.Kind.ERROR)
+                            "failed" else "finished") +
+                        ". " + (if (expanded) "Expanded, double tap to collapse." else "Double tap for details.")
+                },
+        ) {
             Text(
                 if (expanded) "\u25BE" else "\u25B8",
                 color = c.textSecondary,
                 fontSize = ChatTokens.FONT_MICRO.sp,
-                modifier = Modifier
-                    .clickable { expanded = !expanded }
-                    .padding(end = 6.dp),
+                modifier = Modifier.padding(end = 6.dp),
             )
             Text(
                 p.title,
                 color = if (p.kind == com.codespace.ide.chat.panel.ToolResultPresentation.Kind.ERROR)
                     c.error else c.textSecondary,
                 fontSize = ChatTokens.FONT_MICRO.sp,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { expanded = !expanded },
+                modifier = Modifier.weight(1f),
             )
             // OWNER RULE (2026-11-05): an activity row collapses with its chevron and carries NO
             // dismiss x. The x lived here and could silently drop a step from the record.
@@ -349,22 +363,37 @@ fun ActivityGroupRow(
             .background(c.surface)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            // PROJECT SEVEN 7.9: the header is the control, at least 48dp tall, and it announces what
+            // the group contains instead of reading out a lone triangle.
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = com.codespace.ide.chat.panel.CopilotAccessibility.MIN_TOUCH_DP.dp)
+                .clickable { expanded = !expanded }
+                .semantics(mergeDescendants = true) {
+                    contentDescription = com.codespace.ide.chat.panel.CopilotAccessibility.groupLabel(
+                        com.codespace.ide.chat.panel.CopilotBindings.groupHeader(
+                            ActivityGrouping.summary(items), items,
+                        ),
+                        items,
+                        expanded,
+                    )
+                },
+        ) {
             Text(
                 if (expanded) "\u25BE" else "\u25B8",
                 color = c.textSecondary,
                 fontSize = ChatTokens.FONT_MICRO.sp,
-                modifier = Modifier
-                    .clickable { expanded = !expanded }
-                    .padding(end = 6.dp),
+                modifier = Modifier.padding(end = 6.dp),
             )
             Text(
-                ActivityGrouping.summary(items),
+                // PROJECT SEVEN 7.3: the header counts the states the rows actually carry, so a group
+                // never reads "done" unless the runtime said so.
+                com.codespace.ide.chat.panel.CopilotBindings.groupHeader(ActivityGrouping.summary(items), items),
                 color = c.textSecondary,
                 fontSize = ChatTokens.FONT_MICRO.sp,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { expanded = !expanded },
+                modifier = Modifier.weight(1f),
             )
         }
         if (expanded) {
@@ -372,7 +401,11 @@ fun ActivityGroupRow(
             // one indent and no extra containers.
             items.forEach { item ->
                 when (item) {
-                    is ChatRowModel.ToolActivity -> TreeChild(item.label, item.detail, c, false)
+                    is ChatRowModel.ToolActivity -> TreeChild(
+                        // The state word is spelled out, so status never depends on colour alone.
+                        com.codespace.ide.chat.panel.CopilotBindings.childLine(item),
+                        item.detail, c, false,
+                    )
                     is ChatRowModel.InfoNote -> TreeChild("", item.text, c, true)
                     is ChatRowModel.AssistantStream -> TreeChild("", item.text, c, true)
                     else -> Unit
