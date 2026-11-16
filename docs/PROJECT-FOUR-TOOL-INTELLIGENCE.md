@@ -205,3 +205,30 @@ the verdict in `PrereqLedger`. Only `valid` and `empty valid` satisfy a capabili
 unacknowledged write blocks its dependent call instead of looking like proof. Tool health receives
 only genuine outcome problems; truncation, cancellation and validator failures no longer demote a
 tool.
+
+## Stage 4.6 — choosing well, and checking harder (implemented)
+
+Two halves, both extending what exists rather than adding a parallel system.
+
+**Selection.** `ToolSuitability` answers "of the tools that can do this, which should", with
+eligibility kept strictly apart from ranking: a tool not offered in this mode, not registered, or
+serving another capability is out whatever it scores, so a score can never buy back permission.
+Ranking is six documented signals (capability fit, the request's own words, validatable output,
+prerequisite readiness, health, and whether a safer read-only path exists); unknown facts score zero
+and say so. `ToolCapabilityPlan` now names the best candidate for each need and prints the score line,
+so the choice is explained where the plan is already shown. Health demotes but never disqualifies,
+and a demoted tool that is the only fit still wins, with that said out loud.
+
+**Verification.** `GitStateVerifier` parses the porcelain and human forms of git status into branch,
+staged, unstaged, untracked, conflicted and in-progress facts, and verifies a commit against the log,
+a checkout against the branch, staging against named paths, and whether an operation settled.
+`ArchiveVerifier` reads listings for entry counts, unsafe paths, corruption and unsupported formats,
+and compares an extraction against the listing. `OutcomeVerifier` dispatches on the tool so the live
+gate has one call, and `EvidenceReconciler` compares two observations of the same resource: same,
+legitimate change after a verified write, contradiction with no write between them (which blocks
+satisfaction), stale from another conversation or plan, or not comparable.
+
+Limits, stated plainly: observation digests live in memory for the session, so a contradiction across
+a process restart is not detected; `git_commit_push` verification reads the log text the tool returned
+rather than re-running git; archive extraction completeness uses the paths already on disk; and the
+contracts, verifier coverage and scoring signals cover the tools whose behaviour is known, not all 130.

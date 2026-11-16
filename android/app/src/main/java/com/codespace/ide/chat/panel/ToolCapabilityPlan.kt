@@ -105,7 +105,10 @@ internal object ToolCapabilityPlan {
         val findings = needs.map { need ->
             val present = need.candidates.filter { exists(it) }
             val inMode = present.filter { name -> modesWith(name).contains(mode) }
-            val tool = inMode.firstOrNull()
+            // STAGE 4.6: of the tools that can do it, the most suitable is named first, and a poor
+            // fit is said out loud instead of looking like a confident choice.
+            val choice = ToolSuitability.rank(request, inMode, mode)
+            val tool = choice.best?.tool ?: inMode.firstOrNull()
             when {
                 tool != null && tool in offered -> Finding(need, State.OFFERED, tool, mode.label)
                 tool != null -> Finding(need, State.LOADABLE, tool, mode.label)
@@ -126,7 +129,11 @@ internal object ToolCapabilityPlan {
                 State.MISSING -> "nothing here can do " + finding.need.label
             }
         }
-        return Assessment(needs, findings, notes.isEmpty(), notes)
+        val suitability = needs.mapNotNull { need ->
+            val inMode = need.candidates.filter { name -> exists(name) && modesWith(name).contains(mode) }
+            if (inMode.isEmpty()) null else ToolSuitability.note(ToolSuitability.rank(request, inMode, mode))
+        }
+        return Assessment(needs, findings, notes.isEmpty(), notes + suitability)
     }
 
     /** One line for the offer note, or blank when nothing is missing. */

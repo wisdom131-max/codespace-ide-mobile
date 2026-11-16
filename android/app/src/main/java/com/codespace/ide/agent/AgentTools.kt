@@ -326,8 +326,45 @@ You can use multiple tools in sequence. When done, give a final summary.
                 com.codespace.ide.resolver.PathResolver.activeProjectRoot(context),
             )
         }
+        // STAGE 4.6: git and archive results get their own reading, and a second look at the same
+        // resource is compared with the first instead of quietly replacing it.
+        val outcome = if (failed) {
+            com.codespace.ide.agent.OutcomeVerifier.Verification(
+                com.codespace.ide.agent.OutcomeVerifier.Result.NOT_CHECKABLE, "")
+        } else {
+            com.codespace.ide.agent.OutcomeVerifier.verify(
+                name, produced, args,
+                com.codespace.ide.resolver.PathResolver.activeProjectRoot(context),
+            )
+        }
+        val reconciliation = com.codespace.ide.agent.EvidenceReconciler.resourceOf(
+            name, args.optString("path", args.optString("file", ""))
+        )?.let { resource ->
+            com.codespace.ide.agent.EvidenceReconciler.compare(
+                resource = resource,
+                value = produced,
+                session = com.codespace.ide.agent.runtime.PrereqLedger.session(),
+                revision = com.codespace.ide.agent.runtime.PrereqLedger.planRevision(),
+                tool = name,
+                verifiedWriteSince = false,
+            )
+        }
         val validation = com.codespace.ide.agent.ResultValidator.validate(name, produced, threw = null)
-        val verdict = if (sideEffect.result == com.codespace.ide.agent.SideEffectVerifier.Result.REFUTED) {
+        val verdict = if (outcome.result == com.codespace.ide.agent.OutcomeVerifier.Result.REFUTED) {
+            com.codespace.ide.agent.ResultValidator.Validation(
+                com.codespace.ide.agent.ResultValidator.Outcome.UNACKNOWLEDGED,
+                outcome.note,
+                satisfiesPrerequisite = false,
+                establishesSomething = false,
+            )
+        } else if (reconciliation?.blocksSatisfaction == true) {
+            com.codespace.ide.agent.ResultValidator.Validation(
+                com.codespace.ide.agent.ResultValidator.Outcome.MALFORMED,
+                reconciliation.note,
+                satisfiesPrerequisite = false,
+                establishesSomething = true,
+            )
+        } else if (sideEffect.result == com.codespace.ide.agent.SideEffectVerifier.Result.REFUTED) {
             com.codespace.ide.agent.ResultValidator.Validation(
                 com.codespace.ide.agent.ResultValidator.Outcome.UNACKNOWLEDGED,
                 sideEffect.note,
@@ -339,7 +376,9 @@ You can use multiple tools in sequence. When done, give a final summary.
         }
         com.codespace.ide.agent.runtime.RuntimeBridge.afterDispatch(name, produced, failed, validation = verdict)
         if (failed) return withRecovery(name, args, produced, context)
-        val note = (listOf(com.codespace.ide.agent.ResultValidator.note(name, verdict), sideEffect.note)
+        val note = (listOf(com.codespace.ide.agent.ResultValidator.note(name, verdict), sideEffect.note,
+            outcome.takeIf { it.result == com.codespace.ide.agent.OutcomeVerifier.Result.INCONCLUSIVE }?.note.orEmpty(),
+            reconciliation?.takeIf { it.blocksSatisfaction }?.note.orEmpty())
             .filter { it.isNotBlank() && it != validation.reason })
         if (note.isEmpty()) return produced
         return produced + "\n\n" + note.joinToString("\n")
