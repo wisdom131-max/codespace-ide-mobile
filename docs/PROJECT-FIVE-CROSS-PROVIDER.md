@@ -280,7 +280,7 @@ The job's own test steps ran the JVM unit suites and the ChatEngine contract sui
 Gradle runner at `6b95b70`. It does not prove device behaviour, and it contacted no provider: the error
 bodies exercised are the documented formats, not live responses.
 
-## Stage 5.4 — tool pairs survive a provider change (IMPLEMENTED, LOCALLY TESTED)
+## Stage 5.4 — tool pairs survive a provider change (IMPLEMENTED, LOCALLY TESTED, CI-GREEN)
 
 `engine/ConversationContinuity.kt`, a `payloadWithHistory` hook on `ProviderAdapter`, overrides in
 Gemini/OpenAI/Anthropic, and one new constructor argument on `ChatEngineImpl`.
@@ -333,7 +333,7 @@ unknown limit stays unknown, and no history is trimmed automatically. Interrupti
 audited only as far as existing Stage 4.8/5.2 protections reach; no new replay mechanism was added.
 Custom endpoints are refused rather than guessed at.
 
-## Stage 5.4 part 2 — the producer is wired (IMPLEMENTED, LOCALLY TESTED)
+## Stage 5.4 part 2 — the producer is wired (IMPLEMENTED, LOCALLY TESTED, CI-GREEN)
 
 `chat/provider/ToolExchangeLog.kt`, written from `ChatSession.noteAndRecord` and read when the request
 is built.
@@ -347,6 +347,10 @@ text the transcript shows, so "Unsure" in the row and UNCERTAIN on the wire cann
 `UNSURE:` and `CANCELLED` are UNCERTAIN, `FAILED` is FAILED, `REFUSED` is REFUSED, blank is UNCERTAIN
 (an outcome nobody can read is not evidence of success), everything else is OK. The log is bounded at 60
 entries and drops the oldest, because a long session must not grow it without limit on a phone.
+
+**Normal and retry requests both carry them.** Both payload call sites in `ChatEngineImpl` (the first attempt
+and the retry built from `attemptCfg`) read the same supplier, so a retry after a provider error still sends
+the call/result pair instead of starting over with prose.
 
 **How it reaches the engine.** `ChatEngineImpl` takes a SUPPLIER, not a captured list:
 `exchanges: () -> List<ToolExchange>`, read at payload time. A snapshot captured at construction would
@@ -376,6 +380,19 @@ the log records, not from `AgentTools.executeTool`. Refusals that never reach `n
 logged (`recordRefused` exists for a future call site). The log is session-scoped, not persisted: after
 a process restart the exchanges start empty, which is honest but means a restored session's first
 request does not carry older pairs. Area E context reduction remains unimplemented.
+
+## CI — Stage 5.4 parts 1 and 2
+
+`stage-5.3` was pushed to `c129b30`, whose ancestry is `f0e3dcb → 2023ed4` (part 1) `→ fb92491` (part 2)
+`→ c129b30` (changelog and CURRENT STATE). The workflow triggers only on `main`, tags and pull requests, so
+the branch push started nothing; run `43884356305` was dispatched on ref `stage-5.3` and its job `build`
+(25 steps, none failed) succeeded on `c129b30`. Both code commits are covered by that run because they are
+ancestors of the tested SHA, which is what a single verdict on a linear branch means.
+
+**What CI proves and does not prove.** CI proves the tree compiles and the JVM unit suites and ChatEngine
+contract suites pass on a clean Gradle runner at `c129b30`, including `Stage54ContinuityTest` and
+`Stage54bProducerTest`. It does not prove device behaviour, it drives no real tool execution (that needs an
+Android `Context`), and it contacted no provider.
 
 ## Next stage (5.5)
 
