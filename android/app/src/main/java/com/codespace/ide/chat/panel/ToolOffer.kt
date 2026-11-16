@@ -111,6 +111,9 @@ internal object ToolRelevance {
             TaskKind.UNKNOWN -> 0
         }
         // A cheap tool that answers the same question beats an expensive one.
+        // A tool that has already failed twice in a row this session is a worse bet than a fresh
+        // one, and this is the only place that knows it.
+        s += ToolHealth.adjustment(spec.name)
         s += when (meta.cost) {
             ToolCost.CHEAP -> 4
             ToolCost.NORMAL -> 0
@@ -173,11 +176,17 @@ internal object ToolOffer {
         // caught it immediately ("ASK lost core web_search for ''"), and it was right: evicting the
         // mode's own core makes the offer unreliable, which is worse than offering fewer matches.
         val names = exposed.filter { it in picked }
-        val note = if (names.size < exposed.size) {
+        // Coverage, not just ranking: if the request needs a capability this turn cannot reach, the
+        // note says so now rather than after a refusal halfway through the work.
+        val gap = ToolCapabilityPlan.note(
+            ToolCapabilityPlan.assess(request, mode, names.toSet()),
+        )
+        val base = if (names.size < exposed.size) {
             "Offered " + names.size + " of " + exposed.size + " tools this turn" +
                 (if (added > 0) " (" + added + " matched your request)" else "") +
                 "; the rest can be loaded with tool_search."
         } else null
+        val note = listOfNotNull(base, gap.takeIf { it.isNotBlank() }).joinToString("; ").ifBlank { null }
         return Plan(names, note, exposed.size)
     }
 }
