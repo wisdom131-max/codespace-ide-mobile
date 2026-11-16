@@ -189,6 +189,8 @@ class ChatSession internal constructor(
         }
     )
     private var activeExecId: String = ""
+    /** STAGE 4.8 follow-up: this turn continues an interrupted answer, so its row extends that one. */
+    private var continuationTurn = false
     private var deliveryRestored = false
 
     /**
@@ -638,6 +640,8 @@ class ChatSession internal constructor(
         continuationPrefix: String? = null,
     ) {
         if (ui.value.streaming || userText.isBlank()) return
+        // One source of truth: a turn is a continuation exactly when it carries the earlier text.
+        continuationTurn = !continuationPrefix.isNullOrBlank()
         // A new turn supersedes a previous interruption: from here on the transcript is live
         // again and must not keep carrying the "cut off" marker.
         interruptedReplyPending = false
@@ -1111,10 +1115,6 @@ class ChatSession internal constructor(
             }
             is EngineEvent.Completed -> {
                 if (!ReplyOwnership.mayComplete(gen, lastCompletedGen, !requestGate.stale(gen))) return
-                // STAGE 4.8: the answer is appended once per execution, into its own session. A
-                // repeated completion event, or a completion belonging to another session, stops here.
-                restoreDeliveryOnce()
-                if (!delivery.mayAppendAnswer(activeExecId, deliverySession)) return
                 // Area 6: the provider's verdict decides whether this turn may be called
                 // finished. A ceiling marks the reply incomplete through the SAME sticky flag
                 // that already survives every later save, so a reopen cannot upgrade a cut-off
@@ -1128,6 +1128,9 @@ class ChatSession internal constructor(
                 // Section 6: a finished reply is either an ANSWER or an ACTION request. The
                 // decision is pure (AgentToolWire); this only carries it out. The raw
                 // <tool> block never reaches the transcript.
+                // STAGE 4.8: the ANSWER is appended once per execution, into its own session. A tool
+                // round is not an answer, so it must not consume that right - the continuation's own
+                // answer still has to be delivered when the tools are done.
                 val decision = AgentToolWire.decide(
                     mode,
                     streamBuf.toString(),
@@ -1135,6 +1138,13 @@ class ChatSession internal constructor(
                     toolsOffered = AgentToolWire.modeRunsTools(mode),
                     turnContext = turnContext.toList(),
                 )
+                // STAGE 4.8: an ANSWER is delivered once per execution, into its own session. A tool
+                // round is not an answer, so it must not consume that right - the continuation that
+                // follows the tools still has an answer of its own to deliver.
+                if (decision is ToolDecision.Answer) {
+                    restoreDeliveryOnce()
+                    if (!delivery.mayAppendAnswer(activeExecId, deliverySession)) return
+                }
                 val shown = when (decision) {
                     is ToolDecision.Answer -> decision.text
                     is ToolDecision.Refused -> decision.visibleText
@@ -1144,9 +1154,27 @@ class ChatSession internal constructor(
                 // task's work, so it belongs INSIDE the tree. An answer stays a turn-level row.
                 val kind = if (decision is ToolDecision.Run) ChatRowModel.StreamKind.PROGRESS
                 else ChatRowModel.StreamKind.ANSWER
-                val rows = if (st.rows.lastOrNull() is ChatRowModel.AssistantStream)
-                    st.rows.dropLast(1) + listOf(ChatRowModel.AssistantStream(shown, false, kind))
-                else st.rows + listOf(ChatRowModel.AssistantStream(shown, false, kind))
+                // STAGE 4.8 (found by a runtime test): a continuation re-sends what was already
+                // delivered as a prefix, so its answer already CONTAINS the row the transcript holds.
+                // Appending left the same opening text on screen twice. The earlier answer row is
+                // replaced instead, and an interrupted answer keeps its "cut off" note.
+                // STAGE 4.8 follow-up (diagnosed from the real rows): a continuation re-sends the
+                // earlier text as a prefix, so its answer already CONTAINS the rows the transcript
+                // holds for this turn. Appending left the opening text on screen twice; dropping only
+                // the trailing row left the OLDER copy behind. Every answer row of this continuation
+                // turn whose text the final answer contains is absorbed into the single row below.
+                val answerRowsOfTurn = st.rows.filterIsInstance<ChatRowModel.AssistantStream>()
+                    .filter { it.kind == ChatRowModel.StreamKind.ANSWER && it.text.isNotBlank() }
+                val carried = continuationTurn && answerRowsOfTurn.any { shown.contains(it.text.trim()) }
+                val baseRows = if (carried) {
+                    st.rows.filterNot {
+                        it is ChatRowModel.AssistantStream && it.kind == ChatRowModel.StreamKind.ANSWER &&
+                            it.text.isNotBlank() && shown.contains(it.text.trim())
+                    }
+                } else st.rows
+                val rows = if (baseRows.lastOrNull() is ChatRowModel.AssistantStream)
+                    baseRows.dropLast(1) + listOf(ChatRowModel.AssistantStream(shown, false, kind))
+                else baseRows + listOf(ChatRowModel.AssistantStream(shown, false, kind))
                 val allSources = com.codespace.ide.agent.research.SourceLedger.all()
                 val turnSources = if (decision is ToolDecision.Answer && allSources.size > ledgerMark)
                     com.codespace.ide.agent.research.ResearchSources

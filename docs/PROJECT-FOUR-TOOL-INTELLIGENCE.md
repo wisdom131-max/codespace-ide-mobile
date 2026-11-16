@@ -377,3 +377,38 @@ rewritten.
 
 Local: 3,315 tests, `BackupTarTest` the only failure, unchanged; D8 dex and dev-debug compile green.
 Not CI-green for this commit, not device-verified, no APK.
+
+## Stage 4.8 follow-up — continuation and dispatch (locally tested, not CI-green)
+
+**The defect, diagnosed from the real rows.** Temporary logging at the continuation boundary printed the
+transcript as the session actually held it: `InfoNote, User, AssistantStream(ANSWER, 9 chars, cursorOn)` at
+the first completion, then `InfoNote, User, AssistantStream(ANSWER, 8), InfoNote(cut off),
+AssistantStream(ANSWER, 56, cursorOn)` during the continuation. Two facts fell out:
+
+1. A continuation re-sends the earlier text as its prefix, so the Delta path appends a SECOND answer row
+   while the interrupted one stays. The opening text was therefore on screen twice.
+2. The replacement never ran because the flag that should have marked "this turn is a continuation" was
+   false. It had been set in `continueTurn` and cleared on the ordinary send path, which the continuation
+   also passes through. The flag is now derived in one place, from the prefix itself
+   (`continuationTurn = !continuationPrefix.isNullOrBlank()`), so no caller has to remember to set it.
+
+**The fix.** In the Completed handler, when the turn is a continuation and the final answer CONTAINS an
+answer row's text, that row is absorbed into the single row being written. Absorbing by containment rather
+than "drop the last row" is what removes the older copy, and it stays correct across several continuation
+segments because every earlier segment is contained in the final text. A legitimate separate answer is not
+contained in a later one, so it is preserved. Tool progress, tool results, refusal notes and the "cut off"
+note are untouched.
+
+**Tool round fix preserved.** The delivery right is consumed only for `ToolDecision.Answer`, so a tool round
+cannot swallow the answer that follows it.
+
+**Tool dispatch coverage, labelled honestly.** `ChatSession.runTools` returns immediately with "Tool
+execution is unavailable in this build." when `appContext` is null, and this project has no Robolectric, so
+no JVM test can drive a real dispatch through the ViewModel without faking the gate. Reported as
+COMPONENT-TESTED: `ToolDispatchGuard` over a real `ToolCallLedger` (same id dispatches once, new id runs,
+an interrupted call is refused rather than retried), `WriteCallIdentity.idFor` (key order is not intent,
+different content is), `ToolBatchPlan.duplicates` (in-batch repeats), and `AgentToolWire.decide` on the real
+wire shape. Runtime tool dispatch remains NOT runtime-tested; it needs Robolectric or instrumentation.
+
+**Local results.** 3,326 tests, `BackupTarTest.failureMessageCarriesRealTotals` the only failure, unchanged
+and pre-existing. Dev-debug compile and D8 dex green. Not CI-green (branch unpushed), not device-verified.
