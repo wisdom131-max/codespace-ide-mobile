@@ -222,6 +222,12 @@ class ChatSession internal constructor(
      */
     private var turnSerial: Int = 0
 
+    /**
+     * STAGE 5.4 PART 3: the one place a call's exchange id is formed, so the executed path and the
+     * refused path agree and a call cannot be recorded twice under two different ids.
+     */
+    private fun exchangeId(idx: Int): String = "wire-" + turnSerial + "-" + idx
+
     @Volatile internal var lastFinish: com.codespace.ide.engine.FinishReason =
         com.codespace.ide.engine.FinishReason.UNKNOWN
 
@@ -1344,7 +1350,7 @@ class ChatSession internal constructor(
                         AgentToolWire.firstLine(out)
                 ))
                 toolExchanges.record(
-                    id = "wire-" + turnSerial + "-" + idx,
+                    id = exchangeId(idx),
                     name = call.name,
                     argumentsJson = call.argumentsJson,
                     output = out,
@@ -1411,6 +1417,9 @@ class ChatSession internal constructor(
                     WritePolicy.Decision.REFUSE -> {
                         val refused = WritePolicy.refusalMessage(call.name)
                         appendRow(ChatRowModel.InfoNote(refused))
+                        // PART 3A: refused BEFORE the executor was reached. The model is told so, and
+                        // the log keeps it distinct from a tool that ran and failed.
+                        toolExchanges.recordRefused(exchangeId(idx), call.name, call.argumentsJson, refused)
                         answered[idx] = refused
                         results.append(AgentToolWire.resultMessage(call, refused))
                         results.append("\n\n")
@@ -1450,6 +1459,8 @@ class ChatSession internal constructor(
                             "no answer in 10 minutes" else "you declined"
                     appendRow(ChatRowModel.InfoNote("Skipped " + call.name + " - " + why))
                     answered[idx] = "NOT RUN (" + why + ")"
+                    toolExchanges.recordRefused(
+                        exchangeId(idx), call.name, call.argumentsJson, "NOT RUN (" + why + ")")
                     results.append(AgentToolWire.resultMessage(call, "NOT RUN (" + why + ")"))
                     results.append("\n\n")
                     continue

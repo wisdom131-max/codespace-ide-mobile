@@ -381,6 +381,35 @@ logged (`recordRefused` exists for a future call site). The log is session-scope
 a process restart the exchanges start empty, which is honest but means a restored session's first
 request does not carry older pairs. Area E context reduction remains unimplemented.
 
+## Stage 5.4 part 3 — refusals reach the log (IMPLEMENTED, LOCALLY TESTED)
+
+**What was missing.** Part 2 recorded only calls that actually ran, because `noteAndRecord` is only
+reached by calls the gate allowed. A call refused by `WritePolicy` (Ask mode and writes, Edit and a
+blocked file) or declined at the approval gate was shown to the user and sent back to the model as text,
+but the exchange log never heard about it: the model was told "NOT RUN" in prose with no REFUSED entry
+behind it.
+
+**What changed.** Both refusal sites now call `recordRefused` with the same call id the executed path
+would have used, through one `exchangeId(idx)` helper, so a call cannot be recorded twice under two ids
+and a refusal recorded first cannot be overwritten by a later result. `ToolExchangeLog.statusOf` also
+maps a result text starting with `NOT RUN` to REFUSED, so a path that reaches the normal recorder with
+the user's own wording still lands as a refusal rather than as OK.
+
+**Why this matters for safety.** On the Anthropic dialect a refused call now renders `is_error: true`
+and its content starts with `REFUSED`; the model is told the tool never ran rather than being left to
+infer it from a sentence, and an uncertain or refused write can never read as a success.
+
+**Tests.** 3 new cases in `Stage54bProducerTest` (15 in that class now): `NOT RUN` maps to REFUSED, a
+refusal recorded first is not overwritten, and a payload assertion showing REFUSED and a real result in
+the same request.
+
+**Not done, and stated as not done.** Runtime Android-aware testing of `runTools` (Part 3B) was NOT
+undertaken: Robolectric or instrumentation would pull Android artifacts into a JVM module and add a large
+dependency download, which the owner's data constraints require approval for. The gap stays open and is
+recorded here rather than papered over with a shim. Gateway-level refusals that arrive as
+`"FAILED: <refusal>"` still record FAILED rather than REFUSED, because the executor's text does not
+distinguish them; that is a known imprecision, not a claim.
+
 ## CI — Stage 5.4 parts 1 and 2
 
 `stage-5.3` was pushed to `c129b30`, whose ancestry is `f0e3dcb → 2023ed4` (part 1) `→ fb92491` (part 2)

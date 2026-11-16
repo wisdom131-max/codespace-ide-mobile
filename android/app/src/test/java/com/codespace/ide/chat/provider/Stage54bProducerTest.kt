@@ -127,4 +127,34 @@ class Stage54bProducerTest {
         assertTrue(seen.contains(""""role":"user""""))
         assertTrue(ChatMessage("1", ChatRole.USER, "x").text == "x")
     }
+
+    @Test
+    fun `a call the gate refused to run is REFUSED, not a failed tool`() {
+        assertEquals(ExchangeStatus.REFUSED, ToolExchangeLog.statusOf("NOT RUN (you declined)"))
+    }
+
+    @Test
+    fun `a refusal recorded first is not overwritten by a later result`() {
+        val log = ToolExchangeLog()
+        log.recordRefused("call-1", "write_file", "{}", "Ask mode cannot write")
+        log.record("call-1", "write_file", "{}", "written anyway")
+        assertEquals(ExchangeStatus.REFUSED, log.snapshot().single().status)
+    }
+
+    @Test
+    fun `a refusal the model sees says the tool never ran`() = runTest {
+        val log = ToolExchangeLog()
+        log.recordRefused("call-1", "write_file", "{}", "NOT RUN (you declined)")
+        log.record("call-2", "read_file", "{}", "contents")
+        var seen = ""
+        val transport = object : ChatTransport {
+            override fun stream(url: String, headers: Map<String, String>, payloadJson: String): Flow<String> {
+                seen = payloadJson
+                return flow { emit("data: [DONE]\n\n") }
+            }
+        }
+        ChatEngineImpl("s54c", transport, OpenAIAdapter()) { log.snapshot() }.send("go", emptyList(), env()).toList()
+        assertTrue(seen.contains("REFUSED"))
+        assertTrue("the refusal did not stop the real result going too", seen.contains("contents"))
+    }
 }

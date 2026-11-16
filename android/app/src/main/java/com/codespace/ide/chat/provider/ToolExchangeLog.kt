@@ -81,6 +81,7 @@ class ToolExchangeLog(private val limit: Int = 60) {
             output.startsWith("CANCELLED", ignoreCase = true) -> ExchangeStatus.UNCERTAIN
             output.startsWith("FAILED", ignoreCase = true) -> ExchangeStatus.FAILED
             output.startsWith("REFUSED", ignoreCase = true) -> ExchangeStatus.REFUSED
+            output.startsWith("NOT RUN", ignoreCase = true) -> ExchangeStatus.REFUSED
             output.isBlank() -> ExchangeStatus.UNCERTAIN
             else -> ExchangeStatus.OK
         }
