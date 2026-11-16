@@ -69,7 +69,7 @@ Gradle environment; it is not device verification and it does not exercise a liv
 `BackupTarTest.failureMessageCarriesRealTotals` the only failure, unchanged and reproducible on a clean
 tree as a sandbox artifact. Dev-debug compile and D8 dex green. CI-green: run `43850633942`. Not device-verified.
 
-## Stage 5.2 — one tool-call shape, one execution door, honest stream endings (IMPLEMENTED, LOCALLY TESTED)
+## Stage 5.2 — one tool-call shape, one execution door, honest stream endings (IMPLEMENTED, LOCALLY TESTED, CI-GREEN)
 
 `chat/provider/ToolCallNormaliser.kt`, `chat/provider/StreamNormaliser.kt`, `chat/provider/ToolExecutionGateway.kt`.
 
@@ -93,7 +93,7 @@ tree as a sandbox artifact. Dev-debug compile and D8 dex green. CI-green: run `4
 
 **Component-tested versus runtime-tested.** The gateway boundary, normalisers and stream state machine are component-tested with fake executors and fake payloads. The `ChatSession` wiring compiles and is exercised only as far as existing component tests reach: `runTools` needs an Android `Context`, so no JVM test drives a real dispatch. No live provider was contacted, so real Gemini/Anthropic/OpenAI stream behaviour remains unverified.
 
-## Stage 5.2b — the normaliser reaches the live path (IMPLEMENTED, LOCALLY TESTED, RUNTIME-TESTED IN THE ENGINE)
+## Stage 5.2b — the normaliser reaches the live path (IMPLEMENTED, LOCALLY TESTED, RUNTIME-TESTED IN THE ENGINE, CI-GREEN)
 
 `4ea3b96` added the normalisers and wired `ToolExecutionGateway` into `ChatSession`, but
 `ProviderStreamNormaliser` ran only in unit tests. Tracing the real route showed why that mattered:
@@ -144,6 +144,19 @@ a replayed payload yields one call.
 `AgentTools.executeTool` remains component-tested only; no Robolectric or instrumentation suite was
 added. No live provider was contacted, so real streaming against Gemini, Anthropic or an
 OpenAI-compatible endpoint remains unverified and needs a device round.
+
+## CI — Stage 5.2 branch
+
+Branch `stage-5.2` pushed from `bb480c5` with `4ea3b96` then `8998135`. The workflow triggers on
+`main`, tags and pull requests, so the branch push started nothing; run `43863485364` was dispatched on
+ref `stage-5.2` and its job `build` (25 steps) succeeded on SHA `8998135`. The job's own test steps ran:
+the JVM unit suites and the ChatEngine contract suites. Neither step reaches a live provider.
+
+**What CI proves and does not prove.** CI proves the tree compiles and the JVM suites pass in a real
+Gradle environment on `8998135`, which now includes `Stage52RuntimeStreamTest` (engine runtime tests
+with a fake transport) and `Stage52CrossProviderTest` (component tests). CI is not device verification:
+no Android runtime, no UI, no real network to Gemini, Anthropic or an OpenAI-compatible endpoint.
+`ChatSession.runTools` remains component-tested only, because it needs an Android `Context`.
 
 ## Next stage (5.3)
 
