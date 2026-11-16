@@ -232,3 +232,239 @@ Limits, stated plainly: observation digests live in memory for the session, so a
 a process restart is not detected; `git_commit_push` verification reads the log text the tool returned
 rather than re-running git; archive extraction completeness uses the paths already on disk; and the
 contracts, verifier coverage and scoring signals cover the tools whose behaviour is known, not all 130.
+
+## Stage 4.7 — evidence that persists, state that is re-read (implemented, local only)
+
+Status labels used here: researched, implemented, locally tested. Not CI-green (the stage is on a
+branch and has not been pushed, so no workflow has run), not device-verified.
+
+**A. Persistent observations.** `EvidenceStore` keeps the last observation of each resource in
+`filesDir/evidence-observations.json`, written to a temp file and renamed so a kill cannot leave half a
+record, bounded to 200 resources, and read defensively: a corrupt or half-written file yields nothing
+plus a reason. `EvidenceReconciler.attach` restores those observations at first use, so a contradiction
+seen before a restart is still seen after it. A restored observation is a memory of what was seen, not a
+fact about the file now: it can only say "this disagrees with before".
+
+**B. Fresh git state.** `GitFreshVerifier` reads the repository again, read-only (`status --porcelain`,
+`rev-parse`, `log -1`), and hands the output to the same `GitStateVerifier` parser so both paths agree
+on what a state is. An empty porcelain status is a clean tree, not an unreadable one; a directory that
+is not a repository, or a missing one, is unknown and never verified. At most four short-timeout
+commands per call; no write is ever run to check a write. Tests use real temporary repositories.
+
+**C. Fresh archive destination.** `ArchiveDestinationVerifier` opens the archive read-only with
+`ZipFile` and walks the destination, comparing entries, types and declared sizes. Missing entries are
+incomplete, nothing-on-disk is refuted, a directory where a file belongs is the wrong type, a short file
+is refuted, path traversal is refused outright, corrupt differs from unsupported, and an unreadable
+destination is unknown rather than success. It never extracts, writes or overwrites.
+
+**D. Complete suitability signals.** `ToolSuitability` now scores eleven signals: capability, request
+wording, validatable output, prerequisite readiness, health, safer alternative, cost, network need and
+availability, expected time, device resource weight, and provider connection. Each reads declared
+metadata (`ToolMeta` cost class, category) or runtime state supplied by the caller; anything undeclared
+earns zero and says "unknown" instead of guessing. Eligibility is unchanged and still absolute: mode,
+registration and capability only.
+
+**E. Research claim reconciliation.** `ClaimReconciliation` judges the claims `ContradictionScan`
+already produces against the sources `SourceLedger` actually fetched: supported, independently
+supported, conflicting, unsupported (the quoted text is not in the cited source), unverified (no source,
+or a source never fetched), insufficient (nothing was fetched). Two copies of the same publication share
+an identity and are not counted twice; a disagreement is reported without choosing a winner.
+
+Deferred, with reasons: duplicate archive entry names cannot be produced by the JDK zip writer used in
+tests, so that path is implemented but has no fixture; APK-internal dex verification and device
+behaviour remain unverified; no additional parallel model requests were introduced.
+
+## Stage 4.7 Completion — live routing, research surface, provider context, reply identity
+
+**A. Fresh verification is now in the live gate (implemented, locally tested).** `OutcomeVerifier`
+routes git state-changing tools (`git_commit_push`, `git_commit`, `git_checkout`, `git_switch`,
+`git_add`, `git_stage`) through `GitFreshVerifier` when a project is open, and `zip_extract` through
+`ArchiveDestinationVerifier` with the archive and destination resolved against the open project. A
+fresh read that cannot be made returns unknown, never the tool's own acknowledgement; only with no
+project open does the text parse stand in, and then it can only refute. `git_status` still parses its
+own output, because that output is itself a fresh read. Verification runs no write, so it cannot
+repeat the side effect. The resulting verdict reaches `PrereqLedger` through the existing gate, so a
+refuted verification cannot satisfy a dependent capability.
+
+**B. Research claim status reaches the result (implemented, locally tested).** `ResearchSynthesis.build`
+now judges every claim the contradiction scan produced against the sources actually read, and the
+brief carries `reconciled` verdicts plus a "Claims and their sources" section that names the status,
+the source id and, for anything unconfirmed, an explicit instruction not to present it as settled.
+`ResearchResults` persists the same rows and still loads results saved before this change. There is no
+research results screen in the repository to bind to, so the Compose presentation is deferred rather
+than duplicated.
+
+**C. Signal 11 now has real data (implemented, locally tested).** `ProviderContext` holds a snapshot of
+the open workspace id and the state of each service a tool needs, as CONNECTED, DISCONNECTED,
+NOT_CONFIGURED, UNKNOWN or NOT_APPLICABLE. Signal 11 therefore means: "is the service behind this tool
+usable in this workspace right now", sourced from that snapshot and from a tool-to-provider table
+(`use_connector`/`list_connectors` → connectors, `git_commit_push` → github, mcp tools → mcp). A
+snapshot older than five minutes is discarded as stale; no snapshot means unknown. It stores names and
+states only, never a token, and a connected provider adds score but cannot change eligibility.
+
+**D. Reply identity rules added to the existing guard (rules locally tested, wiring deferred).** Four
+identity rules were added to `ReplyOwnership`: an answer is appended once per execution id, a tool call
+dispatches once per call id, a reply for another session is not appended, and a restore does not
+re-add an answer the transcript already holds. The failure paths they target are a repeated send, a
+duplicate continuation, a replayed tool call, recovery after a completed answer, and a late reply after
+a session change. They are additive; `ChatSession`'s delivery path is **not** rewired in this stage, so
+duplicate-reply behaviour in the running app is unchanged and unproven. That work is deferred, not
+claimed.
+
+Not verified: no device test, no APK build, and CI has not run against this branch yet.
+
+## Stage 4.8 — the delivery ledger behind the rules (implemented, locally tested)
+
+**Root cause.** Stage 4.7's four rules were pure functions with no state: `ChatSession` asked
+`startAction` and `mayComplete`, but nothing recorded which execution had already answered, nothing
+survived the process, and no boundary asked "is this execution still allowed to write here".
+
+**What changed.** `DeliveryLedger` holds that state and delegates every decision to `ReplyOwnership`.
+It is asked at three real boundaries in `ChatSession`: `beginSubmission` on the send path (after the
+generation bump, before any row is built), `isCancelled` on the event path (after the generation
+check), and `mayAppendAnswer` immediately after `mayComplete` for a completed answer. `cancel()` now
+cancels the execution as well as bumping the generation.
+
+**Identity.** An execution id is derived per submission (`exec-<gen>-<hash of the text>`), so a
+re-delivered click or a recreated view carries the identity it already used and starts nothing. The
+session identity is `sessionIdForDelivery`, defaulted to the project id. A submission in the same
+session replaces the running execution and closes it; a submission in another session does not.
+
+**Persisted.** `DeliveryStore` writes identities and states only (no prompt, no answer, no key) to
+`reply-delivery.json` through a temp file and a rename, capped at 200. A missing file is empty; an
+unreadable one is UNKNOWN, which never appends and never authorises a replay.
+
+**Tested.** 21 cases on the ledger's boundaries, including simultaneous completions (exactly one
+winner across eight threads), a cancelled execution refused after restart, a corrupt record granting
+no replay, and identity isolation per session. 3,303 tests locally, `BackupTarTest` the only failure,
+unchanged.
+
+**Not done.** The ledger is constructed inside `ChatSession` without a `DeliveryStore`, so nothing is
+persisted in the running app yet: the store is implemented and tested, not attached. No ViewModel-level
+integration test exists (constructing `ChatSession` in JVM with the real fakes is the next step), and
+nothing is device-verified. Tool-dispatch exactly-once still runs on the existing
+`ToolDispatchGuard`/ledger plus content-addressed write ids; ownership does not replace it.
+
+### Stage 4.8 completion — the store is attached and the runtime is tested
+
+**Root cause, restated exactly.** `DeliveryLedger` existed but was constructed with no store, so
+nothing survived a process; and no test ever drove `ChatSession` itself, so "the boundary is wired" was
+a claim about source lines rather than behaviour.
+
+**Where the store is built.** `ChatSession` takes an optional `deliveryStore`; when it is absent (the
+app path) the ledger writes to `filesDir/chat-delivery/<conversationId>/reply-delivery.json`, so delivery
+state is session-scoped by construction. The record is read once, lazily, the first time a delivery
+decision is needed. It holds execution id, session id, state and timestamp: no prompt, no answer, no key.
+
+**Identity.** A submission's identity is `exec-<generation>-<submission time>-<text hash>`. The
+submission time was added during this work because without it a second instance reusing generation 1
+with the same text produced an identity already recorded as completed, and the question was silently
+refused. That is a real bug the integration test caught, not a test artefact.
+
+**Integration tests (11).** Real `ChatSession` over the temp-file store: one submission delivers one
+answer; a repeated tap while in flight runs one execution; a legitimate second question is answered;
+cancellation refuses a late answer; a stale request writes nothing into another conversation; a restored
+instance starts empty and answers a re-ask once; a corrupt record still sends; a missing record is a
+fresh start and is written; two conversations keep their own answers; nothing is left pending after a
+completed answer. Assertions are on transcript rows and wire attempts, so a duplicate answer row fails.
+
+**Findings from the audit.** The double-tap guard only applies while a request is in flight
+(`sendJob?.isActive`), which is correct but narrower than "repeated taps are always deduplicated".
+`ReplyOwnership.mayComplete` already stops a repeated completion event; the ledger now stops a repeated
+append as well. Continuation, output-limit recovery and tool dispatch are unchanged and still rest on
+`ToolDispatchGuard` plus content-addressed write ids; no gap was confirmed there, so nothing was
+rewritten.
+
+Local: 3,315 tests, `BackupTarTest` the only failure, unchanged; D8 dex and dev-debug compile green.
+Not CI-green for this commit, not device-verified, no APK.
+
+## Stage 4.8 follow-up — continuation and dispatch (locally tested, not CI-green)
+
+**The defect, diagnosed from the real rows.** Temporary logging at the continuation boundary printed the
+transcript as the session actually held it: `InfoNote, User, AssistantStream(ANSWER, 9 chars, cursorOn)` at
+the first completion, then `InfoNote, User, AssistantStream(ANSWER, 8), InfoNote(cut off),
+AssistantStream(ANSWER, 56, cursorOn)` during the continuation. Two facts fell out:
+
+1. A continuation re-sends the earlier text as its prefix, so the Delta path appends a SECOND answer row
+   while the interrupted one stays. The opening text was therefore on screen twice.
+2. The replacement never ran because the flag that should have marked "this turn is a continuation" was
+   false. It had been set in `continueTurn` and cleared on the ordinary send path, which the continuation
+   also passes through. The flag is now derived in one place, from the prefix itself
+   (`continuationTurn = !continuationPrefix.isNullOrBlank()`), so no caller has to remember to set it.
+
+**The fix.** In the Completed handler, when the turn is a continuation and the final answer CONTAINS an
+answer row's text, that row is absorbed into the single row being written. Absorbing by containment rather
+than "drop the last row" is what removes the older copy, and it stays correct across several continuation
+segments because every earlier segment is contained in the final text. A legitimate separate answer is not
+contained in a later one, so it is preserved. Tool progress, tool results, refusal notes and the "cut off"
+note are untouched.
+
+**Tool round fix preserved.** The delivery right is consumed only for `ToolDecision.Answer`, so a tool round
+cannot swallow the answer that follows it.
+
+**Tool dispatch coverage, labelled honestly.** `ChatSession.runTools` returns immediately with "Tool
+execution is unavailable in this build." when `appContext` is null, and this project has no Robolectric, so
+no JVM test can drive a real dispatch through the ViewModel without faking the gate. Reported as
+COMPONENT-TESTED: `ToolDispatchGuard` over a real `ToolCallLedger` (same id dispatches once, new id runs,
+an interrupted call is refused rather than retried), `WriteCallIdentity.idFor` (key order is not intent,
+different content is), `ToolBatchPlan.duplicates` (in-batch repeats), and `AgentToolWire.decide` on the real
+wire shape. Runtime tool dispatch remains NOT runtime-tested; it needs Robolectric or instrumentation.
+
+**Local results.** 3,326 tests, `BackupTarTest.failureMessageCarriesRealTotals` the only failure, unchanged
+and pre-existing. Dev-debug compile and D8 dex green. Not CI-green (branch unpushed), not device-verified.
+
+## Stage 4.8 validation — CI-green, not device-verified
+
+**Code commit:** `50505e8` on `stage-4.8`.
+**Ancestry:** `9754f66 → 9811e02 → 63591b0 → e67820e → 59d1b2b → 50505e8`.
+**CI:** run `43838917586`, workflow "Build Android APK", job `build`, verdict **success**, tested SHA
+`50505e8b`. The workflow triggers on pushes to `main`, tags and pull requests only, so the branch push
+started nothing and the run was dispatched on ref `stage-4.8`, the same way the Stage 4.7 verdict was
+obtained. Remote head equals the tested SHA.
+
+**What the delivery layer does.** `DeliveryStore` is attached to the real `ChatSession` construction path,
+one store per conversation under `filesDir/chat-delivery/<conversation>/`, restored lazily on first use and
+written atomically behind a temp-file rename. A submission's identity is (generation, submission moment,
+text), so a legitimate re-ask after a restart is a new submission rather than a refused repeat. Answer
+ownership lives in the existing `ReplyOwnership`; `DeliveryLedger` only remembers.
+
+- **Duplicate and stale answers.** A repeated completion for an execution that already delivered is
+  refused, and a completion belonging to another session cannot append into this one.
+- **Cancellation.** `cancel()` closes delivery for the running execution as well as bumping the
+  generation, so a late callback cannot append after the user stopped the turn.
+- **Restoration.** A completed execution restored from disk does not redeliver its answer. A restored or
+  unknown execution state authorizes no writes.
+
+**Continuation.** A continuation re-sends the delivered text as its prefix, and the Delta path appended a
+second answer row while the interrupted one stayed, so the opening text appeared twice. The flag meant to
+mark a continuation turn was also false at that point: it was set on the Continue path and cleared by the
+ordinary send path that a continuation travels too. Both fixed in `50505e8`: the flag is derived in one
+place from the prefix (`continuationTurn = !continuationPrefix.isNullOrBlank()`), and a continuation
+absorbs every answer row whose text its final answer contains. Containment, not "drop the last row", is
+what removes the older copy; it holds across several segments and cannot consume a separate legitimate
+answer, a tool progress row, a tool result or a refusal note.
+
+**Tool-round ownership fix.** The delivery right is consumed only for `ToolDecision.Answer`. A completed
+tool round is not an answer, so it no longer swallows the answer that the post-tool continuation delivers.
+
+**Tests.** Continuation integration over the real `ChatSession` and fake transport: normal answer then
+continuation, repeated Continue tap while parked, cancellation before the continuation completes, a fresh
+instance that cannot continue a turn it never started, and a new submission after a completed
+continuation. Two legitimate submissions produce two executions and two answers with no loosened
+assertions. Existing Stage 4.8 coverage (submission, answer delivery, cancellation, session isolation,
+restoration) still passes.
+
+**Tool dispatch is component-tested, not runtime-tested.** `ChatSession.runTools` returns "Tool execution
+is unavailable in this build." when `appContext` is null, and the project has no Robolectric or
+instrumentation suite, so no JVM test drives a real dispatch through the ViewModel without faking the
+gate. What is covered is the machinery that path calls: `ToolDispatchGuard` over a real `ToolCallLedger`
+(same id dispatches once, a new id runs, an interrupted call is refused rather than retried),
+`WriteCallIdentity.idFor` stability, `ToolBatchPlan.duplicates`, and `AgentToolWire.decide` on the real
+wire shape. Runtime tool dispatch stays unproven.
+
+**Local results.** 3,326 tests; `BackupTarTest.failureMessageCarriesRealTotals` remains the only failure,
+unchanged and independently reproducible on a clean tree (expected 2, got 0), and it passes in CI — treated
+as a sandbox artifact, not hidden. Dev-debug compile and D8/DEX checks pass locally.
+
+**Status.** IMPLEMENTED: yes. LOCALLY TESTED: yes. CI-GREEN: yes, run `43838917586`. DEVICE-VERIFIED:
+**no**. No APK was built or installed and nothing was run on the device.

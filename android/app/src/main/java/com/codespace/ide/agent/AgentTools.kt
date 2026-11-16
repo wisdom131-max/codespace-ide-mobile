@@ -337,6 +337,9 @@ You can use multiple tools in sequence. When done, give a final summary.
                 com.codespace.ide.resolver.PathResolver.activeProjectRoot(context),
             )
         }
+        com.codespace.ide.agent.EvidenceReconciler.attach(
+            com.codespace.ide.agent.runtime.EvidenceStore.get(context)
+        )
         val reconciliation = com.codespace.ide.agent.EvidenceReconciler.resourceOf(
             name, args.optString("path", args.optString("file", ""))
         )?.let { resource ->

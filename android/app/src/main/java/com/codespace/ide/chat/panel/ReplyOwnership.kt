@@ -61,6 +61,33 @@ internal object ReplyOwnership {
      * Whether a restore may replace the rows now on screen. A live stream already writing rows owns
      * the transcript; the stored copy is older than what the user is watching.
      */
+    /**
+     * STAGE 4.7 COMPLETION: identity rules for the paths a generation counter cannot see.
+     *
+     * A generation is per-session memory; it forgets across a process restart and says nothing about a
+     * specific answer or a specific tool call. These three rules ask about identity instead, so a
+     * repeated attempt is recognisable as a repeat rather than as a new request:
+     *
+     *  - an answer carries the id of the execution that produced it, and is appended at most once;
+     *  - a tool call carries the id the model gave it, and cannot be dispatched twice;
+     *  - a reply names the session it belongs to, and a reply for another session is not appended.
+     *
+     * Deliberately additive: the existing [startAction], [mayComplete] and [addsUserBubble] rules and
+     * their callers are unchanged, and a blank id is treated as "no identity", never as a match.
+     */
+    fun mayDeliver(executionId: String, delivered: Set<String>): Boolean =
+        executionId.isNotBlank() && executionId !in delivered
+
+    fun mayDispatchTool(callId: String, dispatched: Set<String>): Boolean =
+        callId.isNotBlank() && callId !in dispatched
+
+    fun ownsSession(replySessionId: String?, currentSessionId: String?): Boolean =
+        !replySessionId.isNullOrBlank() && !currentSessionId.isNullOrBlank() && replySessionId == currentSessionId
+
+    /** A restored transcript already holding this answer is not restored again. */
+    fun mayRestoreReply(executionId: String, storedExecutionId: String?): Boolean =
+        executionId.isNotBlank() && executionId != storedExecutionId
+
     fun mayApplyRestore(restoreFinished: Boolean, streaming: Boolean, currentRowCount: Int, storedCount: Int): Boolean =
         restoreFinished && !streaming && (currentRowCount == 0 || storedCount > currentRowCount)
 }

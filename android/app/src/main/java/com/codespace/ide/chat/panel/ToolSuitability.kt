@@ -66,6 +66,11 @@ internal object ToolSuitability {
     private const val W_PREREADY = 10        // what it depends on is already proved in this plan
     private const val W_HEALTH = 15          // recent real failures
     private const val W_DESTRUCTIVE = 8      // a read-only path is preferable when both work
+    private const val W_COST = 10            // a cheaper tool of equal fit is preferable
+    private const val W_NETWORK = 8          // no network needed today is preferable
+    private const val W_TIME = 6             // a faster tool of equal fit is preferable
+    private const val W_MEMORY = 4           // a lighter tool is preferable on a phone
+    private const val W_PROVIDER = 6         // a tool whose provider is connected is preferable
 
     /**
      * @param capability the capability the request needs, when it is known.
@@ -79,6 +84,18 @@ internal object ToolSuitability {
         exists: (String) -> Boolean = { name -> ToolRegistry.spec(name) != null },
         healthPenalty: (String) -> Int = { name -> ToolHealth.adjustment(name) },
         demoted: Set<String> = ToolHealth.demoted(),
+        /** Declared cost class; null is "not known", never a guess. */
+        costOf: (String) -> ToolCost? = { name -> ToolRegistry.spec(name)?.let { ToolMetaIndex.metaFor(it).cost } },
+        /** True when the tool reaches the network, false when it cannot, null when nobody declared it. */
+        needsNetwork: (String) -> Boolean? = { name -> NetworkNeed.of(name) },
+        /** Whether the network is usable right now. Null is unknown, which earns nothing and claims nothing. */
+        networkAvailable: Boolean? = null,
+        /** Whether the tool's provider is connected. Null is unknown, never assumed either way. */
+        providerConnected: (String) -> Boolean? = { _ -> null },
+        /** Signal 11: the recorded workspace/provider state, when a snapshot exists. */
+        providerState: (String) -> ProviderContext.State? = { name -> ProviderContext.stateOf(name) },
+        /** Remaining time budget for this turn, when the session has one. */
+        timeBudgetMs: Long? = null,
     ): Choice {
         val terms = request.lowercase().split(Regex("[^a-z0-9_]+")).filter { it.length >= 4 }.toSet()
         val scored = candidates.distinct().map { name ->
@@ -127,6 +144,58 @@ internal object ToolSuitability {
             } else {
                 reasons.add(Signal("health", W_HEALTH, W_HEALTH, "no recent failures"))
             }
+            // STAGE 4.7: cost, network, time, memory and provider. Every one of these can be unknown,
+            // and an unknown earns nothing rather than being guessed into a preference.
+            val cost = costOf(name)
+            if (cost == null) {
+                reasons.add(Signal("cost", W_COST, 0, "its cost is unknown"))
+            } else {
+                val earned = when (cost) {
+                    ToolCost.CHEAP -> W_COST
+                    ToolCost.NORMAL -> W_COST / 2
+                    ToolCost.HEAVY -> 0
+                }
+                reasons.add(Signal("cost", W_COST, earned, "declared as " + cost.name.lowercase()))
+            }
+            val network = needsNetwork(name)
+            when {
+                network == false -> reasons.add(Signal("network", W_NETWORK, W_NETWORK, "it works without the network"))
+                network == true && networkAvailable == true ->
+                    reasons.add(Signal("network", W_NETWORK, W_NETWORK, "it needs the network, which is up"))
+                network == true && networkAvailable == false ->
+                    reasons.add(Signal("network", W_NETWORK, 0, "it needs the network, which is not available"))
+                else -> reasons.add(Signal("network", W_NETWORK, 0, "its network requirement is unknown"))
+            }
+            if (cost != null) {
+                val earned = when (cost) {
+                    ToolCost.CHEAP -> W_TIME
+                    ToolCost.NORMAL -> W_TIME / 2
+                    ToolCost.HEAVY -> 0
+                }
+                val why = if (timeBudgetMs != null && timeBudgetMs < 15_000 && cost == ToolCost.HEAVY) {
+                    "heavy, and little time is left in this turn"
+                } else {
+                    "declared as " + cost.name.lowercase()
+                }
+                reasons.add(Signal("time", W_TIME, earned, why))
+                reasons.add(
+                    Signal(
+                        "resources",
+                        W_MEMORY,
+                        if (cost == ToolCost.HEAVY) 0 else W_MEMORY,
+                        if (cost == ToolCost.HEAVY) "heavy on a phone" else "light enough for this device",
+                    )
+                )
+            }
+            // STAGE 4.7 COMPLETION: the recorded workspace state wins over a caller's shorthand,
+            // and an absent snapshot stays unknown rather than being assumed either way.
+            val state = providerState(name)
+                ?: providerConnected(name)?.let { if (it) ProviderContext.State.CONNECTED else ProviderContext.State.DISCONNECTED }
+                ?: ProviderContext.State.UNKNOWN
+            val providerEarned = if (state == ProviderContext.State.CONNECTED ||
+                state == ProviderContext.State.NOT_APPLICABLE
+            ) W_PROVIDER else 0
+            reasons.add(Signal("provider", W_PROVIDER, providerEarned, ProviderContext.phrase(state)))
             val destructive = ToolMetaIndex.metaFor(spec).destructive
             if (destructive) {
                 reasons.add(Signal("safer alternative", W_DESTRUCTIVE, -W_DESTRUCTIVE, "it can change or remove things"))
@@ -148,6 +217,33 @@ internal object ToolSuitability {
                 else -> null
             },
         )
+    }
+
+    /** Which tools reach the network, declared once so the signal never guesses per call. */
+    internal object NetworkNeed {
+        private val LOCAL_ONLY = setOf(
+            "read_file", "write_file", "replace_string_in_file", "multi_replace_string_in_file",
+            "grep_search", "grep_replace_all", "file_search", "list_dir", "create_directory",
+            "run_command", "runTests", "git_status", "git_log", "git_diff", "git_commit_push",
+            "zip_list", "zip_create", "zip_extract", "get_diagnostics",
+        )
+
+        private val NETWORK = setOf(
+            "web_search", "web_fetch", "fetch_url", "http_request", "connector_call", "mcp_call",
+            "research_search", "github_api", "slack_message",
+        )
+
+        fun of(tool: String): Boolean? = when (tool) {
+            in LOCAL_ONLY -> false
+            in NETWORK -> true
+            else -> {
+                val spec = ToolRegistry.spec(tool)
+                if (spec == null) null else when (ToolMetaIndex.metaFor(spec).category) {
+                    ToolCategory.WEB, ToolCategory.CONNECTORS, ToolCategory.MCP -> true
+                    else -> null
+                }
+            }
+        }
     }
 
     /** The one-line note for a plan block, or null when there is nothing worth saying. */

@@ -61,6 +61,8 @@ object ResearchSynthesis {
         val recovery: List<RecoveryNote>,
         val render: String,
         val continued: Boolean,
+        /** STAGE 4.7 COMPLETION: each claim judged against the sources actually read. */
+        val reconciled: List<ClaimReconciliation.Verdict> = emptyList(),
     )
 
     /** One round's worth of limits. Mirrors the planner's ceiling rather than inventing a second one. */
@@ -82,6 +84,24 @@ object ResearchSynthesis {
     ): Brief {
         val bounded = evidence.take(24).map { it.copy(text = it.text.take(MAX_TEXT_PER_SOURCE)) }
         val scan = ContradictionScan.report(bounded.map { it.sourceId to (it.title + ". " + it.text) })
+        // The ledger of what was really fetched, so a claim is judged against a source and not against
+        // a paraphrase of one. Same list the contradiction scan saw, so the two cannot disagree.
+        val ledger = bounded.map {
+            SourceLedger.Source(
+                id = it.sourceId,
+                title = it.title,
+                url = it.url,
+                domain = UrlTools.domain(it.url),
+                retrievedAt = "",
+                publishedAt = "",
+                excerpt = it.text,
+            )
+        }
+        val reconciled = ClaimReconciliation.reconcile(
+            scan.confirmed + scan.unconfirmed + scan.disputed.flatMap { d -> d.claims },
+            ledger,
+            disputedSubjects = scan.disputed.map { it.subject }.toSet(),
+        )
 
         val hosts = bounded.map { UrlTools.domain(it.url) }.filter { it.isNotBlank() }.distinct()
         val reachedSufficiency = sufficient || hosts.size >= 2 && scan.disputed.isEmpty() && scan.confirmed.isNotEmpty()
@@ -120,6 +140,7 @@ object ResearchSynthesis {
             recovery = recovery.take(8),
             render = "",
             continued = usable.isNotEmpty(),
+            reconciled = reconciled.verdicts,
         )
         return brief.copy(render = render(brief, hosts.size))
     }
@@ -156,6 +177,26 @@ object ResearchSynthesis {
             sb.append("What did not work: ")
             sb.append(b.recovery.joinToString("; ") { it.kind.phrase + " (" + it.subject.take(60) + ")" })
             sb.append('\n')
+        }
+        if (b.reconciled.isNotEmpty()) {
+            val groups = b.reconciled.groupBy { it.support }
+            sb.append("Claims and their sources:\n")
+            b.reconciled.take(8).forEach { v ->
+                sb.append("  ").append(v.subject).append(" = ").append(v.value)
+                    .append(" [").append(v.support.name.lowercase().replace('_', ' ')).append("]")
+                    .append(" source ").append(v.sourceId.ifBlank { "none" })
+                if (!v.confirmed) sb.append(" - do not present this as settled")
+                sb.append('\n')
+            }
+            ClaimReconciliation.Support.entries.forEach { support ->
+                val count = groups[support].orEmpty().size
+                if (count > 0 && support != ClaimReconciliation.Support.SUPPORTED &&
+                    support != ClaimReconciliation.Support.INDEPENDENTLY_SUPPORTED
+                ) {
+                    sb.append("  ").append(count.toString()).append(" claim(s) are ")
+                        .append(support.name.lowercase().replace('_', ' ')).append('\n')
+                }
+            }
         }
         if (b.unresolved.isNotEmpty()) {
             sb.append("Still unresolved: ").append(b.unresolved.take(5).joinToString("; ")).append('\n')

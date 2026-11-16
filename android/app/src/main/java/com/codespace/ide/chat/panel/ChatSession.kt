@@ -84,6 +84,11 @@ class ChatSession internal constructor(
      */
     private val baseUrlForProvider: (providerId: String, fallback: String) -> String =
         { _, fallback -> fallback },
+    /**
+     * STAGE 4.8: where delivery identities are persisted. Null builds one from [appContext] for this
+     * conversation, which is what the app does; tests inject their own.
+     */
+    private val deliveryStore: DeliveryStore? = null,
     /** WP6: ordered key-slot names with stored keys for a provider (primary first). */
     private val poolSlotsFor: (providerId: String) -> List<String> = { emptyList() },
     /** WP6: automatic key failover is OPT-IN (silent switching burns credits). */
@@ -173,6 +178,35 @@ class ChatSession internal constructor(
      * submission this guards against).
      */
     private val requestGate = RequestGate()
+
+    /**
+     * STAGE 4.8: the delivery ledger. ReplyOwnership holds the rules; this holds the state they need,
+     * and [`deliverySession`] is what "another session" means for this instance.
+     */
+    private val delivery = DeliveryLedger(
+        deliveryStore ?: appContext?.let {
+            DeliveryStore.at(java.io.File(java.io.File(it.filesDir, "chat-delivery"), conversationId))
+        }
+    )
+    private var activeExecId: String = ""
+    /** STAGE 4.8 follow-up: this turn continues an interrupted answer, so its row extends that one. */
+    private var continuationTurn = false
+    private var deliveryRestored = false
+
+    /**
+     * Read what a previous process left behind, once, the first time a delivery decision is needed.
+     * Structure only, and an unreadable record restores nothing - which leaves an execution UNKNOWN
+     * rather than "delivered" or "safe to replay".
+     */
+    private fun restoreDeliveryOnce() {
+        if (deliveryRestored) return
+        deliveryRestored = true
+        delivery.restore()
+    }
+
+    /** STAGE 4.8: a reply belongs to the conversation that asked for it. */
+    private val deliverySession: String
+        get() = conversationId
     private val sendGeneration: Int
         get() = requestGate.current
     /** Automatic 429 re-attempts used for the CURRENT send. */
@@ -606,6 +640,8 @@ class ChatSession internal constructor(
         continuationPrefix: String? = null,
     ) {
         if (ui.value.streaming || userText.isBlank()) return
+        // One source of truth: a turn is a continuation exactly when it carries the earlier text.
+        continuationTurn = !continuationPrefix.isNullOrBlank()
         // A new turn supersedes a previous interruption: from here on the transcript is live
         // again and must not keep carrying the "cut off" marker.
         interruptedReplyPending = false
@@ -746,6 +782,16 @@ class ChatSession internal constructor(
         }
         requestGate.bump()
         val gen = requestGate.bump()
+        // STAGE 4.8: a submission event that arrives twice (a re-delivered click, a recreated view)
+        // carries the identity it already used, so the second one starts no second execution.
+        // The identity of a submission is (generation, the moment it was made, the text). The moment
+        // matters: without it, asking the same question again after a restart - or a minute later -
+        // would reuse a completed identity and be refused, which would be silencing a real question.
+        val submittedAt = System.currentTimeMillis()
+        val execId = "exec-" + gen + "-" + submittedAt + "-" + userText.hashCode().toString(16)
+        restoreDeliveryOnce()
+        if (!delivery.beginSubmission(deliverySession, execId)) return
+        activeExecId = execId
         // Every send marks the ledger: a source recorded during this turn is shown under THIS
         // answer. Reading the size (not clearing) keeps a source from an earlier turn intact for
         // the answer that already cites it.
@@ -833,6 +879,12 @@ class ChatSession internal constructor(
     }
 
     fun cancel() {
+        // STAGE 4.8: cancellation invalidates this execution's right to deliver anything further,
+        // including a callback that is already in flight when the user presses Stop.
+        if (activeExecId.isNotBlank()) {
+            restoreDeliveryOnce()
+            delivery.cancel(activeExecId)
+        }
         requestGate.bump()
         // Project 1.9: a research round is blocking socket reads, so a cancelled coroutine would
         // still let its queued subquestion searches go out. Bump the generation so the loop stops
@@ -1038,6 +1090,7 @@ class ChatSession internal constructor(
         // before it can touch rows, tool calls or the buffer. This is what stops a stopped or
         // replaced stream from appending to a newer answer.
         if (requestGate.stale(gen)) return
+        if (delivery.isCancelled(activeExecId)) return
         when (ev) {
             is EngineEvent.Delta -> {
                 if (retryKeepLen > 0) {
@@ -1075,6 +1128,9 @@ class ChatSession internal constructor(
                 // Section 6: a finished reply is either an ANSWER or an ACTION request. The
                 // decision is pure (AgentToolWire); this only carries it out. The raw
                 // <tool> block never reaches the transcript.
+                // STAGE 4.8: the ANSWER is appended once per execution, into its own session. A tool
+                // round is not an answer, so it must not consume that right - the continuation's own
+                // answer still has to be delivered when the tools are done.
                 val decision = AgentToolWire.decide(
                     mode,
                     streamBuf.toString(),
@@ -1082,6 +1138,13 @@ class ChatSession internal constructor(
                     toolsOffered = AgentToolWire.modeRunsTools(mode),
                     turnContext = turnContext.toList(),
                 )
+                // STAGE 4.8: an ANSWER is delivered once per execution, into its own session. A tool
+                // round is not an answer, so it must not consume that right - the continuation that
+                // follows the tools still has an answer of its own to deliver.
+                if (decision is ToolDecision.Answer) {
+                    restoreDeliveryOnce()
+                    if (!delivery.mayAppendAnswer(activeExecId, deliverySession)) return
+                }
                 val shown = when (decision) {
                     is ToolDecision.Answer -> decision.text
                     is ToolDecision.Refused -> decision.visibleText
@@ -1091,9 +1154,27 @@ class ChatSession internal constructor(
                 // task's work, so it belongs INSIDE the tree. An answer stays a turn-level row.
                 val kind = if (decision is ToolDecision.Run) ChatRowModel.StreamKind.PROGRESS
                 else ChatRowModel.StreamKind.ANSWER
-                val rows = if (st.rows.lastOrNull() is ChatRowModel.AssistantStream)
-                    st.rows.dropLast(1) + listOf(ChatRowModel.AssistantStream(shown, false, kind))
-                else st.rows + listOf(ChatRowModel.AssistantStream(shown, false, kind))
+                // STAGE 4.8 (found by a runtime test): a continuation re-sends what was already
+                // delivered as a prefix, so its answer already CONTAINS the row the transcript holds.
+                // Appending left the same opening text on screen twice. The earlier answer row is
+                // replaced instead, and an interrupted answer keeps its "cut off" note.
+                // STAGE 4.8 follow-up (diagnosed from the real rows): a continuation re-sends the
+                // earlier text as a prefix, so its answer already CONTAINS the rows the transcript
+                // holds for this turn. Appending left the opening text on screen twice; dropping only
+                // the trailing row left the OLDER copy behind. Every answer row of this continuation
+                // turn whose text the final answer contains is absorbed into the single row below.
+                val answerRowsOfTurn = st.rows.filterIsInstance<ChatRowModel.AssistantStream>()
+                    .filter { it.kind == ChatRowModel.StreamKind.ANSWER && it.text.isNotBlank() }
+                val carried = continuationTurn && answerRowsOfTurn.any { shown.contains(it.text.trim()) }
+                val baseRows = if (carried) {
+                    st.rows.filterNot {
+                        it is ChatRowModel.AssistantStream && it.kind == ChatRowModel.StreamKind.ANSWER &&
+                            it.text.isNotBlank() && shown.contains(it.text.trim())
+                    }
+                } else st.rows
+                val rows = if (baseRows.lastOrNull() is ChatRowModel.AssistantStream)
+                    baseRows.dropLast(1) + listOf(ChatRowModel.AssistantStream(shown, false, kind))
+                else baseRows + listOf(ChatRowModel.AssistantStream(shown, false, kind))
                 val allSources = com.codespace.ide.agent.research.SourceLedger.all()
                 val turnSources = if (decision is ToolDecision.Answer && allSources.size > ledgerMark)
                     com.codespace.ide.agent.research.ResearchSources
