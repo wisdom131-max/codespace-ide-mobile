@@ -209,6 +209,30 @@ These cannot be measured from a JVM, and are not claimed:
 5. Long response (10k+ characters) with the tree expanded: scrolling stays smooth, no frame stalls at
    the bound.
 
+## Existing UI preservation — what this branch actually changed, and what it did not
+
+Owner rule (2026-11-16): Project Seven improves the existing Copilot UI. It is not a redesign. Approved
+components stay as they are unless a demonstrated defect requires a change, and then the smallest one.
+
+Every surface touched by this branch, with the defect and the exact change:
+
+| Surface | Defect demonstrated | Change made | What did NOT change |
+|---|---|---|---|
+| Thinking Tree header (`ChatCards`) | the chevron alone was the tap target, about 12dp, and TalkBack read "▸" with no meaning | header Row became the control at `heightIn(min = 48.dp)` with one merged semantics description | chevron glyphs, fonts, colours, padding, grouping rules, the separate `/tools` catalogue |
+| Tree child line | state was carried by colour and by expanding a row | `childLine` prefixes a `[state]` word | detail text, indentation, expand behaviour |
+| Single tool row (`ChatCards`) | same ~12dp target; detail unbounded when a call had large arguments | 48dp header, bounded detail with the cut stated | card shape, radius, padding, dismiss rules (still no dismiss x) |
+| Tool row creation (`ChatSession.runTools`) | the row could receive an unbounded argument summary | detail passes through `CopilotPresentation.toolRow` | the execution path, gates, approvals, ordering, ids |
+| Picker header (`ModelPickerSection`) | header said "Model", so provider and model were indistinguishable, which 7.6 explicitly asks to fix | text became `Provider · Model` with a TalkBack description of what is in effect | row layout, search field, effort menu, Auto-absence rule, selection logic |
+
+Untouched, deliberately: the composer and input box, attachment chips and their controls, message bubble
+layout, copy rows, Sources rows, empty state, overflow menu, and every dialog shape. No component was
+restyled, relocated or simplified for visual consistency.
+
+The picker header is the one visible text change on an approved component. It was requested by the 7.6
+brief ("distinguish provider identity from model identity"), it is one string plus a semantics
+description, and it is listed here so it can be vetoed and reverted on its own without touching anything
+else.
+
 ## Not delivered in this pass — stated plainly
 
 Project Seven is **not complete**. The following areas were not implemented here:
