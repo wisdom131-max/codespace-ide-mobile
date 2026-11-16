@@ -69,7 +69,31 @@ Gradle environment; it is not device verification and it does not exercise a liv
 `BackupTarTest.failureMessageCarriesRealTotals` the only failure, unchanged and reproducible on a clean
 tree as a sandbox artifact. Dev-debug compile and D8 dex green. CI-green: run `43850633942`. Not device-verified.
 
-## Next stage (5.2)
+## Stage 5.2 — one tool-call shape, one execution door, honest stream endings (IMPLEMENTED, LOCALLY TESTED)
+
+`chat/provider/ToolCallNormaliser.kt`, `chat/provider/StreamNormaliser.kt`, `chat/provider/ToolExecutionGateway.kt`.
+
+**Providers found in the repository (not assumed).** `engine/GeminiAdapter.kt`, `engine/AnthropicAdapter.kt`, `engine/OpenAIAdapter.kt` with `ProviderAdapter`/`SseParser`/`FinishReason`, plus user-added OpenAI-compatible endpoints via `CustomEndpointStore`. Text-protocol tool calls already arrive through `AgentToolWire`. Three dialects, one internal shape.
+
+**A. Normalisation.** `NormalisedToolCall(id, name, argumentsJson, provider, complete, issues)` with `fromGemini` (`parts[].functionCall{name,args}`), `fromOpenAI` (`tool_calls[]`, arguments as a STRING), `fromAnthropic` (`content[]` blocks of type `tool_use`), and `fromWire` for the text protocol this repo already parses. Provider ids are kept where the provider sends one; otherwise a stable synthetic id is derived from provider, index, name and arguments. Multiple calls per response, malformed arguments, blank names and over-size arguments are all represented rather than thrown away.
+
+**B. Validation before execution.** `verdict(call, known)` refuses an incomplete call, a call naming no tool, arguments that are not a JSON object, arguments over 128k characters, and any name absent from `AgentTools.toolNames()`. `uniqueById` drops repeated ids inside a round.
+
+**C. One execution door.** `ToolExecutionGateway.run` validates, claims the call identity once per round, then delegates to the executor it is handed, which in the app is `AgentTools.executeTool` — unchanged, so role checks, approval, MCP approval, prerequisites, health, the duplicate-write ledger, evidence validation and side-effect verification all still apply. The gateway adds no permission of its own and cannot grant one.
+
+**D. Results.** `ToolResultNormaliser.fromExecution` returns `ToolResultEnvelope(callId, name, outcome, result, error, cancelled)`, keeping the original call id, `FAILED` staying failed and a throw becoming `FAILED` rather than an empty success.
+
+**E. Streams.** `ProviderStreamNormaliser` emits `TextDelta`, `ReasoningDelta`, `ToolCallStarted`, `ToolCallArgsDelta`, `ToolCallCompleted`, `Usage`, `Ended(StreamEnd)`, `Failed`, `Cancelled`. `StreamEnd` keeps NATURAL, TOOL_CALLS, OUTPUT_LIMIT, CANCELLED, PROVIDER_ERROR, INCOMPLETE_TOOL_CALL and UNKNOWN apart, so a truncated answer is never reported as finished. Partial tool calls never emit `ToolCallCompleted`; `finish()` closes the stream as INCOMPLETE_TOOL_CALL (a late chunk is then ignored), and a stream that simply stops is UNKNOWN. Replayed Gemini parts are de-duplicated by id, and argument buffers are capped at 64k per call with at most 16 pending calls.
+
+**Runtime integration.** `ChatSession.runTools` now routes each call through the gateway before `AgentTools.executeTool`; a refused call returns `FAILED: <reason>` (which `ToolFailurePolicy` already classifies) and never reaches the executor.
+
+**Tests.** 25 cases in `Stage52CrossProviderTest`: the three dialects plus the text protocol, multiple calls, unclosed arguments, blank name, non-object arguments, unknown tool never reaching the executor, duplicate ids, gateway success/failure/throw, same-round repeat running once, OpenAI fragment assembly, a stream cut mid-arguments, Anthropic `input_json_delta` completion, Gemini finish mapping, OUTPUT_LIMIT not read as natural, replayed chunk, provider error, cancellation plus late chunk, silent stop = UNKNOWN, bounded buffers, usage metadata.
+
+**Results.** 3,244 tests on `stage-5.2`; `BackupTarTest.failureMessageCarriesRealTotals` the only failure, unchanged. Dev-debug compile and D8 dex green. NOT CI-green (branch unpushed). Not device-verified.
+
+**Component-tested versus runtime-tested.** The gateway boundary, normalisers and stream state machine are component-tested with fake executors and fake payloads. The `ChatSession` wiring compiles and is exercised only as far as existing component tests reach: `runTools` needs an Android `Context`, so no JVM test drives a real dispatch. No live provider was contacted, so real Gemini/Anthropic/OpenAI stream behaviour remains unverified.
+
+## Next stage (5.3)
 
 Cross-provider tool compatibility and streaming normalisation: normalise tool definitions and tool-call
 event shapes per provider, prove providers cannot bypass `AgentTools.executeTool`, and normalise

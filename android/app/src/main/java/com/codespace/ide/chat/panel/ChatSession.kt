@@ -1272,13 +1272,28 @@ class ChatSession internal constructor(
             // P4.B: execution itself is coordinated. Independent read-only calls run together and
             // bounded; every write, command, connector and MCP call stays strictly sequential and in
             // plan order. Answers are collected by index, so the transcript order is the plan's.
+            // STAGE 5.2: every provider's call reaches the executor through one gateway. The
+            // gateway refuses a call that names no registered tool, that never finished arriving,
+            // or that repeats one already claimed in this round - and then hands the rest to
+            // AgentTools.executeTool, which is still the only door to a side effect.
+            val claimedCalls = HashSet<String>()
             suspend fun executeOnce(idx: Int): String = try {
-                com.codespace.ide.agent.AgentTools.executeTool(
-                    calls[idx].name, org.json.JSONObject(calls[idx].argumentsJson), ctx,
-                    // GATE 2: a write carries an id derived from what it asks for, so the
-                    // persisted ledger can answer a repeat instead of applying it twice.
-                    callId = com.codespace.ide.chat.panel.WriteCallIdentity.idFor(
-                        calls[idx].name, calls[idx].argumentsJson))
+                val normalised = com.codespace.ide.chat.provider.ToolCallNormaliser
+                    .fromWire("copilot", listOf(calls[idx])).single()
+                val outcome = com.codespace.ide.chat.provider.ToolExecutionGateway.run(
+                    normalised,
+                    com.codespace.ide.agent.AgentTools.toolNames(),
+                    claimedCalls,
+                ) { name, argsJson, _ ->
+                    com.codespace.ide.agent.AgentTools.executeTool(
+                        name, org.json.JSONObject(argsJson), ctx,
+                        // GATE 2: a write carries an id derived from what it asks for, so the
+                        // persisted ledger can answer a repeat instead of applying it twice.
+                        callId = com.codespace.ide.chat.panel.WriteCallIdentity.idFor(
+                            name, argsJson))
+                }
+                outcome.result?.result
+                    ?: ("FAILED: " + (outcome.refusal ?: "the call could not run"))
             } catch (t: Throwable) {
                 "FAILED: " + (t.message ?: "unknown error")
             }
