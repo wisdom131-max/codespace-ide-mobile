@@ -75,11 +75,20 @@ class AgentFlowGateScopeTest {
     }
 
     @Test
-    fun sessionScopeIsRememberedForThatToolOnly() {
+    fun sessionScopeIsRememberedForThisToolAndTheseArguments() {
         parkRequest("write_file")
         AgentFlowGate.approve(AgentFlowGate.ApprovalScope.SESSION)
-        assertTrue(AgentFlowGate.isSessionAllowed("write_file"))
-        assertFalse("a different tool must still ask", AgentFlowGate.isSessionAllowed("run_command"))
+        // 8.4: the scope is now the pair (tool, arguments), not the bare tool name. This test
+        // previously asserted name-level memory, which is exactly the widening that was fixed.
+        assertTrue(AgentFlowGate.isSessionAllowed("write_file", "ls -la"))
+        assertFalse(
+            "a different tool must still ask",
+            AgentFlowGate.isSessionAllowed("run_command", "ls -la"),
+        )
+        assertFalse(
+            "the same tool with different arguments must still ask",
+            AgentFlowGate.isSessionAllowed("write_file", "rm -rf /sdcard"),
+        )
         assertEquals(1, AgentFlowGate.sessionAllowedCount())
     }
 

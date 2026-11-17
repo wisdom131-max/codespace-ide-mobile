@@ -119,7 +119,7 @@ object AgentFlowGate {
         val autoApproved = !forced && ChatPermissionStore.isAutoApproved(context, toolName)
         // Section 6: an explicit "allow for this session" answer is honoured WITHOUT
         // touching the persisted permission level - it dies with the process.
-        val sessionAllowed = !forced && isSessionAllowed(toolName)
+        val sessionAllowed = !forced && isSessionAllowed(toolName, argsSummary)
         return awaitDecision(
             toolName = toolName,
             argsSummary = argsSummary,
@@ -188,8 +188,27 @@ object AgentFlowGate {
     fun isSessionAllowed(toolName: String): Boolean =
         synchronized(sessionAllowed) { sessionAllowed.contains(toolName) }
 
+    /**
+     * 8.4 FINDING, fixed here: a session allow used to be keyed by TOOL NAME alone, so answering
+     * "allow for this session" to one `run_command` silently approved every later command, and one
+     * file write approved writes to any path. The key now carries a fingerprint of the arguments the
+     * user was shown, so the memory covers exactly what was agreed to.
+     */
+    internal fun sessionKey(toolName: String, argsSummary: String): String {
+        val args = argsSummary.trim()
+        if (args.isEmpty()) return toolName
+        return toolName + "#" + ArgFingerprint.sha256(args).take(16)
+    }
+
+    fun isSessionAllowed(toolName: String, argsSummary: String): Boolean =
+        synchronized(sessionAllowed) { sessionAllowed.contains(sessionKey(toolName, argsSummary)) }
+
     fun rememberForSession(toolName: String) {
         synchronized(sessionAllowed) { sessionAllowed.add(toolName) }
+    }
+
+    fun rememberForSession(toolName: String, argsSummary: String) {
+        synchronized(sessionAllowed) { sessionAllowed.add(sessionKey(toolName, argsSummary)) }
     }
 
     fun clearSessionApprovals() {
@@ -207,7 +226,7 @@ object AgentFlowGate {
         if (!p.deferred.complete(true)) return false
         when (scope) {
             ApprovalScope.ONCE -> Unit
-            ApprovalScope.SESSION -> rememberForSession(p.toolName)
+            ApprovalScope.SESSION -> rememberForSession(p.toolName, p.argsSummary)
             ApprovalScope.ALWAYS -> p.onAlwaysAllow?.invoke()
         }
         return true

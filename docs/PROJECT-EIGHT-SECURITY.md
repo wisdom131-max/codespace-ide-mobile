@@ -114,3 +114,62 @@ for secrets; and `CrumbLog` keeps its own narrower rules.
 | Pattern-only redaction | PARTIALLY FIXED (structural shapes added; unlabelled secrets still out of reach) |
 | Real ZIP/tar attribute parsing for links | STILL OPEN (needs an archive API that exposes attributes) |
 | Runtime proof of link refusal during extraction | STILL OPEN (verifier-level only; extraction path unchanged) |
+
+## Checkpoint 3 - threat model, provider reliability, MCP approval binding
+
+### 8.1 trust boundaries (audited, evidence-based)
+
+| Boundary | Crossing point | Untrusted input | Existing control |
+|---|---|---|---|
+| Provider to app | stream parsing, tool-call assembly | model text, tool args, finish reason | Project Five normalisation, finish-reason handling, duplicate-reply guards |
+| App to tool layer | `AgentTools.executeTool` | tool name + args from the model | single gate, `ExecutionBoundaryScan`, ledger + reconciler, write journal |
+| Tool layer to OS | filesystem, archive, shell | paths, archive entries, commands | `unsafePath`, symlink refusal, dispatch guard, containment gate |
+| App to external services | MCP, connectors | server tool descriptions, results | forced approval for `mcp_*` and `use_connector`, name+args routing |
+| App to storage | sessions, memory, diagnostics | persisted conversation, crumbs | redaction before persistence, bounded storage |
+| External content to prompt | research, documents, connector output | page text, extraction output | content is data, never instructions; tool selection comes from the model's own call, not from content |
+
+Residual risk that is NOT fixed here and is not claimed to be: a model can still be persuaded by injected
+content to *propose* a harmful call. The boundary above is that the proposal cannot approve itself, cannot
+skip the gate, and cannot widen an approval it was not given.
+
+### 8.2 provider and network reliability
+
+Audited: authentication failure, HTTP errors, rate limits, timeouts, connection loss, malformed JSON, empty
+responses, interrupted streams, partial tool calls, duplicate events, context-limit and output-limit ends,
+cancellation, late events. Existing coverage is strong (Project Five + Project Four). No confirmed defect
+found in the retry path itself; behaviour is now pinned by `Stage84ApprovalAndRetrySafetyTest`:
+`VERIFIED_FAILED` may retry, `COMPLETED` may not, `UNCERTAIN` may only when read-only.
+
+**Unverified behaviour, stated plainly:** no live provider was contacted. Provider failure paths are
+exercised through production components with no network, so "the app handles a 429" is tested at the
+classification level, not against a real server.
+
+### 8.4 MCP and connector security
+
+Call graph: model tool call -> `AgentTools.executeTool` -> plan/approval gate -> `dispatchGuard` -> `mcp_*`
+branch -> `McpClientManager.callTool` -> server resolution by owning cache entry (prefix collisions already
+fixed) -> request. MCP and connector calls are forced through approval: `mustAsk` ignores both the persisted
+level and the session set for them, and "Always allow" is not offered.
+
+**8-04 HIGH, FIXED - approval memory was tool-scoped, not agreement-scoped.** Session approvals were keyed
+by tool name alone. Approving one `run_command` with "allow for this session" therefore auto-approved every
+later command in that session, and approving one `write_file` approved writes to any path. The gate now keys
+the session allow on `tool + fingerprint(arguments)`, so the memory covers exactly the call the user saw.
+`sessionKey()` falls back to the bare name only when there is no argument summary to bind to.
+`AgentFlowGateScopeTest.sessionScopeIsRememberedForThisToolAndTheseArguments` was updated to the stricter
+contract; the old assertion encoded the widening.
+
+### Tests
+
+`Stage84ApprovalAndRetrySafetyTest` (10 cases): argument-scoped session allow, cross-tool separation,
+blank-summary fallback, forced MCP/connector approvals, no always-allow for them, retry safety per state,
+uncertain-note wording, and a synthetic provider error losing its key while keeping its diagnosis.
+
+App: 3,450 tests, 0 failures, 4 skipped. Engine: 278, 0 failures. Dev-debug compile and D8 green.
+
+### Still open
+
+- 8.7 conversation/memory, 8.8 agent roles, 8.9 lifecycle, 8.10 cross-project regression.
+- Persisted "Always allow" (`ChatPermissionStore`) is still per tool name; it is an explicit user switch, so
+  it was left as designed rather than silently re-scoped. Disclosure, not a fix.
+- No live provider or live MCP server was contacted; no device verification.
