@@ -52,6 +52,8 @@ production changes are the three archive-verifier findings above, each a tighten
 
 ## Checkpoint 2 — execution boundary, archive links, structural redaction
 
+**CI: run `44020458072` on `d7ec25d`, 26/26 steps, success.**
+
 ### 8.3 FIXED — the single execution gate is now an enforced invariant
 
 Call graph, read from the source rather than assumed: `AgentTools.executeTool` is the only public entry;

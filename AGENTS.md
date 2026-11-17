@@ -61,7 +61,7 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
-### [2026-11-17 04:20 WAT] [LOCAL] PROJECT EIGHT checkpoint 2 - execution boundary guard, archive links, structural redaction
+### [2026-11-17 04:20 WAT] [CI-GREEN 44020458072 @ d7ec25d] PROJECT EIGHT checkpoint 2 - execution boundary guard, archive links, structural redaction
 
 `ExecutionBoundaryScan` turns "executeTool is the only gate" into an enforced invariant over the real
 sources and the live registry (122 names, 122 arms, both directions), with five tests that inject a
