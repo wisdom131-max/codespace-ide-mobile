@@ -7373,7 +7373,7 @@ engine 278; compile and D8 green. Voice and activity-recreation lifecycle audite
 verified. Project Eight remains PARTIAL; Area 8.10 open.
 
 
-### [2026-11-17 09:20 WAT] [LOCAL] PROJECT EIGHT checkpoint 6 - Area 8.10 full-system audit
+### [2026-11-17 09:20 WAT] [CI-GREEN 44046012394 @ 75fee2a] PROJECT EIGHT checkpoint 6 - Area 8.10 full-system audit
 
 Eight cross-project claims executed against production objects; no confirmed defect; three wrong
 test expectations corrected against real contracts. App 3474 tests, 0 failures, 4 skipped; engine 278.
