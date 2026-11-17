@@ -7360,3 +7360,14 @@ or MCP server contacted. 8.7, 8.8, 8.9 and 8.10 remain open; Project Eight stays
 role entry bypassed the read-only rule, so a catalogue edit could hand a read-only role a destructive
 tool; `mayInclude` now gates every name. Area 8.7 audited with no confirmed defect. 10 new cases;
 app 3460 tests 0 failures 4 skipped; engine 278; compile and D8 green. Not device-verified; PARTIAL.
+
+### [2026-11-17 08:55 WAT] [LOCAL] PROJECT EIGHT checkpoint 5 - lifecycle and persistence
+
+Area 8.9 audited; the two Area 8.7 gaps closed. One confirmed defect fixed: a damaged primary
+transcript could be rotated over the backup that had just restored it (`ChatTranscriptStore.load`
+now retires the damaged file as `.damaged`). 6 new `Stage87PersistenceTest` cases drive the real
+`TranscriptFiles`: abandoned temp never trusted, failed save reports failure and keeps the old
+copy, damaged history refused in favour of `.bak`, backup survives the next save, corruption
+contained to one conversation, restored history inert. App 3,466 tests, 0 failures, 4 skipped;
+engine 278; compile and D8 green. Voice and activity-recreation lifecycle audited, not device
+verified. Project Eight remains PARTIAL; Area 8.10 open.

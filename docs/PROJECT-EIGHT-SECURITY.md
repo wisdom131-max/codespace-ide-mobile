@@ -218,3 +218,51 @@ no device verification exists. Corrupt-retention recovery was read, not exercise
 
 Areas 8.9 (Android lifecycle and resource reliability) and 8.10 (full cross-project audit) are open.
 Device verification has not been performed for any checkpoint.
+
+## Checkpoint 5 - lifecycle, resource reliability and the persistence gaps
+
+Scope: Area 8.9, plus the two Area 8.7 test gaps checkpoint 4 disclosed as unverified.
+
+### 8.9 / 8.7 FIXED - a damaged transcript could overwrite the backup that rescued it
+
+| Field | Value |
+| --- | --- |
+| Entry point | `TranscriptFiles.load` then the next `saveNow` |
+| Component | `chat/ChatTranscriptStore.kt` |
+| Scenario | The primary transcript is damaged, so load restores the conversation from `.bak`. The damaged primary stays on disk. The next save copies the primary into `.bak` BEFORE writing, so the good backup that had just restored the conversation is replaced by the damaged bytes. If that save then fails in its non-atomic fallback, both copies are lost. |
+| Existing protection | Atomic temp-and-rename, a `.bak` rotation, refusal of an unrecognised format, and a skipped-line count for partially readable files. |
+| Missing protection | The damaged primary was never retired, so backup rotation could propagate the damage. |
+| Severity | MEDIUM (possible loss of the only good copy of a conversation) |
+| Fix | On the restore-from-backup path the damaged primary is renamed to `<name>.damaged` (deleted only if the rename fails). It is kept for inspection, is never read again, and can no longer be rotated over a good backup. |
+| Regression test | `Stage87PersistenceTest.the_backup_that_restored_a_conversation_is_not_overwritten_by_damage` plus four siblings |
+| Status | Fixed, locally tested, CI-green |
+
+### 8.7 gap A CLOSED - interrupted persistence
+
+`Stage87PersistenceTest` drives the real `TranscriptFiles`, not a copy of its rules:
+
+- `an_abandoned_temp_file_is_never_trusted_as_history`: a `.tmp` left by a killed save is not read as the conversation.
+- `a_save_into_an_unusable_destination_reports_failure_and_keeps_the_old_copy`: with the destination directory replaced by a file, the save returns a non-blank error rather than claiming success, the earlier copy still loads, and a later save recovers normally.
+
+### 8.7 gap B CLOSED - corrupt-retention recovery
+
+- `a_damaged_transcript_is_not_read_as_valid_history`: undecodable bytes produce a note and the `.bak` copy, never the damage as history.
+- `corruption_is_contained_to_the_conversation_that_suffered_it`: an independent healthy conversation loads with no note.
+- `restored_history_carries_no_execution_state`: a restored transcript is inert text; the load path holds no reference to the execution gate, so recovery cannot re-run a historical tool call.
+
+### 8.9 audit - no defect confirmed in these paths
+
+| Path | Evidence | Verdict |
+| --- | --- | --- |
+| Duplicate provider request after UI recreation | The request is owned by `ChatSession`, not by the composable; the send path is guarded by `Continuation.mayStart` and the delivery ledger | No defect reproduced. Unverified on device (activity recreation not exercised on hardware) |
+| Stale callbacks after a session switch | Generation checks plus `ReplyOwnership`; existing suites green | No defect reproduced |
+| Cancellation reaching the active operation | `session.cancel()` is passed to the voice surface and the Stop control; tool execution cancellation is reported as uncertain, not as success | No defect reproduced |
+| Voice resource release | `VoiceModeLayer` holds a `DisposableEffect` on the lifecycle owner; `VoiceSettingsSection` releases its provider on dispose | Audited only. Repeated enter/exit and permission revocation during an active session are NOT verified without a device |
+| Archive and file protections | Checkpoints 1 and 2 tests still green (`unsafePath`, symlink targets, skipped-line accounting) | Unchanged, no weakening |
+| Memory pressure | Streaming accumulation and tool output retain their existing caps; no new buffer was introduced | No new allocation of unbounded state |
+
+### 8.9 remaining limitations
+
+- Activity recreation, backgrounding during a live stream, and voice microphone/TTS lifecycle are implementation-audited but not device-verified. No JVM test proves them, and none is claimed to.
+- A save whose rename fails falls back to `target.writeText`, which is not atomic; it is the last resort after a failed rename and is unchanged by this checkpoint.
+- The `.damaged` file is left on disk by design. Nothing prunes it, so a repeatedly damaged conversation will accumulate them.
