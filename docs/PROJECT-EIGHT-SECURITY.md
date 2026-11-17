@@ -268,3 +268,64 @@ Scope: Area 8.9, plus the two Area 8.7 test gaps checkpoint 4 disclosed as unver
 - Activity recreation, backgrounding during a live stream, and voice microphone/TTS lifecycle are implementation-audited but not device-verified. No JVM test proves them, and none is claimed to.
 - A save whose rename fails falls back to `target.writeText`, which is not atomic; it is the last resort after a failed rename and is unchanged by this checkpoint.
 - The `.damaged` file is left on disk by design. Nothing prunes it, so a repeatedly damaged conversation will accumulate them.
+
+## Checkpoint 6 - Area 8.10, the full-system audit
+
+Scope: all eight projects, all ten Project Eight areas, the eighteen cross-component scenarios.
+
+### What was executed rather than asserted
+
+`Stage810CrossProjectTest` (8 cases) drives the real objects at each seam, not helpers that
+echo them: `ToolExchangeLog.statusOf`, `DeliveryLedger`, `HandoffGuard.decide` and
+`ExecutionBoundaryScan.scan`. It asserts the properties the whole system leans on -
+an uncertain or cancelled exchange is never OK, a refusal is not a failure, a real result
+with no success wording still counts, a cancelled execution cannot append an answer, one
+execution cannot submit twice, a stale execution cannot own a newer session, an empty
+successor is reused while a started one branches, and the boundary scanner still reports a
+second call site.
+
+### Confirmed defects in this checkpoint
+
+None. Three test expectations were wrong on first run and were corrected against the real
+contracts (`UNSURE: ` is the uncertain prefix, `Decision.Reuse` carries the label, and the
+status enum lives in `engine`). No production code was changed, so no fix is claimed.
+
+### Scenario coverage
+
+| # | Scenario | Components | Evidence | Status |
+|---|---|---|---|---|
+| 1 | Stream ends during a tool call | normaliser, exchange log | `EngineStreamNormaliser`/`ToolResultNormaliser` suites | covered |
+| 2 | Duplicate or replayed tool-call chunks | delivery ledger, tool call ledger | `DeliveryLedger` cases here plus `ToolCallLedger` suites | covered |
+| 3 | Tool succeeds, stream interrupted | exchange log, delivery | statusOf cases; interruption suites | covered |
+| 4 | Uncertain write, provider asks again | `SideEffectRecovery`, journal | `mayRetry(UNCERTAIN, writable) == false` | covered |
+| 5 | Context reduction with exchanges present | `ContextPreparer`, summaries | Project Six suites | covered |
+| 6 | Continuation with historical tool results | `HandoffGuard`, transcript | reuse/branch case here | covered |
+| 7 | Damaged transcript then a later save | `TranscriptFiles` | `Stage87PersistenceTest` | covered |
+| 8 | Prerequisite fails after a planning wave | planner, prerequisites | Project Four suites | covered |
+| 9 | Role invokes a tool outside its scope | `SubagentRoles` | `Stage88RoleScopeTest` | covered |
+| 10 | MCP under AUTO_ALL | `AgentFlowGate` | `Stage8SecurityTest` | covered |
+| 11 | Provider error with credential-shaped data | redaction | `Stage85` + structural patterns | covered |
+| 12 | File operation interrupted, conversation reopened | transcript store | persistence suite | covered |
+| 13 | Output limit with tool activity present | finish reasons, rows | Project Seven suites | covered |
+| 14 | Cancel during streaming and tool overlap | ledger, gateway | cancelled-cannot-append case | covered |
+| 15 | Stale callback after session replacement | ledger, generation | stale-execution case | covered |
+| 16 | Successful output with no success wording | exchange status | OK-without-wording case | covered |
+| 17 | Refused tool displayed | bindings, presentation | `Stage711IntegrationTest` | covered |
+| 18 | Recovered task with an unfinished step | planner, task_plan | Project Three suites | covered |
+
+### Project status
+
+All eight projects are audited against their implementation with the test evidence above.
+Projects One to Seven remain as reported on their own branches; Project Seven's UI, the
+30x24dp copy target, the sources row and the voice limitations are unchanged here, since this
+branch is the Projects One to Six baseline plus Project Eight. That separation is a fact about
+this branch, not a merge: combining Project Seven into main still needs the owner's approval.
+
+### Remaining limitations
+
+- No live-provider, live-MCP or device verification. Every provider and connector test in this
+  branch uses deterministic fakes.
+- Android lifecycle behaviour (activity recreation, backgrounding, mic/TTS teardown) is
+  inspected and component-tested, never exercised on a device.
+- The execution-boundary guard is source-level; reflection or a new dispatcher would not be caught.
+- Archive link handling is limited to the text listing contract the verifier consumes.

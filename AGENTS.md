@@ -7371,3 +7371,10 @@ copy, damaged history refused in favour of `.bak`, backup survives the next save
 contained to one conversation, restored history inert. App 3,466 tests, 0 failures, 4 skipped;
 engine 278; compile and D8 green. Voice and activity-recreation lifecycle audited, not device
 verified. Project Eight remains PARTIAL; Area 8.10 open.
+
+
+### [2026-11-17 09:20 WAT] [LOCAL] PROJECT EIGHT checkpoint 6 - Area 8.10 full-system audit
+
+Eight cross-project claims executed against production objects; no confirmed defect; three wrong
+test expectations corrected against real contracts. App 3474 tests, 0 failures, 4 skipped; engine 278.
+Project Eight COMPLETE at implementation, test and CI level pending the CI verdict. Not device-verified.
