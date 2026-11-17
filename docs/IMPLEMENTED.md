@@ -390,3 +390,16 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
 | P7 cp6 - Copy target restored | 48dp expansion reverted at the owner's explicit request: target is the glyph's own 30x24dp, glyph unmoved, role and action label kept, no parent hitbox. `CopyTarget` + 4 cases pin it, including a guard against the modifier returning. |
 | P7 cp6 - 7.8 sources bounded | `SourcesRow` draws at most 40 and states the exact remainder; null when nothing omitted. `ResearchPresentation` supplies the header count, per-source TalkBack sentence and empty-research wording. WIRED. 8 cases. |
 | P7 cp6 - 7.8 documents/media | Audited: rows carry real execution status and bounded detail; no inspection/transcription/analysis claim exists and none was invented. No change made. |
+
+## Chat composer extras (2026-11-17)
+
+- **Add to Queue**: while an answer streams, a typed message can be queued instead of cancelling the
+  answer. FIFO, max 10, duplicates refused, drained only when the turn genuinely ends, and skipped
+  (kept, not lost) when the turn failed or was cancelled. Implementation: `chat/panel/ChatQueue.kt`
+  plus `ChatSession.queueMessage` / `dropQueued` / `drainQueueAfterTurn`. Not persisted across a
+  process death - it is an in-memory queue for the live session.
+- **Steer Message**: the instruction is folded into the next tool-result continuation of the same turn
+  (`Steering.apply`), so the turn is corrected without restarting it. Not supported for a single-shot
+  answer that makes no tool round, and it does not claim to be.
+- Both entries were previously disabled placeholders; `ChatSendState.actionOf` now returns `QUEUE` /
+  `STEER`, never `STOP`.

@@ -61,6 +61,43 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-11-17 12:35 WAT] [LOCAL, NOT PUSHED] CLOUDFLARE 405 + Add to Queue + Steer Message (three defects, one round)
+
+**Cloudflare 405 - cause found in the code, not in the key.** The endpoint test is
+`ModelListFetcher.fetch`, which does `GET {baseUrl}/models` (WP4, written for OpenAI-compatible
+catalogues). A Cloudflare Workers AI base is `https://api.cloudflare.com/client/v4/accounts/<id>/ai/run/@cf/<model>`,
+which accepts **POST only** - so appending `/models` and asking with GET earns `405 Method Not Allowed`.
+The old verdict printed "Reached the server, but it answered 405", which read like a server problem and
+hid a method/path mismatch. Fix: `isCloudflareAi` / `cloudflareModelsUrl` recognise that base and ask the
+real catalogue at `.../ai/models/search` (still a GET, so a test can never burn tokens), the parser now
+understands Cloudflare's `{"result":[{"name":...}]}` as well as OpenAI's `{"data":[{"id":...}]}`, and a
+405 verdict says the method was refused and names the POST-only case. NOT live-tested: no Cloudflare key
+was used in this round, so this is static + unit evidence only.
+STILL OPEN and stated plainly: the CHAT path still sends an OpenAI-shaped request. Workers AI expects
+`{"messages":[...]}` at `/ai/run/<model>` and answers `{"result":{"response":...}}`, so a passing endpoint
+test does not prove inference works on that product. Needs the disposable key to settle.
+
+**Add to Queue.** The entry was hard-disabled (`streamingMenu(..., enabled = false)`) and mapped to
+`SendAction.NONE`, because `sendCore` returns early while streaming - a mid-answer follow-up was either
+dropped or forced into Stop and Send. New pure `ChatQueue` (FIFO, cap 10, duplicate-refusing, with a
+spoken notice) plus `ChatSession.queueMessage` / `dropQueued` and `drainQueueAfterTurn`, called from ONE
+place: the end of a real answer. One generation at a time by construction - the drain never starts a
+second provider request while streaming - and a FAILED or cancelled turn keeps its queue instead of
+firing the next question into a broken provider. The composer clears its field only when the session
+accepted the text.
+
+**Steer Message.** Implemented as text carried into the SAME turn's next request at the tool-result
+continuation boundary (`takeSteer` -> `Steering.apply`), never as cancel-and-replay: the request that
+already executed tools is not sent again, so no side effect repeats and `ToolCallLedger` is untouched.
+Honest limit: a plain single-shot answer with no tool round has no boundary, so nothing is claimed to
+have landed there.
+
+**Tests.** +13 cases: `ChatQueueTest` (FIFO, blank, duplicate, cap, drop, notices, steering marker,
+no false delivery claim) and four Cloudflare cases in `ModelListFetcherTest`. Two existing tests encoded
+the placeholder contract and were updated, not deleted: the menu entries are now ENABLED with text and
+still may never map to STOP. App 3,575 tests 0 failures 4 skipped; engine 278 0 failures; compile and
+D8 green. NOT device-verified, NOT pushed.
+
 ### [2026-11-17 10:40 WAT] [LOCAL] INTEGRATION: Project Eight merged into main
 
 - Merge commit `290b985`: `project-eight` (`4efb28b`, 13 commits, checkpoints 1-6) into `main`
