@@ -20,10 +20,45 @@ object ModelListFetcher {
         data class Failed(val httpStatus: Int?, val detail: String) : FetchResult()
     }
 
+    /**
+     * PHASE 1 (2026-11-17): does this base URL point at a Cloudflare Workers AI inference path?
+     *
+     * Cloudflare is NOT OpenAI-shaped. `.../client/v4/accounts/<id>/ai/run/@cf/<model>` accepts POST
+     * only, so prefixing "/models" and asking with GET earns a 405 - which is exactly the report
+     * that started this: "Reached the server, but it answered 405". A reachable server that refuses
+     * the method is not a working endpoint, and the old wording hid that.
+     */
+    fun isCloudflareAi(baseUrl: String): Boolean {
+        val u = baseUrl.trim().lowercase()
+        return u.contains("api.cloudflare.com/client/v4/accounts/") && u.contains("/ai/")
+    }
+
+    /**
+     * The catalogue URL for a Cloudflare AI base, or null when the account id is not visible.
+     * Workers AI publishes its models at `/ai/models/search` - a GET, so a test still cannot burn
+     * tokens.
+     */
+    fun cloudflareModelsUrl(baseUrl: String): String? {
+        val m = Regex("^(https?://api\\.cloudflare\\.com/client/v4/accounts/[^/]+/ai)(/.*)?$",
+            RegexOption.IGNORE_CASE).find(baseUrl.trim()) ?: return null
+        return m.groupValues[1] + "/models/search"
+    }
+
     /** Pure parse of an OpenAI-compatible /models body. Test-covered; never throws. */
     fun parseModelsJson(body: String): List<String> {
         return try {
-            val arr = JSONObject(body).optJSONArray("data") ?: return emptyList()
+            val root = JSONObject(body)
+            // Cloudflare Workers AI answers {"result":[{"name":"@cf/..."}],"success":true}.
+            root.optJSONArray("result")?.let { arr ->
+                val out = ArrayList<String>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val id = o.optString("name").ifBlank { o.optString("id") }
+                    if (id.isNotBlank()) out.add(id)
+                }
+                if (out.isNotEmpty()) return out
+            }
+            val arr = root.optJSONArray("data") ?: return emptyList()
             val out = ArrayList<String>()
             for (i in 0 until arr.length()) {
                 val id = arr.optJSONObject(i)?.optString("id") ?: continue
@@ -44,6 +79,10 @@ object ModelListFetcher {
                 "Reached the endpoint, but the key was rejected (" + r.httpStatus + ")."
             else if (r.httpStatus == 404)
                 "Reached the server, but /models was not found - check the base URL."
+            else if (r.httpStatus == 405)
+                "Reached the server, but it refuses this method (405). " +
+                    "A POST-only endpoint (such as Cloudflare AI /ai/run/<model>) cannot answer a model " +
+                    "list. Use the account's /ai/models/search URL, or paste the Chat Completions URL."
             else if (r.httpStatus != null)
                 "Reached the server, but it answered " + r.httpStatus + "."
             else
@@ -54,7 +93,10 @@ object ModelListFetcher {
         // Same normalizer the completion request uses, so a pasted full
         // ".../chat/completions" URL still discovers instead of 404ing on
         // ".../chat/completions/models".
-        val url = com.codespace.ide.engine.EndpointUrls.models(baseUrl)
+        // Cloudflare's inference path has no sibling /models; ask its own catalogue instead.
+        val url = if (isCloudflareAi(baseUrl))
+            cloudflareModelsUrl(baseUrl) ?: com.codespace.ide.engine.EndpointUrls.models(baseUrl)
+        else com.codespace.ide.engine.EndpointUrls.models(baseUrl)
         try {
             val conn = URL(url).openConnection() as HttpURLConnection
             conn.connectTimeout = 15_000

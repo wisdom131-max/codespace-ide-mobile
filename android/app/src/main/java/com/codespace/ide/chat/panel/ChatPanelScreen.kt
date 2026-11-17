@@ -538,6 +538,15 @@ private fun ChatBody(
                     session.cancel()
                 }
             },
+            // PHASE 2: keep the message without killing the answer being written. The field is
+            // cleared only when the session actually accepted it, so a refusal cannot eat text.
+            onQueue = {
+                if (input.isNotBlank() && session.queueMessage(input)) input = ""
+            },
+            // PHASE 3: steer the running turn. Same rule - the text is only consumed on acceptance.
+            onSteer = {
+                if (input.isNotBlank() && session.steerMessage(input)) input = ""
+            },
             // The visible "Local Approvals: Auto-all" row is GONE at the owner's request
             // (spec section 4). Only the LABEL went: ChatPermissionStore is untouched and
             // AgentFlowGate still consults it before every tool call, and ChatApprovalCard

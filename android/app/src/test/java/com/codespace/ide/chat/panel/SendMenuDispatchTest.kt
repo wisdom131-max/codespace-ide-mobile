@@ -20,9 +20,14 @@ class SendMenuDispatchTest {
     }
 
     @Test
-    fun theUnbuiltEntriesDoNothingRatherThanStopping() {
-        assertEquals(SendAction.NONE, ChatSendState.actionOf(SendMenuEntry.ADD_TO_QUEUE))
-        assertEquals(SendAction.NONE, ChatSendState.actionOf(SendMenuEntry.STEER))
+    fun queueAndSteerRouteToTheirOwnActionsNeverToStop() {
+        // PHASE 2/3 (2026-11-17): these were NONE while the engines were unbuilt. The invariant
+        // that matters is unchanged and is what this pins: neither may ever become STOP, because a
+        // cancelling menu entry is worse than an absent one.
+        assertEquals(SendAction.QUEUE, ChatSendState.actionOf(SendMenuEntry.ADD_TO_QUEUE))
+        assertEquals(SendAction.STEER, ChatSendState.actionOf(SendMenuEntry.STEER))
+        assertNotEquals(SendAction.STOP, ChatSendState.actionOf(SendMenuEntry.ADD_TO_QUEUE))
+        assertNotEquals(SendAction.STOP, ChatSendState.actionOf(SendMenuEntry.STEER))
     }
 
     @Test

@@ -55,16 +55,25 @@ class ChatSendStateTest {
     }
 
     @Test
-    fun queueAndSteerAreHonestlyDisabledNeverFaked() {
+    fun queueAndSteerAreEnabledOnlyWhenThereIsText() {
+        // PHASE 2/3 (2026-11-17): the engines now exist, so the honest state changed from
+        // "disabled until built" to "enabled when there is something to queue or steer". No text
+        // still refuses with a reason - an enabled entry that does nothing is the original bug.
         val menu = s(streaming = true, text = true).menu
         val queue = menu.first { it.entry == SendMenuEntry.ADD_TO_QUEUE }
         val steer = menu.first { it.entry == SendMenuEntry.STEER }
         for (item in listOf(queue, steer)) {
-            assertFalse("${item.entry} must not be enabled until the engine exists", item.enabled)
-            assertEquals(ChatSendState.NOT_AVAILABLE, item.reason)
+            assertTrue("${item.entry} must be usable while streaming with text", item.enabled)
+            assertNull(item.reason)
         }
         assertEquals("Alt+Enter", queue.shortcutHint)
         assertEquals("Enter", steer.shortcutHint)
+
+        val empty = s(streaming = true, text = false).menu
+        for (item in empty.filter { it.entry != SendMenuEntry.STOP_AND_SEND }) {
+            assertFalse("${item.entry} needs text", item.enabled)
+            assertEquals("Type a message first", item.reason)
+        }
     }
 
     @Test

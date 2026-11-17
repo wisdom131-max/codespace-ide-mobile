@@ -76,6 +76,8 @@ internal fun ChatInputComposer(
     onStop: () -> Unit,
     /** PHASE 8b: cancel, then send the text that is in the field. Not a relabelled Stop. */
     onStopAndSend: () -> Unit,
+    onQueue: () -> Unit = {},
+    onSteer: () -> Unit = {},
     attachments: List<com.codespace.ide.chat.ui.AttachmentChipModel> = emptyList(),
     onRemoveAttachment: (com.codespace.ide.chat.ui.AttachmentChipModel) -> Unit = {},
     /** `/` and `@` entries that run an action rather than inserting a token. */
@@ -177,7 +179,8 @@ internal fun ChatInputComposer(
                         onTools = onTools,
                         onModeChange = onModeChange,
                     )
-                    SendCluster(spec = send, onSend = onSend, onStop = onStop, onStopAndSend = onStopAndSend)
+                    SendCluster(spec = send, onSend = onSend, onStop = onStop, onStopAndSend = onStopAndSend,
+                        onQueue = onQueue, onSteer = onSteer)
                 }
             }
         }
@@ -431,6 +434,8 @@ private fun SendCluster(
     onSend: () -> Unit,
     onStop: () -> Unit,
     onStopAndSend: () -> Unit,
+    onQueue: () -> Unit,
+    onSteer: () -> Unit,
 ) {
     val c = ChatTokens.LocalChatColors.current
     var menuOpen by remember { mutableStateOf(false) }
@@ -460,6 +465,8 @@ private fun SendCluster(
                                 // chevron used to do".
                                 when (ChatSendState.actionOf(item.entry)) {
                                     SendAction.STOP_AND_SEND -> onStopAndSend()
+                                    SendAction.QUEUE -> onQueue()
+                                    SendAction.STEER -> onSteer()
                                     SendAction.STOP -> onStop()
                                     SendAction.SEND -> onSend()
                                     else -> Unit

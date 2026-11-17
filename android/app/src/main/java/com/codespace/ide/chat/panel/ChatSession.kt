@@ -929,6 +929,78 @@ class ChatSession internal constructor(
         }
     }
 
+    /**
+     * PHASE 2 (2026-11-17): a message typed WHILE an answer streams.
+     *
+     * Why it exists: `sendCore` returns early while streaming, so a mid-answer follow-up was either
+     * discarded or forced into Stop and Send, which kills the answer being written. This keeps it
+     * instead and runs it when the turn ends. One generation at a time is preserved by construction:
+     * the drain only ever runs from the turn's own end-of-answer path, never from here.
+     */
+    internal val queuedMessages = MutableStateFlow<List<String>>(emptyList())
+
+    /** True when the text was accepted for the queue; false means "not streaming, send it normally". */
+    fun queueMessage(text: String): Boolean {
+        if (!ui.value.streaming) return false
+        val before = queuedMessages.value
+        val after = ChatQueue.enqueue(before, text)
+        if (after === before) {
+            val why = if (before.size >= ChatQueue.MAX)
+                "Queue is full (" + ChatQueue.MAX + ") - let this answer finish first."
+            else "That message is already queued."
+            appendRow(ChatRowModel.InfoNote(why))
+            return false
+        }
+        queuedMessages.value = after
+        ChatQueue.notice(after)?.let { appendRow(ChatRowModel.InfoNote(it)) }
+        return true
+    }
+
+    /** Drop one waiting message (the owner changed their mind); no effect on the running turn. */
+    fun dropQueued(index: Int) {
+        queuedMessages.value = ChatQueue.drop(queuedMessages.value, index)
+    }
+
+    /**
+     * PHASE 3 (2026-11-17): steer the RUNNING turn without restarting it.
+     *
+     * The instruction is delivered at the next tool-result continuation of the SAME turn. That is
+     * the only point where the model reads something new mid-run, and it means the request that
+     * already executed tools is never sent again - no repeated side effects, no duplicate write.
+     * A plain single-shot answer with no tool round has no such boundary, and nothing is claimed
+     * to have landed there: see [steerDelivered].
+     */
+    private var pendingSteer: String? = null
+
+    /** Set true when a steering instruction was actually folded into a request this turn. */
+    internal val steerDelivered = MutableStateFlow(false)
+
+    fun steerMessage(text: String): Boolean {
+        if (!ui.value.streaming) return false
+        val clean = Steering.accept(text) ?: return false
+        pendingSteer = clean
+        steerDelivered.value = false
+        appendRow(ChatRowModel.InfoNote(Steering.notice(Steering.Delivery.AT_NEXT_BOUNDARY)))
+        return true
+    }
+
+    /** Consume the pending instruction, if any. Called only at a real continuation boundary. */
+    private fun takeSteer(): String? = pendingSteer.also { pendingSteer = null }
+
+    /**
+     * Runs the next queued message once the turn that queued it has genuinely ended.
+     *
+     * Called from the end-of-answer path only. A failed or cancelled turn keeps its queue: silently
+     * firing the next question into a broken provider would spend the owner's data on an error.
+     */
+    private fun drainQueueAfterTurn() {
+        if (ui.value.streaming) return
+        val next = ChatQueue.peek(queuedMessages.value) ?: return
+        queuedMessages.value = queuedMessages.value.drop(1)
+        appendRow(ChatRowModel.InfoNote("Running the next queued message."))
+        send(next)
+    }
+
     fun cancel() {
         // STAGE 4.8: cancellation invalidates this execution's right to deliver anything further,
         // including a callback that is already in flight when the user presses Stop.
@@ -1233,6 +1305,8 @@ class ChatSession internal constructor(
                 val rowsWithSources =
                     if (turnSources.isEmpty()) rows else rows + listOf(ChatRowModel.Sources(turnSources))
                 ui.value = st.copy(rows = rowsWithSources, streaming = false)
+                // PHASE 2: the turn is genuinely over, so the queue may advance. Only here.
+                drainQueueAfterTurn()
                 when (decision) {
                     // 2026-11-05: a panel that asked a question (Source Control's commit message)
                     // takes the answer back. Only a real ANSWER qualifies - a tool round is not a
@@ -1606,10 +1680,18 @@ class ChatSession internal constructor(
             // P4.6/4.7: a chain of ten tools used to send all ten results again, unbounded, on a
             // phone. Past the ceiling the OLDER results are compressed with an explicit marker and
             // exact repeats dropped; the newest result, anything pinned and anything cited survive.
-            val payload = if (results.length > TOOL_RESULT_BUDGET_CHARS) {
+            val basePayload = if (results.length > TOOL_RESULT_BUDGET_CHARS) {
                 com.codespace.ide.agent.ToolContextTrim.trim(resultItems, TOOL_RESULT_BUDGET_CHARS).render().trim()
             } else {
                 results.toString().trim()
+            }
+            // PHASE 3 boundary: a steering instruction rides into THIS request, so the tool calls
+            // already executed are not requested a second time. Nothing is replayed.
+            val steerNow = takeSteer()
+            val payload = if (steerNow == null) basePayload else Steering.apply(basePayload, steerNow)
+            if (steerNow != null) {
+                steerDelivered.value = true
+                appendRow(ChatRowModel.InfoNote("Steering applied to the running turn."))
             }
             attemptSend(refreshed, slotName, payload, emptyList(), confirmOverBudget, gen)
         }

@@ -27,7 +27,7 @@ internal enum class SendMode {
     STREAMING_WITH_TEXT,
 }
 
-internal enum class SendAction { SEND, STOP, STOP_AND_SEND, OPEN_SETUP, OPEN_MODEL_PICKER, NONE }
+internal enum class SendAction { SEND, STOP, STOP_AND_SEND, QUEUE, STEER, OPEN_SETUP, OPEN_MODEL_PICKER, NONE }
 
 internal enum class SendMenuEntry(val label: String) {
     STOP_AND_SEND("Stop and Send"),
@@ -109,7 +109,8 @@ internal object ChatSendState {
      */
     fun actionOf(entry: SendMenuEntry): SendAction = when (entry) {
         SendMenuEntry.STOP_AND_SEND -> SendAction.STOP_AND_SEND
-        SendMenuEntry.ADD_TO_QUEUE, SendMenuEntry.STEER -> SendAction.NONE
+        SendMenuEntry.ADD_TO_QUEUE -> SendAction.QUEUE
+        SendMenuEntry.STEER -> SendAction.STEER
     }
 
     fun streamingMenu(hasText: Boolean): List<SendMenuItem> = listOf(
@@ -119,7 +120,17 @@ internal object ChatSendState {
             reason = if (hasText) null else "Type a message first",
             shortcutHint = null,
         ),
-        SendMenuItem(SendMenuEntry.ADD_TO_QUEUE, enabled = false, reason = NOT_AVAILABLE, shortcutHint = "Alt+Enter"),
-        SendMenuItem(SendMenuEntry.STEER, enabled = false, reason = NOT_AVAILABLE, shortcutHint = "Enter"),
+        SendMenuItem(
+            SendMenuEntry.ADD_TO_QUEUE,
+            enabled = hasText,
+            reason = if (hasText) null else "Type a message first",
+            shortcutHint = "Alt+Enter",
+        ),
+        SendMenuItem(
+            SendMenuEntry.STEER,
+            enabled = hasText,
+            reason = if (hasText) null else "Type a message first",
+            shortcutHint = "Enter",
+        ),
     )
 }
