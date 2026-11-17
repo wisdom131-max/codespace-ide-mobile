@@ -223,6 +223,8 @@ Device verification has not been performed for any checkpoint.
 
 Scope: Area 8.9, plus the two Area 8.7 test gaps checkpoint 4 disclosed as unverified.
 
+**CI: run `44042056684` on `c8b65ff`, 26/26 steps, success.**
+
 ### 8.9 / 8.7 FIXED - a damaged transcript could overwrite the backup that rescued it
 
 | Field | Value |
