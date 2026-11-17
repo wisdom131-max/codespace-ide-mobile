@@ -6,7 +6,7 @@
 
 **CI: run `44005876121` on `1cb669b`, 26/26 steps, success.**
 
-**Status: COMPLETE at implementation, test and CI level on `project-eight` (run `44046012394` on `75fee2a`), merged into `main` in merge commit `MERGE_SHA` and verified locally on the merged tree. Not device-verified, and no live-provider or live-MCP verification was performed.** Ten areas were inspected. Three areas produced confirmed defects, all fixed and
+**Status: COMPLETE at implementation, test and CI level on `project-eight` (run `44046012394` on `75fee2a`), merged into `main` in merge commit `290b985` and verified locally on the merged tree. Not device-verified, and no live-provider or live-MCP verification was performed.** Ten areas were inspected. Three areas produced confirmed defects, all fixed and
 tested here. The remaining areas were audited and produced no confirmed defect in this pass, which is
 a statement about the evidence gathered, not a claim that they are safe against everything.
 

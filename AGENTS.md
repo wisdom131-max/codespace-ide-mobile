@@ -63,7 +63,7 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ### [2026-11-17 10:40 WAT] [LOCAL] INTEGRATION: Project Eight merged into main
 
-- Merge commit `MERGE_SHA`: `project-eight` (`4efb28b`, 13 commits, checkpoints 1-6) into `main`
+- Merge commit `290b985`: `project-eight` (`4efb28b`, 13 commits, checkpoints 1-6) into `main`
   (`930e739`), `--no-ff`; parents `930e739` and `4efb28b`, no squashing, Project Eight history intact.
 - One conflict, `AGENTS.md` only: both sides prepended dated changelog entries. Resolved by keeping
   both sets and ordering them newest-first by their own timestamps; no entry was dropped (306 headings
