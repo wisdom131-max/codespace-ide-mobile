@@ -534,7 +534,9 @@ The composer, attachments, bubbles, copy rows, sources rows, dialogs, Thinking T
 picker are untouched. The mic button stays where it already was in the panel header. 7 new cases
 (`Stage710SpeakingPulseTest`).
 
-## Checkpoint 8 - Area 7.11, the cross-component audit and the two seams it broke open
+## Checkpoint 8 - Area 7.11
+
+**CI: run `44003217965` on `782f74b`, 26/26 steps, success.**, the cross-component audit and the two seams it broke open
 
 ### Defect 1 (fixed): a refused tool was presented as a failure
 `CopilotBindings.outcomeOf` mapped `BLOCKED` to `ToolOutcome.FAILED`, so a step the runtime refused

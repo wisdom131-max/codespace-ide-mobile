@@ -61,13 +61,13 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
-### [2026-11-17 03:05 WAT] [LOCAL] PROJECT SEVEN checkpoint 8 - Area 7.11 integration audit
+### [2026-11-17 03:05 WAT] [CI-GREEN 44003217965 @ 782f74b] PROJECT SEVEN checkpoint 8 - Area 7.11 integration audit
 
 Two real seams fixed: refused tools were presented as failures (now "was refused before it ran", with
 the adjust-and-retry action), and successful result rows were described as "may have run" (now SUCCESS
 when the row returned ok with output). New cross-component suite Stage711IntegrationTest (8 cases)
 exercises voice machine, orb pulse, tool presentation, research bounding. App 3,496 tests green,
-engine 278. Project Seven stays PARTIAL: device verification and 7.9 font/landscape checks are open.
+engine 278. Project Seven is COMPLETE at implementation, test and CI level (run 44003217965 on 782f74b). Device verification is outstanding and 7.9 font/landscape behaviour is documented, not measured.
 
 
 ### [2026-11-16 22:05 WAT] [CI-GREEN 43952601203 @ 60bd32d] PROJECT SEVEN checkpoint 6 — Copy target RESTORED to 30x24dp by owner decision; 7.8 delivered.
