@@ -61,6 +61,23 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-11-17 10:40 WAT] [LOCAL] INTEGRATION: Project Eight merged into main
+
+- Merge commit `MERGE_SHA`: `project-eight` (`4efb28b`, 13 commits, checkpoints 1-6) into `main`
+  (`930e739`), `--no-ff`; parents `930e739` and `4efb28b`, no squashing, Project Eight history intact.
+- One conflict, `AGENTS.md` only: both sides prepended dated changelog entries. Resolved by keeping
+  both sets and ordering them newest-first by their own timestamps; no entry was dropped (306 headings
+  before and after, no conflict markers left). No source file conflicted, because Project Eight's 5
+  production files and Project Seven's UI work touch disjoint paths.
+- Local verification on the merged tree: app 3,562 tests 0 failures 4 skipped (Project Seven alone was
+  3,496, so +66 from Project Eight); engine 278 0 failures; development compile and D8 green.
+- CI: NOT run and not claimed. The workflow fires on pushed refs and this merge has not been pushed;
+  pushing needs the owner's separate approval.
+- Runtime wiring re-checked after the merge, not assumed: `AgentFlowGate` is consulted by
+  `ChatSession`, `ChatPanelScreen` and `AgentTools`; `ArchiveVerifier`, `AttachmentSecrets` and
+  `ExecutionBoundaryScan` are present and exercised by their suites.
+- Still not device-verified, and no live provider or live MCP server was contacted.
+
 ### [2026-11-17 09:55 WAT] [LOCAL] INTEGRATION: Project Seven merged into main
 
 `main` now carries Projects One to Seven. Project Five and Project Six were already integrated on
