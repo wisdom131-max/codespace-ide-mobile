@@ -67,7 +67,7 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 2026-11-16 (`58f6baa`), so nothing was duplicated here: `git merge-base --is-ancestor a67a238 main`
 confirms `stage-5.3` is contained in `main`.
 
-- Merge commit `MERGE_SHA`: `project-seven` (`21478b5`, 22 commits) into `main` (`b9b4008`), `--no-ff`,
+- Merge commit `e57f738`: `project-seven` (`21478b5`, 22 commits) into `main` (`b9b4008`), `--no-ff`,
   no conflicts, no squashing, both parent histories preserved.
 - Local verification on the merged tree: app 3,496 tests 0 failures 4 skipped; engine 278 0 failures;
   development compile and D8 green.
