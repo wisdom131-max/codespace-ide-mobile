@@ -71,8 +71,9 @@ confirms `stage-5.3` is contained in `main`.
   no conflicts, no squashing, both parent histories preserved.
 - Local verification on the merged tree: app 3,496 tests 0 failures 4 skipped; engine 278 0 failures;
   development compile and D8 green.
-- CI: NOT yet run. The workflow runs on pushed refs, and pushing this `main` commit needs the owner's
-  separate approval as instructed. No CI claim is made for this merge.
+- CI: run `44050476477` on `fc59738` (full `fc59738ebc093af70115a5c7559de215836d21cd`), 26/26 steps,
+  success. Pushed to `origin/main` under the owner's explicit approval on 2026-11-17 (b9b4008..fc59738,
+  no force).
 - `project-eight` (`4efb28b`) stays a separate branch and is deliberately NOT part of this merge.
 
 ### [2026-11-17 03:05 WAT] [CI-GREEN 44003217965 @ 782f74b] PROJECT SEVEN checkpoint 8 - Area 7.11 integration audit
