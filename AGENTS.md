@@ -61,6 +61,20 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-11-17 09:55 WAT] [LOCAL] INTEGRATION: Project Seven merged into main
+
+`main` now carries Projects One to Seven. Project Five and Project Six were already integrated on
+2026-11-16 (`58f6baa`), so nothing was duplicated here: `git merge-base --is-ancestor a67a238 main`
+confirms `stage-5.3` is contained in `main`.
+
+- Merge commit `MERGE_SHA`: `project-seven` (`21478b5`, 22 commits) into `main` (`b9b4008`), `--no-ff`,
+  no conflicts, no squashing, both parent histories preserved.
+- Local verification on the merged tree: app 3,496 tests 0 failures 4 skipped; engine 278 0 failures;
+  development compile and D8 green.
+- CI: NOT yet run. The workflow runs on pushed refs, and pushing this `main` commit needs the owner's
+  separate approval as instructed. No CI claim is made for this merge.
+- `project-eight` (`4efb28b`) stays a separate branch and is deliberately NOT part of this merge.
+
 ### [2026-11-17 03:05 WAT] [CI-GREEN 44003217965 @ 782f74b] PROJECT SEVEN checkpoint 8 - Area 7.11 integration audit
 
 Two real seams fixed: refused tools were presented as failures (now "was refused before it ran", with
