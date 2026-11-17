@@ -7354,7 +7354,7 @@ tool + argument fingerprint. `AgentFlowGateScopeTest` was updated to the stricte
 Tests: 10 new cases, app 3,450 / 0 failures / 4 skipped, engine 278. Not device-verified, no live provider
 or MCP server contacted. 8.7, 8.8, 8.9 and 8.10 remain open; Project Eight stays PARTIAL.
 
-### [2026-11-17 07:40 WAT] [LOCAL] PROJECT EIGHT checkpoint 4
+### [2026-11-17 07:40 WAT] [CI-GREEN 44037418472 @ 250464a] PROJECT EIGHT checkpoint 4
 
 8.5 and 8.6 headings corrected to FIXED (documentation-only commit). Area 8.8 fixed: an explicit
 role entry bypassed the read-only rule, so a catalogue edit could hand a read-only role a destructive

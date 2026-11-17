@@ -176,6 +176,8 @@ App: 3,450 tests, 0 failures, 4 skipped. Engine: 278, 0 failures. Dev-debug comp
 
 ## Checkpoint 4 - roles, delegation and conversation integrity
 
+**CI: run `44037418472` on `250464a`, 26/26 steps, success.**
+
 ### 8.8 FIXED - an explicit tool entry bypassed the read-only rule
 
 `SubagentRoles.scope` added a tool to a role's scope when the name appeared in `role.explicit`, and
