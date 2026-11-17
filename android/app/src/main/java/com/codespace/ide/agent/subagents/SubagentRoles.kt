@@ -146,15 +146,18 @@ internal object SubagentRoles {
         val wanted = LinkedHashSet<String>()
         val withheld = LinkedHashSet<String>()
         permitted.forEach { name ->
-            if (name in role.explicit) {
-                wanted.add(name)
+            val meta = metaOf(name)
+            // PROJECT EIGHT 8.8: an explicit entry used to short-circuit the read-only rule entirely,
+            // so one line of catalogue editing could hand a read-only role a destructive tool. The
+            // read-only check now runs first, whatever route the name arrived by.
+            if (!mayInclude(role, meta)) {
+                if (name in role.explicit || (meta != null && meta.category in role.categories)) {
+                    withheld.add(name)
+                }
                 return@forEach
             }
-            val meta = metaOf(name) ?: return@forEach
-            if (meta.category !in role.categories) return@forEach
-            if (!role.mayWrite && meta.destructive) {
-                withheld.add(name)
-                return@forEach
+            if (name !in role.explicit) {
+                if (meta == null || meta.category !in role.categories) return@forEach
             }
             wanted.add(name)
         }
@@ -167,6 +170,18 @@ internal object SubagentRoles {
         }
         val canWrite = wanted.any { name -> metaOf(name)?.destructive == true || name in role.explicit && role.mayWrite && name.startsWith("write") }
         return Result.Ok(Scope(role = role, tools = wanted, canWrite = canWrite, withheld = withheld))
+    }
+
+    /**
+     * The one rule that decides whether a role may hold a tool at all. Read-only is absolute: a role
+     * that does not write can never be handed a tool the catalogue marks destructive, no matter how
+     * the tool reached it (category match or an explicit list entry).
+     */
+    fun mayInclude(role: Role, meta: ToolMeta?): Boolean {
+        // No metadata means the tool cannot be classified. A writing role keeps it (its call is
+        // still gated), but a read-only role must not be handed something it cannot prove safe.
+        if (meta == null) return role.mayWrite
+        return role.mayWrite || !meta.destructive
     }
 
     /** True when a role declares itself read-only, used by the delegation policy before scheduling. */

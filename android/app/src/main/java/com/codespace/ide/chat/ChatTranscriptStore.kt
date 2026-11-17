@@ -121,6 +121,17 @@ internal class TranscriptFiles(private val rootDir: File) {
             if (bak.exists()) {
                 val backup = ChatTranscript.decode(bak.readText())
                 if (!backup.unreadable && backup.messages.isNotEmpty()) {
+                    // PROJECT EIGHT 8.7/8.9: a damaged primary must not survive the restore. The
+                    // next save copies the primary into .bak BEFORE writing, so leaving the corrupt
+                    // file in place meant the good backup this conversation was just restored from
+                    // got overwritten with the damage, and a failure during that save could then
+                    // lose both copies. Set it aside (kept for inspection, never read again).
+                    try {
+                        val damaged = java.io.File(target.parentFile, target.name + ".damaged")
+                        if (!target.renameTo(damaged)) target.delete()
+                    } catch (_: Throwable) {
+                        // Restoring the conversation matters more than tidying the bad file.
+                    }
                     return TranscriptLoad(
                         backup.messages,
                         "The saved conversation was damaged, so the previous copy was restored instead.",

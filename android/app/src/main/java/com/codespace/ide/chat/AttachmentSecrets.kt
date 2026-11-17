@@ -89,6 +89,23 @@ object AttachmentSecrets {
         tokenRegex("ghp_", 8),
     )
 
+    /**
+     * PROJECT EIGHT 8.5: shapes that are credential-bearing by STRUCTURE, not by an issuer prefix.
+     *
+     * The old tiers only knew provider key formats, so `Authorization: Bearer <anything>`, a Basic
+     * pair, a `?token=...` query and a JSON `"api_key": "..."` all survived intact - including in the
+     * MCP errors and tool results that quote request details back at the user. Each rule keeps the
+     * name so the diagnostic still reads, and replaces only the value.
+     */
+    private val STRUCTURED: List<Pair<Regex, (MatchResult) -> String>> = listOf(
+        Regex("(?i)\\b(bearer)\\s+([A-Za-z0-9._~+/=-]{8,})") to { m -> m.groupValues[1] + " " + REDACTED },
+        Regex("(?i)\\b(basic)\\s+([A-Za-z0-9+/=]{8,})") to { m -> m.groupValues[1] + " " + REDACTED },
+        Regex("(?i)([?&](?:api[_-]?key|access_token|refresh_token|token|secret|password|client_secret|key)=)[^&\\s\"']+") to
+            { m -> m.groupValues[1] + REDACTED },
+        Regex("(?i)(\"(?:api[_-]?key|access_token|refresh_token|token|secret|password|authorization|x-api-key)\"\\s*:\\s*\")([^\"]*)(\")") to
+            { m -> m.groupValues[1] + REDACTED + m.groupValues[3] },
+    )
+
     private val KEY_BLOCK = Regex("-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----")
 
     /**
@@ -104,6 +121,12 @@ object AttachmentSecrets {
         if (blockMatch != null) {
             out = KEY_BLOCK.replace(out, REDACTED_KEY_BLOCK)
             changed = true
+        }
+        for ((re, replace) in STRUCTURED) {
+            if (re.containsMatchIn(out)) {
+                out = re.replace(out, replace)
+                changed = true
+            }
         }
         val patterns = if (tier == TIER_ATTACHMENT) FULL_PATTERNS else MESSAGE_PATTERNS
         for (re in patterns) {

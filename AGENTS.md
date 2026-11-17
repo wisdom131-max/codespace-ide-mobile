@@ -76,6 +76,29 @@ confirms `stage-5.3` is contained in `main`.
   no force).
 - `project-eight` (`4efb28b`) stays a separate branch and is deliberately NOT part of this merge.
 
+
+### [2026-11-17 04:20 WAT] [CI-GREEN 44020458072 @ d7ec25d] PROJECT EIGHT checkpoint 2 - execution boundary guard, archive links, structural redaction
+
+`ExecutionBoundaryScan` turns "executeTool is the only gate" into an enforced invariant over the real
+sources and the live registry (122 names, 122 arms, both directions), with five tests that inject a
+bypass and assert failure. `ArchiveVerifier.unsafeLink` refuses climbing, absolute, drive-rooted,
+network-rooted and malformed link targets without following them, and link lines parse as entries so a
+safe archive still verifies. `AttachmentSecrets` gains structural rules for Bearer/Basic, credential
+query parameters and JSON credential keys at both tiers, keeping names and neighbouring fields.
+
+14 new cases; app 3,440 tests 0 failures 4 skipped, engine 278 0 failures, compile and D8 green.
+CI not yet verified at this commit.
+
+
+### [2026-11-17 03:35 WAT] [CI-GREEN 44005876121 @ 1cb669b] PROJECT EIGHT — archive escape detection and security boundaries
+
+Branch `project-eight` from `main` `b9b4008`. Three confirmed findings in the archive verifier, all fixed:
+absolute/drive-rooted/UNC entry names reached a VERIFIED verdict (HIGH), unparseable listing lines were
+dropped while the archive was still reported VERIFIED (HIGH), and common corrupt wording fell through to
+INCONCLUSIVE (LOW). Behaviour tests now assert MCP and connector approval survive AUTO_ALL, and that
+key-shaped secrets do not survive message or header redaction. Not device-verified; Project Eight stays PARTIAL. CI: run 44005876121 on 1cb669b, 26/26 steps.
+
+
 ### [2026-11-17 03:05 WAT] [CI-GREEN 44003217965 @ 782f74b] PROJECT SEVEN checkpoint 8 - Area 7.11 integration audit
 
 Two real seams fixed: refused tools were presented as failures (now "was refused before it ran", with
@@ -88,17 +111,22 @@ engine 278. Project Seven is COMPLETE at implementation, test and CI level (run 
 ### [2026-11-16 22:05 WAT] [CI-GREEN 43952601203 @ 60bd32d] PROJECT SEVEN checkpoint 6 — Copy target RESTORED to 30x24dp by owner decision; 7.8 delivered.
 OWNER DECISION (outranks the earlier accessibility pass): the Copy glyph's touch target is 30x24dp again. Removed `minimumInteractiveComponentSize()` (and its import) added in checkpoint 5; area is the glyph plus its own padding (14+8+8 = 30dp, 16+4+4 = 24dp); glyph unmoved and unresized; `role = Button` and `onClickLabel = "Copy message"` kept because they cost no pixels; no parent hitbox or gesture layer added. `CopyTarget` publishes the numbers and `Stage71CopyTargetTest` pins them, including a source guard that fails if the Material expansion reappears. Untouched: tree/tool-row 48dp targets, dialog headings, source-row descriptions, contrast audit, announcement policy. 7.8: `ResearchSources.sanitise` verified already correct (drops unopenable URLs, de-dupes by normalised URL, derives missing domain, title falls back) and NOT rebuilt; the real gap was unbounded lists, so `SourcesRow` now draws at most 40 and states the exact remainder ("+60 more sources are cited in the answer but not listed here"), with the line null when nothing was omitted so ordinary output is unchanged. `ResearchPresentation` adds honest header counts, per-source TalkBack sentences (title, domain, opens/cannot open) and `emptyNote` ("That is a result, not a success"). Documents and media audited: rows already carry real execution status and bounded detail; no inspection, transcription or analysis claim exists and none was added. 12 new cases; app 3,481 / 0 failures / 4 skipped, engine 278 / 0, compile + D8 green. Open: 7.10, 7.11; device checks. PARTIAL, not device-verified. CI: run 43952601203 on 60bd32d, 26/26 steps.
 
+
 ### [2026-11-16 21:20 WAT] [CI-GREEN 43947449477 @ 4d3641f] PROJECT SEVEN checkpoint 5 — 7.9 closed, three 7.1 defects fixed, 7.1/7.2 audited.
 7.9C CLOSED: `ChatLogDialog` title gains `semantics { heading() }` (all four Project Seven dialogs now have heading titles). 7.1D: the transcript is a scrolling Column with NO follow behaviour at all, so a streaming reply could grow entirely below the fold - `ChatScrollFollow.shouldFollow` now follows only within one line (96dp) of the live end and never when the reader scrolled back; wired in `ChatPanelScreen` on row-count/streaming, cancelled scrolls swallowed. 7.1C: the copy glyph's target was about 30x24dp measured from its own padding; now `minimumInteractiveComponentSize()` (48dp touch area, glyph unmoved) plus `role = Button`, and `onClickLabel` supplies the action. Copy content audited correct: message text only, no UI labels, and code Copy keeps the whole block while display stays capped. 7.1 A/B/E and 7.2 audited and found ALREADY CORRECT - incomplete sticky flag, ceiling marking, memoised Markdown, TextRenderLimits copy distinction, DeliveryLedger one-send/duplicate-reply protection, cancel cancels the active execution, generation bump for stale events, tool rows tied to their round - and deliberately NOT rebuilt. 5 new cases; app 3,469 tests / 0 failures / 4 skipped, engine 278 / 0, compile + D8 green. Open: 7.8, 7.10, 7.11; device checks (follow behaviour, 48dp copy, dialog headings, font scale, keyboard/focus, picker, long-response scroll). Not device-verified; PARTIAL. CI: run 43947449477 on 4d3641f, 26/26 steps.
+
 
 ### [2026-11-16 20:40 WAT] [CI-GREEN 43938472824 @ 5c3f59e] PROJECT SEVEN checkpoint 4 — 7.6 list honesty, 7.9 truncation and dialog headings.
 AUDIT FIRST, and one finding removed work: the model picker performs NO network fetch (list = preset default + saved ids + ids the endpoint reported last time, all read from disk), so 7.6A's "loading state" does not exist to be shown - a spinner would be theatre. Added instead the truthful `listNote` (wired in ChatPanelScreen, rendered only when non-null so the approved layout is unchanged) for a never-reported endpoint and an empty list, and `listError` classifying network/auth/rate-limit/empty/malformed/custom - tested to contain no status codes, no Authorization/Bearer fragments, and no claim that anything switched. 7.9A: source rows keep `maxLines = 1` (layout untouched) but now carry a merged contentDescription with the full title, domain and opens action, because a large font scale ellipsises the identifying part. 7.9C: `RowActionsDialog`, `FilterDialog` and `KeysManagerDialog` titles were plain body text and now carry `semantics { heading() }`; no visual change. 7.9D/E verified, not changed: message bodies read verbatim (messageLabel truncates and was deliberately NOT applied to bodies), copy rows stay separate, MarkdownView already memoises on text, code capped by TextRenderLimits. 7 new cases; app 3,464 tests / 0 failures / 4 skipped, engine 278 / 0, compile + D8 green. Open: ChatLogDialog heading, font-scale/landscape/dialog-focus/picker-keyboard manual checks, and 7.1/7.2/7.8/7.10/7.11. Not device-verified; Project Seven stays PARTIAL. CI: run 43938472824 on 5c3f59e, 26/26 steps.
 
+
 ### [2026-11-16 19:45 WAT] [CI-GREEN 43923652452 @ df2ba3e] PROJECT SEVEN checkpoint 3 — 7.9 contrast MEASURED, 7.6 picker wording.
 `ContrastAudit` computes WCAG ratios from the real `ChatTokens` values for both themes: nine of ten pairs pass AA, and the one that fails is the hairline divider (1.60:1 dark, 1.41:1 light) which 1.4.11 does not cover - so it stays a hairline (tested) and `strongBorder` derives a 3:1 edge from the palette for borders that DO carry meaning. `CopilotAccessibility.announcement` announces the start of a reply, then at most once per 400 chars, plus every terminal transition, because per-token announcements drown the events that matter. 7.6: the picker header said "Model" and now shows `Provider · Model` with a TalkBack description of what is in effect; `ModelPickerPresentation` states unknown context as unknown, says a custom endpoint's capabilities are not verified, offers alternatives as choices that change nothing, and keeps the previous selection on dismissal. No selection logic added - `ModelPickerSpec` + Project Five's catalogue remain the only source. 21 new cases; app 3,457 tests / 0 failures / 4 skipped, engine 278 / 0, compile + D8 green. Still open: live model fetch states, picker keyboard nav, font-scale/landscape/TalkBack manual checks, and 7.1/7.2/7.8/7.10/7.11. Not device-verified. CI: run 43923652452 on df2ba3e, 26/26 steps. An earlier dispatch (43923037166 on 0edf5d3) sat queued without a runner and was superseded; the replacement run was green. The docs-only commits after df2ba3e were not separately dispatched.
 
+
 ### [2026-11-16 19:15 WAT] [LOCAL] PROJECT SEVEN checkpoint 2 — 7.3 and 7.4/7.5 bound, 7.9 started.
 `CopilotBindings` maps REAL `ChatRowModel.ToolActivity` rows to state: `ok=true` is ACTIVE not DONE (ok means "no failure reported"), `ok=false` is FAILED, refusal text is BLOCKED (never ran, retryable after adjusting), uncertain text is UNKNOWN (may have run, verification offered instead of retry). `ChatCards` header now uses `groupHeader` (counted states) and children use `childLine` (state spelled out, so colour is never the only signal); identity is the runtime row id. The tool row's detail is bounded at creation through `CopilotPresentation.toolRow`. 7.9: the tree header and the single tool row became 48dp `fillMaxWidth` controls with merged semantics descriptions (the chevron alone was ~12dp and unlabelled), inner competing clickables removed. 15 cases; app 3,436 tests / 0 failures / 4 skipped, engine 278 / 0, compile + D8 green. NOT done: contrast, text scaling, landscape, dialog semantics, streaming announcements, binding message labels, 7.1/7.2/7.6/7.8/7.10/7.11. Not device-verified.
+
 
 ### [2026-11-16 18:45 WAT] [LOCAL] PROJECT SEVEN — Copilot experience, first pass (PARTIAL, branch `project-seven`).
 Audit first: most of the brief already ships (7.1 rows/copy, 7.2 composer + stream normaliser, 7.3 tree with `/tools` kept separate, 7.4 approvals/gateway, 7.5 Stage 5.3 advice, 7.6 selector, 7.7 continuation, 7.8 research). New `CopilotPresentation` makes the wording a tested decision instead of per-row improvisation: `outcome` says whether a tool op RAN (YES/NO/UNKNOWN) and whether a retry is safe (UNCERTAIN and CANCELLED are UNKNOWN and not retry-safe; a refusal never ran and is), `toolRow` bounds a result at 600 chars and states the cut, `taskState` maps unknown words to UNKNOWN never DONE, `carriedContext` reports what a successor actually receives. WIRED: `startHandoffSession` now returns a carried-context line built from the summary the successor got, with retention-on-disk CHECKED and exchange count passed as 0 because the path does not expose it. 13 cases; app 3,421 tests / 0 failures / 4 skipped, engine 278 / 0, compile + D8 green. NOT delivered: 7.1 typography/TalkBack, 7.2 composer refinements, 7.3 tree binding, 7.4 row binding, 7.6 picker wording, 7.8 research/document presentation, 7.9 accessibility/performance, 7.10 voice surfacing, 7.11 full integration verification. Not device-verified. Record: docs/PROJECT-SEVEN-COPILOT-EXPERIENCE.md.
@@ -7362,6 +7390,47 @@ Explorer/editor P1-P6 start only after CP1, per advisor ruling 2026-10-28.
 | 2026-11-16 02:40 | Project 3.6 execution reflection | [FEAT] Brahma's `reflectAndVerify(goal, args, verified: Boolean, output, context)` is handed its own verdict, so it can only agree. Ours derives one from four things compared against each other: the objective as stated, the plan, the actions recorded at the tool layer, and evidence graded by what it proves. "Done", "no exception thrown" and "the subagent reported it worked" are all rejected as evidence; a step done before its dependency, or over a failed call, is a contradiction; subagent disagreement, unverified delegated results and a recovery that did not hold all count against the verdict; failed and skipped work stays visible; and an acceptance criterion is met only at the level it asks for, so a green compile cannot satisfy a device criterion. 19 cases. |
 | 2026-11-16 02:55 | Project 3.7 integration | [FEAT] The four capabilities now share one record instead of four opinions. Every tool result is recorded once, at the single place tools return (`executeToolBody`), into a session-scoped bounded `ReflectionState`, so "what ran" is a fact about the session; reflection also reads the plan (`PlanState`), the delegation board and the recovery ledger. `task_plan action=reflect` exposes it to the model: it takes optional criteria and observations, returns a verdict and leaves the plan untouched. Nine integration cases cover the full workflow and the ways it usually lies, including a step marked done over a call that failed with EACCES and a duplicate write delegation. |
 
+### [2026-11-17 09:20 WAT] [CI-GREEN 44046012394 @ 75fee2a] PROJECT EIGHT checkpoint 6 - Area 8.10 full-system audit
+
+Eight cross-project claims executed against production objects; no confirmed defect; three wrong
+test expectations corrected against real contracts. App 3474 tests, 0 failures, 4 skipped; engine 278.
+Project Eight COMPLETE at implementation, test and CI level pending the CI verdict. Not device-verified.
+
+
+### [2026-11-17 08:55 WAT] [CI-GREEN 44042056684 @ c8b65ff] PROJECT EIGHT checkpoint 5 - lifecycle and persistence
+
+Area 8.9 audited; the two Area 8.7 gaps closed. One confirmed defect fixed: a damaged primary
+transcript could be rotated over the backup that had just restored it (`ChatTranscriptStore.load`
+now retires the damaged file as `.damaged`). 6 new `Stage87PersistenceTest` cases drive the real
+`TranscriptFiles`: abandoned temp never trusted, failed save reports failure and keeps the old
+copy, damaged history refused in favour of `.bak`, backup survives the next save, corruption
+contained to one conversation, restored history inert. App 3,466 tests, 0 failures, 4 skipped;
+engine 278; compile and D8 green. Voice and activity-recreation lifecycle audited, not device
+verified. Project Eight remains PARTIAL; Area 8.10 open.
+
+
+### [2026-11-17 07:40 WAT] [CI-GREEN 44037418472 @ 250464a] PROJECT EIGHT checkpoint 4
+
+8.5 and 8.6 headings corrected to FIXED (documentation-only commit). Area 8.8 fixed: an explicit
+role entry bypassed the read-only rule, so a catalogue edit could hand a read-only role a destructive
+tool; `mayInclude` now gates every name. Area 8.7 audited with no confirmed defect. 10 new cases;
+app 3460 tests 0 failures 4 skipped; engine 278; compile and D8 green. Not device-verified; PARTIAL.
+
+
+### [2026-11-17 06:40 WAT] [CI-GREEN 44027020189 @ ac9dd67] PROJECT EIGHT checkpoint 3 (8.1 threat model, 8.2 reliability, 8.4 approval binding)
+
+Audited the six trust boundaries and wrote them as a table with the crossing point and the existing control
+for each. No confirmed defect in the provider retry path; retry safety is now pinned per state
+(VERIFIED_FAILED yes, COMPLETED no, UNCERTAIN read-only only).
+
+8-04 HIGH FIXED: session approvals were keyed by tool name, so one "allow for this session" on a command
+applied to every later command and one write approval applied to any path. The key is now
+tool + argument fingerprint. `AgentFlowGateScopeTest` was updated to the stricter contract.
+
+Tests: 10 new cases, app 3,450 / 0 failures / 4 skipped, engine 278. Not device-verified, no live provider
+or MCP server contacted. 8.7, 8.8, 8.9 and 8.10 remain open; Project Eight stays PARTIAL.
+
+
 ### [2026-11-17 03:20 WAT] [LOCAL] PROJECT SEVEN checkpoint 7 — 7.10 orb driven by real speech
 
 Live Voice was audited before it was touched: the recogniser, VAD, capture loop, TTS provider, turn
@@ -7371,3 +7440,4 @@ in the panel header. The one untrue thing was the orb's SPEAKING energy, which w
 `UtteranceProgressListener.onRangeStart` word boundaries via `SpeakingPulse`, with the measured gap
 between words setting the decay. Word-boundary driven, not waveform driven, and labelled as such.
 App 3,488 tests 0 failures (4 skipped), engine 278, compile and D8 green. PARTIAL; not device-verified.
+
