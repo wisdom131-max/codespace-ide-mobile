@@ -24,6 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
@@ -56,7 +58,12 @@ internal fun RowActionsDialog(
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(colors) {
-            Text(row.title, color = colors.text, fontSize = ChatTokens.FONT_BODY.sp)
+            // PROJECT SEVEN 7.9C: a dialog title is a heading, so TalkBack can announce and navigate it
+            // as one. Visual presentation is untouched.
+            Text(
+                row.title, color = colors.text, fontSize = ChatTokens.FONT_BODY.sp,
+                modifier = Modifier.semantics { heading() },
+            )
             Spacer(Modifier.heightIn(min = ChatTokens.GAP.dp))
             SessionsViewLogic.rowActions(row.archived, row.pinned).forEach { action ->
                 MenuRow(
@@ -81,7 +88,10 @@ internal fun FilterDialog(
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(colors) {
-            Text(SessionsPanelSpec.FILTER_TITLE, color = colors.text, fontSize = ChatTokens.FONT_BODY.sp)
+            Text(
+                SessionsPanelSpec.FILTER_TITLE, color = colors.text, fontSize = ChatTokens.FONT_BODY.sp,
+                modifier = Modifier.semantics { heading() },
+            )
             Spacer(Modifier.heightIn(min = ChatTokens.GAP.dp))
             Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                 SessionsViewLogic.filters().forEach { filter ->

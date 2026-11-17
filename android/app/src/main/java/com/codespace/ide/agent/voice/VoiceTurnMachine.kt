@@ -32,6 +32,10 @@ class VoiceTurnMachine(
         val micLive: Boolean = false,
         val muted: Boolean = false,
         val energy01: Float = 0f,
+        /** Clock reading of the last spoken word boundary, 0 when none has arrived this turn. */
+        val lastWordAtMs: Long = 0L,
+        /** Measured gap between the last two word boundaries, 0 when unknown. */
+        val wordGapMs: Long = 0L,
         val lastError: String? = null,
         val turnId: String? = null,
         val speakingSegment: Int = 0,
@@ -48,6 +52,9 @@ class VoiceTurnMachine(
         data object VadSpeechStarted : Event()
         data object VadSpeechEnded : Event()
         data class Level(val energy01: Float) : Event()
+
+        /** Real playback progress: the engine started a word at [atMs], [gapMs] after the previous. */
+        data class WordBoundary(val atMs: Long, val gapMs: Long) : Event()
 
         /** A transcript, with the id of the turn it belongs to. */
         data class Utterance(val turnId: String, val text: String) : Event()
@@ -93,6 +100,10 @@ class VoiceTurnMachine(
             Event.VadSpeechEnded -> onSpeechEnded()
             is Event.Level -> {
                 state = state.copy(energy01 = event.energy01.coerceIn(0f, 1f))
+                emptyList()
+            }
+            is Event.WordBoundary -> {
+                state = state.copy(lastWordAtMs = event.atMs, wordGapMs = event.gapMs)
                 emptyList()
             }
             is Event.Utterance -> onUtterance(event)

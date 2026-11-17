@@ -13,6 +13,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
@@ -29,6 +32,17 @@ import kotlinx.coroutines.delay
  * The label is the whole confirmation: it says "Copied" for a moment and then goes back, because a
  * permanent badge would describe a moment that has passed.
  */
+/** The owner-approved Copy target: small on purpose. Tests pin it so it cannot drift back to 48dp. */
+object CopyTarget {
+    const val GLYPH_WIDTH_DP = 14
+    const val GLYPH_HEIGHT_DP = 16
+    const val PAD_HORIZONTAL_DP = 8
+    const val PAD_VERTICAL_DP = 4
+    val widthDp: Int get() = GLYPH_WIDTH_DP + PAD_HORIZONTAL_DP * 2
+    val heightDp: Int get() = GLYPH_HEIGHT_DP + PAD_VERTICAL_DP * 2
+    fun describe(): String = "Copy target " + widthDp + " x " + heightDp + " dp, owner-approved"
+}
+
 @Composable
 fun CopyIconRow(
     text: String,
@@ -53,6 +67,12 @@ fun CopyIconRow(
             color = if (copied) c.accent else c.textSecondary,
             fontSize = ChatTokens.FONT_MICRO.sp,
             modifier = Modifier
+                // OWNER DECISION 2026-11-16: the 48dp expansion this branch added in checkpoint 5 was
+                // REVERTED at the owner's explicit request. The Copy target stays the glyph's own
+                // measured ~30x24dp (14dp glyph + 8dp horizontal padding, 16dp glyph + 4dp vertical),
+                // deliberately. The role and the "Copy message" action label are kept because they cost
+                // no pixels, and no parent hitbox or gesture layer may defeat this size again.
+                .semantics { role = Role.Button }
                 .clickable(onClickLabel = "Copy message") {
                     clipboard.setText(AnnotatedString(text))
                     copied = true

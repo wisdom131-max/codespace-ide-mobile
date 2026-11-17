@@ -363,3 +363,30 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
 | P6.4 handoff guard | `HandoffGuard` reuses an empty successor instead of minting a duplicate "Session 2 from git"; a successor that already holds a turn is a conversation of its own, so a new branch is created. Wired into `startHandoffSession` via `SessionLineage.childrenOf`. 4 app cases. Locally tested. |
 
 | INTEGRATION 4.8 + Five/Six | `main` `9754f66` -> `55d36fd` via `--no-ff` merges `9d94455` (Stage 4.8, 6 commits) and `58f6baa` (Projects Five + Six, 26 commits); one docs conflict resolved by keeping BOTH sides; `ChatSession.kt` auto-merge hand-checked for every project's markers; `BackupTarTest` made privilege-aware rather than assumed harmless. app 3408 tests / 0 failures, engine 278 / 0, compile + D8 green. CI-green: run `43910173612` job `build` on `55d36fd`. Source branches intact (`4a96def`, `a67a238`). Not device-verified. |
+
+| P7 first pass - outcome truth (7.5) | `CopilotPresentation.outcome`: RAN = YES/NO/UNKNOWN, retry safety per outcome, UNCERTAIN and CANCELLED never failed nor safe to retry, refusal never ran, success offers no action. Locally tested. |
+| P7 first pass - bounded tool rows (7.4) | `toolRow` flattens and cuts at 600 chars stating both numbers. Helper tested; the tool-result row is NOT yet rewired to it. |
+| P7 first pass - task states (7.3) | `taskState` (unknown word -> UNKNOWN, never DONE), `taskTree` on runtime ids, `progress` counting only reported states. Presenter tested; the Thinking Tree is NOT yet bound. |
+| P7 first pass - carried context (7.7) | `carriedContext` + `kindsFromRenderedSummary`; `startHandoffSession` now returns what the successor carries, retention-on-disk checked, exchange count 0 because the path does not expose it. WIRED. |
+
+| P7 cp2 - 7.3 tree binding | `CopilotBindings.taskState/taskNode/groupHeader/childLine`; `ChatCards` header counts reported states, children spell the state out, identity is the runtime row id. `ok=true` is ACTIVE, never DONE. 7 cases. Locally tested. |
+| P7 cp2 - 7.4/7.5 tool row | Row detail bounded at creation via `CopilotPresentation.toolRow`; `outcomeOf`/`nextAction` give YES/NO/UNKNOWN, refusal never ran and retryable, uncertain may-have-run and not retryable. Locally tested. |
+| P7 cp2 - 7.9 accessibility | Tree header and single tool row are 48dp `fillMaxWidth` controls with merged semantics descriptions; inner competing clickables removed; `CopilotAccessibility` supplies tool/group/message labels and one distinct word per state. 8 cases. Locally tested; NOT device-verified. |
+
+| P7 cp3 - 7.9A contrast | `ContrastAudit` measures the real `ChatTokens` pairs for both themes; nine pass AA, the hairline divider fails 3:1 and is documented as decorative (tested), `strongBorder` derives a compliant edge for meaningful borders. 6 cases. Locally tested; visual verification on device outstanding. |
+| P7 cp3 - 7.9E announcements | `CopilotAccessibility.announcement`: start, every 400 chars, and every terminal transition; small growth silent; bounded tail. 6 cases. Helper tested; not yet called from the render path. |
+| P7 cp3 - 7.6 picker | Header shows `Provider·Model` in `ModelPickerSection` (WIRED) with a TalkBack description; `ModelPickerPresentation` gives capability honesty, custom-endpoint non-assumption, optional alternatives and `selectionAfterDismiss`. 9 cases. Selection logic untouched. |
+
+| P7 cp4 - 7.6A list state | Audit: no network fetch exists, so no loading state was invented. `listNote` (WIRED in `ChatPanelScreen`, null renders nothing) states a never-reported endpoint and an empty list truthfully. 4 cases. |
+| P7 cp4 - 7.6B errors | `listError` classifies network/auth/rate-limit/empty/malformed/custom; tests assert no status codes, no credentials and no silent-switch claim. Not wired to a fetch path, because none exists. 3 cases. |
+| P7 cp4 - 7.9A truncation | Source rows keep their single-line layout and gain a merged contentDescription with the full title, domain and opens action. No visual change. |
+| P7 cp4 - 7.9C dialog titles | `RowActionsDialog`, `FilterDialog`, `KeysManagerDialog` titles marked `semantics { heading() }`. `ChatLogDialog` open for a dedicated pass. |
+
+| P7 cp5 - 7.9C closed | `ChatLogDialog` title carries `semantics { heading() }`; all four Project Seven dialog titles are headings. Semantics-only, no pixels changed. Manual TalkBack check listed. |
+| P7 cp5 - 7.1D scroll | `ChatScrollFollow.shouldFollow` (follow within 96dp of the live end, never after the reader scrolled back), WIRED in `ChatPanelScreen` on row count + streaming; cancelled scroll swallowed. 5 cases. |
+| P7 cp5 - 7.1C copy target | `CopyIconRow` gains `minimumInteractiveComponentSize()` (48dp touch area, glyph unmoved) and `role = Button`. Copy payload audited: message text only; code Copy keeps the whole block. Manual tap/TalkBack check listed. |
+| P7 cp5 - 7.1/7.2 audit | Message typing, incomplete/ceiling marking, memoised Markdown, capped code with full copy, one-send and duplicate-reply protection, cancellation and stale-event generation bump, tool-to-round identity, announcement policy: verified as already correct in existing code and suites; not rebuilt. |
+
+| P7 cp6 - Copy target restored | 48dp expansion reverted at the owner's explicit request: target is the glyph's own 30x24dp, glyph unmoved, role and action label kept, no parent hitbox. `CopyTarget` + 4 cases pin it, including a guard against the modifier returning. |
+| P7 cp6 - 7.8 sources bounded | `SourcesRow` draws at most 40 and states the exact remainder; null when nothing omitted. `ResearchPresentation` supplies the header count, per-source TalkBack sentence and empty-research wording. WIRED. 8 cases. |
+| P7 cp6 - 7.8 documents/media | Audited: rows carry real execution status and bounded detail; no inspection/transcription/analysis claim exists and none was invented. No change made. |

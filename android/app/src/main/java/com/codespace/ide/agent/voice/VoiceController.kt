@@ -32,6 +32,9 @@ class VoiceController(
     private var segments: List<String> = emptyList()
     private var pendingSpeech = false
 
+    /** Clock reading of the last spoken word boundary, 0 before the first word of a turn. */
+    private var lastWordAtMs = 0L
+
     private val ttsListener = object : AndroidTtsProvider.Listener {
         override fun onReady(status: VoiceProviders.Status) = onProviderStatus(status)
         override fun onUnavailable(reason: String) {
@@ -39,6 +42,17 @@ class VoiceController(
             dispatch(machine.on(VoiceTurnMachine.Event.ProviderFailed(reason)))
         }
         override fun onUtteranceStart() = Unit
+
+        /**
+         * A real spoken word began. The gap is measured between consecutive words, so the pulse
+         * follows the cadence of the reply rather than a timer of our own invention.
+         */
+        override fun onWordStart() {
+            val now = System.currentTimeMillis()
+            val gap = SpeakingPulse.gapBetween(lastWordAtMs, now)
+            lastWordAtMs = now
+            dispatch(machine.on(VoiceTurnMachine.Event.WordBoundary(now, gap)))
+        }
         override fun onUtteranceDone() {
             pendingSpeech = false
             dispatch(machine.on(VoiceTurnMachine.Event.ReplySegmentDone))

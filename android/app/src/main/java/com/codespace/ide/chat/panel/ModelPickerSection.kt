@@ -12,6 +12,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,6 +39,8 @@ internal fun ModelPickerSection(
     models: List<PickerModel>,
     effort: Effort,
     onPick: (PickerModel) -> Unit,
+    /** 7.6 A/B: a truthful sentence about the list's origin and age, or null to show nothing. */
+    listNote: String? = null,
 ) {
     val c = ChatTokens.LocalChatColors.current
     var query by remember(providerId) { mutableStateOf("") }
@@ -56,12 +60,32 @@ internal fun ModelPickerSection(
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
+        // PROJECT SEVEN 7.6: provider and model identity are both named, and the selected row says
+        // what is in effect. "Model" alone made the two indistinguishable.
         Text(
-            "Model",
+            com.codespace.ide.chat.panel.ModelPickerPresentation.header(
+                providerId,
+                models.firstOrNull { it.modelId == current.modelId },
+            ),
             color = c.textSecondary,
             fontSize = ChatTokens.FONT_MICRO.sp,
-            modifier = Modifier.padding(bottom = 4.dp),
+            modifier = Modifier
+                .padding(bottom = 4.dp)
+                .semantics {
+                    contentDescription = ModelPickerPresentation.selectedNote(
+                        models.firstOrNull { it.modelId == current.modelId },
+                        providerId,
+                    )
+                },
         )
+        if (listNote != null) {
+            Text(
+                listNote,
+                color = c.textSecondary,
+                fontSize = ChatTokens.FONT_MICRO.sp,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
         ModelSearchField(query = query, onQuery = { query = it })
         state.rows.forEach { row ->
             when (row) {

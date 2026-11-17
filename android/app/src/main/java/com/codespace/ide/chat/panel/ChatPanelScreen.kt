@@ -290,6 +290,22 @@ private fun ChatBody(
         }
         researchLine = ""
     }
+    // PROJECT SEVEN 7.1D: the list is a scrolling Column with no follow logic, so a new message or a
+    // growing reply could arrive entirely off-screen. Following unconditionally is worse: it yanks the
+    // reader back down while they are reading earlier content. So follow only when they are already at
+    // the bottom (within one line of it), and never otherwise. This is the smallest correction - no
+    // new state, no redesign of the list.
+    LaunchedEffect(state.rows.size, state.streaming) {
+        val atBottom = com.codespace.ide.chat.ui.ChatScrollFollow.shouldFollow(scroll.value, scroll.maxValue)
+        if (atBottom && scroll.maxValue > 0) {
+            try {
+                scroll.animateScrollTo(scroll.maxValue)
+            } catch (_: Throwable) {
+                // A cancelled scroll (the reader took over) is not an error worth surfacing.
+            }
+        }
+    }
+
     LaunchedEffect(state.streaming, state.firstDeltaMs) {
         while (state.streaming && state.firstDeltaMs == 0L) {
             thinkTickMs = System.currentTimeMillis()
@@ -924,6 +940,14 @@ private fun ProviderModelDialog(
                     providerId = current.providerId,
                     current = current,
                     models = pickerModels,
+                    // 7.6 A/B: derived from the reads that actually happened. No spinner is invented,
+                    // because this picker does not fetch over the network at all.
+                    listNote = ModelPickerPresentation.listNote(
+                        liveIdsKnown = (liveRead as? com.codespace.ide.chat.CustomEndpointStore.ModelRead.Loaded)
+                            ?.ids?.isNotEmpty() == true,
+                        unreadable = modelListsUnreadable,
+                        shown = pickerModels.size,
+                    ),
                     effort = ModelPickerData.effortFor(current.providerId),
                     onPick = { picked ->
                         // The SAME onApply the dialog already used, so the picked model is the

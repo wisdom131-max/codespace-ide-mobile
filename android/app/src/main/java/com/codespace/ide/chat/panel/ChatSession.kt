@@ -1491,8 +1491,14 @@ class ChatSession internal constructor(
                 val call = calls[idx]
                 val summary = AgentToolWire.summary(call)
                 // Stable id: the tree collapses by identity, so a streaming update cannot reset it.
+                // PROJECT SEVEN 7.4: the row carries a BOUNDED detail. The full arguments stay in the
+                // result path; what the transcript shows cannot exceed the presenter's limit, so a
+                // large call cannot make the pane heavy. The cut is stated in the row itself.
                 appendRow(ChatRowModel.ToolActivity(
-                    AgentToolWire.stepLabel(call), summary,
+                    AgentToolWire.stepLabel(call),
+                    CopilotPresentation.toolRow(
+                        AgentToolWire.stepLabel(call), com.codespace.ide.chat.provider.ToolOutcome.SUCCESS, summary,
+                    ).body,
                     id = "r" + toolRound + "c" + (idx + 1)))
                 val already = repeats[idx]?.takeIf { answered.containsKey(it) }
                 if (already != null) {
