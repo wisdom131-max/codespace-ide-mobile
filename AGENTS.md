@@ -86,6 +86,17 @@ The recommended configuration is the OpenAI-compatible base `.../accounts/<id>/a
 
 Engine 281 tests (3 new), app 3,575, 0 failures, 4 skipped; compile and D8 green.
 
+**Device evidence, stated precisely (owner, TECNO Pop 9, 2026-11-17).** The APK built from `ae14a1d` was
+installed and its chat inference WORKS against Workers AI using base `.../accounts/<id>/ai/v1` and model
+`@cf/openai/gpt-oss-120b`. That confirms the OpenAI-compatible route and the account/key pair on real
+hardware. It does NOT confirm the fixes above, because those commits are not in that build:
+- the Test Connection button on `ae14a1d` still returns **405** (expected - that build still asks
+  `/ai/v1/models`), so the catalogue correction is **not device-tested**;
+- the `/ai/run/<model>` handling (no `/chat/completions` append, `result` unwrap) is **not device-tested**;
+- device streaming verification is **outstanding**.
+Cloudflare inference evidence therefore stands at: live-verified by direct HTTP, unit-tested in code, and
+device-proven only for the `/ai/v1` chat path on `ae14a1d`.
+
 ### [2026-11-17 12:35 WAT] [LOCAL, NOT PUSHED] CLOUDFLARE 405 + Add to Queue + Steer Message (three defects, one round)
 
 **Cloudflare 405 - cause found in the code, not in the key.** The endpoint test is
@@ -98,9 +109,16 @@ real catalogue at `.../ai/models/search` (still a GET, so a test can never burn 
 understands Cloudflare's `{"result":[{"name":...}]}` as well as OpenAI's `{"data":[{"id":...}]}`, and a
 405 verdict says the method was refused and names the POST-only case. NOT live-tested: no Cloudflare key
 was used in this round, so this is static + unit evidence only.
-STILL OPEN and stated plainly: the CHAT path still sends an OpenAI-shaped request. Workers AI expects
-`{"messages":[...]}` at `/ai/run/<model>` and answers `{"result":{"response":...}}`, so a passing endpoint
-test does not prove inference works on that product. Needs the disposable key to settle.
+CORRECTED 2026-11-17 12:58 and again here (13:0x) - the paragraph that used to sit in this spot claimed
+that Workers AI "expects `{"messages":[...]}` at `/ai/run/<model>` and answers `{"result":{"response":...}}`".
+The live investigation DISPROVED the second half and half of the first. Kept as history, not as fact:
+the original assumption was that Cloudflare only spoke a bespoke `messages` dialect and returned the text
+under `result.response`. What the live API actually does (verified, see the 12:58 entry): `/ai/run/<model>`
+accepts the app's ordinary OpenAI-shaped body AND returns a full OpenAI `chat.completion` wrapped as
+`{"result":{"choices":[{"message":{"content":...}}]}}`. There is no `result.response` field for this model.
+So the correct remaining statement is narrower: a passing endpoint test does not prove inference works,
+because the endpoint test only proves the catalogue is reachable - the inference route was settled
+separately by live POSTs, not by that test.
 
 **Add to Queue.** The entry was hard-disabled (`streamingMenu(..., enabled = false)`) and mapped to
 `SendAction.NONE`, because `sendCore` returns early while streaming - a mid-answer follow-up was either

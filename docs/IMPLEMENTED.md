@@ -407,3 +407,7 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
   (OpenAI-compatible, SSE streaming confirmed) or the inference path `.../ai/run/@cf/<model>` (also works;
   its response is unwrapped). The endpoint test always asks `.../ai/models/search`, because neither
   `/ai/v1/models` nor `/ai/run/<model>` accepts GET - that GET is what produced the reported 405.
+  Response shape on `/ai/run/<model>`: `{"result":{"choices":[{"message":{"content":...}}]}}` - an ordinary
+  OpenAI completion inside `result`, unwrapped by `ProviderStreamNormaliser`. Device status: chat over
+  `.../ai/v1` is device-proven on the `ae14a1d` APK; the catalogue fix, the `/ai/run` handling and
+  streaming are not yet device-tested.
