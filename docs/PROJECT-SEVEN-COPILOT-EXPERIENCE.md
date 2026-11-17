@@ -489,7 +489,10 @@ The blocker is not a technical one: this delivery ran out of session budget befo
 implemented and tested properly. Writing them as stubs would have been worse than leaving them undone.
 Nothing above is claimed as device-verified; no APK was built or installed.
 
-## Checkpoint 7 — 7.10 Live Voice: audited first, then the one thing that was fake
+## Checkpoint 7 — 7.10 Live Voice
+
+**CI: run `44000347897` on `3fbedd4`, 26/26 steps, success.**
+: audited first, then the one thing that was fake
 
 ### The voice stack already existed, and I did not rebuild it
 
