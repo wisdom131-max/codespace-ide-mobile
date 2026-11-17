@@ -27,6 +27,12 @@ class AndroidTtsProvider(
     interface Listener {
         fun onReady(status: VoiceProviders.Status)
         fun onUnavailable(reason: String)
+        /**
+         * The engine began a spoken word (API 26+ `onRangeStart`). This is the only real playback
+         * signal Android exposes to an app, so it is what the orb's speech pulse is driven by.
+         */
+        fun onWordStart() = Unit
+
         fun onUtteranceStart()
         fun onUtteranceDone() 
         fun onSpeakingStopped()
@@ -158,6 +164,10 @@ class AndroidTtsProvider(
     }
 
     private val progress = object : UtteranceProgressListener() {
+        override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+            listener.onWordStart()
+        }
+
         override fun onStart(utteranceId: String?) {
             listener.onUtteranceStart()
         }

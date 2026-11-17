@@ -24,6 +24,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -88,7 +91,7 @@ internal fun VoiceModeScreen(
                 .weight(1f),
             contentAlignment = Alignment.Center,
         ) {
-            VoiceOrb(phase = state.phase, energy = state.energy01, accent = colors.accent)
+            VoiceOrb(phase = state.phase, energy = state.energy01, lastWordAtMs = state.lastWordAtMs, wordGapMs = state.wordGapMs, accent = colors.accent)
         }
         VoiceStatusLine(
             phase = state.phase,
@@ -147,12 +150,30 @@ private fun VoiceHeaderRow(
  * something is actually happening.
  */
 @Composable
-private fun VoiceOrb(phase: VoiceTurnMachine.Phase, energy: Float, accent: Color) {
+private fun VoiceOrb(
+    phase: VoiceTurnMachine.Phase,
+    energy: Float,
+    lastWordAtMs: Long,
+    wordGapMs: Long,
+    accent: Color,
+) {
+    val pulseNow = remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(phase) {
+        while (phase == VoiceTurnMachine.Phase.SPEAKING) {
+            pulseNow.value = System.currentTimeMillis()
+            kotlinx.coroutines.delay(60L)
+        }
+    }
+    val target = if (phase == VoiceTurnMachine.Phase.SPEAKING) {
+        SpeakingPulse.energyAt(pulseNow.value, lastWordAtMs, wordGapMs)
+    } else {
+        energy
+    }
     val active = phase == VoiceTurnMachine.Phase.LISTENING ||
         phase == VoiceTurnMachine.Phase.SPEAKING ||
         phase == VoiceTurnMachine.Phase.PROCESSING
     val level by animateFloatAsState(
-        targetValue = if (active) energy.coerceIn(0f, 1f) else 0f,
+        targetValue = if (active) target.coerceIn(0f, 1f) else 0f,
         animationSpec = tween(durationMillis = 90),
         label = "voice-energy",
     )

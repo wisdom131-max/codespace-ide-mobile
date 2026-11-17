@@ -488,3 +488,45 @@ Project Seven is **not complete**. The following areas were not implemented here
 The blocker is not a technical one: this delivery ran out of session budget before those areas could be
 implemented and tested properly. Writing them as stubs would have been worse than leaving them undone.
 Nothing above is claimed as device-verified; no APK was built or installed.
+
+## Checkpoint 7 — 7.10 Live Voice: audited first, then the one thing that was fake
+
+### The voice stack already existed, and I did not rebuild it
+
+`agent/voice/` was already ~2,500 lines: `VoiceTurnMachine` (phases, mic, barge-in flag, mute),
+`VoiceController`, `VoiceRecognizer` (SpeechRecognizer), `VoiceCapture` (AudioRecord), `VadPolicy`
+(real dBFS RMS, adaptive floor, utterance boundaries), `AndroidTtsProvider` (one utterance at a time,
+stop, unavailable state), `VoiceScript` (segmenting), `VoiceModeScreen` (Canvas orb), `VoiceSettings`.
+A microphone entry point already sits in the panel header and opens `VoiceModeLayer`, which submits
+into the SAME session. So the brief's scaffolding mostly exists; the honest job was to verify it and
+fix only what was untrue.
+
+### What was NOT real: the orb while Copilot speaks
+
+`VoiceTurnMachine` set `energy01 = 1f` on entering SPEAKING and at each reply event. A constant 1.0
+is not audio reactivity, and calling it synchronised would have been the exact lie this brief warns
+about. Android exposes no amplitude for another engine's output: the TTS audio session is not
+app-visible and `Visualizer` on session 0 is refused on modern platforms.
+
+What the platform DOES deliver is `UtteranceProgressListener.onRangeStart`, which fires at the moment
+the engine begins each spoken word. That is real playback data, so:
+
+- `SpeakingPulse` (new) turns a word boundary into a decaying level: peak at the word, decay across
+  the MEASURED gap to the next word, clamped to 0..1.
+- `AndroidTtsProvider` now overrides `onRangeStart` and reports `onWordStart()` on its listener, with
+  a default no-op so existing listeners are unchanged.
+- `VoiceController` measures the real gap between consecutive words and dispatches a new
+  `Event.WordBoundary(atMs, gapMs)`.
+- `VoiceTurnMachine.State` remembers `lastWordAtMs`/`wordGapMs`; a boundary never changes phase.
+- `VoiceOrb` computes speech energy from `SpeakingPulse.energyAt` on a 60ms read of the decay, so the
+  orb pulses with the cadence of what is actually being said.
+
+Honest limit, stated in the code: this is word-boundary driven, not waveform driven. It follows
+speech rhythm and cannot reflect loudness. Listening energy remains the real microphone RMS through
+`VadPolicy`, which was already honest and was not touched.
+
+### Not changed
+
+The composer, attachments, bubbles, copy rows, sources rows, dialogs, Thinking Tree, tool rows and
+picker are untouched. The mic button stays where it already was in the panel header. 7 new cases
+(`Stage710SpeakingPulseTest`).
