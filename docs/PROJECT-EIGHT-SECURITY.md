@@ -76,7 +76,7 @@ Blind spots, stated plainly: it is a source scan, so reflection or a name assemb
 not be caught, and a tool that executed work outside the gate file through a different function name
 would need a matching rule. It catches the ordinary regression, not a determined bypass.
 
-### 8.6 PARTIALLY FIXED — archive link targets
+### 8.6 FIXED — archive link targets
 
 Checkpoint 1 disclosed that link entries were not examined. Now `unsafeLink()` reads every `name -> target`
 line and refuses: targets that climb (`../`), absolute targets, drive-rooted, network-rooted, targets
@@ -90,7 +90,7 @@ INCONCLUSIVE.
 metadata) or tar's verbose `lrwxrwxrwx` line, which still reads as unparseable and therefore yields
 INCONCLUSIVE, not VERIFIED. Hard links and device/fifo entries are not inspected.
 
-### 8.5 PARTIALLY FIXED — structural credential shapes
+### 8.5 FIXED — structural credential shapes
 
 The old tiers only knew issuer prefixes. Added structural rules that apply at both tiers and keep the
 name while removing the value: `Bearer`/`Basic` schemes, credential query parameters
