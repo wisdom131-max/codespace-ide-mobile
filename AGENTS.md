@@ -61,6 +61,18 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-11-17 04:20 WAT] [LOCAL] PROJECT EIGHT checkpoint 2 - execution boundary guard, archive links, structural redaction
+
+`ExecutionBoundaryScan` turns "executeTool is the only gate" into an enforced invariant over the real
+sources and the live registry (122 names, 122 arms, both directions), with five tests that inject a
+bypass and assert failure. `ArchiveVerifier.unsafeLink` refuses climbing, absolute, drive-rooted,
+network-rooted and malformed link targets without following them, and link lines parse as entries so a
+safe archive still verifies. `AttachmentSecrets` gains structural rules for Bearer/Basic, credential
+query parameters and JSON credential keys at both tiers, keeping names and neighbouring fields.
+
+14 new cases; app 3,440 tests 0 failures 4 skipped, engine 278 0 failures, compile and D8 green.
+CI not yet verified at this commit.
+
 ### [2026-11-17 03:35 WAT] [CI-GREEN 44005876121 @ 1cb669b] PROJECT EIGHT — archive escape detection and security boundaries
 
 Branch `project-eight` from `main` `b9b4008`. Three confirmed findings in the archive verifier, all fixed:

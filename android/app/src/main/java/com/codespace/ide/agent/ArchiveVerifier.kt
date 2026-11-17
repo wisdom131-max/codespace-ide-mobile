@@ -15,7 +15,7 @@ object ArchiveVerifier {
         val ok: Boolean get() = result == Result.VERIFIED
     }
 
-    data class Entry(val path: String, val size: Long?) {
+    data class Entry(val path: String, val size: Long?, val target: String? = null) {
         val isDirectory: Boolean get() = path.endsWith("/") || path.endsWith("\\")
     }
 
@@ -50,6 +50,14 @@ object ArchiveVerifier {
             val line = raw.trim()
             if (line.isEmpty() || line.startsWith("--") || line.startsWith("==")) return@forEach
             if (line.startsWith("Archive:") || line.startsWith("Listing")) return@forEach
+            val arrow = line.indexOf(" -> ")
+            if (arrow > 0) {
+                // A link is an ENTRY, not prose. Its target is validated by unsafeLink(); parsing it
+                // here keeps a safe link from being counted as an unreadable line.
+                entries.add(Entry(line.substring(0, arrow).trim().substringAfterLast(' '), null,
+                    line.substring(arrow + 4).trim()))
+                return@forEach
+            }
             var path: String? = null
             var size: Long? = null
             trailingSize.find(line)?.let { m ->
@@ -100,6 +108,25 @@ object ArchiveVerifier {
         return null
     }
 
+    /**
+     * The first unsafe symbolic-link target in [listing], described, or null when every link stays put.
+     * Link metadata that cannot be read is refused rather than assumed harmless.
+     */
+    internal fun unsafeLink(listing: String): String? {
+        for (raw in listing.lineSequence()) {
+            val line = raw.trim()
+            val arrow = line.indexOf("->")
+            if (arrow < 0) continue
+            val name = line.substring(0, arrow).trim().substringAfterLast(' ')
+            val target = line.substring(arrow + 2).trim()
+            if (target.isEmpty()) return "a link entry has no readable target (" + name + ")"
+            val why = unsafePath(target)
+            if (why != null) return "a link points outside the destination (" + name + " -> " + target + "): " + why
+            if (unsafePath(name) != null) return "a link entry itself has an unsafe name: " + name
+        }
+        return null
+    }
+
     fun verifyListing(output: String): Outcome {
         val text = output.trim()
         val lower = text.lowercase()
@@ -115,6 +142,11 @@ object ArchiveVerifier {
                     bad.take(3).joinToString(", ") { it.path },
             )
         }
+        // A listing line with an arrow is a LINK. The path is checked above; the TARGET was not, and
+        // a link to "/etc/passwd" or "../../.." turns an otherwise clean listing into an escape. The
+        // target is compared as text and never resolved, so nothing is followed while verifying.
+        val linkProblem = unsafeLink(text)
+        if (linkProblem != null) return Outcome(Result.REFUTED, linkProblem)
         if (listing.entries.isEmpty()) return Outcome(Result.INCONCLUSIVE, "the archive reported no entries")
         // A listing this code could not fully read is not evidence that the archive is clean. Reporting
         // VERIFIED after skipping lines is how a hostile entry stays unexamined and yet approved.

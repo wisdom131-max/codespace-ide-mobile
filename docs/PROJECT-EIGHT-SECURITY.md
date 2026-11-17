@@ -49,3 +49,66 @@ Assertions below are behaviour tests against the production component, not depen
 
 No permission, approval, role, MCP, prerequisite or side-effect control was weakened. The only
 production changes are the three archive-verifier findings above, each a tightening.
+
+## Checkpoint 2 — execution boundary, archive links, structural redaction
+
+### 8.3 FIXED — the single execution gate is now an enforced invariant
+
+Call graph, read from the source rather than assumed: `AgentTools.executeTool` is the only public entry;
+it consults the plan, permission store, approval gate, prerequisite ledger and duplicate guard, then
+calls the private `executeToolBody`, which dispatches through one `when` over the tool names. There are
+two call sites of the body, both inside the gate file (the normal path and the bounded retry).
+
+`ExecutionBoundaryScan` enforces four things over the real sources and the live `AgentTools.toolNames()`:
+the body stays `private`; no other file calls it; no other file declares an `executeTool`; and the
+registry and the dispatcher agree in BOTH directions (a name without an arm, or an arm nobody can
+reach, fails). Comments are stripped first so documentation about the gate is not mistaken for a call.
+
+Measured on this tree: **122 registry names, 122 dispatch arms, 0 uncovered, 0 unadvertised.**
+
+Negative evidence: five tests inject a bypass and assert the guard fails and names the file - a helper
+calling the body directly, a second `executeTool`, an advertised-but-unwired tool, and a wired-but-
+unadvertised arm.
+
+Blind spots, stated plainly: it is a source scan, so reflection or a name assembled at runtime would
+not be caught, and a tool that executed work outside the gate file through a different function name
+would need a matching rule. It catches the ordinary regression, not a determined bypass.
+
+### 8.6 PARTIALLY FIXED — archive link targets
+
+Checkpoint 1 disclosed that link entries were not examined. Now `unsafeLink()` reads every `name -> target`
+line and refuses: targets that climb (`../`), absolute targets, drive-rooted, network-rooted, targets
+with control characters, and link metadata with no readable target. Targets are compared as text and
+never resolved, so nothing is followed while verifying. Link lines now parse as entries, so a clean
+archive containing only safe relative links can still reach VERIFIED instead of being permanently
+INCONCLUSIVE.
+
+**Formats actually tested:** the plain listing format the verifier consumes (`path size` and
+`path -> target`). **Not tested:** real ZIP symlink attributes (the ZIP parser used here exposes no link
+metadata) or tar's verbose `lrwxrwxrwx` line, which still reads as unparseable and therefore yields
+INCONCLUSIVE, not VERIFIED. Hard links and device/fifo entries are not inspected.
+
+### 8.5 PARTIALLY FIXED — structural credential shapes
+
+The old tiers only knew issuer prefixes. Added structural rules that apply at both tiers and keep the
+name while removing the value: `Bearer`/`Basic` schemes, credential query parameters
+(`api_key`, `token`, `access_token`, `refresh_token`, `secret`, `password`, `client_secret`, `key`), and
+JSON keys (`api_key`, `token`, `secret`, `password`, `authorization`, `x-api-key`).
+
+Evidence: 8 synthetic cases assert the value never survives while the header name, tool name, status
+code, model name and unrelated query parameters do. Idempotence, empty and malformed input are covered,
+and ordinary code (`val token = ...`, `basicAuthEnabled()`) is asserted unchanged.
+
+Known blind spots: a bare credential with no prefix, scheme, parameter name or JSON key is
+indistinguishable from an ordinary string and is not redacted; base64 payloads are not decoded to look
+for secrets; and `CrumbLog` keeps its own narrower rules.
+
+### Deferred issues, status
+
+| Issue | Status |
+|---|---|
+| Automated guard against a second execution path | FIXED (source-level invariant, 5 negative tests) |
+| Archive symlink entries unexamined | PARTIALLY FIXED (listing-level; ZIP link metadata unavailable) |
+| Pattern-only redaction | PARTIALLY FIXED (structural shapes added; unlabelled secrets still out of reach) |
+| Real ZIP/tar attribute parsing for links | STILL OPEN (needs an archive API that exposes attributes) |
+| Runtime proof of link refusal during extraction | STILL OPEN (verifier-level only; extraction path unchanged) |
