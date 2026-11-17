@@ -22,6 +22,16 @@
 9. STRING FORMATTING: All line breaks in string literals use explicit \n.
 10. Backend: Render -> https://codespace-ide-backend.onrender.com. Old Railway is dead.
 11. Device: TECNO KL4, Android 14.
+12. BRANCH POLICY (owner decision, 2026-11-17 - supersedes every earlier branch/merge note below):
+    VN Code development happens on `main` ONLY. No feature branches, no task/stage branches, no branch
+    switching, no merging branches. Every authorized commit is made directly on `main`; GitHub Actions
+    runs against the exact commit on `main`, and any APK comes from that workflow run for `main`.
+    `origin/main` is the PUBLISHED COUNTERPART of local `main`, never a second line of development.
+    Verified 2026-11-17: GitHub default branch = `main`, remote HEAD -> `refs/heads/main`.
+    Historical entries in this file that mention `project-seven`, `project-eight`, `stage-4.8`,
+    `stage-5.3` etc. are RECORDS OF PAST WORK, not instructions. Those branches are left untouched and
+    are never to be resurrected as a workflow. Staging, committing and pushing stay separate actions:
+    stage only explicitly named files, never `git add -A`, push only `main`, never force-push.
 
 ---
 
