@@ -61,13 +61,13 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
-### [2026-11-17 03:35 WAT] [LOCAL] PROJECT EIGHT — archive escape detection and security boundaries
+### [2026-11-17 03:35 WAT] [CI-GREEN 44005876121 @ 1cb669b] PROJECT EIGHT — archive escape detection and security boundaries
 
 Branch `project-eight` from `main` `b9b4008`. Three confirmed findings in the archive verifier, all fixed:
 absolute/drive-rooted/UNC entry names reached a VERIFIED verdict (HIGH), unparseable listing lines were
 dropped while the archive was still reported VERIFIED (HIGH), and common corrupt wording fell through to
 INCONCLUSIVE (LOW). Behaviour tests now assert MCP and connector approval survive AUTO_ALL, and that
-key-shaped secrets do not survive message or header redaction. Not device-verified. Project Eight stays PARTIAL.
+key-shaped secrets do not survive message or header redaction. Not device-verified; Project Eight stays PARTIAL. CI: run 44005876121 on 1cb669b, 26/26 steps.
 
 
 ### [2026-11-16 18:20 WAT] [CI-GREEN 43910173612 @ 55d36fd] INTEGRATION — Project Four Stage 4.8 and Projects Five–Six merged into `main`.

@@ -4,6 +4,8 @@
 `21478b5`) is still unmerged, so this branch is the integrated baseline of Projects One to Six plus
 `main`'s Copilot UX; Project Seven's own suite is green on its own branch and is quoted, not merged.
 
+**CI: run `44005876121` on `1cb669b`, 26/26 steps, success.**
+
 **Status: PARTIAL.** Ten areas were inspected. Three areas produced confirmed defects, all fixed and
 tested here. The remaining areas were audited and produced no confirmed defect in this pass, which is
 a statement about the evidence gathered, not a claim that they are safe against everything.
