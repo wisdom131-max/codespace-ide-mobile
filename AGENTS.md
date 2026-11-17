@@ -61,6 +61,31 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 
 ## CHANGE LOG
 
+### [2026-11-17 12:58 WAT] [LOCAL, NOT PUSHED] Cloudflare LIVE verification and the real 405
+
+The disposable token was used through the platform secret (never printed, never written to any file,
+never placed in source, tests, docs or commits). Live results against api.cloudflare.com:
+
+| call | result |
+|---|---|
+| GET /client/v4/accounts | 200 |
+| GET /accounts/<id>/ai/models/search | **200, 75 models** (`{"result":[{"name":...}]}`) |
+| GET /accounts/<id>/ai/v1/models | **405 `code 7001 "GET not supported for requested URI."`** |
+| POST /accounts/<id>/ai/v1/chat/completions | 200, OpenAI shape, `choices[0].message.content` |
+| POST .../ai/v1/chat/completions with `"stream":true` | 200, OpenAI SSE `data: {...chat.completion.chunk}` |
+| POST /accounts/<id>/ai/run/@cf/openai/gpt-oss-120b `{"messages":[...]}` | 200, body wrapped in `{"result":{...}}` |
+
+So the 405 is a **method/path mismatch, never the key**: Workers AI has no GET model list on `/ai/v1`
+(nor on `/ai/run/<model>`), which is exactly what `GET {base}/models` asked for. The catalogue lives at
+`/ai/models/search`. Fixed in this round: `ModelListFetcher` reroutes any `/ai/` base to
+`/ai/models/search`, parses both envelope shapes, and a 405 verdict now names the refused method.
+Inference was then made to work for BOTH supported bases: `EndpointUrls.chatCompletions` no longer
+appends `/chat/completions` to an `/ai/run/<model>` path (it was producing a wrong path), and
+`ProviderStreamNormaliser` unwraps `{"result":{...}}` so a Cloudflare 200 actually yields text.
+The recommended configuration is the OpenAI-compatible base `.../accounts/<id>/ai/v1`.
+
+Engine 281 tests (3 new), app 3,575, 0 failures, 4 skipped; compile and D8 green.
+
 ### [2026-11-17 12:35 WAT] [LOCAL, NOT PUSHED] CLOUDFLARE 405 + Add to Queue + Steer Message (three defects, one round)
 
 **Cloudflare 405 - cause found in the code, not in the key.** The endpoint test is

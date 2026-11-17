@@ -403,3 +403,7 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
   answer that makes no tool round, and it does not claim to be.
 - Both entries were previously disabled placeholders; `ChatSendState.actionOf` now returns `QUEUE` /
   `STEER`, never `STOP`.
+- **Cloudflare (verified live 2026-11-17)**: use base `https://api.cloudflare.com/client/v4/accounts/<account_id>/ai/v1`
+  (OpenAI-compatible, SSE streaming confirmed) or the inference path `.../ai/run/@cf/<model>` (also works;
+  its response is unwrapped). The endpoint test always asks `.../ai/models/search`, because neither
+  `/ai/v1/models` nor `/ai/run/<model>` accepts GET - that GET is what produced the reported 405.
