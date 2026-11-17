@@ -60,6 +60,16 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 ---
 
 ## CHANGE LOG
+
+### [2026-11-17 03:35 WAT] [LOCAL] PROJECT EIGHT — archive escape detection and security boundaries
+
+Branch `project-eight` from `main` `b9b4008`. Three confirmed findings in the archive verifier, all fixed:
+absolute/drive-rooted/UNC entry names reached a VERIFIED verdict (HIGH), unparseable listing lines were
+dropped while the archive was still reported VERIFIED (HIGH), and common corrupt wording fell through to
+INCONCLUSIVE (LOW). Behaviour tests now assert MCP and connector approval survive AUTO_ALL, and that
+key-shaped secrets do not survive message or header redaction. Not device-verified. Project Eight stays PARTIAL.
+
+
 ### [2026-11-16 18:20 WAT] [CI-GREEN 43910173612 @ 55d36fd] INTEGRATION — Project Four Stage 4.8 and Projects Five–Six merged into `main`.
 `main` was `9754f666`; both source branches forked from exactly that commit (`stage-4.8` 6 commits, `stage-5.3` 26), so neither contained the other. Order chosen by dependency: Stage 4.8 (`9d94455`, `--no-ff`) then Five+Six (`58f6baa`, `--no-ff`), because Six's `ChatSession` engine wiring and `HandoffGuard` sit on the delivery path Four rewrote. One conflict, in `docs/IMPLEMENTED.md`: both sides appending rows - resolved by keeping BOTH, since dropping either would erase a project from the ledger. `ChatSession.kt` auto-merged and was checked by hand for every project's markers. Candidate `55d36fd` tested by CI before `main` moved, then fast-forwarded. app 3408 tests / 0 failures (4 skipped, incl the privilege-guarded BackupTarTest case), engine 278 / 0, compile + D8 green. `BackupTarTest` answered instead of excused: the sandbox is root, so an unwritable destination is still writable and its 2-failure expectation reads 0; the case now measures whether permissions bite and skips with a reason, unchanged on CI. `AgentTools.executeTool` remains the only gate. Not device-verified; source branches `stage-4.8` (`4a96def`) and `stage-5.3` (`a67a238`) untouched. Record: docs/INTEGRATION-MAIN-4.8-5.3.md.
 

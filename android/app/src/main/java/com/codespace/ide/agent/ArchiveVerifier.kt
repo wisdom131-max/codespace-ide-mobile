@@ -19,13 +19,21 @@ object ArchiveVerifier {
         val isDirectory: Boolean get() = path.endsWith("/") || path.endsWith("\\")
     }
 
-    data class Listing(val entries: List<Entry>, val declaredCount: Int?) {
+    data class Listing(
+        val entries: List<Entry>,
+        val declaredCount: Int?,
+        /** Lines that looked like listing output but could not be parsed: the listing is INCOMPLETE. */
+        val skippedLines: Int = 0,
+    ) {
         val files: List<Entry> get() = entries.filter { !it.isDirectory }
         val plausible: Boolean get() = declaredCount == null || entries.size >= declaredCount - 0 ||
             entries.size >= declaredCount
     }
 
-    private val CORRUPT = listOf("is not a zip", "corrupt", "invalid", "unexpected end", "cannot open", "bad archive")
+    private val CORRUPT = listOf(
+        "is not a zip", "not a zip", "corrupt", "invalid", "unexpected end",
+        "cannot open", "bad archive", "unexpected eof", "truncated",
+    )
     private val UNSUPPORTED = listOf("unsupported", "not supported", "unknown format", "cannot read archive format")
 
     fun parseListing(output: String): Listing? {
@@ -34,9 +42,10 @@ object ArchiveVerifier {
         val lower = text.lowercase()
         if (CORRUPT.any { lower.contains(it) } || UNSUPPORTED.any { lower.contains(it) }) return null
 
-        val trailingSize = Regex("^(.+?)\\s+(\\d{2,9})$")
-        val leadingSize = Regex("^(\\d{2,9})\\s+(.+)$")
+        val trailingSize = Regex("^(.+?)\\s+(\\d{1,9})$")
+        val leadingSize = Regex("^(\\d{1,9})\\s+(.+)$")
         val entries = ArrayList<Entry>()
+        var skipped = 0
         text.lineSequence().forEach { raw ->
             val line = raw.trim()
             if (line.isEmpty() || line.startsWith("--") || line.startsWith("==")) return@forEach
@@ -55,7 +64,10 @@ object ArchiveVerifier {
             }
             if (path == null) {
                 // A bare path is still an entry; anything with spaces in it is prose, not a listing.
-                if (line.contains(' ')) return@forEach
+                if (line.contains(' ')) {
+                    skipped++
+                    return@forEach
+                }
                 path = line
             }
             val resolved = path ?: return@forEach
@@ -63,7 +75,29 @@ object ArchiveVerifier {
             entries.add(Entry(resolved, size))
         }
         val count = Regex("(\\d+)\\s+(?:files?|entries)").find(lower)?.groupValues?.get(1)?.toIntOrNull()
-        return if (entries.isEmpty() && count == null) null else Listing(entries, count)
+        return if (entries.isEmpty() && count == null) null else Listing(entries, count, skipped)
+    }
+
+    /**
+     * PROJECT EIGHT 8.6 - why an entry path is unsafe, or null when it is fine.
+     *
+     * The old check looked only for "..". That missed the two shapes an archive actually uses to escape
+     * a destination: an ABSOLUTE entry (/data/data/<pkg>/...) and a Windows-rooted one (C:\ or \\host\share),
+     * both of which tar and unzip will write wherever they name. Detecting only ".." let a hostile
+     * archive pass verification with a VERIFIED verdict, which is worse than not checking at all: the
+     * caller then believes the extraction was reviewed.
+     */
+    internal fun unsafePath(raw: String): String? {
+        val path = raw.replace('\\', '/').trim()
+        if (path.isEmpty()) return "empty entry name"
+        if (path.any { it.code < 32 }) return "entry name carries control characters"
+        if (path.startsWith("/")) return "absolute entry name"
+        if (path.startsWith("//")) return "network-rooted entry name"
+        if (Regex("^[A-Za-z]:/").containsMatchIn(path)) return "drive-rooted entry name"
+        // Any segment that climbs is unsafe, including one hidden mid-path ("a/../../b").
+        val segments = path.split('/')
+        if (segments.any { it == ".." }) return "entry name climbs out of the destination"
+        return null
     }
 
     fun verifyListing(output: String): Outcome {
@@ -73,11 +107,23 @@ object ArchiveVerifier {
         if (CORRUPT.any { lower.contains(it) }) return Outcome(Result.REFUTED, "the archive could not be opened")
         if (UNSUPPORTED.any { lower.contains(it) }) return Outcome(Result.NOT_CHECKABLE, "that archive format is not supported")
         val listing = parseListing(output) ?: return Outcome(Result.INCONCLUSIVE, "no entries could be read from the listing")
-        val bad = listing.entries.filter { it.path.contains("..") }
+        val bad = listing.entries.filter { unsafePath(it.path) != null }
         if (bad.isNotEmpty()) {
-            return Outcome(Result.REFUTED, "the archive contains unsafe paths: " + bad.take(3).joinToString(", ") { it.path })
+            return Outcome(
+                Result.REFUTED,
+                "the archive contains unsafe paths: " +
+                    bad.take(3).joinToString(", ") { it.path },
+            )
         }
         if (listing.entries.isEmpty()) return Outcome(Result.INCONCLUSIVE, "the archive reported no entries")
+        // A listing this code could not fully read is not evidence that the archive is clean. Reporting
+        // VERIFIED after skipping lines is how a hostile entry stays unexamined and yet approved.
+        if (listing.skippedLines > 0) {
+            return Outcome(
+                Result.INCONCLUSIVE,
+                listing.skippedLines.toString() + " listing line(s) could not be read, so the archive was not fully checked",
+            )
+        }
         if (listing.declaredCount != null && listing.entries.size < listing.declaredCount) {
             return Outcome(Result.INCONCLUSIVE, "the archive claims " + listing.declaredCount +
                 " entries but only " + listing.entries.size + " were read")
