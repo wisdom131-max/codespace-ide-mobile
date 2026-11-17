@@ -173,3 +173,46 @@ App: 3,450 tests, 0 failures, 4 skipped. Engine: 278, 0 failures. Dev-debug comp
 - Persisted "Always allow" (`ChatPermissionStore`) is still per tool name; it is an explicit user switch, so
   it was left as designed rather than silently re-scoped. Disclosure, not a fix.
 - No live provider or live MCP server was contacted; no device verification.
+
+## Checkpoint 4 - roles, delegation and conversation integrity
+
+### 8.8 FIXED - an explicit tool entry bypassed the read-only rule
+
+`SubagentRoles.scope` added a tool to a role's scope when the name appeared in `role.explicit`, and
+did so BEFORE the read-only check. The catalogue is the only thing that kept a read-only role from
+being handed a destructive tool, and one edit to `explicit` would have handed `planner` or `review`
+`write_file` with no runtime objection. No role lists a write tool today, so nothing was exploitable
+as shipped; the mechanism was wrong, not the data.
+
+The rule now lives in one function, `mayInclude(role, meta)`, which every name passes through:
+
+- a writing role may hold anything it is permitted,
+- a read-only role may never hold a tool the catalogue marks destructive,
+- a read-only role is not handed a tool with no metadata, because it cannot be proved safe.
+
+Withheld tools are still reported in `Scope.withheld` rather than disappearing, so a refusal stays
+visible.
+
+### 8.7 AUDITED - conversation integrity, no confirmed defect in this pass
+
+Evidence and residual risk rather than a claim of safety:
+
+- **Continuation.** `HandoffGuard.decide` reuses an empty successor and creates a fresh session once
+  the candidate holds a turn, so repeated handoff taps cannot manufacture a chain of empty successors.
+  Tested directly, both branches.
+- **Historical tool calls.** Continuation carries the prior transcript as data; nothing in the handoff
+  path re-enters `AgentTools.executeTool`, and the execution-boundary scan from checkpoint 2 still
+  passes, which is what would catch a replay route appearing later.
+- **Duplicate replies and stale events.** Delivery and ownership live in the Project Four ledger and
+  the generation check in `ChatSession`; both suites still pass unchanged in this checkpoint.
+- **Retention.** Summaries and carried facts are bounded by the Project Six limits and are presented as
+  context, never as instructions. Not re-tested here beyond the existing suites.
+
+**Residual risk, unverified:** interrupted persistence mid-write is handled by the write journal and
+atomic store, but I did not induce a real process kill during a conversation save in this pass, and
+no device verification exists. Corrupt-retention recovery was read, not exercised with a damaged file.
+
+### Remaining after this checkpoint
+
+Areas 8.9 (Android lifecycle and resource reliability) and 8.10 (full cross-project audit) are open.
+Device verification has not been performed for any checkpoint.
