@@ -74,7 +74,30 @@ object CopilotBindings {
      * applied to the real output before it can reach a chat pane.
      */
     fun resultRow(activity: ChatRowModel.ToolActivity, output: String): CopilotPresentation.ToolRow =
-        CopilotPresentation.toolRow(activity.label, outcomeOf(activity), output)
+        CopilotPresentation.toolRow(
+            toolName = activity.label,
+            outcome = resultOutcome(activity, output),
+            output = output,
+            refusal = isRefusal(activity),
+        )
+
+    /** True when the runtime's own words say this step was refused, which is not a failure. */
+    fun isRefusal(activity: ChatRowModel.ToolActivity): Boolean =
+        taskState(activity) == CopilotPresentation.TaskState.BLOCKED
+
+    /**
+     * PROJECT SEVEN 7.11 seam fix: a RESULT row that returned ok with real output is a success. The
+     * earlier mapping sent every "ok but no verdict word" row to UNCERTAIN, so a step that plainly
+     * worked was described as "may have run" and offered a verification step it did not need.
+     */
+    fun resultOutcome(activity: ChatRowModel.ToolActivity, output: String): ToolOutcome = when {
+        isRefusal(activity) -> ToolOutcome.FAILED
+        !activity.ok -> ToolOutcome.FAILED
+        activity.detail.contains("uncertain", ignoreCase = true) -> ToolOutcome.UNCERTAIN
+        activity.detail.contains("may have run", ignoreCase = true) -> ToolOutcome.UNCERTAIN
+        output.isNotBlank() -> ToolOutcome.SUCCESS
+        else -> ToolOutcome.UNCERTAIN
+    }
 
     /** The execution truth of a finished step, for the retry decision the user is shown. */
     fun outcomeOf(activity: ChatRowModel.ToolActivity): ToolOutcome = when (taskState(activity)) {
@@ -89,10 +112,21 @@ object CopilotBindings {
      * What the user may do next with this step. A refused step can be adjusted and retried; an uncertain
      * one must be verified first. This is the same rule the presenter states, reached from real data.
      */
+    /**
+     * The retry decision for a step whose RESULT is known. Separate from [nextAction] on purpose: a
+     * step with no output has not answered yet, so nothing may be claimed about it.
+     */
+    fun nextAction(activity: ChatRowModel.ToolActivity, output: String): CopilotPresentation.OutcomeView =
+        CopilotPresentation.outcome(
+            toolName = activity.label,
+            outcome = resultOutcome(activity, output),
+            refusal = isRefusal(activity),
+        )
+
     fun nextAction(activity: ChatRowModel.ToolActivity): CopilotPresentation.OutcomeView =
         CopilotPresentation.outcome(
             toolName = activity.label,
             outcome = outcomeOf(activity),
-            refusal = taskState(activity) == CopilotPresentation.TaskState.BLOCKED,
+            refusal = isRefusal(activity),
         )
 }

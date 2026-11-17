@@ -60,6 +60,16 @@ Kotlin completions for a variable declared in the CURRENT typing session may ret
 ---
 
 ## CHANGE LOG
+
+### [2026-11-17 03:05 WAT] [LOCAL] PROJECT SEVEN checkpoint 8 - Area 7.11 integration audit
+
+Two real seams fixed: refused tools were presented as failures (now "was refused before it ran", with
+the adjust-and-retry action), and successful result rows were described as "may have run" (now SUCCESS
+when the row returned ok with output). New cross-component suite Stage711IntegrationTest (8 cases)
+exercises voice machine, orb pulse, tool presentation, research bounding. App 3,496 tests green,
+engine 278. Project Seven stays PARTIAL: device verification and 7.9 font/landscape checks are open.
+
+
 ### [2026-11-16 22:05 WAT] [CI-GREEN 43952601203 @ 60bd32d] PROJECT SEVEN checkpoint 6 — Copy target RESTORED to 30x24dp by owner decision; 7.8 delivered.
 OWNER DECISION (outranks the earlier accessibility pass): the Copy glyph's touch target is 30x24dp again. Removed `minimumInteractiveComponentSize()` (and its import) added in checkpoint 5; area is the glyph plus its own padding (14+8+8 = 30dp, 16+4+4 = 24dp); glyph unmoved and unresized; `role = Button` and `onClickLabel = "Copy message"` kept because they cost no pixels; no parent hitbox or gesture layer added. `CopyTarget` publishes the numbers and `Stage71CopyTargetTest` pins them, including a source guard that fails if the Material expansion reappears. Untouched: tree/tool-row 48dp targets, dialog headings, source-row descriptions, contrast audit, announcement policy. 7.8: `ResearchSources.sanitise` verified already correct (drops unopenable URLs, de-dupes by normalised URL, derives missing domain, title falls back) and NOT rebuilt; the real gap was unbounded lists, so `SourcesRow` now draws at most 40 and states the exact remainder ("+60 more sources are cited in the answer but not listed here"), with the line null when nothing was omitted so ordinary output is unchanged. `ResearchPresentation` adds honest header counts, per-source TalkBack sentences (title, domain, opens/cannot open) and `emptyNote` ("That is a result, not a success"). Documents and media audited: rows already carry real execution status and bounded detail; no inspection, transcription or analysis claim exists and none was added. 12 new cases; app 3,481 / 0 failures / 4 skipped, engine 278 / 0, compile + D8 green. Open: 7.10, 7.11; device checks. PARTIAL, not device-verified. CI: run 43952601203 on 60bd32d, 26/26 steps.
 

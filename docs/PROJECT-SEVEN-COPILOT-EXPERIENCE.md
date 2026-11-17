@@ -533,3 +533,47 @@ speech rhythm and cannot reflect loudness. Listening energy remains the real mic
 The composer, attachments, bubbles, copy rows, sources rows, dialogs, Thinking Tree, tool rows and
 picker are untouched. The mic button stays where it already was in the panel header. 7 new cases
 (`Stage710SpeakingPulseTest`).
+
+## Checkpoint 8 - Area 7.11, the cross-component audit and the two seams it broke open
+
+### Defect 1 (fixed): a refused tool was presented as a failure
+`CopilotBindings.outcomeOf` mapped `BLOCKED` to `ToolOutcome.FAILED`, so a step the runtime refused
+rendered as "git_push failed before completing" with a plain Retry. The presenter already had a
+`refusal` branch that says "was refused before it ran" with "Adjust and retry"; the binding never
+passed it. Reproduction: any refused tool row. Fix: `isRefusal()` reads the runtime's own words and
+`resultRow`/`nextAction` now pass `refusal = true`, so refused, failed and unanswered are three
+different answers. Regression test: Stage711IntegrationTest.
+
+### Defect 2 (fixed): a successful step was described as "may have run"
+`resultRow` used the state mapping, which treats "ok with no verdict word" as ACTIVE, so a step that
+plainly returned output was shown as uncertain and offered a verification step it did not need.
+Fix: `resultOutcome()` treats a result row that returned ok, carries no failure marker and has real
+output as SUCCESS, while a step with no output stays UNCERTAIN. `nextAction(activity, output)` is the
+result-aware overload; the no-output overload stays conservative on purpose.
+
+### Audit evidence, area by area
+| Area | Implemented | Runtime data driving it | Tests | Device-verified |
+|---|---|---|---|---|
+| 7.1 chat/presentation | yes | ChatRowModel from ChatSession | Stage711, presentation suites | no |
+| 7.2 streaming/composer | pre-existing | real stream events, DeliveryLedger | ChatSessionInterrupt, ChatTranscript | no |
+| 7.3 thinking tree | yes | ToolActivity rows via CopilotBindings | Stage72, Stage711 | no |
+| 7.4 tool rows | yes | real ToolActivity + output, 600-char bound | Stage72, Stage711 | no |
+| 7.5 errors/recovery | yes | ToolOutcome + refusal from runtime text | Stage711 | no |
+| 7.6 picker | yes | saved/live reads, no silent switch | Stage76, Stage76ListState | no |
+| 7.7 continuation | pre-existing + carried line | SessionHandoff summary, HandoffGuard | Stage63, Stage711 (guard) | no |
+| 7.8 research/docs | yes | ResearchSources sanitised + bounded 40 | Stage78, Stage711 | no |
+| 7.9 accessibility | partial | measured contrast, semantics, 48dp tree | Stage79Contrast, Stage71CopyTarget | no |
+| 7.10 voice | pre-existing + pulse | mic level, TTS word boundaries | Stage710, Stage711 | no |
+| 7.11 integration | this checkpoint | real objects across seams | Stage711 | no |
+
+### Voice audit findings
+Entry point wired (header `onVoice` -> `showVoice` -> VoiceModeLayer). Recognition enters
+`submit = { session.send(transcript) }`, so voice uses the same engine, provider and tool gate as
+typing. Replies reach TTS through `controller.onAssistantText`, and while voice mode is open the
+panel's own read-aloud is suppressed, so a reply is not spoken twice. `SubmitTurn` is guarded by a
+`submitted` set, so a recogniser that repeats a final result still submits once. Word boundaries reach
+`SpeakingPulse` through the controller listener.
+
+### Limitations held, not resolved
+Orb is word-boundary-synchronised, not amplitude-synchronised. Capture is muted while speaking as the
+echo strategy. Platform recognition is turn-based. Nothing here is device-verified.

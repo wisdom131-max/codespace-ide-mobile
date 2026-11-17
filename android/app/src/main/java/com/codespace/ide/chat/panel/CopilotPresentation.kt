@@ -113,8 +113,10 @@ object CopilotPresentation {
         output: String,
         needsApproval: Boolean = false,
         maxChars: Int = TOOL_ROW_CHARS,
+        /** PROJECT SEVEN 7.11: a refused step never ran, and the row must say so. */
+        refusal: Boolean = false,
     ): ToolRow {
-        val view = outcome(toolName, outcome)
+        val view = outcome(toolName, outcome, refusal = refusal)
         val flat = output.replace("\r", "").trim()
         val cut = flat.length > maxChars
         val body = if (!cut) flat
