@@ -25,13 +25,22 @@ object EndpointUrls {
     private const val MODELS = "/models"
     private const val MESSAGES = "/v1/messages"
 
+    /** Cloudflare Workers AI inference path; the model id travels inside the URL itself. */
+    internal fun isCloudflareRunPath(b: String): Boolean =
+        b.contains("api.cloudflare.com/client/v4/accounts/") && b.contains("/ai/run/")
+
     /** The POST target for an OpenAI-compatible provider. */
     fun chatCompletions(baseUrl: String): String {
         val (b, q) = splitQuery(baseUrl)
         if (b.isEmpty()) return b
+        // Cloudflare Workers AI: /accounts/<id>/ai/run/<model> IS the POST target. Appending
+        // "/chat/completions" produced "/run/@cf/model/chat/completions" - verified live
+        // 2026-11-17 against api.cloudflare.com as a wrong path. The OpenAI-compatible variant
+        // (.../ai/v1) still gets "/chat/completions" below, and that path was verified 200.
         if (b.endsWith(CHAT)) return withQuery(b, q)
         // A pasted /models URL is corrected rather than sent as-is.
         if (b.endsWith(MODELS)) return withQuery(b.removeSuffix(MODELS) + CHAT, q)
+        if (isCloudflareRunPath(b)) return withQuery(b, q)
         return withQuery(b + CHAT, q)
     }
 

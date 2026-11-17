@@ -177,4 +177,19 @@ class EndpointUrlsTest {
         val long = "https://h.example.com/" + "a".repeat(300)
         assertTrue(EndpointUrls.redactedPath(long).length <= 120)
     }
+
+    // PHASE 1 (2026-11-17), verified live against api.cloudflare.com.
+    @org.junit.Test
+    fun `a cloudflare run path is posted to as-is`() {
+        val base = "https://api.cloudflare.com/client/v4/accounts/acct/ai/run/@cf/openai/gpt-oss-120b"
+        org.junit.Assert.assertEquals(base, EndpointUrls.chatCompletions(base))
+    }
+
+    @org.junit.Test
+    fun `the cloudflare openai-compatible base still gets chat completions`() {
+        org.junit.Assert.assertEquals(
+            "https://api.cloudflare.com/client/v4/accounts/acct/ai/v1/chat/completions",
+            EndpointUrls.chatCompletions("https://api.cloudflare.com/client/v4/accounts/acct/ai/v1"),
+        )
+    }
 }

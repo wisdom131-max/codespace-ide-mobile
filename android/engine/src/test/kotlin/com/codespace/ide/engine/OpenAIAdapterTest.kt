@@ -134,4 +134,14 @@ class OpenAIAttachmentPayloadTest {
             assertTrue(e.message!!.contains("not supported"))
         }
     }
+
+    // PHASE 1 (2026-11-17): Cloudflare wraps a successful completion in {"result": {...}}; the
+    // live 200 body produced no text before this. Real shape captured from api.cloudflare.com.
+    @org.junit.Test
+    fun `a wrapped result body still yields its text`() {
+        val body = "{\"result\":{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"OK\"}}]}}"
+        val out = ProviderStreamNormaliser(StreamProvider.OPENAI).feed(body)
+        val text = out.filterIsInstance<StreamEvent.TextDelta>().joinToString("") { it.text }
+        org.junit.Assert.assertEquals("OK", text)
+    }
 }

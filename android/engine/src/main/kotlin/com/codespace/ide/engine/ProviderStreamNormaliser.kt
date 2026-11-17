@@ -151,7 +151,11 @@ class ProviderStreamNormaliser(private val provider: StreamProvider) {
 
     // ---- OpenAI-compatible --------------------------------------------------------------------
 
-    private fun feedOpenAI(root: Map<String, Any?>): List<StreamEvent> {
+    private fun feedOpenAI(rootIn: Map<String, Any?>): List<StreamEvent> {
+        // Cloudflare Workers AI answers /ai/run/<model> with the completion INSIDE "result":
+        // {"result":{"choices":[{"message":{"content":"OK"}}]}}. Without this unwrap a successful
+        // 200 produced no text at all. Verified live 2026-11-17.
+        val root = JsonLite.obj(rootIn["result"]) ?: rootIn
         val out = ArrayList<StreamEvent>()
         JsonLite.obj(root["error"])?.let {
             return listOf(StreamEvent.Failed(JsonLite.str(it["message"]).take(240)))
