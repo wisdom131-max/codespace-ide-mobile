@@ -491,6 +491,11 @@ private fun ChatBody(
                 // Item 18: remembered per session. A failed write is reported, never swallowed:
                 // the user chose a mode and must not be told nothing.
                 if (!ChatModePersistence.save(manager, projectId, activeId, it)) {
+                    // P0.2: a failed save must not leave the chip claiming a mode the store does
+                    // not hold, or the next turn would enforce the old one. Revert both.
+                    val kept = ChatModePersistence.load(manager, projectId, activeId)
+                    chatMode = kept
+                    session.mode = kept
                     notice = "Could not remember the " + it.label + " mode for this session."
                 }
             },

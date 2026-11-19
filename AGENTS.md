@@ -44,6 +44,14 @@ Fix: `EngineConfig.supportsContentParts` (default true) + `EndpointUrls.isCloudf
 flattens text attachments into one string, names any image explicitly ("Attachment not sent"), and
 the send path sets the flag false only for api.cloudflare.com. Four engine tests added. NOT device-tested.
 
+### [2026-11-19 17:55 WAT] [P0.2] One authoritative mode read
+
+Mode had two owners: the panel wrote the store and set `session.mode`, while a turn used whatever
+the field held. A failed save left the chip saying Agent and the turn running Ask (the exact device
+report). Fix: `ChatSession.modeSource` (last ctor param, null-safe) supplies the ONE read, and
+`sendCore` refreshes `mode` from it at the turn boundary; a failed save now reverts the chip instead
+of leaving the two disagreeing. 3 tests. NOT device-tested.
+
 ## CURRENT STATE
 
 | Field | Value |

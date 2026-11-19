@@ -129,6 +129,12 @@ class ChatSession internal constructor(
      */
     initialMode: com.codespace.ide.chat.session.SessionMode =
         com.codespace.ide.chat.session.SessionMode.ASK,
+    /**
+     * P0.2 (2026-11-19): the ONE authoritative mode read, supplied by the manager (which owns the
+     * stored row). Last parameter on purpose: existing positional callers are untouched. Null
+     * keeps the in-memory value, so JVM tests behave exactly as before.
+     */
+    private val modeSource: (() -> ChatMode)? = null,
 ) {
     private val streamBuf = StringBuilder()
 
@@ -743,6 +749,11 @@ class ChatSession internal constructor(
         val liveBaseUrl = baseUrlForProvider(sel.providerId, sel.baseUrl)
         // Tri-state capability (advisor ruling 2026-11-04): unknown keeps today's behaviour,
         // an explicit "no" withholds the wire and says so once, a tool-less mode never sends it.
+        // P0.2 (2026-11-19): the STORED mode is the single source of truth for a turn. The chip
+        // and the field can drift (a failed save, a panel recreated on another session), and the
+        // device report was exactly that: the UI said "ask" while the user had chosen Agent. Read
+        // the persisted value at the boundary, and mirror it back so the chip cannot disagree.
+        mode = authoritativeMode()
         val toolPlan = ToolOffering.plan(mode, resolveCapability(sel)?.supportsTools)
         if (toolPlan.note != null && !toolPlanNoted) {
             toolPlanNoted = true
@@ -1002,6 +1013,13 @@ class ChatSession internal constructor(
         appendRow(ChatRowModel.InfoNote("Running the next queued message."))
         send(next)
     }
+
+    /**
+     * P0.2: the one read path for mode enforcement. Falls back to the in-memory value only when
+     * the store has no row for this session (a brand-new session that has never been saved).
+     */
+    internal fun authoritativeMode(): ChatMode =
+        runCatching { modeSource?.invoke() }.getOrNull() ?: mode
 
     fun cancel() {
         // STAGE 4.8: cancellation invalidates this execution's right to deliver anything further,
@@ -1880,6 +1898,8 @@ class ChatSessionManager internal constructor(
             // Batch 1: same block for every request path that goes through chat; the
             // HTTP agent already builds its own from the same providers.
             workspaceBlock = { WorkspaceContextSource.block(appContext, projectId) },
+            // P0.2: the persisted mode is the single source of truth; the manager owns the store.
+            modeSource = { ChatModePersistence.load(this, projectId, conversationId) },
             conversationId = conversationId,
             transcripts = transcripts,
             initialMode = sessionMode(projectId, conversationId),
