@@ -488,6 +488,35 @@ class ChatSession internal constructor(
             PanelAttachment(name, mime, if (stagedText != null) "" else base64, sizeBytes, stagedText)
     }
 
+    /**
+     * STAGE 7 — automatic memory capture, fire-and-forget.
+     *
+     * Runs off the turn's critical path on the session's own dispatcher, wrapped so that no
+     * exception, no slow disk and no full store can surface as a chat failure. It is deliberately
+     * not awaited: memory is a side effect of the conversation, never a precondition for it.
+     */
+    private fun rememberInBackground(text: String) {
+        val ctx = appContext ?: return
+        if (text.length < com.codespace.ide.agent.facts.MemoryExtraction.MIN_CHARS) return
+        try {
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    val provenance =
+                        com.codespace.ide.agent.facts.FactSourceContext.currentForUserMessage(text)
+                    com.codespace.ide.agent.facts.MemoryExtraction.capture(
+                        d = com.codespace.ide.agent.facts.FactsStore.memoryDir(ctx),
+                        text = text,
+                        provenance = provenance,
+                        scope = com.codespace.ide.agent.facts.FactScope.USER,
+                        projectId = projectId,
+                    )
+                }
+            }
+        } catch (_: Throwable) {
+            // No coroutine scope available (a torn-down session): memory is simply not captured.
+        }
+    }
+
     companion object {
         /**
          * The visible join. A continuation must not look like one uninterrupted answer: the user
@@ -869,6 +898,10 @@ class ChatSession internal constructor(
         if (!replaceTurn && continuationPrefix == null) {
             newRows.add(ChatRowModel.User(userText))
             if (chips.isNotEmpty()) newRows.add(ChatRowModel.Attachments(chips))
+            // STAGE 7: durable statements in what the user just said are captured in the
+            // background. Bounded work, own thread, and a failure here can never touch the turn:
+            // the chat path does not await it and does not see its exceptions.
+            rememberInBackground(userText)
         }
         if (!reuseStaged) pendingAttachments.value = emptyList()
         ui.value = ui.value.copy(

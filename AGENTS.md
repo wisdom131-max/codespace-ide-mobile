@@ -7741,3 +7741,20 @@ it. `Fact.factTime` / `hasVerifiedTime` live in FactProvenance.kt as extensions,
 stays a data class. Files: FactRetrieval.kt, FactProvenance.kt, FactChronologyTest.kt (new, 12
 tests). Facts package 134 tests, 0 failures. Not device-tested. CI pending.
 
+---
+
+### [2026-11-19 23:45 WAT] [MEMORY] Stage 7 - automatic extraction and message provenance
+
+New `MemoryExtraction`: rules-based candidate detection (preference / decision / rule / project
+context), transient and question rejection, `FactGuard` re-check so a secret never becomes a
+candidate, max 3 candidates per message, max 240 chars each. Stored through `FactsStore.saveTo`, so
+de-duplication, contradiction and supersession are the SAME code the explicit path uses - no second
+memory system. Stored facts are `FactSource.INFERRED` / `FactConfidence.INFERRED`, never
+EXPLICIT_USER: the user said the words, the app decided they were durable. `ChatSession` calls
+`rememberInBackground` after a user turn, on `Dispatchers.IO`, un-awaited and wrapped, so a memory
+failure can never fail a chat. Provenance: `FactSourceContext.currentForUserMessage` resolves the
+source message by CONTENT and only when the match is unique; an ambiguous or synthetic match leaves
+`sourceMessageId` unset. Files: MemoryExtraction.kt (new), FactProvenance.kt, ChatSession.kt,
+MemoryExtractionTest.kt (new, 13 tests). Full app suite 3667 tests, 4 skipped, 0 failures.
+Not device-tested. CI pending.
+

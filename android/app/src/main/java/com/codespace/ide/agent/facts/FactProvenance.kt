@@ -117,6 +117,37 @@ object FactSourceContext {
     }
 
     /**
+     * STAGE 7 — provenance for a specific USER message, resolved by CONTENT and only when the match
+     * is unique. A repeated sentence is ambiguous, and an ambiguous match is reported as no match:
+     * an unset sourceMessageId is a fact we can state honestly, a wrong one is not.
+     */
+    fun currentForUserMessage(text: String): FactProvenance {
+        val base = current()
+        if (base == FactProvenance.NONE) return base
+        val root = transcriptRoot ?: return base
+        val conv = conversationId
+        if (conv.isBlank() || text.isBlank()) return base
+        return try {
+            val file = File(File(root, com.codespace.ide.chat.TranscriptFiles.safeSegment(projectId)), conv + ".txt")
+            if (!file.isFile) return base
+            val decoded = com.codespace.ide.chat.ChatTranscript.decode(file.readText())
+            val wanted = text.trim().replace(Regex("\\s+"), " ")
+            val hits = decoded.messages.filter { it.role == "user" && it.text.trim().replace(Regex("\\s+"), " ") == wanted }
+            if (hits.size != 1) return base
+            val m = hits.single()
+            if (m.syntheticId || m.id.isBlank()) return base
+            base.copy(
+                sourceMessageId = m.id,
+                sourceMessageAt = m.sentAtMs,
+                // A message time that was never observed stays 0 rather than becoming "now".
+                timeSource = base.timeSource,
+            )
+        } catch (_: Throwable) {
+            base
+        }
+    }
+
+    /**
      * Resolve provenance for the claimed conversation. [messageId] is optional: the tool call does
      * not know which message caused it, and inventing one would be worse than leaving it unset.
      */

@@ -19,6 +19,7 @@ Status vocabulary:
 | 4 | Fact timestamps + timeSource + source conversation link | Implemented, Unit-tested | (see AGENTS.md) | 16 (FactProvenanceTest) | pending |
 | 5 | Supersession and history | Implemented, Unit-tested | (see AGENTS.md) | 12 (FactSupersessionTest) | pending |
 | 6 | Chronological retrieval | Implemented, Unit-tested | (see AGENTS.md) | 12 (FactChronologyTest) | pending |
+| 7 | Automatic extraction + message provenance | Implemented, Unit-tested | (see AGENTS.md) | 13 (MemoryExtractionTest) | pending |
 | 5 | Supersession wiring | not started | | | |
 | 6 | Chronological retrieval intents | not started | | | |
 | 7 | Automatic extraction + settings + idempotency | not started | | | |
@@ -118,3 +119,17 @@ Unknown dates earn no bonus but are never excluded. `chronological(includeHistor
 cover "what is the latest / what changed" questions. The prompt path (`rankedFactsWithOverlap` →
 `forRequest` → `blockFor`) uses the time-aware order, so production retrieval is chronological, not
 just the helper.
+
+## Stage 7 — Automatic extraction and message provenance (implemented)
+
+`MemoryExtraction.candidates` recognises durable shapes only (preference, decision, standing rule,
+project context), refuses transient messages, questions, secrets and over-long text, and caps output
+at 3 candidates of 240 chars. `capture` stores through `FactsStore.saveTo` as INFERRED/INFERRED, so
+duplicate, conflict and supersession behaviour is shared with the explicit path. `ChatSession`
+captures in the background after a user turn, un-awaited and exception-guarded. Provenance resolves
+the source message by unique content match; anything ambiguous or synthetic leaves `sourceMessageId`
+unset rather than guessing.
+
+**Limitation:** extraction is rule-based, not model-based. It will miss a durable statement phrased
+in an unusual way and it will occasionally promote a sentence that reads like a rule but is
+transient. Precision over recall is the deliberate choice for a memory that costs prompt space.
