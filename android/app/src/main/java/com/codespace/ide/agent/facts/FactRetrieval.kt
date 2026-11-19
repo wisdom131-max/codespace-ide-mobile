@@ -33,7 +33,9 @@ object FactRetrieval {
         requestTokens: Set<String>,
         projectId: String?,
         now: Long,
-    ): List<Ranked> = rank(facts, requestTokens.joinToString(" "), projectId, now)
+        // STAGE 6: the prompt uses the time-aware order, so "most recent" and "most relevant" pull
+        // in the same direction instead of the prompt silently preferring whichever loaded first.
+    ): List<Ranked> = temporalRank(facts, requestTokens.joinToString(" "), projectId, now)
         .filter { r ->
             val ft = FactText.tokenSet(r.fact.content)
             ft.any { it in requestTokens || it.length > 3 && requestTokens.any { q -> q.startsWith(it) || it.startsWith(q) } }
@@ -47,6 +49,57 @@ object FactRetrieval {
      * a conflicted one is demoted hard (it still appears, labelled, so the model does not assert
      * it as settled), recency and previous usefulness break ties.
      */
+    /**
+     * STAGE 6 — time-aware ranking.
+     *
+     * Relevance still decides most of the order: the temporal component is a bounded bonus, never a
+     * replacement for it. A fact with a transcript-verified date outranks an otherwise equal fact
+     * with a user-stated or unknown one, but an unknown date is never a penalty that removes a
+     * relevant fact from the result - it simply does not earn the bonus.
+     */
+    fun temporalRank(
+        facts: List<Fact>,
+        request: String,
+        projectId: String?,
+        now: Long = System.currentTimeMillis(),
+    ): List<Ranked> {
+        val base = rank(facts, request, projectId, now)
+        if (base.isEmpty()) return base
+        val dated = base.filter { it.fact.factTime() > 0L }
+        val newest = dated.maxOfOrNull { it.fact.factTime() } ?: 0L
+        val oldest = dated.minOfOrNull { it.fact.factTime() } ?: 0L
+        val span = (newest - oldest).coerceAtLeast(1L)
+        return base.map { r ->
+            val t = r.fact.factTime()
+            var bonus = 0.0
+            if (t > 0L) {
+                // Trust of the DATE first: verified > stated > (anything else, which is only the
+                // save path) - never the other way round.
+                bonus += when {
+                    r.fact.hasVerifiedTime() -> 8.0
+                    r.fact.timeSource == TimeSource.USER_STATED -> 5.0
+                    else -> 2.0
+                }
+                // Recency second, scaled so an old verified date cannot be buried by a brand new
+                // unverified one and vice versa.
+                bonus += 6.0 * ((t - oldest).toDouble() / span.toDouble())
+            }
+            Ranked(r.fact, r.score + bonus)
+        }.sortedWith(
+            compareByDescending<Ranked> { it.score }
+                .thenByDescending { it.fact.factTime() }
+                .thenByDescending { it.fact.updatedAt }
+                .thenBy { it.fact.id },
+        )
+    }
+
+    /** STAGE 6 — the newest fact by the time it is about, for "what is the latest ..." questions. */
+    fun latest(facts: List<Fact>, projectId: String? = null): Fact? =
+        facts.filter { it.belongsTo(projectId) && it.isRetrievable() }
+            .maxWithOrNull(
+                compareBy<Fact> { it.factTime() }.thenBy { it.updatedAt }.thenBy { it.id },
+            )
+
     /**
      * STAGE 5 — historical retrieval, deliberately separate from [rank].
      *

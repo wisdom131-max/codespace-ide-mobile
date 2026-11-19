@@ -7727,3 +7727,17 @@ supersession first; `rank` never offers them as current truth. Files: FactsStore
 FactRetrieval.kt, FactSupersessionTest.kt (new, 12 tests), FactsStoreTest.kt and MemoryToolsTest.kt
 updated to the new contract. Facts package 136 tests, 0 failures. Not device-tested. CI pending.
 
+---
+
+### [2026-11-19 23:25 WAT] [MEMORY] Stage 6 - chronological fact retrieval
+
+`FactRetrieval.temporalRank` adds a BOUNDED temporal bonus on top of the existing relevance score:
+verified date +8, user-stated +5, otherwise +2, plus a recency term scaled across the retrieved set.
+Relevance still dominates, an undated fact is never penalised out of the results, and ties break
+deterministically (score, factTime, updatedAt, id). `chronological()` orders by the time a fact is
+ABOUT with an optional history mode; `latest()` answers "what is the latest ..." and ignores retired
+facts. `rankedFactsWithOverlap` now uses the time-aware order, so the prompt itself is ordered by
+it. `Fact.factTime` / `hasVerifiedTime` live in FactProvenance.kt as extensions, so the data class
+stays a data class. Files: FactRetrieval.kt, FactProvenance.kt, FactChronologyTest.kt (new, 12
+tests). Facts package 134 tests, 0 failures. Not device-tested. CI pending.
+

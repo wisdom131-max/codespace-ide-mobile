@@ -18,6 +18,7 @@ Status vocabulary:
 | 3.1 | Persistent message identity (content-first matching) | Implemented, Unit-tested | (see AGENTS.md) | 11 (TranscriptIdentityTest) | pending |
 | 4 | Fact timestamps + timeSource + source conversation link | Implemented, Unit-tested | (see AGENTS.md) | 16 (FactProvenanceTest) | pending |
 | 5 | Supersession and history | Implemented, Unit-tested | (see AGENTS.md) | 12 (FactSupersessionTest) | pending |
+| 6 | Chronological retrieval | Implemented, Unit-tested | (see AGENTS.md) | 12 (FactChronologyTest) | pending |
 | 5 | Supersession wiring | not started | | | |
 | 6 | Chronological retrieval intents | not started | | | |
 | 7 | Automatic extraction + settings + idempotency | not started | | | |
@@ -108,3 +109,12 @@ preserved. One write covers both records, so the pair cannot half-land. `superse
 and refuses self-supersession. `FactRetrieval.history` exposes retired facts; `rank` excludes them.
 Duplicate statements do not create supersession records; different scopes never supersede each
 other. Legacy records without supersession metadata load unchanged (`supersededAt = 0`).
+
+## Stage 6 — Chronological retrieval (implemented)
+
+`temporalRank` = relevance score + bounded temporal bonus (verified +8, user-stated +5, other +2)
++ recency scaled within the retrieved set. Deterministic tie-break: score, factTime, updatedAt, id.
+Unknown dates earn no bonus but are never excluded. `chronological(includeHistory)` and `latest()`
+cover "what is the latest / what changed" questions. The prompt path (`rankedFactsWithOverlap` →
+`forRequest` → `blockFor`) uses the time-aware order, so production retrieval is chronological, not
+just the helper.
