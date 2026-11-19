@@ -423,20 +423,58 @@ internal object ChatTranscript {
         conversationId: String,
         nowMs: Long,
     ): List<StoredMessage> {
+        if (previous.isEmpty()) {
+            return messages.mapIndexed { idx, m ->
+                m.copy(id = m.id.ifBlank { newId(conversationId, idx) }, sentAtMs = m.sentAtMs.takeIf { it > 0L } ?: nowMs, syntheticId = false)
+            }
+        }
+        val matched = arrayOfNulls<StoredMessage>(messages.size)
+        val used = BooleanArray(previous.size)
+
+        // PASS 1 - identity at the same position, unchanged content. The common save case.
+        for (i in messages.indices) {
+            val p = previous.getOrNull(i) ?: continue
+            if (!used[i] && p.role == messages[i].role && p.text == messages[i].text) {
+                matched[i] = p
+                used[i] = true
+            }
+        }
+        // PASS 2 - unchanged content found elsewhere. This is what makes DELETION, PRUNING and
+        // REORDERING safe: a message keeps its id because its content moved, not because its index
+        // stayed. Ordering of the scan keeps duplicates matched in their original order.
+        for (i in messages.indices) {
+            if (matched[i] != null) continue
+            for (j in previous.indices) {
+                if (used[j]) continue
+                if (previous[j].role == messages[i].role && previous[j].text == messages[i].text) {
+                    matched[i] = previous[j]
+                    used[j] = true
+                    break
+                }
+            }
+        }
+        // PASS 3 - in-place EDIT: same role, same position, content changed. Only allowed when the
+        // role's population did not change, because otherwise the unmatched previous message may be
+        // one that was DELETED, and handing its id to an edited neighbour would silently point a
+        // fact at the wrong message. Never invent an association to keep an id alive.
+        for (i in messages.indices) {
+            if (matched[i] != null) continue
+            val role = messages[i].role
+            if (messages.count { it.role == role } != previous.count { it.role == role }) continue
+            val p = previous.getOrNull(i) ?: continue
+            if (!used[i] && p.role == role) {
+                matched[i] = p
+                used[i] = true
+            }
+        }
         return messages.mapIndexed { idx, m ->
-            val prev = previous.getOrNull(idx)?.takeIf { it.role == m.role }
+            val prev = matched[idx]
             val keepId = m.id.ifBlank { prev?.id?.takeIf { it.isNotBlank() } ?: "" }
-            // A message that already existed keeps ITS first-observed time, including 0: a
-            // legacy line never recorded one, and stamping "now" on it would invent a send time
-            // for history that was never observed. Only a genuinely new message gets nowMs.
             val sent = when {
                 m.sentAtMs > 0L -> m.sentAtMs
                 prev != null -> prev.sentAtMs
                 else -> nowMs
             }
-            // A synthetic id inherited from a legacy line STAYS synthetic. Rewriting a v2 file as
-            // v3 must not turn "we made this id up to address the message" into "the original
-            // record carried this id" - that would be provenance laundering.
             val inheritedSynthetic = prev != null && prev.syntheticId && keepId == prev.id
             m.copy(
                 id = keepId.ifBlank { newId(conversationId, idx) },

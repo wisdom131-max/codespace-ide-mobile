@@ -7698,3 +7698,18 @@ FactProvenanceTest.kt (new, 16 tests). Facts package 110 tests, full app suite 3
 Known limitation: `sourceMessageAt` is first-observed persistence time, not an exact send event,
 and the `save_memory` tool call does not know which message caused it, so production saves leave
 `sourceMessageId` unset until Stage 7's extraction pipeline supplies it. Nothing here invents one.
+
+---
+
+### [2026-11-19 22:40 WAT] [MEMORY] Stage 3.1 - persistent message identity
+
+`ChatTranscript.carryIdentity` no longer matches previous messages by index alone. Three passes:
+(1) same position and identical content; (2) identical content found elsewhere, which is what makes
+deletion, pruning and reordering safe; (3) in-place edit at the same position, allowed ONLY when
+that role's population is unchanged, because otherwise the unmatched previous message may be the
+deleted one and handing its id to an edited neighbour would silently point a fact at the wrong
+message. An id belongs to a message, not a position. Duplicate ids are still dropped and counted at
+read time; legacy migration stays deterministic, keeps the `legacy-` prefix and never stamps a send
+time. Files: ChatTranscript.kt, TranscriptIdentityTest.kt (new, 11 tests). Chat package 1339 tests,
+0 failures. Not device-tested. CI not yet polled (batch policy).
+

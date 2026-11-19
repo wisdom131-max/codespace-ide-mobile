@@ -15,6 +15,7 @@ Status vocabulary:
 | 1 | Reactive Facts panel + date labels + history toggle | Implemented, Unit-tested | (see AGENTS.md) | 8 (MemoryEventsTest 5, FactDatesTest 3) | pending |
 | 2 | Category inference precedence | Implemented, Unit-tested | (see AGENTS.md) | 9 (CategoryInferenceTest) | pending |
 | 3 | Transcript v3 (ids, send time, header, record types) | Implemented, Unit-tested | (see AGENTS.md) | 17 (TranscriptV3Test) | pending |
+| 3.1 | Persistent message identity (content-first matching) | Implemented, Unit-tested | (see AGENTS.md) | 11 (TranscriptIdentityTest) | pending |
 | 4 | Fact timestamps + timeSource + source conversation link | Implemented, Unit-tested | (see AGENTS.md) | 16 (FactProvenanceTest) | pending |
 | 5 | Supersession wiring | not started | | | |
 | 6 | Chronological retrieval intents | not started | | | |
@@ -88,3 +89,12 @@ migration; a blocked write reports refusal or write failure, never "Saved".
 
 **Limitations:** first-observed vs exact send time; `sourceMessageId` unset for tool-initiated
 saves until Stage 7 supplies the originating message.
+
+## Stage 3.1 — Persistent message identity (implemented)
+
+Identity is matched content-first: same-position identical content, then identical content anywhere,
+then an in-place edit only when that role's population is unchanged. Consequences: deleting,
+pruning or reordering a message cannot renumber the survivors; appending cannot touch existing ids;
+an edit that follows a deletion gets a NEW id rather than inheriting the deleted message's id.
+Legacy ids stay deterministic (`legacy-<hash>-<index>`), stay flagged, and are persisted on the next
+successful save. Stage 4 provenance fields are untouched by this stage.
