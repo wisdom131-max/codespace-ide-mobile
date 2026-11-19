@@ -7653,3 +7653,24 @@ CONVENTION, ARCHITECTURE, BUILD, TEST, GENERAL. CONVENTION now precedes TEST, so
 snake_case" is a convention. No stored category value changes; no schema change.
 Files: Fact.kt, CategoryInferenceTest.kt (new, 9 tests). Focused: 108 tests in the facts package,
 0 failures. NOT device-tested.
+
+---
+
+### [2026-11-19 20:55 WAT] [MEMORY] Stage 3 - transcript v3, stable ids, honest send times
+
+Transcript is now `v3`: header records (`#c` conversation id, `#s` conversation start), message
+records (`m`) carrying a stable id, role, complete flag, first-observed send time, save time,
+finish verdict and text, and tool-step records (`s`: callId, turnId, atMs, ok, label, detail).
+Stage 10 wires the Thinking Tree to PRODUCE steps; nothing writes them yet, but the format can
+carry them now without a second change. v1 and v2 keep their original readers, unchanged.
+Identity: `ChatTranscript.carryIdentity` inherits the id and first-observed time of the message at
+the same index when the role matches, so editing text or appending never renumbers earlier
+messages; a new message mints an id and a time of now. Legacy lines get a DETERMINISTIC
+`legacy-<hash>-<index>` id and `sentAtMs = 0`, and the `legacy-` prefix IS the synthetic flag, so a
+round trip through disk cannot launder a reconstructed id into verified provenance. A legacy line
+never receives a stamped "now" send time. Reads are per-record: malformed, unknown and duplicated
+records cost only themselves (duplicates counted, not merged). `TranscriptFiles.saveLocked` carries
+identity forward from the file it is replacing and writes the conversation start once, never moving
+it. Files: ChatTranscript.kt, ChatTranscriptStore.kt, TranscriptV3Test.kt (new, 17 tests),
+FinishRestorationTest.kt (alien header now `v9`, since v3 is ours). Full app suite 3603 tests,
+4 skipped, 0 failures. NOT device-tested. CI not yet polled (batch policy).

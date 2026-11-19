@@ -41,6 +41,26 @@ data class StoredMessage(
     /** Wall-clock at save time; kept for debugging and future ordering, never shown. */
     val atMs: Long = 0L,
     /**
+     * STAGE 3: stable identity for this message inside its conversation.
+     *
+     * Assigned once when the message is first persisted and preserved afterwards, so an edit to
+     * the text does not move it. Empty means "no id yet" (a v1/v2 line, or a row built in memory
+     * that has not been saved); the store mints one on the first write.
+     */
+    val id: String = "",
+    /**
+     * STAGE 3: when persistence FIRST observed this message - an app event, not an edit time.
+     * It is never later than the true send time and is never rewritten by a later save.
+     * 0 means unknown (a legacy line): callers must say "not recorded" rather than guess.
+     */
+    val sentAtMs: Long = 0L,
+    /**
+     * STAGE 3: true when [id] was reconstructed for a legacy line. Such an id identifies the
+     * message for de-duplication, but it was NOT in an original transcript record, so nothing may
+     * present it as transcript-verified history.
+     */
+    val syntheticId: Boolean = false,
+    /**
      * Area 6: the authoritative finish verdict for this assistant turn
      * ([com.codespace.ide.engine.FinishReason] name), or null for a conversation saved before it
      * was recorded. Null restores as UNKNOWN: no Continue offered, nothing called complete.
@@ -55,11 +75,51 @@ internal data class DecodedTranscript(
     val skippedLines: Int = 0,
     /** True when the file was readable but not in a format this build understands. */
     val unreadable: Boolean = false,
+    /** STAGE 3: the format that was actually read ("v1", "v2", "v3"). */
+    val version: String = "",
+    /** STAGE 3: header metadata. Null for v1/v2, which carried none. */
+    val meta: TranscriptMeta? = null,
+    /** STAGE 3: persisted tool steps. Empty for v1/v2 and for any file without them. */
+    val steps: List<StoredStep> = emptyList(),
+    /** STAGE 3: records dropped because their id was already seen (a duplicated write). */
+    val duplicateRecords: Int = 0,
+)
+
+/**
+ * STAGE 3 - conversation-level metadata.
+ *
+ * [startedAtMs] is 0 when unknown, and unknown is never filled in from a message time: "we do not
+ * know when this conversation began" is a fact the UI can show, a guess is not.
+ */
+internal data class TranscriptMeta(
+    val conversationId: String? = null,
+    val startedAtMs: Long = 0L,
+)
+
+/**
+ * STAGE 3 - one persisted tool activity step.
+ *
+ * The record type and its codec exist now so a transcript can carry steps without a later format
+ * change. Stage 10 wires the Thinking Tree to produce them; nothing writes them yet.
+ */
+internal data class StoredStep(
+    val callId: String,
+    val turnId: String? = null,
+    val atMs: Long = 0L,
+    val ok: Boolean = true,
+    val label: String = "",
+    val detail: String = "",
 )
 
 internal object ChatTranscript {
 
     const val FORMAT_VERSION = "v2"
+
+    /** STAGE 3: the format this build WRITES. v1 and v2 are read, never written. */
+    const val CURRENT_FORMAT_VERSION = "v3"
+
+    /** STAGE 3: every reconstructed legacy id starts with this, so it is never mistaken for one. */
+    const val SYNTHETIC_PREFIX = "legacy-"
 
     /** v1 had no finish field. Read, never written. */
     internal const val LEGACY_FORMAT_VERSION = "v1"
@@ -169,28 +229,135 @@ internal object ChatTranscript {
      * verified on a device. It is also line-oriented on purpose — a torn write can damage
      * one line, and the reader skips that line instead of losing the whole conversation.
      */
-    fun encode(messages: List<StoredMessage>): String {
-        val sb = StringBuilder(64 + messages.size * 48)
-        sb.append(FORMAT_VERSION).append('\n')
+    fun encode(
+        messages: List<StoredMessage>,
+        meta: TranscriptMeta? = null,
+        steps: List<StoredStep> = emptyList(),
+    ): String {
+        val sb = StringBuilder(64 + messages.size * 56)
+        sb.append(CURRENT_FORMAT_VERSION).append('\n')
+        // Header records start with '#'. They are optional, so a v3 file written without metadata
+        // is still valid and still reads back.
+        if (meta?.conversationId != null) {
+            sb.append("#c\t").append(escape(meta.conversationId)).append('\n')
+        }
+        if (meta != null && meta.startedAtMs > 0L) {
+            sb.append("#s\t").append(meta.startedAtMs).append('\n')
+        }
         for (m in messages) {
-            sb.append(m.role).append('\t')
+            sb.append("m\t")
+                .append(escape(m.id)).append('\t')
+                .append(m.role).append('\t')
                 .append(if (m.complete) '1' else '0').append('\t')
+                .append(m.sentAtMs).append('\t')
                 .append(m.atMs).append('\t')
                 .append(m.finish ?: "-").append('\t')
                 .append(escape(m.text)).append('\n')
         }
+        for (st in steps) {
+            sb.append("s\t")
+                .append(escape(st.callId)).append('\t')
+                .append(escape(st.turnId ?: "-")).append('\t')
+                .append(st.atMs).append('\t')
+                .append(if (st.ok) '1' else '0').append('\t')
+                .append(escape(st.label)).append('\t')
+                .append(escape(st.detail)).append('\n')
+        }
         return sb.toString()
     }
 
-    /** Tolerant reader: unknown header / blank file -> empty; bad lines -> skipped. */
+    /**
+     * Tolerant reader: unknown header / blank file -> empty; bad lines -> skipped.
+     *
+     * STAGE 3: three formats are read. v1 and v2 keep their original paths untouched, so an old
+     * conversation restores exactly as it did before. A v3 file is read record by record: an
+     * unknown record type, a malformed record or a duplicated id costs THAT record and nothing
+     * else, which is the whole point of a line-oriented format.
+     */
     fun decode(raw: String): DecodedTranscript {
         if (raw.isBlank()) return DecodedTranscript(emptyList())
         val lines = raw.split('\n')
         val header = lines.firstOrNull()?.trim()
-        val legacy = header == LEGACY_FORMAT_VERSION
-        if (header != FORMAT_VERSION && !legacy) {
-            return DecodedTranscript(emptyList(), skippedLines = lines.size, unreadable = true)
+        return when (header) {
+            CURRENT_FORMAT_VERSION -> decodeV3(lines)
+            FORMAT_VERSION, LEGACY_FORMAT_VERSION -> decodeLegacy(lines, header == LEGACY_FORMAT_VERSION)
+            else -> DecodedTranscript(emptyList(), skippedLines = lines.size, unreadable = true)
         }
+    }
+
+    /** v3: header records, then message and step records, all prefixed by their type. */
+    private fun decodeV3(lines: List<String>): DecodedTranscript {
+        var meta = TranscriptMeta()
+        val out = ArrayList<StoredMessage>(lines.size)
+        val steps = ArrayList<StoredStep>()
+        val seen = HashSet<String>()
+        var skipped = 0
+        var duplicates = 0
+        for (i in 1 until lines.size) {
+            val line = lines[i]
+            if (line.isBlank()) continue
+            val fields = line.split('\t')
+            when (fields[0]) {
+                "#c" -> if (fields.size >= 2) meta = meta.copy(conversationId = unescape(fields[1]))
+                "#s" -> if (fields.size >= 2) {
+                    val ms = fields[1].toLongOrNull()
+                    if (ms != null) meta = meta.copy(startedAtMs = ms) else skipped++
+                }
+                "m" -> {
+                    // id, role, complete, sentAt, savedAt, finish, text
+                    if (fields.size < 8) { skipped++; continue }
+                    val id = unescape(fields[1])
+                    val role = fields[2]
+                    if (role != "user" && role != "assistant" && role != "note") { skipped++; continue }
+                    if (id.isNotBlank() && !seen.add(id)) { duplicates++; continue }
+                    out.add(
+                        StoredMessage(
+                            role = role,
+                            text = unescape(fields[7]),
+                            complete = fields[3] != "0",
+                            atMs = fields[5].toLongOrNull() ?: 0L,
+                            id = id,
+                            sentAtMs = fields[4].toLongOrNull() ?: 0L,
+                            finish = fields[6].takeIf { it != "-" },
+                            // The prefix IS the flag: a legacy id is recognisable from the id
+                            // itself, so a round trip through disk cannot launder it into a
+                            // transcript-verified identity.
+                            syntheticId = id.startsWith(SYNTHETIC_PREFIX),
+                        ),
+                    )
+                }
+                "s" -> {
+                    // callId, turnId, atMs, ok, label, detail
+                    if (fields.size < 7) { skipped++; continue }
+                    val callId = unescape(fields[1])
+                    if (callId.isBlank() || !seen.add("step:" + callId)) { duplicates++; continue }
+                    steps.add(
+                        StoredStep(
+                            callId = callId,
+                            turnId = unescape(fields[2]).takeIf { it != "-" },
+                            atMs = fields[3].toLongOrNull() ?: 0L,
+                            ok = fields[4] != "0",
+                            label = unescape(fields[5]),
+                            detail = unescape(fields[6]),
+                        ),
+                    )
+                }
+                else -> skipped++
+            }
+        }
+        val ordered = assignSyntheticIds(out, meta.conversationId)
+        return DecodedTranscript(
+            messages = ordered,
+            skippedLines = skipped,
+            version = CURRENT_FORMAT_VERSION,
+            meta = meta,
+            steps = steps,
+            duplicateRecords = duplicates,
+        )
+    }
+
+    /** v1/v2: the original four/five-field readers, unchanged in behaviour. */
+    private fun decodeLegacy(lines: List<String>, legacy: Boolean): DecodedTranscript {
         val out = ArrayList<StoredMessage>(lines.size)
         var skipped = 0
         for (i in 1 until lines.size) {
@@ -210,8 +377,78 @@ internal object ChatTranscript {
                 ),
             )
         }
-        return DecodedTranscript(out, skippedLines = skipped)
+        // A legacy line had no id and no send time. Both are marked, not invented.
+        return DecodedTranscript(
+            messages = assignSyntheticIds(out, null),
+            skippedLines = skipped,
+            version = if (legacy) LEGACY_FORMAT_VERSION else FORMAT_VERSION,
+        )
     }
+
+    /**
+     * STAGE 3: give an id-less message a DETERMINISTIC id and say so.
+     *
+     * Deterministic, not random: the same legacy file must produce the same ids on every load, or
+     * de-duplication and any fact linked to a message would drift. [StoredMessage.syntheticId]
+     * carries the honesty flag, and [StoredMessage.sentAtMs] stays 0 because the original record
+     * never held a send time.
+     */
+    fun assignSyntheticIds(messages: List<StoredMessage>, conversationId: String?): List<StoredMessage> {
+        if (messages.none { it.id.isBlank() }) return messages
+        val salt = conversationId ?: ""
+        return messages.mapIndexed { idx, m ->
+            if (m.id.isNotBlank()) m
+            else m.copy(id = syntheticId(salt, idx, m.role), syntheticId = true)
+        }
+    }
+
+    /** Deterministic legacy id: stable for the same conversation, index and role. */
+    fun syntheticId(salt: String, index: Int, role: String): String {
+        val h = (salt + "|" + index + "|" + role).hashCode()
+        return SYNTHETIC_PREFIX + Integer.toHexString(h) + "-" + index
+    }
+
+    /**
+     * STAGE 3: carry identity forward across a save.
+     *
+     * A save rewrites the whole file from the live row list, which has no ids of its own. The
+     * message at position i therefore inherits the id and the first-observed time of the message
+     * that was at position i in the previous file WHEN the role matches; anything else is a new
+     * message and gets a fresh id and a first-observed time of now. Editing text does not move a
+     * message, appending does not renumber the ones before it.
+     */
+    fun carryIdentity(
+        messages: List<StoredMessage>,
+        previous: List<StoredMessage>,
+        conversationId: String,
+        nowMs: Long,
+    ): List<StoredMessage> {
+        return messages.mapIndexed { idx, m ->
+            val prev = previous.getOrNull(idx)?.takeIf { it.role == m.role }
+            val keepId = m.id.ifBlank { prev?.id?.takeIf { it.isNotBlank() } ?: "" }
+            // A message that already existed keeps ITS first-observed time, including 0: a
+            // legacy line never recorded one, and stamping "now" on it would invent a send time
+            // for history that was never observed. Only a genuinely new message gets nowMs.
+            val sent = when {
+                m.sentAtMs > 0L -> m.sentAtMs
+                prev != null -> prev.sentAtMs
+                else -> nowMs
+            }
+            // A synthetic id inherited from a legacy line STAYS synthetic. Rewriting a v2 file as
+            // v3 must not turn "we made this id up to address the message" into "the original
+            // record carried this id" - that would be provenance laundering.
+            val inheritedSynthetic = prev != null && prev.syntheticId && keepId == prev.id
+            m.copy(
+                id = keepId.ifBlank { newId(conversationId, idx) },
+                sentAtMs = sent,
+                syntheticId = inheritedSynthetic,
+            )
+        }
+    }
+
+    private fun newId(conversationId: String, index: Int): String =
+        "m" + Integer.toHexString((conversationId + "|" + index + "|" + System.nanoTime()).hashCode()) +
+            "-" + index
 
     /**
      * v2: five fields, finish before the text so the escaped text stays last. v1 lines still parse

@@ -203,7 +203,31 @@ internal class TranscriptFiles(private val rootDir: File) {
             // retried once after forcing the directory back.
             val dir = target.parentFile
                 ?: return "Chat storage is unavailable (no conversation directory)."
-            val body = ChatTranscript.encode(messages)
+            // STAGE 3: identity and first-observed times are carried forward from the file that
+            // is about to be replaced, so editing text or appending a message never renumbers the
+            // ones before it. A missing/unreadable previous file simply means every message is new.
+            val previous = try {
+                if (target.exists()) ChatTranscript.decode(target.readText()) else null
+            } catch (_: Throwable) {
+                null
+            }
+            val nowMs = System.currentTimeMillis()
+            val withIdentity = ChatTranscript.carryIdentity(
+                messages = messages,
+                previous = previous?.messages ?: emptyList(),
+                conversationId = conversationId,
+                nowMs = nowMs,
+            )
+            // The header keeps the FIRST time this conversation was written, and never moves it.
+            // It is an app event, not a guess: 0 only when the file has no usable header and no
+            // message carries a time.
+            val startedAtMs = previous?.meta?.startedAtMs?.takeIf { it > 0L }
+                ?: withIdentity.asSequence().map { it.sentAtMs }.filter { it > 0L }.minOrNull()
+                ?: nowMs
+            val body = ChatTranscript.encode(
+                messages = withIdentity,
+                meta = TranscriptMeta(conversationId = conversationId, startedAtMs = startedAtMs),
+            )
             val tmp = File(dir, target.name + ".tmp")
             ensureDir(dir)?.let { return it }
             try {

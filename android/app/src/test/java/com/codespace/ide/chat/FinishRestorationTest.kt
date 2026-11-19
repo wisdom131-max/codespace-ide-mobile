@@ -67,7 +67,8 @@ class FinishRestorationTest {
     }
 
     @Test fun aTornOrAlienFileIsUnreadableNotGuessed() {
-        val decoded = ChatTranscript.decode("v3\nwhatever\n")
+        // STAGE 3: v3 is now OUR format, so the alien header must be one that is still not ours.
+        val decoded = ChatTranscript.decode("v9\nwhatever\n")
         assertTrue(decoded.unreadable)
         assertEquals(ContinuationState.UNKNOWN_OR_INTERRUPTED, eligibility(decoded.messages))
     }
