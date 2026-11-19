@@ -143,7 +143,8 @@ class MemoryToolsTest {
             MemoryScope.ALL_SESSIONS, "", "proj-a",
         )
         assertTrue(msg.contains("corrected"))
-        assertEquals(1, FactsStore.loadFrom(dir).size)
+        // STAGE 5: the corrected fact survives as history alongside its replacement.
+        assertEquals(2, FactsStore.loadFrom(dir).size)
     }
 
     @Test

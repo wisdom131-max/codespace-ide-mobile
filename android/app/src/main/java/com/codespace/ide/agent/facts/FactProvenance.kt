@@ -144,3 +144,21 @@ object FactSourceContext {
         }
     }
 }
+
+/**
+ * STAGE 6 — the instant a fact is ABOUT, as an extension so the data class stays a data class.
+ *
+ * Precedence is deliberate: a transcript-verified conversation date beats any other date, an
+ * unknown stays unknown, and `createdAt` is used only as a last resort because it is the save time,
+ * not the time the fact describes.
+ */
+fun Fact.factTime(): Long = when {
+    sourceConversationAt > 0L -> sourceConversationAt
+    sourceMessageAt > 0L -> sourceMessageAt
+    createdAt > 0L -> createdAt
+    else -> 0L
+}
+
+/** True when [factTime] came from a transcript header rather than from the save path. */
+fun Fact.hasVerifiedTime(): Boolean =
+    timeSource == TimeSource.TRANSCRIPT_VERIFIED && sourceConversationAt > 0L

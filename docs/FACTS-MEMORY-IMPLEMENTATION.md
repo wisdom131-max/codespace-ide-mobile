@@ -17,6 +17,7 @@ Status vocabulary:
 | 3 | Transcript v3 (ids, send time, header, record types) | Implemented, Unit-tested | (see AGENTS.md) | 17 (TranscriptV3Test) | pending |
 | 3.1 | Persistent message identity (content-first matching) | Implemented, Unit-tested | (see AGENTS.md) | 11 (TranscriptIdentityTest) | pending |
 | 4 | Fact timestamps + timeSource + source conversation link | Implemented, Unit-tested | (see AGENTS.md) | 16 (FactProvenanceTest) | pending |
+| 5 | Supersession and history | Implemented, Unit-tested | (see AGENTS.md) | 12 (FactSupersessionTest) | pending |
 | 5 | Supersession wiring | not started | | | |
 | 6 | Chronological retrieval intents | not started | | | |
 | 7 | Automatic extraction + settings + idempotency | not started | | | |
@@ -98,3 +99,12 @@ pruning or reordering a message cannot renumber the survivors; appending cannot 
 an edit that follows a deletion gets a NEW id rather than inheriting the deleted message's id.
 Legacy ids stay deterministic (`legacy-<hash>-<index>`), stay flagged, and are persisted on the next
 successful save. Stage 4 provenance fields are untouched by this stage.
+
+## Stage 5 — Supersession and history (implemented)
+
+A correction creates a replacement record and retires the corrected one: `SUPERSEDED`,
+`supersededBy`, `supersededAt`, with content, category, confidence, provenance and `updatedAt`
+preserved. One write covers both records, so the pair cannot half-land. `supersedeIn` is idempotent
+and refuses self-supersession. `FactRetrieval.history` exposes retired facts; `rank` excludes them.
+Duplicate statements do not create supersession records; different scopes never supersede each
+other. Legacy records without supersession metadata load unchanged (`supersededAt = 0`).

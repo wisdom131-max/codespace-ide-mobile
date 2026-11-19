@@ -2,6 +2,7 @@ package com.codespace.ide.agent.facts
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -123,9 +124,17 @@ class FactsStoreTest {
         val second = FactsStore.saveTo(dir, "The build uses Gradle 8 with the wrapper", FactScope.USER, null)
             as FactsStore.SaveResult.Saved
         assertEquals(FactDecision.CORRECTION, second.decision)
-        assertEquals(first.fact.id, second.fact.id)
-        assertEquals(1, FactsStore.loadFrom(dir).size)
-        assertTrue(FactsStore.loadFrom(dir).single().content.contains("8"))
+        // STAGE 5: a correction no longer overwrites in place. The replacement is its own record,
+        // and the corrected statement is kept as history rather than destroyed.
+        assertNotEquals(first.fact.id, second.fact.id)
+        val all = FactsStore.loadFrom(dir)
+        assertEquals(2, all.size)
+        val retired = all.first { it.id == first.fact.id }
+        assertEquals(FactStatus.SUPERSEDED, retired.status)
+        assertEquals(second.fact.id, retired.supersededBy)
+        assertTrue("supersession records when it happened", retired.supersededAt > 0L)
+        assertEquals("the old statement is preserved verbatim", "The build uses Gradle", retired.content)
+        assertTrue(all.first { it.id == second.fact.id }.content.contains("8"))
     }
 
     @Test
@@ -367,7 +376,9 @@ class FactsStoreTest {
         val r = FactsStore.saveTo(dir, "Build with ./gradlew assemble", FactScope.USER, null)
         val decision = (r as FactsStore.SaveResult.Saved).decision
         assertTrue("was $decision", decision == FactDecision.CORRECTION || decision == FactDecision.DUPLICATE)
-        assertEquals(1, FactsStore.loadFrom(dir).size)
+        // STAGE 5: a correction keeps the corrected fact as history, so the store holds both.
+        val expected = if (decision == FactDecision.CORRECTION) 2 else 1
+        assertEquals(expected, FactsStore.loadFrom(dir).size)
     }
 }
 

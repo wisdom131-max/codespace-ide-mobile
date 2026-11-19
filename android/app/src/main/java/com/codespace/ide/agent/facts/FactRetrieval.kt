@@ -47,6 +47,24 @@ object FactRetrieval {
      * a conflicted one is demoted hard (it still appears, labelled, so the model does not assert
      * it as settled), recency and previous usefulness break ties.
      */
+    /**
+     * STAGE 5 — historical retrieval, deliberately separate from [rank].
+     *
+     * A superseded fact is never offered to the prompt as current truth; it is offered here, newest
+     * supersession first, so a question about "what did I use to think" has an answer.
+     */
+    fun history(facts: List<Fact>, projectId: String? = null): List<Fact> =
+        facts.filter { it.status == FactStatus.SUPERSEDED && it.belongsTo(projectId) }
+            .sortedByDescending { it.supersededAt }
+
+    /** STAGE 6 — facts ordered by the time they are ABOUT, newest first, ties by save time. */
+    fun chronological(facts: List<Fact>, projectId: String? = null, includeHistory: Boolean = false): List<Fact> =
+        facts.filter {
+            it.belongsTo(projectId) && (includeHistory || it.isRetrievable())
+        }.sortedWith(
+            compareByDescending<Fact> { it.factTime() }.thenByDescending { it.updatedAt },
+        )
+
     fun rank(facts: List<Fact>, request: String, projectId: String?, now: Long = System.currentTimeMillis()): List<Ranked> {
         val requestTokens = FactText.tokenSet(request)
         val out = ArrayList<Ranked>(facts.size)

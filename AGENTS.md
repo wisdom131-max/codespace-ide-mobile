@@ -7713,3 +7713,17 @@ read time; legacy migration stays deterministic, keeps the `legacy-` prefix and 
 time. Files: ChatTranscript.kt, TranscriptIdentityTest.kt (new, 11 tests). Chat package 1339 tests,
 0 failures. Not device-tested. CI not yet polled (batch policy).
 
+---
+
+### [2026-11-19 23:05 WAT] [MEMORY] Stage 5 - fact supersession and history
+
+A correction now REPLACES rather than overwrites: `FactsStore.applySave` builds a new record and
+retires the old one with `status = SUPERSEDED`, `supersededBy = <new id>`, `supersededAt = now`,
+leaving its content, category, confidence, provenance and `updatedAt` untouched. Both records are
+written in ONE write, so a failure cannot retire a fact while losing its replacement.
+`supersedeIn` is idempotent (an already-retired fact keeps its first record), refuses self-
+supersession, and no longer moves `updatedAt`. `FactRetrieval.history` returns retired facts newest
+supersession first; `rank` never offers them as current truth. Files: FactsStore.kt,
+FactRetrieval.kt, FactSupersessionTest.kt (new, 12 tests), FactsStoreTest.kt and MemoryToolsTest.kt
+updated to the new contract. Facts package 136 tests, 0 failures. Not device-tested. CI pending.
+

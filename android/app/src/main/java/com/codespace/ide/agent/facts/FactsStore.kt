@@ -362,16 +362,23 @@ object FactsStore {
                 stronger, FactDecision.DUPLICATE)
         }
         if (target != null && match.decision == FactDecision.CORRECTION) {
-            val fixed = target.copy(
-                content = text,
-                category = cat,
-                updatedAt = now,
-                source = source,
-                confidence = conf,
-                citation = citation ?: target.citation,
-                sourceConversationId = conversationId ?: target.sourceConversationId,
+            // STAGE 5: a correction REPLACES a statement, so the old one is kept as history rather
+            // than overwritten. The replacement is a new record with its own id, and the old record
+            // keeps its content, category, confidence, provenance and original timestamps - only
+            // its status and supersession fields change.
+            val replacement = newFact(text, scope, projectId, cat, source, conf, now, citation,
+                conversationId, sessionOwner,
+                provenance = provenance)
+            val retired = target.copy(
+                status = FactStatus.SUPERSEDED,
+                supersededBy = replacement.id,
+                supersededAt = now,
+                // updatedAt is NOT touched: the statement did not change, its standing did.
             )
-            return Applied(all.map { if (it.id == target.id) fixed else it }, fixed, FactDecision.CORRECTION)
+            // One write for both records, so a failure cannot leave the old fact retired while the
+            // replacement is missing.
+            return Applied(all.map { if (it.id == target.id) retired else it } + replacement,
+                replacement, FactDecision.CORRECTION)
         }
         if (target != null && match.decision == FactDecision.CONFLICT) {
             // Both sides stay. Neither is "the truth", and the prompt says so.
@@ -509,10 +516,19 @@ object FactsStore {
     /** Mark a fact as replaced by another, keeping both for provenance. */
     fun supersedeIn(d: File, oldId: String, newId: String): Boolean {
         val all = loadFrom(d)
+        if (oldId == newId) return false
         if (all.none { it.id == oldId }) return false
+        // An already-retired fact keeps its original supersession record: re-running this must not
+        // rewrite the timestamp or point it at a different replacement.
+        if (all.first { it.id == oldId }.status == FactStatus.SUPERSEDED) return true
         val now = System.currentTimeMillis()
         val updated = all.map {
-            if (it.id == oldId) it.copy(status = FactStatus.SUPERSEDED, supersededBy = newId, updatedAt = now)
+            // STAGE 5: supersession records WHEN, and leaves the statement's own updatedAt alone.
+            if (it.id == oldId) it.copy(
+                status = FactStatus.SUPERSEDED,
+                supersededBy = newId,
+                supersededAt = now,
+            )
             else it
         }
         if (!writeTo(d, updated)) return false
