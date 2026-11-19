@@ -35,6 +35,15 @@
 
 ---
 
+### [2026-11-19 17:40 WAT] [P0.1] Cloudflare /ai/v1 content shape
+
+Live diagnostic (owner, 19 Nov) showed the same provider/model returning 200 five times and 400 once
+with `'array' not in 'string'` for every `messages[].content`. Cause: `OpenAIAdapter`'s attachment
+overload is the only path that emits content PARTS, and Cloudflare validates `content` as a string.
+Fix: `EngineConfig.supportsContentParts` (default true) + `EndpointUrls.isCloudflare`; the adapter
+flattens text attachments into one string, names any image explicitly ("Attachment not sent"), and
+the send path sets the flag false only for api.cloudflare.com. Four engine tests added. NOT device-tested.
+
 ## CURRENT STATE
 
 | Field | Value |

@@ -63,6 +63,22 @@ class OpenAIAdapter : ProviderAdapter {
         }
         val parts = StringBuilder()
         val combined = userText + textBlocks(attachments)
+        // P0.1: a provider that validates `content` as a STRING (Cloudflare /ai/v1) gets the
+        // flattened text. The attachment text is already inside `combined`, so nothing is lost;
+        // an image is named explicitly rather than dropped in silence.
+        if (!config.supportsContentParts) {
+            val binaries = binaryAttachments(attachments)
+            val note = if (binaries.isEmpty()) "" else
+                "\n\n[Attachment not sent: this provider accepts text only (" +
+                    binaries.joinToString(", ") { it.name } + ")]"
+            if (msgs.isNotEmpty()) msgs.append(',')
+            msgs.append("{\"role\":\"user\",\"content\":\"")
+                .append(escapeJson(combined + note)).append("\"}")
+            val effortFlat = reasoningEffort(config)
+            return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
+                "\"" + config.maxTokensField + "\":" + config.maxResponseTokens +
+                ",\"messages\":[" + systemMsg(config) + msgs + "]" + reasoningJson(config) + "}"
+        }
         if (combined.isNotEmpty()) parts.append("{\"type\":\"text\",\"text\":\"")
             .append(escapeJson(combined)).append("\"}")
         for (a in binaryAttachments(attachments)) {

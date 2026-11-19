@@ -144,4 +144,51 @@ class OpenAIAttachmentPayloadTest {
         val text = out.filterIsInstance<StreamEvent.TextDelta>().joinToString("") { it.text }
         org.junit.Assert.assertEquals("OK", text)
     }
+
+    // P0.1 (2026-11-19): Cloudflare /ai/v1 validates messages[].content as a STRING. Live
+    // diagnostic showed 'array' not in 'string' for every message when a text attachment rode
+    // the final turn. These three tests pin the fix.
+    @org.junit.Test
+    fun `cloudflare text attachment is serialised as a string not a content array`() {
+        val cfg = EngineConfig(modelId = "m", baseUrl = "https://api.cloudflare.com/x/ai/v1", supportsContentParts = false)
+        val body = OpenAIAdapter().payload(
+            listOf(ChatMessage("1", ChatRole.USER, "hello")), "question",
+            listOf(ChatAttachment("a1", "notes.txt", "text/plain", "", textData = "attached text")), cfg)
+        org.junit.Assert.assertTrue(body.contains("\"content\":\"question"))
+        org.junit.Assert.assertTrue(body.contains("attached text"))
+        org.junit.Assert.assertFalse(body.contains("\"content\":["))
+    }
+
+    @org.junit.Test
+    fun `cloudflare request with several text blocks stays one string`() {
+        val cfg = EngineConfig(modelId = "m", baseUrl = "https://api.cloudflare.com/x/ai/v1", supportsContentParts = false)
+        val body = OpenAIAdapter().payload(
+            listOf(ChatMessage("1", ChatRole.USER, "a")), "q",
+            listOf(ChatAttachment("a2", "a.txt", "text/plain", "", textData = "AAA"),
+                 ChatAttachment("a3", "b.md", "text/markdown", "", textData = "BBB")), cfg)
+        org.junit.Assert.assertFalse(body.contains("\"type\":\"text\""))
+        org.junit.Assert.assertTrue(body.contains("AAA"))
+        org.junit.Assert.assertTrue(body.contains("BBB"))
+    }
+
+    @org.junit.Test
+    fun `cloudflare image is named honestly instead of silently dropped`() {
+        val cfg = EngineConfig(modelId = "m", baseUrl = "https://api.cloudflare.com/x/ai/v1", supportsContentParts = false)
+        val body = OpenAIAdapter().payload(
+            listOf(ChatMessage("1", ChatRole.USER, "a")), "q",
+            listOf(ChatAttachment("a4", "shot.png", "image/png", "AAAA")), cfg)
+        org.junit.Assert.assertTrue(body.contains("Attachment not sent"))
+        org.junit.Assert.assertTrue(body.contains("shot.png"))
+        org.junit.Assert.assertFalse(body.contains("image_url"))
+    }
+
+    @org.junit.Test
+    fun `a multimodal provider still gets the content array`() {
+        val cfg = EngineConfig(modelId = "m", baseUrl = "https://api.openai.com/v1", supportsContentParts = true)
+        val body = OpenAIAdapter().payload(
+            listOf(ChatMessage("1", ChatRole.USER, "a")), "q",
+            listOf(ChatAttachment("a4", "shot.png", "image/png", "AAAA")), cfg)
+        org.junit.Assert.assertTrue(body.contains("\"content\":["))
+        org.junit.Assert.assertTrue(body.contains("image_url"))
+    }
 }

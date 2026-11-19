@@ -82,6 +82,15 @@ data class EngineConfig(
     val keySlotName: String = "",
     /** Full endpoint URL for the provider's wire format (adapter shapes the final path). */
     val baseUrl: String = "https://example.invalid/chat/completions",
+    /**
+     * P0.1 (2026-11-19): does this endpoint accept OpenAI-style CONTENT PARTS
+     * (`"content":[{"type":"text",...},{"type":"image_url",...}]`)?
+     *
+     * Cloudflare Workers AI `/ai/v1` validates `messages[].content` as a STRING and rejects the
+     * array form with `oneOf ... 'array' not in 'string'` (live diagnostic, 2026-11-19). Default
+     * true keeps every existing provider byte-identical; only the Cloudflare send path sets false.
+     */
+    val supportsContentParts: Boolean = true,
     /** Provider API key — sent via adapter headers, NEVER in the URL. */
     val apiKey: String = "test-key",
     /** One reasoning control, mapped per provider (Gemini: thinkingBudget; bounded, never -1/dynamic). */

@@ -29,6 +29,13 @@ object EndpointUrls {
     internal fun isCloudflareRunPath(b: String): Boolean =
         b.contains("api.cloudflare.com/client/v4/accounts/") && b.contains("/ai/run/")
 
+    /**
+     * P0.1: is this base a Cloudflare Workers AI endpoint? Its `/ai/v1` route takes a STRING
+     * `content`, so the adapter must not emit content parts for it.
+     */
+    fun isCloudflare(baseUrl: String): Boolean =
+        baseUrl.trim().lowercase().contains("api.cloudflare.com")
+
     /** The POST target for an OpenAI-compatible provider. */
     fun chatCompletions(baseUrl: String): String {
         val (b, q) = splitQuery(baseUrl)

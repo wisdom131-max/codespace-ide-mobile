@@ -777,6 +777,8 @@ class ChatSession internal constructor(
             // WP5: the send budget scales with the model's context window (estimate);
             // WP7: the user override replaces the bundled row (estimate either way).
             maxPayloadChars = com.codespace.ide.engine.ModelCatalog.payloadBudgetChars(resolveCapability(sel)),
+            // P0.1: Cloudflare /ai/v1 takes a STRING content; everything else keeps parts.
+            supportsContentParts = !com.codespace.ide.engine.EndpointUrls.isCloudflare(liveBaseUrl),
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
         if (continuationPrefix != null) streamBuf.append(continuationPrefix)
