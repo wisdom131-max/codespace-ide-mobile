@@ -99,6 +99,22 @@ VoiceCapture, VoiceRecognizer, VoiceProviders), read-aloud (, AndroidTtsProvider
 the shared VadPolicy/RecognitionPlan those paths need. Read-aloud no longer stands down for a
 surface that can no longer open. 5 source-level guards added. NOT device-tested.
 
+### [2026-11-19 19:40 WAT] [P3-A/P3-B] Token accounting and the tail constraint reminder
+
+P3-A: the engine already parsed provider usage and dropped it. `EngineEvent.Usage` now carries it to
+`ChatSession`, and `TokenAccounting` (one instance per session) folds it per turn: reported values
+only, last report wins inside a turn (a repeated chunk or a retry cannot inflate), zero reports are
+"unreported" not "zero", `endTurn` is idempotent, sessions never share totals. Exposed through
+`ChatSession.tokens` / `summary()` for diagnostics. No monetary cost is derived - there is no price
+table. BudgetGuard character limits are untouched.
+
+P3-B: `ChatModePrompts.constraints(mode)` is the ONE line the mode instruction already ends with;
+`ChatInstructions.build` repeats exactly that line at the tail when the assembled prompt reaches
+3,500 chars (Ask) / 6,000 chars (other modes). The reminder is charged against the mode cap BEFORE
+memory is fitted, so the total cannot exceed the cap and memory shrinks instead of the rule.
+
+14 new tests (9 accounting, 5 reminder). App 3,569 / engine 291, 0 failures. NOT device-tested.
+
 ## CURRENT STATE
 
 | Field | Value |

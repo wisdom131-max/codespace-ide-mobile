@@ -27,6 +27,16 @@ internal object ChatInstructions {
     fun capFor(mode: ChatMode): Int = if (mode == ChatMode.ASK) ASK_CAP else AGENT_CAP
 
     /**
+     * P3-B: how long a prompt must be before the tail reminder is worth its tokens. Explicit and
+     * testable; Ask is tight, so its threshold is lower than the other modes.
+     */
+    const val ASK_REMINDER_THRESHOLD = 3_500
+    const val REMINDER_THRESHOLD = 6_000
+
+    fun reminderThresholdFor(mode: ChatMode): Int =
+        if (mode == ChatMode.ASK) ASK_REMINDER_THRESHOLD else REMINDER_THRESHOLD
+
+    /**
      * The model is told that its list is partial, so "I have no tool for that" becomes "I can look
      * for one". Only emitted when something was actually withheld.
      */
@@ -61,7 +71,14 @@ internal object ChatInstructions {
             toolsetLine(sendTools, visible.size, total) +
             (if (mcpDocs.isBlank()) "" else "\n\n## EXTERNAL MCP TOOLS (loaded for this task)\n" + mcpDocs) +
             (if (wsBlock.isEmpty()) "" else "\n\n" + wsBlock)
-        return base + fitMemory(memory, capFor(mode) - base.length)
+        // P3-B: a long prompt repeats the SAME constraint line at the tail. The reminder is
+        // charged against the cap BEFORE memory is fitted, so the total can never exceed it and
+        // the memory block is what shrinks, not the rule.
+        val reminder = if (base.length >= reminderThresholdFor(mode)) {
+            "\n\n" + ChatModePrompts.constraints(mode)
+        } else ""
+        val room = capFor(mode) - base.length - reminder.length
+        return base + fitMemory(memory, room) + reminder
     }
 
     /**
