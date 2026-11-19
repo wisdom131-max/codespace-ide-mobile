@@ -1217,6 +1217,16 @@ class ChatSession internal constructor(
     }
 
     /** P0.6: a visible, honest note from outside the turn loop (handoff refusal, recovery). */
+    /**
+     * P0.4 (2026-11-19): ONE idempotent way to end a stream. Every terminal path (completion,
+     * provider error, Stop, replacement, handoff) goes through it, so no path can leave the flag
+     * set and lock the composer on Stop for the rest of the session.
+     */
+    private fun endStream() {
+        continuationInFlight = false
+        if (ui.value.streaming) ui.value = ui.value.copy(streaming = false)
+    }
+
     internal fun appendNotice(text: String) {
         appendRow(ChatRowModel.InfoNote(text))
     }
@@ -1344,7 +1354,7 @@ class ChatSession internal constructor(
             is EngineEvent.Failed -> {
                 // The continuation never produced a Completed event; without this the flag would
                 // stay set and Continue would be refused for the rest of the session.
-                continuationInFlight = false
+                endStream()
                 _continuationUi.value = ContinuationState.CONTINUATION_FAILED
                 val err = ev.error
                 // WP6: OPT-IN key failover on auth/credits rejection - visible,
