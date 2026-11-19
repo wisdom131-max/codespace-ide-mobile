@@ -166,6 +166,13 @@ private fun ChatBody(
         // M5: memory reads/writes are attributed to this conversation, so "current session only"
         // has a session to be scoped to.
         com.codespace.ide.agent.MemoryScopeState.activeSessionId = activeId
+        // STAGE 4: a fact Copilot saves is dated from THIS conversation's transcript header, never
+        // from the fact's own save time.
+        com.codespace.ide.agent.facts.FactSourceContext.claim(
+            conversationId = activeId,
+            projectId = projectId,
+            transcriptRoot = java.io.File(localCtx.filesDir, "chat"),
+        )
         // Project 3.2: a task plan belongs to the conversation that made it, so two sessions cannot
         // overwrite each other's plan and both look finished.
         com.codespace.ide.agent.goal.PlanState.claim(activeId)

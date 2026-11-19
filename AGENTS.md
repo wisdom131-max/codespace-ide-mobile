@@ -7674,3 +7674,27 @@ identity forward from the file it is replacing and writes the conversation start
 it. Files: ChatTranscript.kt, ChatTranscriptStore.kt, TranscriptV3Test.kt (new, 17 tests),
 FinishRestorationTest.kt (alien header now `v9`, since v3 is ours). Full app suite 3603 tests,
 4 skipped, 0 failures. NOT device-tested. CI not yet polled (batch policy).
+
+---
+
+### [2026-11-19 22:05 WAT] [MEMORY] Stage 4 - fact timestamps and source linking
+
+Facts now carry temporal provenance: `conversationStartedAt`, `sourceConversationAt`,
+`sourceMessageId`, `sourceMessageAt`, `supersededAt` (field only, Stage 5 writes it) and
+`timeSource` (TRANSCRIPT_VERIFIED / USER_STATED / UNKNOWN). New `FactProvenance` +
+`FactSourceContext` resolve the conversation date from the Transcript v3 `#s` header, never from
+`createdAt`, `updatedAt`, "now", a rewrite time or a file mtime. Rules: a v1/v2 file has no header,
+so its date stays 0/UNKNOWN; a synthetic `legacy-` id can never become verified source identity; a
+message id that is not in the transcript is not identity; a legacy zero timestamp stays 0.
+`FactSourceContext` is claimed by the chat panel (same place as MemoryScopeState) and read by
+`MemoryTools.save`, so a Copilot save is dated from the conversation that asked for it. Manual
+facts stay UNLINKED (NONE), not linked to whatever conversation is open. Updates never rewrite
+provenance: an existing link always wins, a missing one may be adopted. JSON writes only real
+values, so an unknown date is absent from the file and decodes back as UNKNOWN.
+Files: Fact.kt, FactProvenance.kt (new), FactsStore.kt, MemoryTools.kt, ChatPanelScreen.kt,
+FactProvenanceTest.kt (new, 16 tests). Facts package 110 tests, full app suite 3619 tests,
+4 skipped, 0 failures. NOT device-tested. CI not yet polled (batch policy).
+
+Known limitation: `sourceMessageAt` is first-observed persistence time, not an exact send event,
+and the `save_memory` tool call does not know which message caused it, so production saves leave
+`sourceMessageId` unset until Stage 7's extraction pipeline supplies it. Nothing here invents one.

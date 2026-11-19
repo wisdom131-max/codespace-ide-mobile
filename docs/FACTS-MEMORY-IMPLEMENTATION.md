@@ -15,7 +15,7 @@ Status vocabulary:
 | 1 | Reactive Facts panel + date labels + history toggle | Implemented, Unit-tested | (see AGENTS.md) | 8 (MemoryEventsTest 5, FactDatesTest 3) | pending |
 | 2 | Category inference precedence | Implemented, Unit-tested | (see AGENTS.md) | 9 (CategoryInferenceTest) | pending |
 | 3 | Transcript v3 (ids, send time, header, record types) | Implemented, Unit-tested | (see AGENTS.md) | 17 (TranscriptV3Test) | pending |
-| 4 | Fact timestamps + timeSource + source conversation link | not started | | | |
+| 4 | Fact timestamps + timeSource + source conversation link | Implemented, Unit-tested | (see AGENTS.md) | 16 (FactProvenanceTest) | pending |
 | 5 | Supersession wiring | not started | | | |
 | 6 | Chronological retrieval intents | not started | | | |
 | 7 | Automatic extraction + settings + idempotency | not started | | | |
@@ -66,3 +66,25 @@ rather than silently empty; a missing trailing newline is not a torn write.
 
 **Not in scope here:** Stage 4 fact linking, Stage 10 Thinking Tree production of steps, and the
 Thinking Tree presentation/collapsed height (still separate outstanding work).
+
+## Stage 4 — Fact timestamps and source linking (implemented)
+
+**Fields:** `conversationStartedAt`, `sourceConversationAt`, `sourceMessageId`, `sourceMessageAt`,
+`supersededAt` (reserved for Stage 5), `timeSource`. `sourceConversationId` reused, not duplicated.
+
+**Trust rules:**
+- `TRANSCRIPT_VERIFIED` only when a v3 `#s` header supplied the conversation date.
+- `USER_STATED` reserved for a date the user states explicitly; never inferred from message text.
+- `UNKNOWN` otherwise, with the date left 0 and omitted from JSON.
+- `legacy-` ids and ids not present in the transcript are never verified source identity.
+- A legacy `sentAtMs = 0` stays 0. It is never stamped with the save time.
+
+**Production path:** chat panel claims `FactSourceContext` (conversation id, project id, transcript
+root `filesDir/chat`); `MemoryTools.save` resolves provenance there and passes it through
+`FactsStore.saveTo` into the fact. Manual screen saves pass `NONE` and stay unlinked.
+
+**Migration:** absent keys decode to 0/null/UNKNOWN; existing provenance is never overwritten by a
+migration; a blocked write reports refusal or write failure, never "Saved".
+
+**Limitations:** first-observed vs exact send time; `sourceMessageId` unset for tool-initiated
+saves until Stage 7 supplies the originating message.

@@ -4,6 +4,8 @@ import android.content.Context
 import com.codespace.ide.agent.facts.FactCategory
 import com.codespace.ide.agent.facts.FactScope
 import com.codespace.ide.agent.facts.FactSource
+import com.codespace.ide.agent.facts.FactProvenance
+import com.codespace.ide.agent.facts.FactSourceContext
 import com.codespace.ide.agent.facts.FactsStore
 import org.json.JSONObject
 import java.io.File
@@ -31,7 +33,8 @@ object MemoryTools {
         memoryScope: MemoryScope,
         sessionId: String,
         projectId: String?,
-    ): String = saveIn(FactsStore.memoryDir(context), args, memoryScope, sessionId, projectId)
+        provenance: FactProvenance = FactSourceContext.current(),
+    ): String = saveIn(FactsStore.memoryDir(context), args, memoryScope, sessionId, projectId, provenance)
 
     /** Directory form: the shipped implementation, testable without an Android Context. */
     fun saveIn(
@@ -40,6 +43,7 @@ object MemoryTools {
         memoryScope: MemoryScope,
         sessionId: String,
         projectId: String?,
+        provenance: FactProvenance = FactProvenance.NONE,
     ): String {
         val value = args.optString("value").trim()
         if (value.isEmpty()) {
@@ -65,6 +69,7 @@ object MemoryTools {
                 source = FactSource.EXPLICIT_USER,
                 citation = citation,
                 sessionOwner = owner,
+                provenance = provenance,
             )) {
                 is FactsStore.SaveResult.Saved -> savedLine(r, scope, category)
                 is FactsStore.SaveResult.Refused -> "Memory not saved: " + r.reason

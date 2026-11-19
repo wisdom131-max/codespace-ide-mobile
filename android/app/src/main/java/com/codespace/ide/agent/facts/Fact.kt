@@ -36,6 +36,17 @@ data class Fact(
     val sessionOwner: String = "",
     /** When [status] is SUPERSEDED, the fact that replaced this one. */
     val supersededBy: String? = null,
+    /**
+     * STAGE 4: temporal provenance. All five are 0/null when unknown, and unknown never gets
+     * back-filled from createdAt, updatedAt, "now" or a file timestamp.
+     */
+    val conversationStartedAt: Long = 0L,
+    val sourceConversationAt: Long = 0L,
+    val sourceMessageId: String? = null,
+    val sourceMessageAt: Long = 0L,
+    /** STAGE 5 writes this. Stage 4 only carries the field. */
+    val supersededAt: Long = 0L,
+    val timeSource: TimeSource = TimeSource.UNKNOWN,
     /** Facts this one visibly disagrees with, both sides recorded. */
     val conflicts: List<String> = emptyList(),
 ) {

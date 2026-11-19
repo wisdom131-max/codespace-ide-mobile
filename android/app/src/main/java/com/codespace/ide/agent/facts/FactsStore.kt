@@ -96,6 +96,21 @@ object FactsStore {
         if (!f.legacyKey.isNullOrBlank()) o.put("legacyKey", f.legacyKey)
         if (f.sessionOwner.isNotBlank()) o.put("sessionOwner", f.sessionOwner)
         if (!f.supersededBy.isNullOrBlank()) o.put("supersededBy", f.supersededBy)
+        // STAGE 4: only real values are written; an unknown date stays absent from the file.
+        if (f.conversationStartedAt > 0L) o.put("conversationStartedAt", f.conversationStartedAt)
+        if (f.sourceConversationAt > 0L) o.put("sourceConversationAt", f.sourceConversationAt)
+        if (!f.sourceMessageId.isNullOrBlank()) o.put("sourceMessageId", f.sourceMessageId)
+        if (f.sourceMessageAt > 0L) o.put("sourceMessageAt", f.sourceMessageAt)
+        if (f.supersededAt > 0L) o.put("supersededAt", f.supersededAt)
+        if (f.timeSource != TimeSource.UNKNOWN) o.put("timeSource", f.timeSource.name)
+        // STAGE 4: only real values are written. An unknown date stays absent from the file, which
+        // is what makes it impossible for a later reader to mistake it for a known one.
+        if (f.conversationStartedAt > 0L) o.put("conversationStartedAt", f.conversationStartedAt)
+        if (f.sourceConversationAt > 0L) o.put("sourceConversationAt", f.sourceConversationAt)
+        if (!f.sourceMessageId.isNullOrBlank()) o.put("sourceMessageId", f.sourceMessageId)
+        if (f.sourceMessageAt > 0L) o.put("sourceMessageAt", f.sourceMessageAt)
+        if (f.supersededAt > 0L) o.put("supersededAt", f.supersededAt)
+        if (f.timeSource != TimeSource.UNKNOWN) o.put("timeSource", f.timeSource.name)
         if (f.conflicts.isNotEmpty()) {
             val c = JSONArray()
             for (id in f.conflicts) c.put(id)
@@ -129,6 +144,13 @@ object FactsStore {
             confidence = FactConfidence.parse(o.optString("confidence")),
             status = FactStatus.parse(o.optString("status")),
             createdAt = o.optLong("createdAt", 0L),
+            // STAGE 4: absent keys decode to 0/null = UNKNOWN. A missing date is never inferred.
+            conversationStartedAt = o.optLong("conversationStartedAt", 0L),
+            sourceConversationAt = o.optLong("sourceConversationAt", 0L),
+            sourceMessageId = o.optString("sourceMessageId", "").ifBlank { null },
+            sourceMessageAt = o.optLong("sourceMessageAt", 0L),
+            supersededAt = o.optLong("supersededAt", 0L),
+            timeSource = TimeSource.parse(o.optString("timeSource", "")),
             updatedAt = o.optLong("updatedAt", 0L),
             lastUsedAt = o.optLong("lastUsedAt", 0L),
             sourceConversationId = o.optString("sourceConversationId", "").ifBlank { null },
@@ -255,6 +277,7 @@ object FactsStore {
         sessionOwner: String = "",
         confidence: FactConfidence? = null,
         now: Long = System.currentTimeMillis(),
+        provenance: FactProvenance = FactProvenance.NONE,
     ): SaveResult {
         val text = content.trim().replace(Regex("\\s+"), " ")
         if (text.isEmpty()) return SaveResult.Refused("A fact needs some content.")
@@ -278,7 +301,8 @@ object FactsStore {
         }
         val target = match.targetId?.let { id -> all.firstOrNull { it.id == id } }
         val applied = applySave(all, text, scope, projectId, cat, source, conf,
-            citation, conversationId, sessionOwner, now, match, target)
+            citation, conversationId, sessionOwner, now, match, target,
+            provenance = provenance)
         if (applied.facts.size > MAX_FACTS) return SaveResult.Full
         if (!writeTo(d, applied.facts)) return SaveResult.WriteFailed
         // STAGE 1: publish only after the write landed, so the panel cannot show a phantom save.
@@ -310,11 +334,22 @@ object FactsStore {
         now: Long,
         match: FactMatch,
         target: Fact?,
+        provenance: FactProvenance = FactProvenance.NONE,
     ): Applied {
         if (target != null && match.decision == FactDecision.DUPLICATE) {
             // Same statement: refresh provenance and usage, keep the id and the creation time.
             val stronger = target.copy(
                 updatedAt = now,
+                // STAGE 4: an update never rewrites history. A verified link is adopted only when
+                // the fact had none; existing provenance always wins.
+                conversationStartedAt = target.conversationStartedAt.takeIf { it > 0L }
+                    ?: provenance.conversationStartedAt,
+                sourceConversationAt = target.sourceConversationAt.takeIf { it > 0L }
+                    ?: provenance.sourceConversationAt,
+                sourceMessageId = target.sourceMessageId ?: provenance.sourceMessageId,
+                sourceMessageAt = target.sourceMessageAt.takeIf { it > 0L } ?: provenance.sourceMessageAt,
+                timeSource = if (target.timeSource != TimeSource.UNKNOWN) target.timeSource
+                    else provenance.timeSource,
                 citation = citation ?: target.citation,
                 sourceConversationId = conversationId ?: target.sourceConversationId,
                 // An explicit statement upgrades what was only inferred before, never the reverse.
@@ -341,7 +376,8 @@ object FactsStore {
         if (target != null && match.decision == FactDecision.CONFLICT) {
             // Both sides stay. Neither is "the truth", and the prompt says so.
             val fresh = newFact(text, scope, projectId, cat, source, conf, now, citation,
-                conversationId, sessionOwner).copy(
+                conversationId, sessionOwner,
+                provenance = provenance).copy(
                 status = FactStatus.CONFLICT,
                 conflicts = listOf(target.id),
             )
@@ -354,7 +390,8 @@ object FactsStore {
                 fresh, FactDecision.CONFLICT)
         }
         val fresh = newFact(text, scope, projectId, cat, source, conf, now, citation,
-            conversationId, sessionOwner)
+            conversationId, sessionOwner,
+            provenance = provenance)
         return Applied(all + fresh, fresh, FactDecision.NEW)
     }
 
@@ -369,6 +406,7 @@ object FactsStore {
         citation: String?,
         conversationId: String?,
         sessionOwner: String,
+        provenance: FactProvenance = FactProvenance.NONE,
     ): Fact = Fact(
         id = newId(),
         content = text,
@@ -380,7 +418,14 @@ object FactsStore {
         status = FactStatus.ACTIVE,
         createdAt = now,
         updatedAt = now,
-        sourceConversationId = conversationId,
+        // STAGE 4: the conversation a fact came from is the transcript's own id when the caller has
+        // one, and the provenance block carries the dates. No date is filled in from `now`.
+        sourceConversationId = provenance.sourceConversationId ?: conversationId,
+        conversationStartedAt = provenance.conversationStartedAt,
+        sourceConversationAt = provenance.sourceConversationAt,
+        sourceMessageId = provenance.sourceMessageId,
+        sourceMessageAt = provenance.sourceMessageAt,
+        timeSource = provenance.timeSource,
         citation = citation,
         sessionOwner = sessionOwner,
     )
