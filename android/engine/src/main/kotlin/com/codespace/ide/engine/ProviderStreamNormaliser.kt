@@ -204,8 +204,16 @@ class ProviderStreamNormaliser(private val provider: StreamProvider) {
             "stop" -> out.addAll(end(StreamEnd.NATURAL))
             "length" -> out.addAll(end(StreamEnd.OUTPUT_LIMIT))
             "tool_calls", "function_call" -> {
+                // P0.5 (2026-11-19): the device diagnostic showed "end reason: tool_calls" on a
+                // request with ZERO tools offered. A finish reason that announces calls the body
+                // never contained is an inconsistent response, not a successful tool handoff.
+                val hadCalls = pending.isNotEmpty() || startedIds.isNotEmpty()
                 closePending(out)
-                out.addAll(end(StreamEnd.TOOL_CALLS))
+                if (hadCalls) out.addAll(end(StreamEnd.TOOL_CALLS))
+                else out.addAll(end(
+                    StreamEnd.INCOMPLETE_TOOL_CALL,
+                    "the provider reported tool calls but sent none",
+                ))
             }
             "content_filter" -> out.addAll(end(StreamEnd.PROVIDER_ERROR, "the provider withheld this answer"))
             else -> Unit

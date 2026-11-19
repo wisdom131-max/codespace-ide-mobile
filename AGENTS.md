@@ -65,6 +65,21 @@ A successor session could be created and look informed while carrying nothing. F
 summary is validated (blank or under 40 chars is a failed handoff) before it is sent; the successor
 gets a visible note and the caller is told the context was empty. 3 tests. NOT device-tested.
 
+### [2026-11-19 18:25 WAT] [P0.4] One idempotent stream terminator
+
+The Stop button could stay stuck because terminal paths each cleared `streaming` themselves.
+Fix: `ChatSession.endStream()` (idempotent: clears `streaming`, clears `continuationInFlight`) is
+the single terminator, now used by the provider-error path; completion, Stop and replacement paths
+already call the same clear. NOT device-tested; no dedicated unit test yet (honest gap).
+
+### [2026-11-19 18:25 WAT] [P0.5] tool_calls with zero calls is inconsistent
+
+Device diagnostic showed `end reason: tool_calls` with `tools offered: 0`. Fix: the normaliser
+counts parsed calls; a finish reason that announces calls the body never contained now ends as
+`INCOMPLETE_TOOL_CALL` ("the provider reported tool calls but sent none") instead of a successful
+handoff. A plain `stop` still ends NATURAL, so Continue is not offered for a finished answer.
+3 tests (engine 288 total). NOT device-tested.
+
 ## CURRENT STATE
 
 | Field | Value |

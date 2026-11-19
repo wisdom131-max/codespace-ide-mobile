@@ -106,7 +106,6 @@ class OpenAIAdapterTest {
         assertTrue(a.isDoneSentinel("[DONE]"))
         assertFalse(a.isDoneSentinel("{\"done\":true}"))
     }
-}
 
 /** WP8: image_url data-URL parts; inline PDF refused before the request. */
 class OpenAIAttachmentPayloadTest {
@@ -191,4 +190,33 @@ class OpenAIAttachmentPayloadTest {
         org.junit.Assert.assertTrue(body.contains("\"content\":["))
         org.junit.Assert.assertTrue(body.contains("image_url"))
     }
+
+    // P0.5 (2026-11-19): the device log showed "end reason: tool_calls" with zero tools offered.
+    @org.junit.Test
+    fun `tool_calls with no calls is inconsistent, not a handoff`() {
+        val body = "{\"choices\":[{\"delta\":{\"content\":\"done\"},\"finish_reason\":\"tool_calls\"}]}"
+        val out = ProviderStreamNormaliser(StreamProvider.OPENAI).feed(body)
+        val ends = out.filterIsInstance<StreamEvent.Ended>()
+        org.junit.Assert.assertEquals(1, ends.size)
+        org.junit.Assert.assertEquals(StreamEnd.INCOMPLETE_TOOL_CALL, ends.first().reason)
+    }
+
+    @org.junit.Test
+    fun `a real tool call still ends as tool_calls`() {
+        val body = "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\"," +
+            "\"function\":{\"name\":\"read_file\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}"
+        val out = ProviderStreamNormaliser(StreamProvider.OPENAI).feed(body)
+        val ends = out.filterIsInstance<StreamEvent.Ended>()
+        org.junit.Assert.assertEquals(1, ends.size)
+        org.junit.Assert.assertEquals(StreamEnd.TOOL_CALLS, ends.first().reason)
+    }
+
+    @org.junit.Test
+    fun `a plain stop still ends naturally`() {
+        val body = "{\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}"
+        val out = ProviderStreamNormaliser(StreamProvider.OPENAI).feed(body)
+        val ends = out.filterIsInstance<StreamEvent.Ended>()
+        org.junit.Assert.assertEquals(StreamEnd.NATURAL, ends.first().reason)
+    }
+}
 }
