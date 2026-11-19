@@ -80,6 +80,16 @@ counts parsed calls; a finish reason that announces calls the body never contain
 handoff. A plain `stop` still ends NATURAL, so Continue is not offered for a finished answer.
 3 tests (engine 288 total). NOT device-tested.
 
+### [2026-11-19 18:55 WAT] [P1] Transcript trust phase
+
+P1.1/P1.2: no code change needed - P0.5 already made a natural stop end NATURAL and only an output
+limit continuable; the verdict-to-UI path is now pinned by 6 tests, and the Continue tap guard by 3.
+P1.3: real defect - `sendAnyway()` could re-enter on a double tap; it now claims an atomic flag
+before the retry and releases it when the turn is handed over.
+P1.4: Thinking Tree identity pinned (same call = same synthetic id, distinct calls never collide).
+P1.5: the pre-intent link gate is pinned (https opens; bare, empty, javascript: and control-char
+URLs do not). Device tap verification still PENDING - no APK built.
+
 ## CURRENT STATE
 
 | Field | Value |
