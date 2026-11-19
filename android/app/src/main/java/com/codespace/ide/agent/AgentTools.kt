@@ -1591,6 +1591,9 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     private fun writeFile(path: String, content: String, context: android.content.Context): String {
+        // P0.3: verify the destination folder before claiming a write happened.
+        com.codespace.ide.chat.panel.WorkspaceContext.verifyUsable(java.io.File(path).parentFile)
+            ?.let { return "Not written: " + it }
         val resolvedPath = resolveToolPath(context, path)
         // V0-GATE FIX (2026-10-05): the DIRECT (non-agent) write path also logs to
         // the chat channel now — agent-mode stages go through PendingChangesStore,

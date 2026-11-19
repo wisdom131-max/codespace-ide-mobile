@@ -71,6 +71,19 @@ internal object WorkspaceContext {
         "pem", "key", "keystore", "jks", "pfx", "p12", "ppk", "asc", "gpg",
     )
 
+    /**
+     * P0.3 (2026-11-19): is this root usable RIGHT NOW? A workspace can be deleted, unmounted or
+     * made read-only after it was selected, and the old path reported success before finding out.
+     * Null means usable; otherwise the reason, in plain words.
+     */
+    fun verifyUsable(root: java.io.File?): String? {
+        if (root == null) return "no workspace folder is selected"
+        if (!root.exists()) return "the workspace folder does not exist any more: " + root.path
+        if (!root.isDirectory) return "the workspace path is not a folder: " + root.path
+        if (!root.canWrite()) return "the workspace folder is not writable: " + root.path
+        return null
+    }
+
     fun isSensitiveName(name: String): Boolean {
         val n = name.trim().lowercase()
         if (n.isEmpty()) return false

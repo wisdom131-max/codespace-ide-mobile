@@ -1216,6 +1216,11 @@ class ChatSession internal constructor(
         }
     }
 
+    /** P0.6: a visible, honest note from outside the turn loop (handoff refusal, recovery). */
+    internal fun appendNotice(text: String) {
+        appendRow(ChatRowModel.InfoNote(text))
+    }
+
     private fun appendRow(row: ChatRowModel) {
         ui.value = ui.value.copy(rows = ui.value.rows + listOf(row))
     }

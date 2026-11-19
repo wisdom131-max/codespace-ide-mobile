@@ -63,7 +63,17 @@ internal fun startHandoffSession(
         projectId, created.meta.id,
         com.codespace.ide.chat.session.SessionLineage.label(successor),
     )
-    manager.session(projectId, created.meta.id)?.send(handoff.render())
+    // P0.6 (2026-11-19): never mint a successor that only LOOKS informed. An empty or trivial
+    // summary is a failed handoff and is reported, not sent as if it were context.
+    val summaryPayload = handoff.render()
+    if (summaryPayload.isBlank() || summaryPayload.trim().length < 40) {
+        manager.session(projectId, created.meta.id)?.appendNotice(
+            "Continuation started WITHOUT a usable summary: the parent session had nothing worth " +
+                "carrying. Ask again here, or let the parent finish a turn first.",
+        )
+        return "Continued, but the summary was empty - this session starts without the parent context."
+    }
+    manager.session(projectId, created.meta.id)?.send(summaryPayload)
     // PROJECT SEVEN 7.7: tell the owner WHAT was carried, counted from the summary the successor
     // actually received, instead of a bare "continued". Retention-on-disk is checked, not assumed.
     val carried = CopilotPresentation.carriedContext(

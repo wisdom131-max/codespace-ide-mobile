@@ -52,6 +52,19 @@ report). Fix: `ChatSession.modeSource` (last ctor param, null-safe) supplies the
 `sendCore` refreshes `mode` from it at the turn boundary; a failed save now reverts the chip instead
 of leaving the two disagreeing. 3 tests. NOT device-tested.
 
+### [2026-11-19 18:10 WAT] [P0.3] Workspace verified before success
+
+`write_file` claimed a write and only later discovered the folder was gone or read-only. Fix:
+`WorkspaceContext.verifyUsable(root)` (missing / not-a-folder / not-writable, with the path in the
+reason) is consulted before the write, and the tool returns "Not written: <reason>" instead of a
+success. 4 tests. NOT device-tested.
+
+### [2026-11-19 18:10 WAT] [P0.6] Handoff refuses a blank summary
+
+A successor session could be created and look informed while carrying nothing. Fix: the rendered
+summary is validated (blank or under 40 chars is a failed handoff) before it is sent; the successor
+gets a visible note and the caller is told the context was empty. 3 tests. NOT device-tested.
+
 ## CURRENT STATE
 
 | Field | Value |
