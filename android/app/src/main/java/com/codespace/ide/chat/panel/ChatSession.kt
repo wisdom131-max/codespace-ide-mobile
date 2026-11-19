@@ -278,6 +278,9 @@ class ChatSession internal constructor(
      */
     private fun exchangeId(idx: Int): String = "wire-" + turnSerial + "-" + idx
 
+    /** P1.3: true while a confirmed over-budget retry owns the turn. */
+    private val confirmInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
+
     @Volatile internal var lastFinish: com.codespace.ide.engine.FinishReason =
         com.codespace.ide.engine.FinishReason.UNKNOWN
 
@@ -1128,9 +1131,20 @@ class ChatSession internal constructor(
         return base.copy(contextTokens = userTok)
     }
 
+    /**
+     * P1.3 (2026-11-19): ONE confirmation, at most one send. The flag is claimed synchronously
+     * before the retry starts, so a double tap cannot re-enter and post the message twice.
+     */
     fun sendAnyway() {
         val t = ui.value.lastUserText
-        if (t.isNotBlank() && !ui.value.streaming) sendCore(t, confirmOverBudget = true, reuseStaged = true)
+        if (t.isBlank() || ui.value.streaming) return
+        if (!confirmInFlight.compareAndSet(false, true)) return
+        try {
+            sendCore(t, confirmOverBudget = true, reuseStaged = true)
+        } finally {
+            // Released once the turn is handed over; the streaming guard covers the rest.
+            confirmInFlight.set(false)
+        }
     }
 
     /**
