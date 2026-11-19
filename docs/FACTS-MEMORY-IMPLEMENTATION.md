@@ -13,7 +13,7 @@ Status vocabulary:
 | Stage | Scope | Status | Commit | Tests | CI |
 |---|---|---|---|---|---|
 | 1 | Reactive Facts panel + date labels + history toggle | Implemented, Unit-tested | (see AGENTS.md) | 8 (MemoryEventsTest 5, FactDatesTest 3) | pending |
-| 2 | Category inference precedence | not started | | | |
+| 2 | Category inference precedence | Implemented, Unit-tested | (see AGENTS.md) | 9 (CategoryInferenceTest) | pending |
 | 3 | Transcript v3 (ids, send time, header, record types) | not started | | | |
 | 4 | Fact timestamps + timeSource + source conversation link | not started | | | |
 | 5 | Supersession wiring | not started | | | |

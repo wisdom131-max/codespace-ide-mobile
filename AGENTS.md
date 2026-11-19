@@ -7641,3 +7641,15 @@ counter (the old code did). New `FactDates` renders "Saved"/"Updated"/"Last used
 history" filter hides superseded facts by default (records kept). Files: MemoryEvents.kt (new),
 FactDates.kt (new), FactsStore.kt, FactsScreen.kt, MemoryEventsTest.kt (new, 8 tests).
 Focused: 8/8 pass. NOT device-tested.
+
+---
+
+### [2026-11-19 20:12 WAT] [MEMORY] Stage 2 - category inference precedence
+
+`FactCategory.infer()` ordered CONSTRAINT last, so "the build must not exceed 64KB" was filed as
+BUILD and "tests must never hit the network" as TEST. Order is now by cost of error: CONSTRAINT
+(plus "must never", "never exceed", "at most", "no more than"), then PREFERENCE, WORKFLOW,
+CONVENTION, ARCHITECTURE, BUILD, TEST, GENERAL. CONVENTION now precedes TEST, so "test naming uses
+snake_case" is a convention. No stored category value changes; no schema change.
+Files: Fact.kt, CategoryInferenceTest.kt (new, 9 tests). Focused: 108 tests in the facts package,
+0 failures. NOT device-tested.

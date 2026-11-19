@@ -97,18 +97,30 @@ enum class FactCategory(val id: String, val label: String) {
         fun parse(raw: String?): FactCategory =
             entries.firstOrNull { it.id == raw?.trim()?.lowercase() } ?: GENERAL
 
-        /** Best guess from the statement itself, used only when the caller gave no category. */
+        /**
+         * Best guess from the statement itself, used only when the caller gave no category.
+         *
+         * STAGE 2 (2026-11-19): the order IS the classifier, so it is now ordered by how much a
+         * mistake costs rather than by how it reads:
+         *  - CONSTRAINT first. It was last, so "the build must not exceed 64KB" was filed as BUILD
+         *    and "test must never hit the network" as TEST. A missed hard limit is the most
+         *    expensive misclassification there is.
+         *  - CONVENTION before TEST, so "test naming uses snake_case" is a convention, not a test.
+         *  - BUILD/TEST keep their own words, so a literal command still lands where it belongs.
+         * PREFERENCE stays early because "never use X" is an explicit user preference.
+         */
         fun infer(content: String): FactCategory {
             val t = content.lowercase()
             fun has(vararg words: String) = words.any { t.contains(it) }
             return when {
+                has("must not", "must never", "cannot", "never exceed", "at most", "no more than",
+                    "limit", "constraint", "quota", "64kb", "cap") -> CONSTRAINT
                 has("prefer", "always use", "never use", "i like", "style", "tone", "concise", "format") -> PREFERENCE
                 has("workflow", "run ", "then ", "pipeline", "before you", "after you") -> WORKFLOW
                 has("convention", "naming", "indent", "lint", "style guide", "camelcase", "snake_case") -> CONVENTION
                 has("architecture", "module", "layer", "pattern", "mvvm", "repository", "package") -> ARCHITECTURE
                 has("gradle", "build", "compile", "assemble", "apk", "cmake", "npm run build") -> BUILD
                 has("test", "spec", "junit", "pytest", "coverage", "regression") -> TEST
-                has("must not", "cannot", "limit", "constraint", "quota", "64kb", "cap") -> CONSTRAINT
                 else -> GENERAL
             }
         }
