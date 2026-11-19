@@ -7628,3 +7628,16 @@ in the panel header. The one untrue thing was the orb's SPEAKING energy, which w
 between words setting the decay. Word-boundary driven, not waveform driven, and labelled as such.
 App 3,488 tests 0 failures (4 skipped), engine 278, compile and D8 green. PARTIAL; not device-verified.
 
+---
+
+### [2026-11-19 20:05 WAT] [MEMORY] Stage 1 - reactive Facts panel, honest dates, history filter
+
+Owner authorized all 11 Facts & Memory stages (19 Nov). Stage 1 only:
+`MemoryEvents.revision` (StateFlow) is published by `FactsStore` ONLY after a write succeeds
+(saveTo, updateIn, deleteIn, supersedeIn); `FactsScreen` collects it instead of a private counter,
+so a Copilot save now reaches the panel without a recreate. A failed delete no longer bumps the
+counter (the old code did). New `FactDates` renders "Saved"/"Updated"/"Last used" and prints
+"Conversation date: Not recorded" rather than substituting `createdAt`. New "Current only / With
+history" filter hides superseded facts by default (records kept). Files: MemoryEvents.kt (new),
+FactDates.kt (new), FactsStore.kt, FactsScreen.kt, MemoryEventsTest.kt (new, 8 tests).
+Focused: 8/8 pass. NOT device-tested.

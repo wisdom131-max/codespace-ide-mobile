@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,7 +43,9 @@ import com.codespace.ide.agent.facts.Fact
 import com.codespace.ide.agent.facts.FactCategory
 import com.codespace.ide.agent.facts.FactScope
 import com.codespace.ide.agent.facts.FactStatus
+import com.codespace.ide.agent.facts.FactDates
 import com.codespace.ide.agent.facts.FactText
+import com.codespace.ide.agent.facts.MemoryEvents
 import com.codespace.ide.agent.facts.FactsStore
 
 /**
@@ -75,9 +78,13 @@ fun FactsScreen(
     val warn = Color(0xFFFFB74D)
     val danger = Color(0xFFEF5350)
 
-    // A reload counter, not a mutable fact list: every mutation re-reads the store, so the screen
-    // is always showing what is actually on disk.
-    var revision by remember { mutableStateOf(0) }
+    // STAGE 1: the reload signal belongs to the STORE, not to this screen. A Copilot save, a panel
+    // edit and a delete all publish the same event, and only a write that actually landed publishes
+    // at all - so this screen can never show a fact that is not on disk.
+    val revision by MemoryEvents.revision.collectAsState()
+    // STAGE 1: history is opt-in. Superseded records stay on disk and stay reachable; they are
+    // simply not shown as if they were current instructions.
+    var showHistory by remember { mutableStateOf(false) }
     val facts = remember(revision) { FactsStore.load(context) }
     var query by remember { mutableStateOf("") }
     var scopeFilter by remember { mutableStateOf<FactScope?>(null) }
@@ -89,10 +96,11 @@ fun FactsScreen(
 
     // Project facts from OTHER projects are not merely hidden behind a filter: they are not loaded
     // into this screen at all, so they cannot be edited into this project by mistake.
-    val visible = remember(revision, query, scopeFilter, categoryFilter, projectId) {
+    val visible = remember(revision, query, scopeFilter, categoryFilter, projectId, showHistory) {
         facts.filter { f ->
             (scopeFilter == null || f.scope == scopeFilter) &&
                 (categoryFilter == null || f.category == categoryFilter) &&
+                (showHistory || f.status != FactStatus.SUPERSEDED) &&
                 (f.scope == FactScope.USER || f.projectId == projectId) &&
                 (query.isBlank() || matchesQuery(f, query))
         }
@@ -162,6 +170,12 @@ fun FactsScreen(
                 categoryFilter = if (idx == 0) null else FactCategory.entries[idx - 1]
             },
         )
+        FilterRow(
+            labels = listOf("Current only", "With history"),
+            selected = if (showHistory) 1 else 0,
+            accent = accent, surface = panel, textPri = textPri, textSec = textSec,
+            onSelect = { idx -> showHistory = idx == 1 },
+        )
 
         if (message.isNotBlank()) {
             Text(
@@ -201,7 +215,6 @@ fun FactsScreen(
                                 scope = fact.scope,
                                 projectId = fact.projectId,
                             ) ?: "Conflict cleared: this fact is now the wording you confirmed."
-                            revision++
                         },
                     )
                 }
@@ -238,7 +251,6 @@ fun FactsScreen(
                             com.codespace.ide.agent.facts.FactDecision.NEW -> "Fact saved."
                         }
                         adding = false
-                        revision++
                     }
                     is FactsStore.SaveResult.Refused -> message = r.reason
                     FactsStore.SaveResult.Full -> message = "Memory is full (500 facts)."
@@ -269,7 +281,6 @@ fun FactsScreen(
                 } else {
                     message = "Fact updated."
                     editing = null
-                    revision++
                 }
             },
         )
@@ -295,7 +306,6 @@ fun FactsScreen(
                     val ok = FactsStore.delete(context, fact.id)
                     message = if (ok) "Fact deleted." else "The delete write failed; nothing changed."
                     confirmDelete = null
-                    revision++
                 }) { Text("Delete", color = danger, fontSize = 13.sp) }
             },
             dismissButton = {
@@ -448,6 +458,24 @@ private fun FactCard(
             Spacer(Modifier.height(4.dp))
             Text(prov, color = textSec, fontSize = 10.sp)
         }
+        // STAGE 1: every date says WHICH date it is. The conversation date is read from the
+        // transcript link (stage 4); until that exists it is honestly "Not recorded" and the
+        // memory's own creation time is never printed in its place.
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Saved " + FactDates.local(fact.createdAt) +
+                if (FactDates.known(fact.updatedAt) && fact.updatedAt != fact.createdAt) {
+                    "  \u00b7  Updated " + FactDates.local(fact.updatedAt)
+                } else "",
+            color = textSec, fontSize = 10.sp,
+        )
+        Text(
+            "Conversation date: " + FactDates.conversation(null) +
+                if (FactDates.known(fact.lastUsedAt)) {
+                    "  \u00b7  Last used " + FactDates.local(fact.lastUsedAt)
+                } else "",
+            color = textSec, fontSize = 10.sp,
+        )
         if (projectName != null) {
             Text(projectName, color = textSec, fontSize = 10.sp)
         }

@@ -281,6 +281,8 @@ object FactsStore {
             citation, conversationId, sessionOwner, now, match, target)
         if (applied.facts.size > MAX_FACTS) return SaveResult.Full
         if (!writeTo(d, applied.facts)) return SaveResult.WriteFailed
+        // STAGE 1: publish only after the write landed, so the panel cannot show a phantom save.
+        MemoryEvents.publish()
         return SaveResult.Saved(applied.fact, applied.decision)
     }
 
@@ -426,7 +428,9 @@ object FactsStore {
             conflicts = if (target.status == FactStatus.CONFLICT) emptyList() else target.conflicts,
         )
         val updated = all.map { if (it.id == id) edited else it }
-        return if (writeTo(d, updated)) null else "The write failed; the fact is unchanged."
+        if (!writeTo(d, updated)) return "The write failed; the fact is unchanged."
+        MemoryEvents.publish()
+        return null
     }
 
     fun delete(context: Context, id: String): Boolean = deleteIn(memoryDir(context), id)
@@ -442,7 +446,9 @@ object FactsStore {
                 else -> f
             }
         }
-        return writeTo(d, remaining)
+        if (!writeTo(d, remaining)) return false
+        MemoryEvents.publish()
+        return true
     }
 
     fun deleteAll(context: Context, scope: FactScope, projectId: String?): Boolean {
@@ -464,7 +470,9 @@ object FactsStore {
             if (it.id == oldId) it.copy(status = FactStatus.SUPERSEDED, supersededBy = newId, updatedAt = now)
             else it
         }
-        return writeTo(d, updated)
+        if (!writeTo(d, updated)) return false
+        MemoryEvents.publish()
+        return true
     }
 
     fun markUsed(context: Context, ids: Collection<String>, now: Long = System.currentTimeMillis()) =
