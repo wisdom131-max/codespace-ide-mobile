@@ -16,7 +16,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import com.codespace.ide.agent.voice.VoiceModeLayer
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -151,7 +150,6 @@ private fun ChatBody(
     var viewByDefault by remember { mutableStateOf(ChatSettingsPrefs.showChatByDefault()) }
     // Project 2.26: voice mode is opened by the user, never on its own. Declared here because the
     // read-aloud effect below must stand down while voice mode owns the audio.
-    var showVoice by remember { mutableStateOf(false) }
     // P7.D: read a finished reply aloud - opt-in, remembered, and inert when the device cannot speak.
     var readAloud by remember { mutableStateOf(ChatSettingsPrefs.readAloud()) }
     var speechState by remember { mutableStateOf<SpeechState>(SpeechState.Loading) }
@@ -159,7 +157,7 @@ private fun ChatBody(
     val lastSpokenReply = session.ui.value.rows.lastOrNull { it is ChatRowModel.AssistantStream && !it.cursorOn }
     androidx.compose.runtime.LaunchedEffect(lastSpokenReply, readAloud) {
         val row = lastSpokenReply as? ChatRowModel.AssistantStream ?: return@LaunchedEffect
-        if (readAloud && !showVoice) speech.speak(row.text)
+        if (readAloud) speech.speak(row.text)
     }
     // Attribution: the journal is process-wide, so the session that owns this screen claims it.
     val localCtx = androidx.compose.ui.platform.LocalContext.current
@@ -313,20 +311,6 @@ private fun ChatBody(
         }
     }
 
-    // Project 2.26: the voice surface. It submits into THIS session and reads THIS session's
-    // reply; it never creates a second conversation.
-    VoiceModeLayer(
-        open = showVoice,
-        onClose = { showVoice = false },
-        submit = { transcript -> session.send(transcript) },
-        cancelTurn = { session.cancel() },
-        modelConfigured = { resolved is ResolvedSelection.Ready },
-        assistantText = {
-            val row = state.rows.lastOrNull { it is ChatRowModel.AssistantStream }
-            (row as? ChatRowModel.AssistantStream)?.text.orEmpty()
-        },
-        assistantStreaming = state.streaming,
-    )
 
     Column(Modifier.fillMaxSize().background(c.bg)) {
         // U3: the model picker lives in the composer toolbar where the reference puts it.
@@ -336,7 +320,6 @@ private fun ChatBody(
             colors = c,
             onSessions = onOpenSessions,
             onMic = dictate,
-            onVoice = { showVoice = true },
             onNewSession = onNewSession,
             onOverflow = { showOverflow = true },
             onClose = onClosePanel,

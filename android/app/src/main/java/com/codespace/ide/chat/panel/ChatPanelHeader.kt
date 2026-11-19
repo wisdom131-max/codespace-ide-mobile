@@ -36,7 +36,6 @@ internal fun ChatPanelHeaderRow(
     onSessions: () -> Unit,
     onMic: () -> Unit,
     /** Project 2.26: opens the full voice conversation surface. Deliberate, never automatic. */
-    onVoice: () -> Unit,
     onNewSession: () -> Unit,
     onOverflow: () -> Unit,
     onClose: (() -> Unit)?,
@@ -63,7 +62,6 @@ internal fun ChatPanelHeaderRow(
         // M3 voice: the dictation trigger. It sits beside the composer rather than inside the
         // composer's tested 40 dp toolbar row, which is video-faithful and width-sensitive.
         HeaderChip("Mic", colors, onMic)
-        HeaderChip("Voice", colors, onVoice)
         HeaderChip("+", colors, onNewSession)
         HeaderChip("⋯", colors, onOverflow)
         if (onClose != null) HeaderChip("✕", colors, onClose)

@@ -90,6 +90,15 @@ P1.4: Thinking Tree identity pinned (same call = same synthetic id, distinct cal
 P1.5: the pre-intent link gate is pinned (https opens; bare, empty, javascript: and control-char
 URLs do not). Device tap verification still PENDING - no APK built.
 
+### [2026-11-19 19:10 WAT] [P2] Dedicated Voice Mode removed
+
+REMOVED: the header Voice chip and its callback, /, the voice turn
+machine, controller, speaking pulse, script and the Settings voice section. Their tests went with
+them (Stage710/711, VoiceScript, VoiceTurnMachine). PRESERVED: microphone dictation (Mic chip,
+VoiceCapture, VoiceRecognizer, VoiceProviders), read-aloud (, AndroidTtsProvider) and
+the shared VadPolicy/RecognitionPlan those paths need. Read-aloud no longer stands down for a
+surface that can no longer open. 5 source-level guards added. NOT device-tested.
+
 ## CURRENT STATE
 
 | Field | Value |

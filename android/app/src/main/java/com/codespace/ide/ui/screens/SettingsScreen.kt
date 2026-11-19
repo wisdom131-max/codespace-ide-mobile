@@ -299,7 +299,6 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── Voice (Project 2.27) ─────────────────────────────────────────
-            com.codespace.ide.agent.voice.VoiceSettingsSection()
 
             // ── Security ─────────────────────────────────────────────────────
             HorizontalDivider()
