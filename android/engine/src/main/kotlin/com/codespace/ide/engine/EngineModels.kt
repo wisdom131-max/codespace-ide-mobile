@@ -118,6 +118,12 @@ sealed class EngineEvent {
          */
         val finish: FinishReason = FinishReason.UNKNOWN,
     ) : EngineEvent()
+    /**
+     * P3-A (2026-11-19): the provider reported token usage for this attempt. Reported values
+     * only: a provider that says nothing emits no event, so nothing is ever invented.
+     */
+    data class Usage(val inputTokens: Int, val outputTokens: Int) : EngineEvent()
+
     /** Send failed with a classified error from the taxonomy. */
     data class Failed(val error: ChatError) : EngineEvent()
     /**

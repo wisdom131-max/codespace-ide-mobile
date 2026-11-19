@@ -268,6 +268,10 @@ class ChatEngineImpl(
                     val delta = adapter.extractDelta(data)
                     if (normaliser != null) {
                         for (ev in normaliser.feed(data)) {
+                            // P3-A: reported usage reaches the session instead of being dropped here.
+                            if (ev is StreamEvent.Usage) {
+                                emit(EngineEvent.Usage(ev.inputTokens, ev.outputTokens))
+                            }
                             if (ev is StreamEvent.ToolCallCompleted && ev.call.complete) {
                                 val block = nativeCallMarkup(ev.call)
                                 builder.append(block)

@@ -278,6 +278,9 @@ class ChatSession internal constructor(
      */
     private fun exchangeId(idx: Int): String = "wire-" + turnSerial + "-" + idx
 
+    /** P3-A: reported token totals for THIS session. Accounting only; no cost is derived. */
+    internal val tokens = TokenAccounting()
+
     /** P1.3: true while a confirmed over-budget retry owns the turn. */
     private val confirmInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
 
@@ -875,6 +878,8 @@ class ChatSession internal constructor(
             firstDeltaMs = 0L,
             lastUserText = userText,
         )
+        // P3-A: one accounting turn per send; a retry/fallback reports into the SAME turn.
+        tokens.beginTurn()
         attemptSend(cfg, effectiveSlot, userText, attachments, confirmOverBudget, gen)
     }
 
@@ -1264,6 +1269,9 @@ class ChatSession internal constructor(
         if (requestGate.stale(gen)) return
         if (delivery.isCancelled(activeExecId)) return
         when (ev) {
+            is EngineEvent.Usage -> {
+                tokens.onUsage(ev.inputTokens, ev.outputTokens)
+            }
             is EngineEvent.Delta -> {
                 if (retryKeepLen > 0) {
                     streamBuf.setLength(retryKeepLen)
@@ -1280,12 +1288,14 @@ class ChatSession internal constructor(
                     firstDeltaMs = if (st.firstDeltaMs == 0L) System.currentTimeMillis() else st.firstDeltaMs)
             }
             is EngineEvent.Truncated -> {
+                tokens.endTurn()
                 // One line, after the reply, saying what the reader has is partial. The streamed
                 // text is untouched: a cut answer is still evidence, and deleting it helps nobody.
                 val st = ui.value
                 ui.value = st.copy(rows = st.rows + listOf(ChatRowModel.InfoNote(ev.visibleText)))
             }
             is EngineEvent.Completed -> {
+                tokens.endTurn()
                 if (!ReplyOwnership.mayComplete(gen, lastCompletedGen, !requestGate.stale(gen))) return
                 // Area 6: the provider's verdict decides whether this turn may be called
                 // finished. A ceiling marks the reply incomplete through the SAME sticky flag
@@ -1366,6 +1376,7 @@ class ChatSession internal constructor(
                 }
             }
             is EngineEvent.Failed -> {
+                tokens.endTurn()
                 // The continuation never produced a Completed event; without this the flag would
                 // stay set and Continue would be refused for the rest of the session.
                 endStream()
