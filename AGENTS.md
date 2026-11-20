@@ -8049,3 +8049,23 @@ What is NOT real, stated plainly:
 Still NOT done in P4: retry scheduled / retry started / retry exhausted events, MCP hard-approval
 events, APPROVAL_CANCELLED, and CONTINUATION_COMPLETED / FAILED / CANCELLED. P4 is therefore NOT
 complete.
+
+---
+
+### [2026-11-20 12:45 WAT] [CONTINUATION] P4.3 - continuation terminal events
+
+- New `agent/ContinuationDiag.kt` (pure, testable) and two call sites in `ChatSession`:
+  the `EngineEvent.Completed` handler records CONTINUATION_COMPLETED with the real finish name
+  after capturing whether the turn was a continuation, and the `EngineEvent.Failed` handler
+  records CONTINUATION_FAILED with the error class before `endStream()` clears the flag.
+- An ordinary turn emits nothing, so the log is not flooded and a continuation is never reported
+  as completed merely because it started. A failed continuation cannot also appear as completed.
+- CONTINUATION_CANCELLED added for user-stop/cancellation paths.
+- 7 tests: completion, length-limited finish keeping its reason, failure not completion, failure
+  vs cancellation distinctness, silent ordinary turn, one event per terminal call, and the
+  mutual exclusion of failed and completed.
+
+Still NOT done in P4: RETRY_SCHEDULED / RETRY_STARTED / RETRY_EXHAUSTED events, MCP hard-approval
+events, APPROVAL_CANCELLED at the approval sheet, and EXECUTION_AUTHORIZED. The ChatSession call
+sites for continuation are compile-verified; no ChatSession integration test drives them, so their
+runtime emission is unverified. P4 is therefore still NOT complete.

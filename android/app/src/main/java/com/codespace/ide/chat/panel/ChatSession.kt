@@ -1375,7 +1375,10 @@ class ChatSession internal constructor(
                 // answer into a complete one.
                 lastCompletedGen = gen
                 lastFinish = ev.finish
+                // P4.3: capture before the flag is cleared - only a continuation turn emits here.
+                val wasContinuation = continuationInFlight
                 continuationInFlight = false
+                if (wasContinuation) com.codespace.ide.agent.ContinuationDiag.completed(ev.finish.name)
                 _continuationUi.value = continuationStateFor(ev.finish)
                 if (!ev.finish.complete) interruptedReplyPending = true
                 val st = ui.value
@@ -1451,7 +1454,11 @@ class ChatSession internal constructor(
                 tokens.endTurn()
                 // The continuation never produced a Completed event; without this the flag would
                 // stay set and Continue would be refused for the rest of the session.
+                val wasContinuation = continuationInFlight
                 endStream()
+                if (wasContinuation) {
+                    com.codespace.ide.agent.ContinuationDiag.failed(ev.error.javaClass.simpleName)
+                }
                 _continuationUi.value = ContinuationState.CONTINUATION_FAILED
                 val err = ev.error
                 // WP6: OPT-IN key failover on auth/credits rejection - visible,

@@ -65,6 +65,7 @@ object DiagHistoryModel {
         CopilotDiag.Kind.CONTINUATION_COMPLETED -> "Continuation done"
         CopilotDiag.Kind.CONTINUATION_FAILED -> "Continuation failed"
         CopilotDiag.Kind.CONTINUATION_SKIPPED -> "Continuation skipped"
+        CopilotDiag.Kind.CONTINUATION_CANCELLED -> "Continuation cancelled"
     }
 
     /** Clock time only: a diagnostic row is read in the context of "just now". */

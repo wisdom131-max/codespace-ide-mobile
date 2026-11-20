@@ -322,3 +322,14 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | Not recorded | URL, headers, credentials, payload, response body |
 | Tests | 7 transport-contract tests; 74 diagnostic total |
 | Still missing | retry scheduled/started/exhausted; MCP approval; approval cancelled; continuation completed/failed/cancelled |
+
+## P4.3 — continuation terminal events (2026-11-20)
+
+| Item | Value |
+|---|---|
+| Files | `agent/ContinuationDiag.kt`; `ChatSession` Completed/Failed handlers |
+| Events | COMPLETED (finish name), FAILED (error class), CANCELLED |
+| Ordinary turns | emit nothing |
+| Tests | 7 |
+| Not covered | ChatSession integration test; device verification |
+| Still missing | retry events, MCP hard approval, approval cancelled, execution authorized |
