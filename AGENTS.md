@@ -8205,3 +8205,26 @@ Local full suite at `a828d90`: 3,968 tests, 4 skipped, 0 failed.
 Named gaps, not silently dropped: the opt-in failover branch is not driven by a test; the forced
 approval card cannot be driven without a ten-minute wait; no Compose UI test for the history screen;
 nothing device-verified.
+
+---
+
+### [2026-11-20 15:45 WAT] [CRITICAL] Approval card was never published - every gated call would hang
+
+- FOUND: `AgentFlowGate.awaitDecision` built a `CompletableDeferred` and awaited it, but never
+  published a `PendingApproval`. `PendingApproval(` appeared only as a declaration and
+  `pending.value` was only ever assigned `null`. Consequences: no approval card could appear,
+  `approve()` / `reject()` always returned false, and every call that requires approval (MCP
+  `mcp_*`, `use_connector`, `service_write`, and every non-auto tool under MANUAL) waited the full
+  ten minutes and was then reported to the user as "no answer in 10 minutes".
+- FIX: publish `PendingApproval(toolName, argsSummary, deferred, onAlwaysAllow, onTrust)` before
+  the wait. The existing `finally { pending.value = null }` already cleared it, so no second change
+  was needed. Policy, forced-tool rules and the timeout default (600_000 ms) are untouched.
+- EVIDENCE: `ApprovalCardFlowTest` (6) now drives grant, decline, expiry, double-approve and the
+  MCP-forced card through `approve()` / `reject()` with no long sleep; the expiry path uses a new
+  injectable `timeoutMs` whose production default is unchanged. 31 approval tests pass.
+- This was a runtime defect invisible to unit tests of the pure policy functions, and it is exactly
+  the kind of thing that device testing would have caught first. It is NOT device-verified.
+- P4.1 closed: `DiagFailoverIntegrationTest` (5) drives the opt-in key failover through the real
+  `send` path with an injected slot pool and a fake 401 transport. It also pinned the real
+  semantics: the pool holds ALTERNATIVE slots, so a one-slot pool fails over exactly once and then
+  reports exhaustion.

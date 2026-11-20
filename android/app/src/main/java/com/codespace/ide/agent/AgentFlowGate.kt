@@ -144,6 +144,11 @@ object AgentFlowGate {
         onTrust: (() -> Unit)? = null,
         /** How a non-forced tool remembers "Always allow"; owned by the caller, which has the Context. */
         persistAlways: (() -> Unit)? = null,
+        /**
+         * How long the card may wait for an answer. Injectable so the expiry path can be tested
+         * without a ten-minute sleep; production always takes the default, which is unchanged.
+         */
+        timeoutMs: Long = 600_000L,
     ): ApprovalVerdict {
         if (!mustAsk(toolName, autoApproved, sessionAllowed)) {
             // No card: the policy authorized this call. Distinct from a user decision.
@@ -162,13 +167,25 @@ object AgentFlowGate {
                 persistAlways?.invoke()
                 deferred.complete(true)
             })
+            // AUDIT DEFECT (2026-11-20): the card was never published. `PendingApproval` was
+            // declared and `pending` was only ever cleared, so no card could appear and
+            // `approve()`/`reject()` could never resolve this wait: every gated call would hang
+            // until the ten-minute timeout and then be reported as "no answer". Publishing it
+            // here, before the wait, is the one line that makes the gate answerable again.
+            pending.value = PendingApproval(
+                toolName = toolName,
+                argsSummary = argsSummary,
+                deferred = deferred,
+                onAlwaysAllow = alwaysAllow,
+                onTrust = onTrust,
+            )
             // CH09 (P4h): the old await() suspended FOREVER — a lost card left the
             // chat loading with Stop as the only escape. 10 minutes with no response
             // = the call is abandoned with an honest TIMEOUT verdict.
             // The clear runs in a finally: a cancelled wait (chat stopped, process winding down)
             // must not leave a card on screen for an operation nobody is waiting for any more.
             try {
-                val outcome = withTimeoutOrNull(600_000L) { deferred.await() }
+                val outcome = withTimeoutOrNull(timeoutMs) { deferred.await() }
                 val verdict = verdictFor(outcome)
                 recordVerdict(toolName, verdict)
                 verdict

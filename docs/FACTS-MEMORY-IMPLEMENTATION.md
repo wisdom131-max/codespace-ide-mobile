@@ -366,3 +366,14 @@ CI green on every campaign commit: `0b04edb` 44726883394 (attempt 2), `4ce0bb2` 
 
 P4 is integrated with named gaps (failover branch untested, forced card untestable without a
 10-minute wait, no Compose UI test). Not device-verified.
+
+## P4 closure (2026-11-20)
+
+| Gap | State | Evidence |
+|---|---|---|
+| P4.1 failover | closed | `DiagFailoverIntegrationTest` (5), real send path, fake 401 |
+| P4.2 approval flow | closed | `ApprovalCardFlowTest` (6) with injectable timeout; grant/deny/expiry/double-approve |
+| P4.3 Compose UI | see audit doc | state model tested (13); Compose rendering still unverified |
+
+**Critical defect fixed in this pass:** the approval card was never published, so no card could
+appear and every gated call hung until the ten-minute timeout. See AGENTS.md.
