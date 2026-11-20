@@ -357,3 +357,12 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 
 Tests: ApprovalLifecycleDiagTest (13), DiagRetryIntegrationTest (5). MCP hard approval asserted
 under AUTO_ALL + always-allow. Not device-verified.
+
+## Campaign verification (2026-11-20)
+
+CI green on every campaign commit: `0b04edb` 44726883394 (attempt 2), `4ce0bb2` 44730373790,
+`3ad349e` 44731320828, `27cc030` 44733104513, `8a1b56e` 44733242616, `2bc231e` 44733338688,
+`a828d90` 44733358061. Local full suite 3,968 / 4 skipped / 0 failed.
+
+P4 is integrated with named gaps (failover branch untested, forced card untestable without a
+10-minute wait, no Compose UI test). Not device-verified.

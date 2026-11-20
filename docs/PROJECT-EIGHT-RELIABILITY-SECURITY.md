@@ -46,3 +46,18 @@ calls `executeToolBody(`, `executeGated(` or constructs `ToolDispatchGuard(`.
 symlink walk, per-entry and total byte limits, entry-count limit, compression-ratio limit, and
 streaming reads. `ZipEngineBoundaryTest` covers 10 attack shapes. No behaviour change was needed;
 the tests are the evidence.
+
+## Ten-area status, audited 2026-11-20
+
+| # | Area | Status | Evidence / gap |
+|---|---|---|---|
+| 1 | security architecture | Implemented, partially verified | One execution gate proven by `SingleExecutionGateGuardTest`; trust boundaries for connector/MCP credentials in `CredentialHostGuard`, `SecureTokenStore`. No formal threat-model test. |
+| 2 | provider and network reliability | Implemented and tested | `DiagTransport` passes chunks through unchanged, rethrows the same exception, distinguishes cancellation; `ChatSessionRetryTest` + `DiagRetryIntegrationTest` pin one-attempt-then-card. Timeouts injectable in `HttpTransport`. |
+| 3 | tool execution security | Complete and verified | Gate guard + approval tests; denial never authorizes; `WRITE_POLICY_*` recorded at the decision points. |
+| 4 | MCP and connector security | Implemented, not integration-tested | `requiresForcedApproval` forces `mcp_*`, `use_connector`, `service_write`; `mustAsk` asserted under AUTO_ALL + always-allow. No MCP server in tests. |
+| 5 | secrets and redaction | Complete and verified | `RedactPatternsTest` (10) + `DiagTransportTest`; redaction inside `record()`, before persistence and display. Binary/non-UTF8 outputs uncovered. |
+| 6 | filesystem and archive | Complete and verified at component level | `ZipEngine.extract` containment + symlink walk + limits; `ZipEngineBoundaryTest` (10 shapes). |
+| 7 | sessions and memory isolation | Implemented, partially verified | Project-scoped paths, `FactsStore` scoping, `ReplyOwnership`. No dedicated cross-project leak test in this pass. |
+| 8 | agent permissions and approval | Complete and verified | `ApprovalLifecycleDiagTest` (13): modes, forced tools, denial, timeout-as-cancel, policy vs user authorization. |
+| 9 | Android lifecycle and recovery | Implemented, partially verified | Diagnostic restore after simulated process death; `endStream()` idempotent; interrupted Thinking Tree nodes restore as interrupted. No device test. |
+| 10 | full-system security | Partially verified | Cross-component seams covered by the nine-scenario audit; no scenario is device-verified. |

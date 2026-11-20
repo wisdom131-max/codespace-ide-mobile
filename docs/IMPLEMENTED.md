@@ -720,3 +720,37 @@ with Voice Mode. See AGENTS.md for the full record.
 
 See `docs/INTEGRATION-AUDIT-2026-11-20.md`. Classifications: 5 end-to-end (provider faked),
 8 verified through the persisted file, 1/3/4/7/9 component-level, 2/6 partially integrated.
+
+---
+
+### [2026-11-20 15:10 WAT] [CI] campaign verification record
+
+All campaign commits verified green on GitHub Actions, polled together after implementation:
+
+| Commit | CI run | Result |
+|---|---|---|
+| `0b04edb` | 44726883394 (attempt 2) | success (attempt 1 failed on transient Hilt plugin resolution) |
+| `4ce0bb2` | 44730373790 | success |
+| `3ad349e` | 44731320828 | success |
+| `27cc030` | 44733104513 | success |
+| `8a1b56e` | 44733242616 | success |
+| `2bc231e` | 44733338688 | success |
+| `a828d90` | 44733358061 | success |
+
+Local full suite at `a828d90`: 3,968 tests, 4 skipped, 0 failed.
+
+### P4 status: INTEGRATED, with named gaps (not declared complete)
+
+| Objective | State | Evidence |
+|---|---|---|
+| persistent storage | complete | `attach()` in `CodeSpaceApplication.onCreate`, restart tests |
+| history UI | complete | `14fa5fa`, 13 tests, restart-visible |
+| provider requests | complete | `4026967`, 7 transport tests |
+| retry lifecycle | integrated | `4ce0bb2`; 5 ChatSession tests for user retry, failover branch untested |
+| approval + MCP | integrated | `27cc030`, 13 tests; MCP hard approval asserted under AUTO_ALL |
+| continuation terminal | integrated | COMPLETED/FAILED (`0b04edb`), CANCELLED (`27cc030`); call sites compile-verified |
+| redaction | complete | `3ad349e`, 10 pattern tests, runs before persistence |
+
+Named gaps, not silently dropped: the opt-in failover branch is not driven by a test; the forced
+approval card cannot be driven without a ten-minute wait; no Compose UI test for the history screen;
+nothing device-verified.
