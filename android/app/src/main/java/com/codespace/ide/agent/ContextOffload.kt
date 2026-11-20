@@ -88,6 +88,12 @@ object ContextOffload {
     fun apply(root: File, projectId: String?, sessionId: String, tool: String, output: String): String {
         if (!shouldOffload(output.length)) return output
         val ref = store(root, projectId, sessionId, tool, output)
+        runCatching {
+            CopilotDiag.record(
+                CopilotDiag.Kind.OFFLOAD, tool, ref != null,
+                output.length.toString() + " chars " + (if (ref != null) "offloaded" else "write failed"),
+            )
+        }
         if (ref == null) {
             return "[" + tool + " output is " + output.length + " characters and could not be " +
                 "offloaded to a scratch file. The full output is NOT available; re-run with a " +

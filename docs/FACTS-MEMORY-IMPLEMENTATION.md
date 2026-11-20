@@ -263,3 +263,13 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | Dedup | by source id in `RetrievalFusion.merge` |
 | Fixture | 14 fusion + 6 facts assertions |
 | Device status | not device-tested |
+
+## P4 completion — runtime instrumentation (2026-11-20)
+
+| Item | Value |
+|---|---|
+| Status | Gate, offload and retrieval emit real events; unit/integration tested |
+| Wired | TOOL_START, TOOL_END (gate), OFFLOAD (ContextOffload), RETRIEVAL (semanticSearch) |
+| Not wired | approval events, provider/retry events, continuation events, UI reader |
+| Failure safety | every diag call wrapped; results and exceptions pass through unchanged |
+| Device status | not device-tested |

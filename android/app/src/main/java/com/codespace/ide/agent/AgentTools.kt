@@ -302,7 +302,20 @@ You can use multiple tools in sequence. When done, give a final summary.
      * The id is optional so existing callers keep working; a missing or malformed id gets a fresh
      * one, which means "unknown call" rather than "safe to reuse".
      */
+    /**
+     * P4: the single gate now reports its own lifecycle. Diagnostics wrap the call and hand the
+     * result back unchanged - approvals, idempotency and error text are untouched.
+     */
     suspend fun executeTool(
+        name: String,
+        args: JSONObject,
+        context: Context,
+        callId: String? = null,
+    ): String = com.codespace.ide.agent.CopilotDiag.trace(name) {
+        executeToolInner(name, args, context, callId)
+    }
+
+    private suspend fun executeToolInner(
         name: String,
         args: JSONObject,
         context: Context,
@@ -2797,6 +2810,12 @@ You can use multiple tools in sequence. When done, give a final summary.
             },
         ).map { it.id }
         val scored = fusedIds.mapNotNull { id -> raw.firstOrNull { it.first == id } }.take(40)
+        runCatching {
+            com.codespace.ide.agent.CopilotDiag.record(
+                com.codespace.ide.agent.CopilotDiag.Kind.RETRIEVAL, "semantic_search", true,
+                "candidates " + raw.size + ", returned " + scored.size,
+            )
+        }
         if (scored.isEmpty()) return "No files mention any of: " + terms.joinToString(", ") + "."
         val sb = StringBuilder()
         sb.append("[keyword search, not a semantic index] Best matches for '").append(query).append("':\n")

@@ -55,6 +55,31 @@ object CopilotDiag {
         }
     }
 
+    /**
+     * Runs one instrumented operation and records its real outcome. The result string passes
+     * through untouched; a diagnostic failure can never turn a success into a failure, and an
+     * exception is recorded then rethrown so execution behaviour is unchanged.
+     */
+    suspend fun trace(name: String, block: suspend () -> String): String {
+        val started = System.currentTimeMillis()
+        runCatching { record(Kind.TOOL_START, name, true) }
+        return try {
+            val out = block()
+            val ok = !out.startsWith("FAILED")
+            runCatching {
+                record(
+                    Kind.TOOL_END, name, ok,
+                    (System.currentTimeMillis() - started).toString() + "ms, " +
+                        out.length + " chars" + (if (ok) "" else ", failure"),
+                )
+            }
+            out
+        } catch (t: Throwable) {
+            runCatching { record(Kind.TOOL_END, name, false, "threw: " + (t.message ?: "unknown")) }
+            throw t
+        }
+    }
+
     fun recent(limit: Int = 50): List<Event> = synchronized(ring) { ring.toList().takeLast(limit) }
 
     fun clear() = synchronized(ring) { ring.clear() }

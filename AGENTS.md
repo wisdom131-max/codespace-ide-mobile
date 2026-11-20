@@ -7935,3 +7935,23 @@ Full suite 3741, 4 skipped, 0 failures. NOT device-tested.
 - No second memory store, no second retrieval engine, no change to fact persistence.
 - Tests: 14 fusion + 6 Facts & Memory retrieval (22 facts-package regression alongside). Fixture is
   small and labelled as such; this measures deterministic routing, not model quality.
+
+---
+
+### [2026-11-20 09:50 WAT] [TOOLS] P4 completion - diagnostics emit real events
+
+- Closes the gap recorded at 08:55 ("no events are produced at runtime"). `CopilotDiag.trace()`
+  now wraps the single execution gate: `AgentTools.executeTool` delegates to `executeToolInner`
+  through it, so every call records TOOL_START and exactly one TOOL_END carrying outcome, elapsed
+  ms and result size. A "FAILED" result records ok=false; a thrown exception is recorded then
+  rethrown unchanged; the returned string is never altered.
+- `ContextOffload.apply` records an OFFLOAD event with the real size and whether the write
+  succeeded - including the failure case. A small result records nothing.
+- `semanticSearch` records a RETRIEVAL event with candidate count and returned count.
+- Every diag call is wrapped in runCatching, so a diagnostic fault can never change execution.
+- Still NOT wired: approval-required / approved / denied / cancelled events, provider request and
+  retry events, continuation events, and any UI surface for reading the ring. The ring is in
+  memory only and dies with the process. These remain open and are recorded as such.
+- Tests: 11 runtime tests that execute the real traced pathway and read the events back, plus the
+  14 existing component tests.
+- Full suite after this work: 3866 tests, 4 skipped, 0 failures.
