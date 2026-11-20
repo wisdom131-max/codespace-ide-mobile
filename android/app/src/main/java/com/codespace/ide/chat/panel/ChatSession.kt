@@ -430,7 +430,12 @@ class ChatSession internal constructor(
     private fun buildEngine(providerId: String = selection.value.providerId): ChatEngineImpl =
         ChatEngineImpl(
             projectId,
-            transportFactory(),
+            // P4.3: one decorator covers every provider. It passes chunks through untouched.
+            com.codespace.ide.chat.diag.DiagTransport(
+                transportFactory(),
+                { selection.value.providerId },
+                { selection.value.modelId },
+            ),
             adapterFor(providerId),
             // STAGE 5.4 PART 2: read when the request is built, not when the session is created.
             // The engine is constructed from the constructor, before this property exists.

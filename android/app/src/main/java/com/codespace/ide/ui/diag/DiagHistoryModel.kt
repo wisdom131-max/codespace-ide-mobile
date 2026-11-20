@@ -59,6 +59,7 @@ object DiagHistoryModel {
         CopilotDiag.Kind.PROVIDER_REQUEST_START -> "Provider start"
         CopilotDiag.Kind.PROVIDER_REQUEST_SUCCESS -> "Provider success"
         CopilotDiag.Kind.PROVIDER_REQUEST_FAILURE -> "Provider failure"
+        CopilotDiag.Kind.PROVIDER_REQUEST_CANCELLED -> "Provider cancelled"
         CopilotDiag.Kind.CONTINUATION -> "Continuation"
         CopilotDiag.Kind.CONTINUATION_STARTED -> "Continuation started"
         CopilotDiag.Kind.CONTINUATION_COMPLETED -> "Continuation done"

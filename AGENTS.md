@@ -8026,3 +8026,26 @@ What is NOT real, stated plainly:
   cleared (process death), re-attached (restart) and then visible through the model the UI renders.
 - The screen itself is not instrumented by a Compose UI test; the logic and the persisted pathway
   are covered, rendering is compile-verified only.
+
+---
+
+### [2026-11-20 12:25 WAT] [PROVIDER] P4.3 - provider request instrumentation
+
+- New `chat/diag/DiagTransport.kt`: a `ChatTransport` decorator wired in `ChatSession.buildEngine`,
+  so every provider (Gemini, Anthropic, OpenAI-compatible) emits through one code path instead of
+  per-adapter hooks that could double-record or disagree.
+- Emits PROVIDER_REQUEST_START, then exactly one terminal event: SUCCESS (with elapsed ms),
+  FAILURE (exception class + ms), or CANCELLED. Cancellation is rethrown as CancellationException
+  and is never recorded as a failure or a success.
+- Pure pass-through: chunks are emitted unchanged and in order, failures are rethrown as the same
+  instance, streaming and cancellation semantics are untouched.
+- Recorded metadata is provider id, model id, elapsed time and a short reason. Never recorded:
+  URL, headers, Authorization values, payload, response body. Tests assert the URL, the bearer
+  token and the prompt text never appear in any recorded event.
+- 7 tests through the real ChatTransport contract: success ordering, chunk fidelity, failure
+  rethrow identity, cancellation classification, one-start-one-terminal, header secrecy, payload
+  secrecy. 74 diagnostic tests total, 0 failures.
+
+Still NOT done in P4: retry scheduled / retry started / retry exhausted events, MCP hard-approval
+events, APPROVAL_CANCELLED, and CONTINUATION_COMPLETED / FAILED / CANCELLED. P4 is therefore NOT
+complete.

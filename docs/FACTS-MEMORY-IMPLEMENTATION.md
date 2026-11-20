@@ -311,3 +311,14 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | Bound | 200 rows, 320dp list |
 | Tests | 13 (incl. restart-visible integration) |
 | Not covered | Compose rendering test; device verification |
+
+## P4.3 — provider request instrumentation (2026-11-20)
+
+| Item | Value |
+|---|---|
+| File | `chat/diag/DiagTransport.kt` |
+| Wired at | `ChatSession.buildEngine` (one decorator, all providers) |
+| Events | START, SUCCESS, FAILURE, CANCELLED (exactly one terminal) |
+| Not recorded | URL, headers, credentials, payload, response body |
+| Tests | 7 transport-contract tests; 74 diagnostic total |
+| Still missing | retry scheduled/started/exhausted; MCP approval; approval cancelled; continuation completed/failed/cancelled |
