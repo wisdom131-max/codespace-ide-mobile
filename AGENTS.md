@@ -8124,3 +8124,22 @@ runtime emission is unverified. P4 is therefore still NOT complete.
 - Tests: 13 approval/policy tests (AgentFlowGate + WriteBoundary), 5 ChatSession retry integration
   tests driving `send`/`retry` with a fake transport. The forced-ask path is deliberately NOT
   driven in tests because the card waits ten minutes for an answer.
+
+---
+
+### [2026-11-20 14:20 WAT] [SECURITY] P8.3 + P8.6 - execution gate guard and archive boundary
+
+- P8.3 architectural guard, `SingleExecutionGateGuardTest`: a source scan of the module asserts that
+  `executeToolBody(`, `executeGated(` and `ToolDispatchGuard(` appear only in `AgentTools.kt`
+  (excluding the class declaration). A second execution path now fails the build rather than
+  silently skipping the plan gate, dispatch guard, idempotency, approval and diagnostics. It also
+  asserts the gate still wraps itself in `CopilotDiag.trace`.
+- P8.6 archive boundary, `ZipEngineBoundaryTest` (10 cases): absolute path, `..`, Windows drive
+  path, nested archive (written as a file, never auto-extracted), per-entry size limit, entry-count
+  limit with a partial report, malformed archive reported not thrown, destination symlink escape,
+  legitimate extraction, and the format's own refusal of duplicate entry names.
+- Existing `ZipEngine.extract` already had the right shape: canonical-root containment, a
+  `passesThroughSymlink` walk, ratio and size limits, streaming. These tests pin it rather than
+  replace it; no extraction behaviour was changed.
+- Verified as already present, not rewritten: destination verification in
+  `ArchiveDestinationVerifier` (refuses escaping entries, reports duplicates).

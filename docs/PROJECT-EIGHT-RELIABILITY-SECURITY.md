@@ -35,3 +35,14 @@ open.
 ## CI
 
 Run `43892624026` (job `build`) succeeded on `52d264b`, which carries the output bounding and the audit.
+
+## Areas 3 and 6 (2026-11-20)
+
+**Area 3 — single execution gate.** `AgentTools.executeTool` -> `executeToolInner` -> `executeGated`
+-> `dispatchGuard.run`. Guard test `SingleExecutionGateGuardTest` fails the build if any other file
+calls `executeToolBody(`, `executeGated(` or constructs `ToolDispatchGuard(`.
+
+**Area 6 — archive boundary.** `util/ZipEngine.extract` enforces canonical-root containment, a
+symlink walk, per-entry and total byte limits, entry-count limit, compression-ratio limit, and
+streaming reads. `ZipEngineBoundaryTest` covers 10 attack shapes. No behaviour change was needed;
+the tests are the evidence.
