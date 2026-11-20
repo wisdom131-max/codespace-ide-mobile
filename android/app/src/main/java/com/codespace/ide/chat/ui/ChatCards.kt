@@ -238,6 +238,10 @@ fun ToolActivityRow(
                 color = if (p.kind == com.codespace.ide.chat.panel.ToolResultPresentation.Kind.ERROR)
                     c.error else c.textSecondary,
                 fontSize = ChatTokens.FONT_MICRO.sp,
+                // STAGE 10: one line when collapsed. A long call label used to wrap and make the
+                // closed row taller than the open one on a narrow screen.
+                maxLines = if (expanded) Int.MAX_VALUE else 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             // OWNER RULE (2026-11-05): an activity row collapses with its chevron and carries NO
@@ -252,6 +256,11 @@ fun ToolActivityRow(
                 color = if (p.kind == com.codespace.ide.chat.panel.ToolResultPresentation.Kind.ERROR)
                     c.error else c.textSecondary,
                 fontSize = ChatTokens.FONT_MICRO.sp,
+                // STAGE 10: the status line is ALWAYS visible, but a collapsed row shows exactly one
+                // line of it. A multi-line failure summary used to reserve its full height while the
+                // tree was closed, which is what made collapsing look like it did nothing.
+                maxLines = if (expanded) Int.MAX_VALUE else 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 14.dp, top = 2.dp),
             )
         }

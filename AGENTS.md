@@ -10,7 +10,14 @@
 1. TWO-REPO: Main IDE -> codespace-ide-mobile. Proot/Ubuntu/rootfs -> ubuntu-proot-test ONLY. Never push proot fixes to the main repo.
 2. CHANGE LOG: After every commit, add entry at BOTTOM with timestamp, commit SHA, CI build #, what changed, files touched, next on roadmap.
 3. TAGS: [BUILD-FIX], [LSP], [UI], [CRASH], [GIT], [EDITOR], [PERF], etc.
-4. UI: ALL menus/popups use RoundedCornerShape(8-12.dp) + padding(horizontal=12dp, vertical=10dp) minimum. No sharp corners, no edge-to-edge.
+4. UI: rounded corners 8-12dp on menus/popups; no sharp corners, no edge-to-edge. PADDING IS
+   COMPONENT-SPECIFIC (corrected 2026-11-20, Stage 10): this rule used to read "ALL menus/popups ...
+   padding(horizontal=12dp, vertical=10dp) minimum", which builders read as a blanket floor and
+   applied to panels where it wasted screen space. There is NO universal padding value. Choose
+   spacing from the component's purpose, content density and available space. Two constraints DO
+   still bind: a tappable control needs a real touch target (48dp, CopilotAccessibility.MIN_TOUCH_DP),
+   and the owner-approved Copy control stays 30x24dp. Touch-target size is NOT padding, and padding
+   is not a touch target. Do not reintroduce a global padding rule.
 5. NO SUB-AGENTS: Do all work directly.
 6. NO RE-DO: Never re-do work already marked done.
 7. KOTLIN PITFALLS (do NOT repeat):
@@ -7792,3 +7799,28 @@ retry or a repeated review action cannot duplicate history. Legacy facts with no
 without invented history. UI: bounded Timeline section in the Facts screen (newest 8).
 Tests: 20 new in MemoryTimelineTest. Facts package 187, full suite 3707, 4 skipped, 0 failures.
 Not device-tested. Commit: see below.
+
+---
+
+### [2026-11-20 05:40 WAT] [MEMORY] Stage 10 - Thinking Tree persistence, collapsed height, padding rule
+
+`ThinkingTreeStore` persists tool steps per conversation in `chat/<project>/<conversation>.tree.json`,
+bounded to 120 nodes. A node id is the executor's own row id ("r<round>c<n>"), never a position, so a
+retry updates instead of duplicating and a restore cannot renumber. Restored rows go back through the
+existing `ActivityGrouping`, so there is one grouping rule, not two. A step that was still ACTIVE when
+the app died restores flagged interrupted and renders `ok=false` with the mark in its detail: an
+unfinished step can never look finished. `ChatSession` writes a step when the tool row is appended and
+merges restored steps before the reply they served.
+
+Collapsed height: the row title and the status summary are now `maxLines = 1` with ellipsis while
+collapsed (`ChatCards`). The summary is still ALWAYS shown (a failure reason must not be hidden); it
+just stops reserving its full wrapped height in a closed tree, which is what made collapsing look
+like it did nothing on a narrow screen.
+
+Padding rule: AGENTS.md rule 4 was the universal "padding(horizontal=12dp, vertical=10dp) minimum".
+Corrected to component-specific spacing, with touch targets (48dp) and the 30x24dp Copy control
+preserved. There is no 48dp padding rule anywhere in the repo: every 48dp reference is a touch
+target (`CopilotAccessibility.MIN_TOUCH_DP`, docs/04-android-frontend.md, C12-PANEL-SPEC.md).
+
+Tests: 17 new in `ThinkingTreeStoreTest`. NOT device-tested: the collapsed-height change is a layout
+change and needs a real screen to confirm.

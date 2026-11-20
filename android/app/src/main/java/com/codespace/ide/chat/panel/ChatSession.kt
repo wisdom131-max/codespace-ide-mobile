@@ -308,7 +308,15 @@ class ChatSession internal constructor(
                         "Could not read the saved conversation: " + (t.message ?: t.javaClass.simpleName),
                     )
                 }
-                val stored = com.codespace.ide.chat.ChatTranscript.messagesToRows(loaded.messages)
+                val storedBase = com.codespace.ide.chat.ChatTranscript.messagesToRows(loaded.messages)
+                // STAGE 10: the Thinking Tree outlives the transcript, so its steps come back too.
+                // A missing tree is an empty tree: nothing is invented to fill the gap.
+                val stored = appContext?.let { ctx ->
+                    com.codespace.ide.chat.ThinkingTreeStore.mergeRows(
+                        storedBase,
+                        com.codespace.ide.chat.ThinkingTreeStore.load(ctx, projectId, conversationId),
+                    )
+                } ?: storedBase
                 if (com.codespace.ide.chat.RestorePolicy.shouldApplyRestore(
                         restoreFinished, ui.value.rows.size, loaded.messages.size)) {
                     ui.value = ui.value.copy(rows = stored)
@@ -1661,6 +1669,28 @@ class ChatSession internal constructor(
                 // PROJECT SEVEN 7.4: the row carries a BOUNDED detail. The full arguments stay in the
                 // result path; what the transcript shows cannot exceed the presenter's limit, so a
                 // large call cannot make the pane heavy. The cut is stated in the row itself.
+                val treeNodeId = "r" + toolRound + "c" + (idx + 1)
+                val treeDetail = CopilotPresentation.toolRow(
+                    AgentToolWire.stepLabel(call), com.codespace.ide.chat.provider.ToolOutcome.SUCCESS, summary
+                ).body
+                // STAGE 10: the step is persisted with the id it already has, so a restore shows the
+                // same node instead of a new one. Bounded and idempotent inside the store.
+                appContext?.let { ctx ->
+                    runCatching {
+                        com.codespace.ide.chat.ThinkingTreeStore.append(
+                            ctx, projectId, conversationId,
+                            com.codespace.ide.chat.ThinkingTreeStore.Step(
+                                nodeId = treeNodeId,
+                                turnId = "t" + toolRound,
+                                label = AgentToolWire.stepLabel(call),
+                                detail = treeDetail,
+                                ok = true,
+                                state = "DONE",
+                                atMs = System.currentTimeMillis(),
+                            ),
+                        )
+                    }
+                }
                 appendRow(ChatRowModel.ToolActivity(
                     AgentToolWire.stepLabel(call),
                     CopilotPresentation.toolRow(

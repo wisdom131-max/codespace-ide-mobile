@@ -157,3 +157,25 @@ from, taken from Stage 4 provenance with no createdAt fallback. Retention: oldes
 first; no fact is ever pruned. Corruption: reads as empty, so missing history is never invented.
 Tests: `MemoryTimelineTest` (20). Facts 187, full 3707 / 4 skipped / 0 failures.
 Status: implemented, automated-tested, pending CI, not device-tested.
+
+## Stage 10 — Thinking Tree persistence, collapsed height, padding rule
+
+| Item | Value |
+|---|---|
+| Status | Implemented, unit-tested. NOT device-verified (layout change). |
+| Commit | recorded in the changelog entry of the same push |
+| CI | polled after push |
+
+Persistence: `ThinkingTreeStore` writes `chat/<project>/<conversation>.tree.json`, max 120 nodes,
+atomic write, idempotent by node id, per-conversation isolation. Restore merges steps before the last
+assistant reply; a missing or corrupt file is an empty tree, never a guessed one. Interrupted steps
+restore flagged and never render as success.
+
+Collapsed height: title and summary are single-line with ellipsis while collapsed; the summary stays
+visible so a failure reason is not hidden.
+
+Padding: AGENTS.md rule 4 corrected from a universal 12dp/10dp minimum to component-specific spacing.
+No 48dp padding rule exists in the repo; the 48dp rules are touch targets and remain.
+
+Limitations: no device verification of the collapsed layout; tree steps are written per tool row, so
+a very long tool loop costs one small file write per step.
