@@ -77,3 +77,10 @@ alternative (Robolectric with Compose) requires a dependency download that is no
 state model behind the screen is covered by `DiagHistoryModelTest` (13): rendering inputs, filters,
 empty state, restart visibility and the 200-row bound. What remains unverified is the composable
 itself.
+
+## Update 2026-11-20 16:20 - duplicate replies
+
+`DuplicateReplyScenariosTest` (5) now drives the five user-facing duplicate scenarios through the
+real `ChatSession`. Status: **verified for rapid taps, second question while running, tab
+close/reopen mid-answer, cancel-then-retry and session restoration**. Still unproven: cross-process
+concurrent delivery, and a duplicate terminal event on a single stream.

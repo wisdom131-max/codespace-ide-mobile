@@ -803,3 +803,24 @@ affect Gradle plugin resolution, so this is a runner-side fetch failure against 
 plugin portal, not a repository defect. Both were resolved by re-running the failed job; no workflow,
 signing or plugin version was changed. If it recurs, the next evidence to gather is whether the
 runner can reach `dl.google.com` at build time.
+
+---
+
+### [2026-11-20 16:20 WAT] [P1] Integration Reliability & Security - duplicate replies at the runtime boundary
+
+- Added `DuplicateReplyScenariosTest` (5), driving the real `ChatSession` with a real `DeliveryStore`
+  on a temp directory. Covered: a different second question while the first is running (one answer,
+  no second stream, and the replacement question is still answerable), closing the tab mid-answer
+  and reopening (the abandoned tab gets nothing, the reopened one gets exactly one answer),
+  cancel-then-retry (one answer), session restoration over the same conversation (no phantom
+  answer, a new question answered once), and five rapid taps on one question (one wire attempt,
+  one answer).
+- Duplicate-reply status moves from PARTIALLY ADDRESSED to **verified for those five scenarios**.
+  Still unproven and stated as such: two sessions in separate processes delivering at once, and a
+  provider that emits two terminal events on one stream. Neither has a harness in this repo yet.
+- Approval enforcement re-verified by `ApprovalCardFlowTest` (6) and `ApprovalLifecycleDiagTest`
+  (13) against the `215c835` fix: the card is published before the wait, `approve()`/`reject()`
+  resolve it, expiry is a cancellation, a second approve cannot double-grant, and `mcp_*` asks even
+  with AUTO_ALL plus always-allow.
+- Execution gate unchanged: `SingleExecutionGateGuardTest` still fails the build if any file outside
+  `AgentTools.kt` reaches `executeToolBody(` / `executeGated(` / `ToolDispatchGuard(`.
