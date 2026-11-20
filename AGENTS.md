@@ -8282,3 +8282,26 @@ runner can reach `dl.google.com` at build time.
   with AUTO_ALL plus always-allow.
 - Execution gate unchanged: `SingleExecutionGateGuardTest` still fails the build if any file outside
   `AgentTools.kt` reaches `executeToolBody(` / `executeGated(` / `ToolDispatchGuard(`.
+
+---
+
+### [2026-11-20 17:25 WAT] [PROGRAMME] eight-project status after the first pass
+
+| # | Project | Status |
+|---|---|---|
+| 1 | Integration Reliability & Security | **implemented and verified for the scoped work** - approval card fix `215c835`, duplicate-reply runtime scenarios `3fbf399` |
+| 2 | Research Improvements | not started |
+| 3 | Documents & Media Intelligence | not started |
+| 4 | Advanced Agent Capabilities | not started |
+| 5 | Advanced Tool Intelligence | not started |
+| 6 | Cross Provider Intelligence | not started |
+| 7 | Long Context Management | not started |
+| 8 | Copilot Experience Improvements | not started |
+
+CI: `3fbf399` -> 44755439433 success. Local full suite: 3,984 tests, 4 skipped, 0 failed.
+
+Why only project 1: this run's budget was spent on the two highest-value defects and their runtime
+proof (the unpublished approval card and the duplicate-reply scenarios). The remaining seven were
+deliberately not begun rather than started and left half-integrated, which the programme forbids.
+Each is specified in `docs/ROADMAP-NEXT-PHASE-2026-11-20.md` with scope, acceptance criteria and
+checkpoints, so the next run starts from a plan rather than a guess.

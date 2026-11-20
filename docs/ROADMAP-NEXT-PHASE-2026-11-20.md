@@ -111,3 +111,8 @@ Status vocabulary: **present** (in the repo and wired), **partial**, **absent**.
 8 -> everything. 3 -> 6 (session identity before carried context). 2 independent. 1 depends on 8's
 provider fakes for interruption tests. 4 depends on 8's gate counter. 5 depends on 8's harness.
 7 last.
+
+## Progress log
+
+- 2026-11-20: project 1 scoped work landed (`215c835` approval card, `3fbf399` duplicate-reply
+  runtime scenarios, CI 44755439433 green). Projects 2-8 not started.
