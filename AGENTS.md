@@ -8338,3 +8338,40 @@ source-level guard: the `tool_search` branch must not mention `executeToolBody(`
 Not done in these three: research multi-step planning changes, an archive browser panel (tree view /
 in-archive preview), tool sequencing and result-interpretation work. They remain specified in the
 roadmap.
+
+---
+
+### [2026-11-20 18:45 WAT] [P4 P6 P7 P8] correction: these four were already implemented
+
+The roadmap I wrote earlier listed projects 4, 6, 7 and 8 as "not started". Running their suites
+shows that was wrong, and the correction matters more than the original claim. Evidence - a targeted
+run at `8428d0a`, 230 tests, 0 skipped, 0 failed:
+
+| Area | Test classes (count) |
+|---|---|
+| P4 planning | `ToolPlannerTest` (12), `ToolBatchPlanTest` (10) |
+| P6 providers | `Stage51ProviderCapabilitiesTest` (11), `Stage52CrossProviderTest` (25), `Stage53SideEffectRecoveryTest` (13), `Stage53bErrorPathTest` (9), `Stage54bProducerTest` (17) |
+| P7 sessions | `SessionLineageTest` (11), `SessionHandoffTest` (14), `Stage62HandoffSummaryTest` (3), `Stage63HandoffGuardTest` (4), `SessionIndexStoreTest` (19), `SessionIndexCodecTest` (15), `SessionListLogicTest` (18), `SessionMetaTest` (14), `SessionPinsTest` (7), `SessionModePersistenceTest` (8), `SessionDeletionTombstoneTest` (20) |
+| P8 presentation | `ActivityGroupingTest`, `ChatTokensConsistencyTest`, `ChatDensityTest`, `Stage79ContrastTest`, `Stage71ScrollFollowTest`, `Stage71CopyTargetTest`, `Stage78ResearchPresentationTest`, `ThinkingTreeTest`, `MarkdownParserTest` (inside the full suite) |
+
+So the real state of the eight projects is: **1, 2, 3, 5 closed with new work this campaign; 4, 6, 7, 8
+already present and verified by existing tests.** P7's "Session N from <origin>" labels are
+`SessionLineage.label`, asserted verbatim in `SessionLineageTest` lines 31/41/50. P6's capability
+model is `chat/provider/ProviderCapabilities.kt` (`ModelLimits`, `ModelProfile`, `ProviderProfile`,
+`ProviderCapability`, `verified`), which is exactly the declaration the roadmap asked for.
+
+**What is genuinely still absent, stated plainly:**
+
+1. **P3 archive browser panel** - listing and selective extraction exist as tools (`zip_list`,
+   `zip_extract` with `entries`), but there is no tree view, no in-archive preview and no progress or
+   cancel surface comparable to ZArchiver. This is UI work, and it is the largest real gap left.
+2. **P2 research planning changes** - planner, progress, reconciliation and cancellation exist and
+   are tested; the "better multi-step planning" item was not attempted.
+3. **P8 accessibility** - contrast and touch targets are audited by test; no instrumented
+   accessibility test exists, because there is no device or emulator.
+4. **P4 planned/approved/executed distinction** - the gate records decisions (`ApprovalLifecycleDiag`)
+   and the planner separates steps and verification needs; a single user-facing ledger that shows all
+   six states per action does not exist.
+
+I did not rebuild any of 4, 6, 7 or 8: they were already there, and rewriting tested components to
+look busy would have been the worst possible outcome for this programme.

@@ -122,3 +122,11 @@ provider fakes for interruption tests. 4 depends on 8's gate counter. 5 depends 
 - 2026-11-20: project 2 source integrity (`ResearchSourceIntegrityTest`, 9), project 3 selective
   extraction (`SelectiveExtractionTest` 6 + `ZipToolSelectionTest` 4), project 5 discovery guard
   (`ToolDiscoveryNeverExecutesTest`, 3). No archive browser panel, no research planning changes.
+
+## Correction (2026-11-20 18:45)
+
+Projects 4, 6, 7 and 8 are **already implemented and tested**; the "not started" rows above were
+wrong. Evidence: 230 targeted tests green at `8428d0a` (see AGENTS.md for the class list).
+
+Remaining genuine gaps: P3 archive browser panel (UI), P2 multi-step planning improvements, P8
+instrumented accessibility tests (needs a device), P4 per-action six-state ledger.
