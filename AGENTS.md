@@ -7849,3 +7849,23 @@ Also added `Fact.knownTime()`: the date a user may be SHOWN (0 = unknown), separ
 `factTime()`, which keeps its createdAt fallback as an ordering key only.
 
 Full suite 3741, 4 skipped, 0 failures. NOT device-tested.
+
+---
+
+### [2026-11-20 05:10 WAT] [TOOLS] Tool-calling architecture Stages 1-4
+
+- Stage 1 (`d00931d`): `ToolCallScan` replaces the lazy regex. String/escape-aware scanning, nested
+  objects and arrays, braces in strings, escaped quotes/backslashes, unicode, multiple calls. Typed
+  failures (MALFORMED_PROTOCOL / INVALID_JSON / MISSING_NAME) and NO call named "error" any more.
+  `ToolCall(id, name, args, source)` is the one normalized shape; both dialects produce it.
+- Stage 2 (`6ba0d94`): `ProtocolStreamFilter` wired into the live delta path, reset per turn. A
+  marker split across any number of chunks is buffered, never painted; an unfinished call at turn
+  end is dropped rather than rendered.
+- Stage 3 (`f52addd`): `NativeToolCalling` shapes declarations for OpenAI-compatible, Anthropic and
+  Gemini and parses each back into the same `ToolCall`. Gated on TOOL_CALLS **and** a verified
+  profile; custom endpoints stay on text. Execution is still `AgentTools.executeTool` only.
+- Stage 4 (`this commit`): measurement harness records CHARACTER counts only and states plainly that
+  provider token usage is unavailable, because no model is called in unit tests or CI.
+- Tests: 20 scanner, 14 filter, 14 native, 4 measurement. Agent+chat regression 2888 green.
+- Known limitation: native calling is implemented and gated but no endpoint is marked verified yet,
+  so production still uses the text protocol. Nothing here is device-verified.
