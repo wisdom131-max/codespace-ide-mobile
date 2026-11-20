@@ -28,10 +28,13 @@ object MemoryExtraction {
     data class Candidate(val text: String, val kind: Kind, val category: FactCategory)
 
     data class Result(
+        /** Always empty since Stage 8: nothing is saved without a human decision. */
         val accepted: List<Fact> = emptyList(),
         val duplicates: Int = 0,
         val rejected: Int = 0,
         val skippedReason: String? = null,
+        /** Candidates handed to the review queue. */
+        val queued: Int = 0,
     )
 
     private val TRANSIENT = setOf(
@@ -104,37 +107,18 @@ object MemoryExtraction {
     ): Result {
         val found = candidates(text, category)
         if (found.isEmpty()) return Result(skippedReason = "no durable statement")
-        var duplicates = 0
-        var rejected = 0
-        val accepted = ArrayList<Fact>(found.size)
-        for (c in found) {
-            val r = try {
-                FactsStore.saveTo(
-                    d = d,
-                    content = c.text,
-                    scope = if (scope == FactScope.PROJECT && projectId.isNullOrBlank()) FactScope.USER else scope,
-                    projectId = projectId,
-                    category = c.category,
-                    // INFERRED, never EXPLICIT_USER: the user said the words, the app decided they
-                    // were durable. That difference must stay visible in the fact itself.
-                    source = FactSource.INFERRED,
-                    confidence = FactConfidence.INFERRED,
-                    now = now,
-                    provenance = provenance,
-                )
-            } catch (_: Throwable) {
-                // A memory failure must never surface as a chat failure.
-                return Result(accepted, duplicates, rejected + 1, "store error")
-            }
-            when (r) {
-                is FactsStore.SaveResult.Saved ->
-                    if (r.decision == FactDecision.DUPLICATE) duplicates++ else accepted.add(r.fact)
-                is FactsStore.SaveResult.Refused -> rejected++
-                FactsStore.SaveResult.Full, FactsStore.SaveResult.WriteFailed -> {
-                    return Result(accepted, duplicates, rejected, "store unavailable")
-                }
-            }
+        // STAGE 8: detection is not permission. Every candidate goes to the review queue and stays
+        // there until a person accepts it. Nothing here can create a fact.
+        val queued = try {
+            ReviewQueue.enqueue(d, found, provenance, scope, projectId, now)
+        } catch (_: Throwable) {
+            return Result(skippedReason = "queue error")
         }
-        return Result(accepted, duplicates, rejected)
+        return Result(
+            duplicates = queued.duplicates,
+            rejected = queued.rejectedBefore,
+            skippedReason = if (queued.full) "review queue is full" else null,
+            queued = queued.added,
+        )
     }
 }

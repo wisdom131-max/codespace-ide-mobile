@@ -55,10 +55,21 @@ class MemoryExtractionTest {
     }
 
     @Test
-    fun `extraction stores an inferred fact with the transcript provenance`() {
+    fun `extraction queues a candidate and saves nothing`() {
         val d = tmp.newFolder("m")
         val r = MemoryExtraction.capture(d, "I prefer the Gradle wrapper for builds.", prov)
-        assertEquals(1, r.accepted.size)
+        // STAGE 8: detection is not permission.
+        assertEquals(1, r.queued)
+        assertEquals(0, r.accepted.size)
+        assertEquals(0, FactsStore.loadFrom(d).size)
+        val q = ReviewQueue.loadFrom(d).single()
+        assertEquals("conv-9", q.sourceConversationId)
+        assertEquals("m4", q.sourceMessageId)
+        assertEquals(6_000L, q.sourceMessageAt)
+        assertEquals(TimeSource.TRANSCRIPT_VERIFIED, q.timeSource)
+        assertEquals(ReviewStatus.PENDING, q.status)
+        // Accepting is what creates the fact, with the same provenance and INFERRED source.
+        assertTrue(ReviewQueue.accept(d, q.id) is ReviewQueue.Outcome.Accepted)
         val f = FactsStore.loadFrom(d).single()
         assertEquals(FactSource.INFERRED, f.source)
         assertEquals(FactConfidence.INFERRED, f.confidence)
@@ -73,9 +84,9 @@ class MemoryExtractionTest {
         val d = tmp.newFolder("m")
         MemoryExtraction.capture(d, "I prefer tabs for indentation.", prov)
         val second = MemoryExtraction.capture(d, "I prefer tabs for indentation.", prov)
-        assertEquals(0, second.accepted.size)
+        assertEquals(0, second.queued)
         assertEquals(1, second.duplicates)
-        assertEquals(1, FactsStore.loadFrom(d).size)
+        assertEquals(1, ReviewQueue.loadFrom(d).size)
     }
 
     @Test
@@ -83,23 +94,23 @@ class MemoryExtractionTest {
         val d = tmp.newFolder("m")
         MemoryExtraction.capture(d, "We decided to use SQLite for storage.", prov)
         MemoryExtraction.capture(d, "We decided to use Room for storage.", prov.copy(sourceMessageId = "m5"))
-        val all = FactsStore.loadFrom(d)
-        assertTrue("history is kept", all.any { it.status == FactStatus.SUPERSEDED } || all.size == 2)
+        // Both reach the queue as separate candidates; nothing is saved until review.
+        assertEquals(2, ReviewQueue.pending(ReviewQueue.loadFrom(d)).size)
+        assertEquals(0, FactsStore.loadFrom(d).size)
     }
 
     @Test
     fun `project scope is respected and falls back when no project is open`() {
         val d = tmp.newFolder("m")
         MemoryExtraction.capture(d, "The project uses Kotlin and Gradle.", prov, FactScope.PROJECT, null)
-        val f = FactsStore.loadFrom(d).single()
-        assertEquals(FactScope.USER, f.scope)
+        assertEquals(FactScope.USER, ReviewQueue.loadFrom(d).single().scope)
     }
 
     @Test
     fun `no provenance means no fabricated source`() {
         val d = tmp.newFolder("m")
         MemoryExtraction.capture(d, "I always run the full suite before pushing.", FactProvenance.NONE)
-        val f = FactsStore.loadFrom(d).single()
+        val f = ReviewQueue.loadFrom(d).single()
         assertNull(f.sourceConversationId)
         assertNull(f.sourceMessageId)
         assertEquals(0L, f.sourceConversationAt)

@@ -133,3 +133,17 @@ unset rather than guessing.
 **Limitation:** extraction is rule-based, not model-based. It will miss a durable statement phrased
 in an unusual way and it will occasionally promote a sentence that reads like a rule but is
 transient. Precision over recall is the deliberate choice for a memory that costs prompt space.
+
+
+## Stage 8 — Review Queue and Rejection Ledger (implemented 2026-11-20, commit 3c5b6b9)
+
+Behaviour: Stage 7 detection now ENQUEUES (`ReviewQueue.enqueue`) instead of saving. States are
+PENDING / ACCEPTED / REJECTED in one document (`memory-review.json`); there is no second ledger file,
+because two stores could disagree about whether a candidate was rejected. Accept goes through
+`FactsStore.saveTo` with `FactSource.INFERRED` and the original provenance. Reject records
+`reviewedAt` plus an optional reason; entries older than 90 days are pruned on write. Corruption
+reads as an empty queue and can never accept anything. The Facts screen draws at most five pending
+rows.
+
+Tests: `ReviewQueueTest` (21) plus `MemoryExtractionTest` rewritten to assert queuing, not saving.
+Full suite: 3687 tests, 4 skipped, 0 failures. Device: not tested.

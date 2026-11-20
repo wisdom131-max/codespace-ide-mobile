@@ -7758,3 +7758,19 @@ source message by CONTENT and only when the match is unique; an ambiguous or syn
 MemoryExtractionTest.kt (new, 13 tests). Full app suite 3667 tests, 4 skipped, 0 failures.
 Not device-tested. CI pending.
 
+---
+
+### [2026-11-20 03:10 WAT] [MEMORY] Stage 8 - review queue and rejection ledger
+
+`MemoryExtraction.capture` no longer saves. Every detected candidate becomes a PENDING row in
+`memory-review.json` (new `ReviewQueue`), and only `ReviewQueue.accept` reaches `FactsStore`, so a
+regex can never put words in the user's mouth. Rejection is recorded in the SAME file with an
+optional reason and a 90-day retention, so a rejected statement - including a reworded equivalent,
+matched with `FactText.similarity >= 0.82` - is not suggested again; `reconsider` reverses it on
+request. Acceptance keeps `FactSource.INFERRED` (approval changes status, not provenance) and keeps
+the Stage 4 provenance fields. Facts screen shows a bounded Review section (5 pending rows, rejected
+collapsed) with Accept / Reject / Reconsider. A corrupt queue reads as empty, which can never
+promote a candidate.
+
+Tests: ReviewQueueTest 21, MemoryExtractionTest updated to the queue contract. Full suite 3687,
+4 skipped, 0 failures. Commit 3c5b6b9.

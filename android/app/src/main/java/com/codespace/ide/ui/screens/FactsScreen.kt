@@ -47,6 +47,7 @@ import com.codespace.ide.agent.facts.FactDates
 import com.codespace.ide.agent.facts.FactText
 import com.codespace.ide.agent.facts.MemoryEvents
 import com.codespace.ide.agent.facts.FactsStore
+import com.codespace.ide.agent.facts.ReviewQueue
 
 /**
  * FACTS (2026-11-11) — the memory management screen, under Settings.
@@ -175,6 +176,15 @@ fun FactsScreen(
             selected = if (showHistory) 1 else 0,
             accent = accent, surface = panel, textPri = textPri, textSec = textSec,
             onSelect = { idx -> showHistory = idx == 1 },
+        )
+
+        // STAGE 8: candidates waiting for a decision, above the saved facts so they cannot be
+        // mistaken for memories the app already trusts.
+        ReviewSection(
+            context = context,
+            revision = revision,
+            accent = accent, surface = panel, textPri = textPri, textSec = textSec,
+            danger = danger, warn = warn,
         )
 
         if (message.isNotBlank()) {
@@ -615,4 +625,88 @@ private fun FactEditor(
         },
         containerColor = surface,
     )
+}
+
+
+/**
+ * STAGE 8 — the review queue, inside the Facts screen.
+ *
+ * Deliberately small: at most five pending rows are drawn, so a phone never lays out an unbounded
+ * list. A candidate shows what it would become and where it came from, and nothing is saved until
+ * Accept is tapped. "Not recorded" is shown rather than a guessed date or a guessed message.
+ */
+@Composable
+private fun ReviewSection(
+    context: android.content.Context,
+    revision: Int,
+    accent: Color,
+    surface: Color,
+    textPri: Color,
+    textSec: Color,
+    danger: Color,
+    warn: Color,
+) {
+    val dir = remember(context) { FactsStore.memoryDir(context) }
+    val queue = remember(revision) { ReviewQueue.loadFrom(dir) }
+    val pending = remember(queue) { ReviewQueue.pending(queue) }
+    val rejected = remember(queue) { ReviewQueue.rejected(queue) }
+    var showRejected by remember { mutableStateOf(false) }
+    if (pending.isEmpty() && rejected.isEmpty()) return
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Text(
+            "Review (" + pending.size + ")",
+            color = if (pending.isEmpty()) textSec else warn,
+            fontSize = 11.sp, fontWeight = FontWeight.Bold,
+        )
+        for (c in pending.take(5)) {
+            Column(
+                Modifier.fillMaxWidth().padding(top = 6.dp)
+                    .clip(RoundedCornerShape(10.dp)).background(surface)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Text(c.text, color = textPri, fontSize = 13.sp)
+                Text(
+                    "Suggested: " + c.rationale.lowercase().replace('_', ' ') + "  \u00b7  " +
+                        c.scope.id + "  \u00b7  " + c.category.label,
+                    color = textSec, fontSize = 10.sp,
+                )
+                // Provenance is stated, never invented: a missing message id is simply absent.
+                Text(
+                    "Conversation " + FactDates.local(c.sourceConversationAt) +
+                        if (c.sourceMessageId != null) "  \u00b7  message " + c.sourceMessageId else "",
+                    color = textSec, fontSize = 10.sp,
+                )
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    TextButton(onClick = {
+                        // Accept is the only path from candidate to fact.
+                        ReviewQueue.accept(dir, c.id)
+                    }) { Text("Accept", color = accent, fontSize = 12.sp) }
+                    TextButton(onClick = { ReviewQueue.reject(dir, c.id) }) {
+                        Text("Reject", color = danger, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+        if (pending.size > 5) {
+            Text("+" + (pending.size - 5) + " more waiting", color = textSec, fontSize = 10.sp)
+        }
+        if (rejected.isNotEmpty()) {
+            Text(
+                (if (showRejected) "Hide rejected (" else "Rejected (") + rejected.size + ")",
+                color = textSec, fontSize = 10.sp,
+                modifier = Modifier.padding(top = 8.dp).clickable { showRejected = !showRejected },
+            )
+            if (showRejected) {
+                for (c in rejected.take(5)) {
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(c.text, color = textSec, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { ReviewQueue.reconsider(dir, c.id) }) {
+                            Text("Reconsider", color = accent, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
