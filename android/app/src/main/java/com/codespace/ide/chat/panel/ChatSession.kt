@@ -972,6 +972,11 @@ class ChatSession internal constructor(
                 }
             } catch (_: CancellationException) {
                 // Cooperative cancel: partial text is already in the rows.
+                // P4.3: a continuation stopped by the user ends as CANCELLED, never as completed.
+                if (continuationInFlight) {
+                    continuationInFlight = false
+                    com.codespace.ide.agent.ContinuationDiag.cancelled()
+                }
                 ui.value = ui.value.copy(streaming = false)
             } catch (t: Throwable) {
                 appendRow(ChatRowModel.Failed(t.message ?: "Send failed", "", true))

@@ -20,6 +20,9 @@ object CopilotDiag {
         // P4 completion: real transitions, not placeholders. Each is emitted where the decision is
         // actually made, so an event never claims a transition that did not happen.
         APPROVAL_REQUIRED, APPROVAL_GRANTED, APPROVAL_DENIED, APPROVAL_CANCELLED,
+        // P4.3/P8.8: policy decision, approval requirement, user decision, execution
+        // authorization and execution outcome are five different things and stay separate.
+        EXECUTION_AUTHORIZED, WRITE_POLICY_ALLOW, WRITE_POLICY_STAGE, WRITE_POLICY_REFUSE,
         CONTINUATION_STARTED, CONTINUATION_COMPLETED, CONTINUATION_FAILED, CONTINUATION_SKIPPED,
         CONTINUATION_CANCELLED,
         PROVIDER_REQUEST_START, PROVIDER_REQUEST_SUCCESS, PROVIDER_REQUEST_FAILURE,

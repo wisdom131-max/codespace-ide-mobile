@@ -145,7 +145,15 @@ object AgentFlowGate {
         /** How a non-forced tool remembers "Always allow"; owned by the caller, which has the Context. */
         persistAlways: (() -> Unit)? = null,
     ): ApprovalVerdict {
-        if (!mustAsk(toolName, autoApproved, sessionAllowed)) return ApprovalVerdict.APPROVED
+        if (!mustAsk(toolName, autoApproved, sessionAllowed)) {
+            // No card: the policy authorized this call. Distinct from a user decision.
+            CopilotDiag.record(CopilotDiag.Kind.EXECUTION_AUTHORIZED, toolName, true, "policy")
+            return ApprovalVerdict.APPROVED
+        }
+        CopilotDiag.record(
+            CopilotDiag.Kind.APPROVAL_REQUIRED, toolName, true,
+            if (requiresForcedApproval(toolName)) "forced" else "ask",
+        )
         return approvalSlot.withLock {
             val deferred = CompletableDeferred<Boolean>()
             // A forced tool asks again next time, so offering "Always allow" would promise
@@ -161,10 +169,35 @@ object AgentFlowGate {
             // must not leave a card on screen for an operation nobody is waiting for any more.
             try {
                 val outcome = withTimeoutOrNull(600_000L) { deferred.await() }
-                verdictFor(outcome)
+                val verdict = verdictFor(outcome)
+                recordVerdict(toolName, verdict)
+                verdict
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                // The wait itself was cancelled (chat stopped, process winding down): nobody
+                // answered, so this is a cancellation and never a grant.
+                CopilotDiag.record(CopilotDiag.Kind.APPROVAL_CANCELLED, toolName, false, "wait cancelled")
+                throw c
             } finally {
                 pending.value = null
             }
+        }
+    }
+
+    /**
+     * P4.3: the user's answer, recorded where it is received so the log can never show a grant
+     * that did not happen. Authorization is recorded only on APPROVED, and this function decides
+     * nothing - it reports a verdict the gate already reached.
+     */
+    internal fun recordVerdict(toolName: String, verdict: ApprovalVerdict) {
+        when (verdict) {
+            ApprovalVerdict.APPROVED -> {
+                CopilotDiag.record(CopilotDiag.Kind.APPROVAL_GRANTED, toolName, true, "user")
+                CopilotDiag.record(CopilotDiag.Kind.EXECUTION_AUTHORIZED, toolName, true, "user")
+            }
+            ApprovalVerdict.REJECTED ->
+                CopilotDiag.record(CopilotDiag.Kind.APPROVAL_DENIED, toolName, false, "declined")
+            ApprovalVerdict.TIMEOUT ->
+                CopilotDiag.record(CopilotDiag.Kind.APPROVAL_CANCELLED, toolName, false, "timeout")
         }
     }
 

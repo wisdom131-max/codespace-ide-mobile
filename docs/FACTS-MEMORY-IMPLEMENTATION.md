@@ -344,3 +344,16 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | Behaviour change | none; limits, backoff and cancellation untouched |
 | Tests | 27 focused diagnostic tests (labels cover the new kinds) |
 | Not covered | ChatSession integration test for the retry call sites |
+
+## P4.3 — approval, MCP, write policy, continuation cancel (2026-11-20)
+
+| Stage | Event | Where |
+|---|---|---|
+| policy decision | WRITE_POLICY_ALLOW / STAGE / REFUSE | `WriteBoundary`, `AgentTools.executeGated` |
+| approval required | APPROVAL_REQUIRED | `AgentFlowGate.awaitDecision` |
+| user decision | APPROVAL_GRANTED / DENIED / CANCELLED | `AgentFlowGate.recordVerdict` |
+| authorization | EXECUTION_AUTHORIZED ("user" or "policy") | same |
+| continuation cancel | CONTINUATION_CANCELLED | send job CancellationException |
+
+Tests: ApprovalLifecycleDiagTest (13), DiagRetryIntegrationTest (5). MCP hard approval asserted
+under AUTO_ALL + always-allow. Not device-verified.

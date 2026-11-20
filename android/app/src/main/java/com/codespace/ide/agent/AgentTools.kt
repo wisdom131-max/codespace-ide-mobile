@@ -463,6 +463,11 @@ You can use multiple tools in sequence. When done, give a final summary.
         // P4.3: a body returning is not the same as the operation working. The verdict is appended
         // as a note for the model, so a truncation or an "error:" inside a normal return cannot be
         // read as success. Silence when there is nothing to say.
+        // P4.3/P8.8: a writer that actually ran was allowed by the boundary; a refusal text
+        // carries its own WRITE_POLICY_REFUSE event from WriteBoundary.
+        if (com.codespace.ide.agent.WriteBoundary.isWriter(name) && !result.startsWith("REFUSED")) {
+            CopilotDiag.record(CopilotDiag.Kind.WRITE_POLICY_ALLOW, name, true, "")
+        }
         val note = ToolResultCheck.note(name, ToolResultCheck.check(name, result))
         return if (note.isBlank()) result else result + "\n" + note
     }

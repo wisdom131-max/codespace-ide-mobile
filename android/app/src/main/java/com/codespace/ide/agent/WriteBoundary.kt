@@ -47,16 +47,29 @@ internal object WriteBoundary {
         com.codespace.ide.agent.FileSystemTools.isInsideEntry(root, path)
 
     /** What the model is told when a proposal is refused. Nothing was staged. */
-    fun proposalRefusal(path: String, root: String): String =
+    fun proposalRefusal(path: String, root: String): String = recordStage(path).let {
         "REFUSED: this edit targets $path, which is outside the open project ($root). " +
             "Nothing was staged. Nothing was written. Open that project first, or name a path inside it."
+    }
 
     /** What the review card says when an Apply is refused. Nothing was written. */
     fun applyRefusal(path: String, root: String): String =
         "outside the open project ($root) - not applied"
 
     /** What the model is told. It must not read as "try again somewhere else". */
-    fun refusal(toolName: String, path: String, root: String): String =
+    fun refusal(toolName: String, path: String, root: String): String = recordRefuse(toolName).let {
         "REFUSED: `$toolName` targets $path, which is outside the open project ($root). " +
             "Nothing was written. Open that project first, or name a path inside it."
+    }
+
+    /** P4.3/P8.8: the policy decision itself, recorded where it is made. */
+    internal fun recordStage(path: String) =
+        com.codespace.ide.agent.CopilotDiag.record(
+            com.codespace.ide.agent.CopilotDiag.Kind.WRITE_POLICY_STAGE, "write", false, "outside project",
+        )
+
+    internal fun recordRefuse(toolName: String) =
+        com.codespace.ide.agent.CopilotDiag.record(
+            com.codespace.ide.agent.CopilotDiag.Kind.WRITE_POLICY_REFUSE, toolName, false, "outside project",
+        )
 }

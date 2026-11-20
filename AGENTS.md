@@ -8101,3 +8101,26 @@ runtime emission is unverified. P4 is therefore still NOT complete.
   "tool write_file failed after 1200ms") survives unchanged.
 - 10 new tests in RedactPatternsTest; 23 focused diagnostic tests pass.
 - Applies before persistence and before display, because the UI reads the same recorded events.
+
+---
+
+### [2026-11-20 13:55 WAT] [APPROVAL] P4.3 - approval, MCP and write-policy lifecycle
+
+- Kinds added: EXECUTION_AUTHORIZED, WRITE_POLICY_ALLOW, WRITE_POLICY_STAGE, WRITE_POLICY_REFUSE.
+- `AgentFlowGate.awaitDecision` now records APPROVAL_REQUIRED (with "forced" or "ask") before the
+  card, and `recordVerdict` maps the user's answer to APPROVAL_GRANTED + EXECUTION_AUTHORIZED,
+  APPROVAL_DENIED, or APPROVAL_CANCELLED (timeout). A cancelled wait is recorded as a cancellation
+  and rethrown, never as a grant. The no-card path records EXECUTION_AUTHORIZED with detail
+  "policy", so a policy shortcut is never logged as a user decision.
+- `WriteBoundary.proposalRefusal` records WRITE_POLICY_STAGE; `WriteBoundary.refusal` records
+  WRITE_POLICY_REFUSE; `AgentTools.executeGated` records WRITE_POLICY_ALLOW when a writer tool ran
+  without a refusal. Policy, approval requirement, user decision, authorization and outcome stay
+  five separate stages.
+- MCP invariant untouched and now asserted: `mcp_`, `use_connector` and `service_write` stay in
+  `requiresForcedApproval`, so AUTO_ALL plus "Always allow" still asks. Diagnostics decide nothing.
+- Continuation cancellation: the `CancellationException` path in the send job records
+  CONTINUATION_CANCELLED when a continuation was in flight and clears the flag, so a stopped
+  continuation can never later read as completed.
+- Tests: 13 approval/policy tests (AgentFlowGate + WriteBoundary), 5 ChatSession retry integration
+  tests driving `send`/`retry` with a fake transport. The forced-ask path is deliberately NOT
+  driven in tests because the card waits ten minutes for an answer.
