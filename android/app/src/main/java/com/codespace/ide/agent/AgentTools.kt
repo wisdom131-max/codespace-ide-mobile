@@ -210,18 +210,23 @@ You can use multiple tools in sequence. When done, give a final summary.
 
     private val TOOL_REGEX = Regex("""<(tool|tool_call)>\s*(\{.*?\})\s*</\1>""", RegexOption.DOT_MATCHES_ALL)
 
-    fun parseToolCalls(text: String): List<Pair<String, JSONObject>> {
-        return TOOL_REGEX.findAll(text).map { match ->
-            try {
-                val json = JSONObject(match.groupValues[2])
-                val name = json.getString("name")
-                val args = json.optJSONObject("arguments") ?: JSONObject()
-                name to args
-            } catch (_: Exception) {
-                "error" to JSONObject().put("message", "Failed to parse tool call")
-            }
-        }.toList()
+    /**
+     * STAGE 1: parsing is delegated to [ToolCallScan]. A malformed call now produces NO call at
+     * all - it used to produce a call to a tool literally named "error", which was never a tool,
+     * so the executor answered with "unknown tool" and hid the real problem.
+     */
+    fun parseToolCalls(text: String): List<Pair<String, JSONObject>> =
+        parseToolCallsDetailed(text).map { it.name to it.args }
+
+    /** The typed form: same scan, with source and stable per-response identity kept. */
+    fun parseToolCallsDetailed(text: String): List<ToolCall> = when (val r = ToolCallScan.scan(text)) {
+        is ScanOutcome.Calls -> r.calls
+        is ScanOutcome.Failure -> emptyList()
     }
+
+    /** Typed failure, for a caller that wants to tell the model what went wrong. */
+    fun parseFailure(text: String): ScanOutcome.Failure? =
+        ToolCallScan.scan(text) as? ScanOutcome.Failure
 
     // R1-CHAT-PARITY: canonical builtin tool name list. MUST stay in sync with
     // the `when` branches in executeTool below (a mismatch only affects the
