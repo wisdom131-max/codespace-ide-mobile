@@ -312,7 +312,40 @@ You can use multiple tools in sequence. When done, give a final summary.
         context: Context,
         callId: String? = null,
     ): String = com.codespace.ide.agent.CopilotDiag.trace(name) {
-        executeToolInner(name, args, context, callId)
+        // PROJECT 4: one six-state record per action, written by the authoritative gate itself.
+        // Reaching this line means the gate has already authorized the call, so an action that
+        // requires approval is recorded APPROVED here and nowhere else - no permissive setting can
+        // manufacture that record, and the ledger can never authorize execution on its own.
+        val ledger = actionLedger(context)
+        val actionId = callId?.takeIf { it.isNotBlank() }
+            ?: (name + "#" + System.currentTimeMillis())
+        val needsApproval = AgentFlowGate.requiresForcedApproval(name)
+        ledger.plan(actionId, name, "", needsApproval)
+        if (needsApproval) ledger.approve(actionId)
+        ledger.begin(actionId)
+        val produced = try {
+            executeToolInner(name, args, context, callId)
+        } catch (t: Throwable) {
+            ledger.fail(actionId, detail = t.javaClass.simpleName)
+            throw t
+        }
+        // The ledger records the verdict, never the output: a failure detail is a fixed phrase so
+        // no tool result, path or credential can leak into a persisted action record.
+        if (com.codespace.ide.agent.runtime.RuntimeBridge.failureText(produced)) {
+            ledger.fail(actionId, detail = "tool reported failure")
+        } else {
+            ledger.complete(actionId)
+        }
+        produced
+    }
+
+    private val actionLedgers = HashMap<String, ActionLedger>()
+
+    private fun actionLedger(context: Context): ActionLedger = synchronized(actionLedgers) {
+        val dir = context.applicationContext.filesDir
+        actionLedgers.getOrPut(dir.absolutePath) {
+            ActionLedger(File(dir, "agent/actions.ledger"))
+        }
     }
 
     private suspend fun executeToolInner(

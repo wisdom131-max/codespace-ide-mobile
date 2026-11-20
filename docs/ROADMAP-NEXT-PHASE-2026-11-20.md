@@ -130,3 +130,10 @@ wrong. Evidence: 230 targeted tests green at `8428d0a` (see AGENTS.md for the cl
 
 Remaining genuine gaps: P3 archive browser panel (UI), P2 multi-step planning improvements, P8
 instrumented accessibility tests (needs a device), P4 per-action six-state ledger.
+
+## Progress log (2026-11-20 19:30)
+
+- P4 six-state action ledger implemented, wired at `AgentTools.executeTool`, 19 tests.
+- Explorer archive verified: tree, per-entry extract, quota, progress all present -> separate archive
+  browser panel marked UNNECESSARY. Gaps recorded: multi-entry select, cancel, in-archive text preview.
+- P8: static accessibility counts recorded; instrumented suite prepared, not executed (no device).

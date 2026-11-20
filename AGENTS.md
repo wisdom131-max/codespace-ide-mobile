@@ -8375,3 +8375,56 @@ model is `chat/provider/ProviderCapabilities.kt` (`ModelLimits`, `ModelProfile`,
 
 I did not rebuild any of 4, 6, 7 or 8: they were already there, and rewriting tested components to
 look busy would have been the worst possible outcome for this programme.
+
+---
+
+### [2026-11-20 19:30 WAT] [P4 P8 EXPLORER] action ledger wired, archive panel unnecessary, accessibility audit
+
+**Explorer archive support verified - a separate archive browser panel is unnecessary.**
+`ui/panes/ArchiveViewer.kt` already provides: `buildArchiveTree` (a real tree with `getOrCreateDir`,
+sorting and expand/collapse state), `flatten` for the visible rows, per-entry `openEntry`, per-entry
+extraction to Downloads with an overwrite confirmation, a 1 GB entry quota that aborts rather than
+filling the device, `CircularProgressIndicator` while working, and a binary-info surface. Entry is
+reached from `ExplorerPane` for `.zip/.apk/.jar/.aar` (plus rar/7z/tar/gz families via
+`ArchiveEngine`). Security is unchanged: `ZipEngine.safeTarget`, `passesThroughSymlink`,
+`unsafeReason` and the entry/size/ratio limits all still gate every write, covered by
+`Stage8ArchiveSymlinkAndRedactionTest` and `Stage8ArchiveTest`.
+Genuine gaps, recorded rather than built: no multi-entry selection in the viewer (the engine supports
+it now through `only`), no cancel button during a long extraction, and no in-archive text preview for
+text entries. None of these is the "archive browser panel" the roadmap asked for.
+
+**P4 - the six-state action ledger is implemented, wired and tested.**
+`agent/ActionLedger.kt` records PLANNED, APPROVED, EXECUTING, COMPLETED, FAILED and CANCELLED against
+one stable id per action. Rules enforced in code, not in prose: `plan()` writes PLANNED before
+execution and refuses a duplicate id, so concurrent callers cannot overwrite each other; `begin()` is
+refused from PLANNED when the action requires approval, so an approval-gated action cannot start
+without an APPROVED record; terminal states are final and a late, repeated or out-of-order event is
+refused rather than coerced; `ran` is false for PLANNED and APPROVED, so a plan is never evidence of
+execution; persistence is atomic, bounded to 200 actions, keeps the newest and drops the oldest
+finished first; a corrupt file loads empty instead of throwing.
+Wired at the authoritative gate: `AgentTools.executeTool` - the single path every tool call already
+takes - plans, records approval on the authorized path only (`if (needsApproval) ledger.approve`),
+begins, then completes or fails. The ledger stores a fixed failure phrase, never tool output, so no
+result, path or credential can reach a persisted action record. The ledger cannot authorize anything:
+`AgentFlowGate` remains the only gate and MCP approval is untouched.
+Tests: `ActionLedgerTest` (16) - approval-gated begin refused, approve-then-execute, planned is not
+executed, cancelled action cannot run from a stale callback, all six states, invalid transitions,
+terminal finality, failure reason, duplicate plan, blank id, 40 concurrent actions, 8-thread race on
+one id, restart restoration, corrupt file, bound. `ActionLedgerWiringTest` (3) - source guard that the
+gate records all states, that approval is written from the gate, and that output is never stored.
+
+**P2 - verified existing, nothing rebuilt.** Multi-step research already exists and is tested:
+`ResearchPlannerTest`, `ResearchDecompositionTest`, `ResearchProgressTest`, `ResearchResultsTest`,
+`ResearchHistoryTest`, `ResearchCancelTest`, `ContradictionScanTest`, `ResearchSourcesTest`,
+`AcceptanceScenarioTest`. This campaign's P2 contribution is `ResearchSourceIntegrityTest` (9), which
+closes "sources are not fabricated". No new planning code was written this round; claiming otherwise
+would be false.
+
+**P8 - accessibility audit, prepared and not executed.** Static audit at `34c209b`:
+`ChatCards.kt` has 4 `contentDescription` uses, 5 semantics/stateDescription uses and 2 roles;
+`CopyIconRow.kt` has 4 semantics uses and 2 roles; `ChatListRenderer.kt` and `ArchiveViewer.kt` have
+none. The instrumented suite that would verify labels, click actions, focus order and UI-to-backend
+state consistency is **prepared but not executed**: `androidTestImplementation` already declares
+`androidx.test.ext:junit`, espresso-core, the Compose BOM and `ui-test-junit4`, but no emulator or
+device exists in this environment, so no test source was added that could not be run and no
+accessibility claim is made beyond the static counts above.
