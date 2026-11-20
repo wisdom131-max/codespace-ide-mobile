@@ -307,6 +307,21 @@ object FactsStore {
         if (!writeTo(d, applied.facts)) return SaveResult.WriteFailed
         // STAGE 1: publish only after the write landed, so the panel cannot show a phantom save.
         MemoryEvents.publish()
+        // STAGE 9: history is recorded only after the fact write landed. Every failure above
+        // returns before this line, so the timeline can never claim an operation that did not run.
+        if (target != null && target.id != applied.fact.id) {
+            MemoryTimeline.factEvent(d, TimelineEventType.SUPERSEDED, target, now,
+                replacementId = applied.fact.id)
+            MemoryTimeline.factEvent(d, TimelineEventType.CREATED, applied.fact, now)
+        } else {
+            MemoryTimeline.factEvent(
+                d,
+                if (applied.decision == FactDecision.CORRECTION) TimelineEventType.UPDATED
+                else TimelineEventType.CREATED,
+                applied.fact,
+                now,
+            )
+        }
         return SaveResult.Saved(applied.fact, applied.decision)
     }
 
@@ -482,6 +497,8 @@ object FactsStore {
         val updated = all.map { if (it.id == id) edited else it }
         if (!writeTo(d, updated)) return "The write failed; the fact is unchanged."
         MemoryEvents.publish()
+        MemoryTimeline.factEvent(d, TimelineEventType.UPDATED, edited, System.currentTimeMillis(),
+            previousText = target.content)
         return null
     }
 
@@ -500,6 +517,9 @@ object FactsStore {
         }
         if (!writeTo(d, remaining)) return false
         MemoryEvents.publish()
+        all.firstOrNull { it.id == id }?.let {
+            MemoryTimeline.factEvent(d, TimelineEventType.DELETED, it, System.currentTimeMillis())
+        }
         return true
     }
 
@@ -533,6 +553,9 @@ object FactsStore {
         }
         if (!writeTo(d, updated)) return false
         MemoryEvents.publish()
+        updated.firstOrNull { it.id == oldId }?.let {
+            MemoryTimeline.factEvent(d, TimelineEventType.SUPERSEDED, it, now, replacementId = newId)
+        }
         return true
     }
 

@@ -50,6 +50,13 @@ data class ReviewCandidate(
     /** Only when the user typed one. Never required. */
     val reason: String? = null,
 ) {
+    /** When the information is about, from Stage 4 provenance. 0 stays 0: never invented. */
+    fun subjectTimeMs(): Long = when {
+        sourceConversationAt > 0L -> sourceConversationAt
+        sourceMessageAt > 0L -> sourceMessageAt
+        else -> 0L
+    }
+
     fun belongsTo(projectId: String?): Boolean =
         scope == FactScope.USER || (projectId != null && this.projectId == projectId)
 }
@@ -271,6 +278,8 @@ object ReviewQueue {
         }
         if (!writeTo(d, updated)) return Outcome.WriteFailed
         MemoryEvents.publish()
+        MemoryTimeline.reviewEvent(d, TimelineEventType.ACCEPTED, c, now,
+            replacementId = fact.id)
         return Outcome.Accepted(fact, (saved as FactsStore.SaveResult.Saved).decision)
     }
 
@@ -293,6 +302,7 @@ object ReviewQueue {
         }
         if (!writeTo(d, updated)) return Outcome.WriteFailed
         MemoryEvents.publish()
+        MemoryTimeline.reviewEvent(d, TimelineEventType.REJECTED, c, now, reason = reason)
         return Outcome.Rejected
     }
 
@@ -306,6 +316,7 @@ object ReviewQueue {
         }
         if (!writeTo(d, updated)) return false
         MemoryEvents.publish()
+        c.let { MemoryTimeline.reviewEvent(d, TimelineEventType.RECONSIDERED, it, now) }
         return true
     }
 

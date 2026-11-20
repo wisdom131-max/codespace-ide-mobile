@@ -47,7 +47,10 @@ import com.codespace.ide.agent.facts.FactDates
 import com.codespace.ide.agent.facts.FactText
 import com.codespace.ide.agent.facts.MemoryEvents
 import com.codespace.ide.agent.facts.FactsStore
+import com.codespace.ide.agent.facts.MemoryTimeline
 import com.codespace.ide.agent.facts.ReviewQueue
+import com.codespace.ide.agent.facts.TimelineEventType
+import com.codespace.ide.agent.facts.TimeSource
 
 /**
  * FACTS (2026-11-11) — the memory management screen, under Settings.
@@ -186,6 +189,7 @@ fun FactsScreen(
             accent = accent, surface = panel, textPri = textPri, textSec = textSec,
             danger = danger, warn = warn,
         )
+    TimelineSection(context, revision, accent, textPri, textSec, panel)
 
         if (message.isNotBlank()) {
             Text(
@@ -707,6 +711,73 @@ private fun ReviewSection(
                     }
                 }
             }
+        }
+    }
+}
+
+
+/**
+ * STAGE 9 — the memory timeline, bounded to the newest few events.
+ *
+ * Deliberately a compact list, not a scrollable history of everything: this is a phone, and the
+ * timeline document is capped at MemoryTimeline.MAX_EVENTS anyway. Each row shows the time the
+ * APP acted, and separately whether the information carries a verified, user-stated or unknown
+ * date. Those two are never merged into one date.
+ */
+@Composable
+private fun TimelineSection(
+    context: android.content.Context,
+    revision: Int,
+    accent: Color,
+    textPri: Color,
+    textSec: Color,
+    surface: Color,
+) {
+    val events = remember(revision) {
+        MemoryTimeline.loadFrom(FactsStore.memoryDir(context)).take(8)
+    }
+    if (events.isEmpty()) return
+    Spacer(Modifier.height(8.dp))
+    Text(
+        "Timeline (" + events.size + ")",
+        color = textPri, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+        modifier = Modifier.padding(horizontal = 12.dp),
+    )
+    Spacer(Modifier.height(4.dp))
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(surface)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        for (e in events) {
+            val label = when (e.type) {
+                TimelineEventType.CREATED -> "saved"
+                TimelineEventType.ACCEPTED -> "accepted"
+                TimelineEventType.UPDATED -> "updated"
+                TimelineEventType.SUPERSEDED -> "replaced"
+                TimelineEventType.DELETED -> "deleted"
+                TimelineEventType.REJECTED -> "rejected"
+                TimelineEventType.RECONSIDERED -> "reconsidered"
+            }
+            Text(
+                FactDates.local(e.atMs) + "  \u00b7  " + label,
+                color = accent, fontSize = 10.sp,
+            )
+            val body = (e.newText ?: e.previousText ?: "").take(90)
+            if (body.isNotBlank()) {
+                Text(body, color = textPri, fontSize = 11.sp)
+            }
+            val source = when {
+                e.hasVerifiedTime() -> "from the conversation on " + FactDates.local(e.subjectTimeMs)
+                e.timeSource == TimeSource.USER_STATED && e.subjectTimeMs > 0L ->
+                    "you said " + FactDates.local(e.subjectTimeMs)
+                else -> "date not recorded"
+            }
+            Text(source, color = textSec, fontSize = 9.sp)
         }
     }
 }

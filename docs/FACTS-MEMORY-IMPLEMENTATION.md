@@ -147,3 +147,13 @@ rows.
 
 Tests: `ReviewQueueTest` (21) plus `MemoryExtractionTest` rewritten to assert queuing, not saving.
 Full suite: 3687 tests, 4 skipped, 0 failures. Device: not tested.
+
+## Stage 9 — Memory Timeline
+
+**Implemented.** `MemoryTimeline` + events emitted from `FactsStore` (save, edit, delete,
+supersede) and `ReviewQueue` (accept, reject, reconsider). Separate bounded document, 400 events.
+Timestamp rule: `atMs` = app event time; `subjectTimeMs`/`timeSource` = when the information is
+from, taken from Stage 4 provenance with no createdAt fallback. Retention: oldest events drop
+first; no fact is ever pruned. Corruption: reads as empty, so missing history is never invented.
+Tests: `MemoryTimelineTest` (20). Facts 187, full 3707 / 4 skipped / 0 failures.
+Status: implemented, automated-tested, pending CI, not device-tested.

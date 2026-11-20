@@ -7774,3 +7774,21 @@ promote a candidate.
 
 Tests: ReviewQueueTest 21, MemoryExtractionTest updated to the queue contract. Full suite 3687,
 4 skipped, 0 failures. Commit 0a89b2d.
+
+---
+
+### [2026-11-20 03:40 WAT] [MEMORY] Stage 9 - memory timeline
+
+`MemoryTimeline` keeps one bounded document, `memory-timeline.json` (400 events, newest kept),
+separate from facts.json so a timeline failure can never damage the facts it describes.
+Events: CREATED, ACCEPTED, UPDATED, SUPERSEDED, DELETED, REJECTED, RECONSIDERED.
+Each carries a stable id (`TYPE:subject:atMs`), the fact's scope/project, previous and new text,
+the conversation link, and TWO times that are never merged: `atMs` (when the app acted) and
+`subjectTimeMs` + `timeSource` (when the information is from; 0 stays unknown).
+`factEvent` deliberately does NOT use `Fact.factTime()`, which falls back to createdAt - a save
+time must never be presented as a conversation date. Events are appended only AFTER a successful
+fact write, so a failed save cannot produce a success event. Recording is idempotent by id, so a
+retry or a repeated review action cannot duplicate history. Legacy facts with no events stay
+without invented history. UI: bounded Timeline section in the Facts screen (newest 8).
+Tests: 20 new in MemoryTimelineTest. Facts package 187, full suite 3707, 4 skipped, 0 failures.
+Not device-tested. Commit: see below.
