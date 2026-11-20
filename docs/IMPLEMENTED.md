@@ -777,3 +777,10 @@ nothing device-verified.
   `send` path with an injected slot pool and a fake 401 transport. It also pinned the real
   semantics: the pool holds ALTERNATIVE slots, so a one-slot pool fails over exactly once and then
   reports exhaustion.
+
+---
+
+### [2026-11-20 16:05 WAT] [AUDIT] integration audit and roadmap
+
+See `docs/INTEGRATION-AUDIT-2026-11-20.md` and `docs/ROADMAP-NEXT-PHASE-2026-11-20.md`.
+P4.3 remains open with a stated reason; duplicate reply is PARTIALLY ADDRESSED.

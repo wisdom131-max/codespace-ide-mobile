@@ -8228,3 +8228,17 @@ nothing device-verified.
   `send` path with an injected slot pool and a fake 401 transport. It also pinned the real
   semantics: the pool holds ALTERNATIVE slots, so a one-slot pool fails over exactly once and then
   reports exhaustion.
+
+---
+
+### [2026-11-20 16:05 WAT] [AUDIT] integration audit and next-phase roadmap
+
+- `docs/INTEGRATION-AUDIT-2026-11-20.md` rewritten for this campaign: defect record (D1 approval
+  card, D2 deleted 7.11 evidence), nine-scenario table with strict evidence levels, duplicate-reply
+  classified PARTIALLY ADDRESSED with its identity mechanism named, and the P4.3 limitation stated
+  precisely.
+- `docs/ROADMAP-NEXT-PHASE-2026-11-20.md`: eight projects with status, gaps, objective, scope,
+  dependencies, security, acceptance, tests, checkpoints, complexity and an order whose first item
+  is Integration Reliability because of D1. Nothing in it was implemented.
+- P4.3 (Compose UI test) could not be closed: `ui-test-junit4` is androidTest-only, which needs a
+  device or emulator (deferred), and Robolectric with Compose needs an unauthorized download.

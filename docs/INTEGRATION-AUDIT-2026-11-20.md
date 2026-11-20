@@ -1,34 +1,79 @@
-# Cross-project integration audit — 2026-11-20
+# VN Code Copilot — integration, reliability and security audit (2026-11-20)
 
-Baseline `main` at the commits below. Classification is deliberately strict: **end-to-end** means
-the production code path ran with only the outermost dependency faked; **component-level** means the
-decision logic is tested but the surrounding wiring is compile-verified only; **partial** means some
-stages of the chain are not exercised at all.
+Baseline `eeab5b8`, audited on `main`. Evidence levels used below:
 
-| # | Scenario | Classification | Evidence |
+1. end-to-end integration-tested
+2. runtime integration-tested with controlled/faked dependencies
+3. component-level tested
+4. source-level architectural guard
+5. not verified
+
+## Confirmed defects found in this campaign
+
+### D1 — CRITICAL — the approval card was never published
+
+| Field | Value |
+|---|---|
+| Scenario | Tool execution / MCP approval: user request -> approval -> execution |
+| Expected | A gated call pauses, a card appears, the user's answer resolves the wait |
+| Actual | No card was ever published. `PendingApproval(` existed only as a declaration and `pending.value` was only ever assigned `null`. `approve()` / `reject()` always returned false |
+| Root cause | `AgentFlowGate.awaitDecision` created a `CompletableDeferred` and awaited it without publishing the `PendingApproval` that `approve()`/`reject()` act on |
+| Severity | Critical: every call requiring approval (`mcp_*`, `use_connector`, `service_write`, every non-auto tool under MANUAL) waited the full ten minutes and was then reported as "no answer in 10 minutes". Nothing could be approved |
+| Fix | Publish `PendingApproval(toolName, argsSummary, deferred, onAlwaysAllow, onTrust)` before the wait; the existing `finally` already clears it |
+| Regression test | `ApprovalCardFlowTest` (6): grant, decline, expiry, double-approve, MCP-forced card, auto-approved no-card |
+| Verification | Unit-tested + runtime-tested through the real gate object. Not device-tested |
+| Commit | `215c835` |
+
+Why this survived: every existing approval test asserted the *pure* policy functions (`mustAsk`,
+`requiresForcedApproval`, `verdictFor`). Those were correct, so the suite was green while the
+mechanism that answers the card was missing. The fix is one statement, which is exactly why the
+absence of it was invisible.
+
+### D2 — MEDIUM — Project Seven's 7.11 regression evidence was deleted with Voice Mode
+
+`a015d0f` deleted `Stage711IntegrationTest.kt` whole because it imported the removed voice turn
+machine, taking four voice-independent cases with it. Behaviour was intact; the evidence was not.
+Restored unchanged, all four pass. Commit `2bc231e`.
+
+## Scenario results
+
+| # | Scenario | Level | Evidence |
 |---|---|---|---|
-| 1 | Tool execution | Component-level verified | `AgentTools.executeTool` -> `executeToolInner` -> `executeGated` -> `dispatchGuard.run`; `SingleExecutionGateGuardTest` proves the gate is the only entry; `ApprovalLifecycleDiagTest` proves the approval decision and that a denial never authorizes. The full chain to a rendered assistant reply is not driven in one test. |
-| 2 | MCP approval | Partially integrated | `AgentFlowGate.requiresForcedApproval` forces `mcp_*`, `use_connector`, `service_write`; `mustAsk` returns true under AUTO_ALL + always-allow (tested). No MCP server is connected in tests, so discovery, execution and refusal against a real server are unverified. |
-| 3 | Large tool output | Component-level verified | `agent/ContextOffload.kt` + `ContextOffloadTest`; wired in `ChatSession`. Pointer-plus-excerpt retrieval back into a reply is not driven end to end. |
-| 4 | Research and retrieval | Component-level verified | `agent/RetrievalFusion.kt` + `RetrievalFusionTest`; `ResearchPresentation.bound` caps sources at 40 with an exact omitted count (`Stage711IntegrationTest`). No semantic/vector layer exists, by design. |
-| 5 | Provider failure and retry | End-to-end (provider faked) | `DiagRetryIntegrationTest` drives the real `ChatSession.send` / `retry()` with a fake `ChatTransport`: one wire attempt, then a card, then a user-initiated retry. There is no automatic retry ladder, so RETRY_SCHEDULED/EXHAUSTED only fire on the opt-in key failover, which is not driven in tests. |
-| 6 | Continuation | Partially integrated | `ContinuationDiag` covers COMPLETED/FAILED/CANCELLED and `ChatSession` calls it from the Completed, Failed and cancellation paths. The call sites are compile-verified; no ChatSession test drives a real continuation turn to a terminal event. |
-| 7 | Archive inspection | Component-level verified | `util/ZipEngine.extract` boundary + `ZipEngineBoundaryTest` (10 attack shapes); `ArchiveDestinationVerifier` reads the destination rather than trusting the extraction report. |
-| 8 | Restart | Verified through the persisted file | `DiagHistoryModelTest` records, flushes, clears the ring (process death), re-attaches the file (restart) and reads the event back through the same model the UI renders. Not device-verified. |
-| 9 | Sensitive information | Component-level verified | `RedactPatternsTest` (Google/AWS/JWT/Basic/bearer/assignments) and `DiagTransportTest` (URL, bearer token and prompt never recorded). Redaction runs inside `record()`, before the JSONL write and before the UI reads it. Binary and non-UTF8 tool output are not covered. |
+| 1 | Tool execution: discovery -> permission -> approval -> execution -> result | 2 | `AgentTools.executeTool` -> `executeToolInner` -> `executeGated` -> `dispatchGuard.run`; `ApprovalCardFlowTest` drives the approval decision through the real gate; `DiagTransport` + `executeGated` record the outcome |
+| 2 | MCP approval: selection -> mandatory approval -> decision -> execution/refusal | 2 (decision), 5 (remote execution) | `requiresForcedApproval` forces `mcp_*`; `ApprovalCardFlowTest` shows the card appearing under AUTO_ALL + always-allow. No MCP server is connected in tests, so execution against a real server is unverified |
+| 3 | Large tool output: limit -> offload -> pointer/excerpts -> retrieval | 3 | `agent/ContextOffload.kt` + `ContextOffloadTest`, wired in `ChatSession`; the round trip back into a reply is not driven |
+| 4 | Research: discovery -> retrieval -> fusion -> ranking -> citations | 3 | `RetrievalFusion.kt` + `RetrievalFusionTest`; `agent/research/` holds `ClaimReconciliation`, `ContradictionScan`, `ResearchCancel`; `ResearchPresentation.bound` caps sources at 40 with an exact omitted count |
+| 5 | Provider failure and retry | 2 | `DiagRetryIntegrationTest` (5) and `DiagFailoverIntegrationTest` (5) drive `send`/`retry` with a fake transport: one attempt, then a card; failover schedules each alternative key then reports exhaustion once |
+| 6 | Continuation: eligibility -> execution -> terminal -> duplicate protection | 3 | `ContinuationDiag` wired at the Completed, Failed and cancellation paths; call sites compile-verified, no test drives a real continuation turn to its terminal event |
+| 7 | Archive: validation -> safe extraction -> inspection | 3 | `ZipEngine.extract` containment + symlink walk + limits; `ZipEngineBoundaryTest` (10 shapes); `ArchiveDestinationVerifier` reads the destination instead of trusting the report |
+| 8 | Restart: event -> persistence -> process death -> restoration -> UI | 2 | `DiagHistoryModelTest`: record, flush, clear the ring, re-attach the file, read back through the model the UI renders |
+| 9 | Sensitive information: provider/tool -> redaction -> storage/display | 3 | `RedactPatternsTest` (10) + `DiagTransportTest` (URL, bearer, prompt never recorded); redaction runs inside `record()` before the write |
 
-## What this audit does NOT claim
+## Duplicate-reply prevention — status: existing protection verified, not proven end to end
 
-- No scenario is device-verified. Nothing here was run on the TECNO KL4.
-- No scenario is verified against a real provider or a real MCP server; the outermost dependency is
-  always faked.
-- Scenarios 1, 6 and 2 have stages that no test exercises, which is why they are not called
-  end-to-end.
+- Authoritative identity: `ReplyOwnership` (generation-based `mayComplete`), `DeliveryLedger`
+  (persisted delivery identities), and `ChatSession.lastCompletedGen` / `requestGate.stale(gen)`.
+- A `Completed` event that fails `ReplyOwnership.mayComplete` returns before anything is appended,
+  so a late or duplicated terminal event cannot add a second assistant bubble.
+- Tests present: `ReplyOwnershipTest`, `Stage47ReplyIdentityTest`, `Stage48DeliveryLedgerTest`,
+  `Stage48RuntimeDeliveryTest`.
+- NOT proven: no test drives rapid tab close/reopen, backgrounding, or two concurrent sends in one
+  session. Classification: **partially addressed**. Do not describe the historical duplicate-reply
+  issue as fixed.
 
-## Remaining limitations
+## Remaining risks
 
-1. Retry events for the opt-in key failover have no test driving the failover branch.
-2. `APPROVAL_REQUIRED` emission is compile-verified: the card waits up to ten minutes, so a test
-   that expects a timeout would stall the suite.
-3. Continuation cancellation is wired but not driven by a test.
-4. Compose rendering of the diagnostic history screen has no UI test.
+1. Compose rendering of the diagnostic history screen has no test (see P4.3 limitation).
+2. No MCP server or real provider is exercised anywhere.
+3. Continuation terminal events and failover exhaustion are wired and now partly driven, but the
+   full continuation turn is not.
+4. Nothing is device-verified.
+
+## P4.3 limitation, stated precisely
+
+The Compose UI test cannot be written and verified here: `ui-test-junit4` is declared only as
+`androidTestImplementation`, which needs a connected device or emulator, and that is deferred. The
+alternative (Robolectric with Compose) requires a dependency download that is not authorized. The
+state model behind the screen is covered by `DiagHistoryModelTest` (13): rendering inputs, filters,
+empty state, restart visibility and the 200-row bound. What remains unverified is the composable
+itself.
