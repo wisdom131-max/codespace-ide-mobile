@@ -148,6 +148,10 @@ object ZipEngine {
     }
 
     /** True for the platform-independent "this is a directory entry" marker. */
+    /** True when [name] is one of [only], or sits under one of its directory prefixes. */
+    fun isSelected(name: String, only: Set<String>): Boolean =
+        only.contains(name) || only.any { it.endsWith("/") && name.startsWith(it) }
+
     fun isDirectoryEntry(name: String): Boolean =
         name.endsWith("/") || name.endsWith("\\")
 
@@ -325,6 +329,12 @@ object ZipEngine {
         maxEntries: Int = MAX_ENTRIES,
         maxTotalBytes: Long = MAX_TOTAL_BYTES,
         maxEntryBytes: Long = MAX_ENTRY_BYTES,
+        /**
+         * PROJECT 3: extract only these entries (a file, or every entry under a directory prefix).
+         * Null means the whole archive, which is the previous behaviour. Selection happens BEFORE
+         * any path validation or write, so it can never widen what an entry is allowed to touch.
+         */
+        only: Set<String>? = null,
     ): ExtractOutcome {
         val skipped = ArrayList<Problem>()
         val failed = ArrayList<Problem>()
@@ -360,6 +370,7 @@ object ZipEngine {
                     break
                 }
                 val name = entry.name
+                if (only != null && !isSelected(name, only)) continue
                 if (isDirectoryEntry(name)) {
                     val dir = safeTarget(root, name)
                     if (dir == null) {

@@ -97,6 +97,7 @@ object ZipTools {
         destRaw: String?,
         overwrite: Boolean,
         context: Context? = null,
+        entries: List<String>? = null,
     ): String {
         val archive = resolveInside(root, archiveRaw, context)
             ?: return "Refused: the archive path is outside the workspace (" + archiveRaw + ")."
@@ -107,7 +108,8 @@ object ZipTools {
             resolveInside(root, destRaw, context)
                 ?: return "Refused: the destination is outside the workspace (" + destRaw + ")."
         }
-        val outcome = ZipEngine.extract(archive, dest, overwrite)
+        val selected = entries?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet()?.takeIf { it.isNotEmpty() }
+        val outcome = ZipEngine.extract(archive, dest, overwrite, only = selected)
         if (outcome.files == 0 && outcome.dirs == 0 && outcome.failed.isNotEmpty()) {
             // Nothing landed and something went wrong: say that plainly instead of dressing it up
             // as a partial success with zero files.
@@ -115,11 +117,15 @@ object ZipTools {
             return "Extraction failed at " + first.entry + ": " + first.detail
         }
         val sb = StringBuilder()
+        if (selected != null && outcome.files == 0 && outcome.dirs == 0 && outcome.failed.isEmpty()) {
+            return "None of the " + selected.size + " requested entries were found in " + archive.name + "."
+        }
         sb.append(if (outcome.partial) "Partially extracted " else "Extracted ")
         sb.append(archive.name).append(" into ").append(dest.path).append('\n')
         sb.append("Files: ").append(outcome.files)
         sb.append("  Directories: ").append(outcome.dirs)
         sb.append("  Bytes: ").append(human(outcome.bytes))
+        if (selected != null) sb.append("  selected ").append(selected.size).append(" requested entries")
         if (outcome.partial) sb.append("  (incomplete)")
         sb.append('\n')
         appendProblems(sb, "Skipped", outcome.skipped)

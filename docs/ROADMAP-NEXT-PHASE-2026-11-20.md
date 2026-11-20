@@ -116,3 +116,9 @@ provider fakes for interruption tests. 4 depends on 8's gate counter. 5 depends 
 
 - 2026-11-20: project 1 scoped work landed (`215c835` approval card, `3fbf399` duplicate-reply
   runtime scenarios, CI 44755439433 green). Projects 2-8 not started.
+
+## Progress log (continued)
+
+- 2026-11-20: project 2 source integrity (`ResearchSourceIntegrityTest`, 9), project 3 selective
+  extraction (`SelectiveExtractionTest` 6 + `ZipToolSelectionTest` 4), project 5 discovery guard
+  (`ToolDiscoveryNeverExecutesTest`, 3). No archive browser panel, no research planning changes.

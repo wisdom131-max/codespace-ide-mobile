@@ -764,7 +764,12 @@ You can use multiple tools in sequence. When done, give a final summary.
                         ZipTools.extract(
                             zipRoot(context), raw,
                             args.optString("dest").takeIf { it.isNotBlank() },
-                            args.optBoolean("overwrite", false), context)
+                            args.optBoolean("overwrite", false), context,
+                            entries = args.optJSONArray("entries")?.let { arr ->
+                                (0 until arr.length()).mapNotNull { i ->
+                                    arr.optString(i).takeIf { it.isNotBlank() }
+                                }
+                            })
                     } else {
                         val destRaw = args.optString("dest").takeIf { it.isNotBlank() }
                         val dest = if (destRaw == null) zipRoot(context) else File(resolveToolPath(context, destRaw))

@@ -847,3 +847,36 @@ proof (the unpublished approval card and the duplicate-reply scenarios). The rem
 deliberately not begun rather than started and left half-integrated, which the programme forbids.
 Each is specified in `docs/ROADMAP-NEXT-PHASE-2026-11-20.md` with scope, acceptance criteria and
 checkpoints, so the next run starts from a plan rather than a guess.
+
+---
+
+### [2026-11-20 18:10 WAT] [P2 P3 P5] research source integrity, selective extraction, discovery guard
+
+**Project 2 (research) - source integrity.** `ResearchSourceIntegrityTest` (9) covers what may become
+a citation: a sources block parses in order with stable ids, bare URLs are accepted, an answer with no
+sources block invents nothing, only http/https is openable (javascript:, file:, data:, relative paths
+refused), a control character in a URL makes it unusable, the same source twice collapses to one,
+a blank title falls back to the domain and is capped at 120, an unopenable ledger entry never becomes
+a citation, and order follows the research. Research itself was already present
+(`ResearchPlanner`, `ResearchProgress`, `ResearchResults`, `ResearchHistory`, `ClaimReconciliation`,
+`ContradictionScan`, `ResearchSources`, `ResearchCancel`); this closes the "sources are not
+fabricated" criterion, which had no test.
+
+**Project 3 (documents & media) - selective extraction.** `zip_extract` gains an optional `entries`
+list. `ZipEngine.extract` takes `only: Set<String>?` and `ZipEngine.isSelected(name, only)` matches an
+exact name or a directory prefix. Selection is applied BEFORE any path validation or write, so it can
+never widen what an entry may touch. The tool reports "selected N requested entries", and when a
+selection matches nothing it says so instead of claiming success.
+Tests: `SelectiveExtractionTest` (6) - one file, a directory prefix, no selection, a traversal entry
+named explicitly is still refused, `isSelected` boundaries, corrupt archive refused with a reason;
+`ZipToolSelectionTest` (4) - the tool layer itself, including the "none of the requested entries"
+answer and the outside-the-workspace refusal. Full extraction, listing, symlink handling, size and
+ratio limits are untouched.
+
+**Project 5 (tool intelligence) - discovery never executes.** `ToolDiscoveryNeverExecutesTest` (3) is a
+source-level guard: the `tool_search` branch must not mention `executeToolBody(`, `executeGated(` or
+`dispatchGuard.run`, and must stay a short delegation. Dynamic loading and lean modes are unchanged.
+
+Not done in these three: research multi-step planning changes, an archive browser panel (tree view /
+in-archive preview), tool sequencing and result-interpretation work. They remain specified in the
+roadmap.
