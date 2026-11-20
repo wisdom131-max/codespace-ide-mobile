@@ -7864,7 +7864,7 @@ Full suite 3741, 4 skipped, 0 failures. NOT device-tested.
 - Stage 3 (`f52addd`): `NativeToolCalling` shapes declarations for OpenAI-compatible, Anthropic and
   Gemini and parses each back into the same `ToolCall`. Gated on TOOL_CALLS **and** a verified
   profile; custom endpoints stay on text. Execution is still `AgentTools.executeTool` only.
-- Stage 4 (`this commit`): measurement harness records CHARACTER counts only and states plainly that
+- Stage 4 (`380e2f3`): measurement harness records CHARACTER counts only and states plainly that
   provider token usage is unavailable, because no model is called in unit tests or CI.
 - Tests: 20 scanner, 14 filter, 14 native, 4 measurement. Agent+chat regression 2888 green.
 - Known limitation: native calling is implemented and gated but no endpoint is marked verified yet,

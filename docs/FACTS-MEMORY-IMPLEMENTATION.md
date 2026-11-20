@@ -211,3 +211,11 @@ a very long tool loop costs one small file write per step.
 1. `latest()` could return an undated fact as the most recent.
 2. A reworded rejected candidate could return to the queue.
 3. An interrupted Thinking Tree step restored as ACTIVE/ok.
+
+## Related work outside the 11 stages
+
+The Tool-Calling Architecture programme (Stages 1-4, `d00931d`..`380e2f3`) touches the memory
+programme only at the edges: `ToolCallScan` and `ProtocolStreamFilter` keep protocol text out of the
+transcript that Stage 3.1 and Stage 9 read, and `NativeToolCalling` routes through the same
+`executeTool` gate the memory tools already use. It adds no memory behaviour and changes no fact,
+review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMPLEMENTED.md`.

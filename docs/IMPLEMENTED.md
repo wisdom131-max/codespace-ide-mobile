@@ -411,3 +411,24 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
   OpenAI completion inside `result`, unwrapped by `ProviderStreamNormaliser`. Device status: chat over
   `.../ai/v1` is device-proven on the `ae14a1d` APK; the catalogue fix, the `/ai/run` handling and
   streaming are not yet device-tested.
+
+## 2026-11-20 - Tool-calling architecture, Stages 1-4 (CI 44696877512, 44697191921, 44697252429, 44697500267)
+
+- Stage 1 `d00931d`: `ToolCallScan` replaces the lazy `<(tool|tool_call)>` regex with a scanner that
+  tracks JSON string and escape state, so nested objects, arrays, braces inside strings, escaped
+  quotes and backslashes, and unicode all parse whole. `ToolCall(id, name, args, source)` is the one
+  normalized shape; the `<tool>` JSON dialect and the Hermes/Qwen XML dialect both produce it.
+  Parse failures are typed and yield no call: the previous path fabricated a call to a tool named
+  "error", which no tool answers.
+- Stage 2 `6ba0d94`: `ProtocolStreamFilter` holds a tail that could still become an opener and holds
+  a whole call region until it closes, so a marker split across chunks is never painted as prose.
+  Wired into the live delta path and reset per turn; an unfinished call at turn end is dropped.
+- Stage 3 `f52addd`: `NativeToolCalling` shapes declarations for OpenAI-compatible, Anthropic and
+  Gemini and parses each provider's structured call back into the same `ToolCall`. `wireFor()`
+  requires the TOOL_CALLS capability AND a verified profile; custom endpoints stay on text even when
+  verified, because OpenAI-compatible services do not share one contract. No endpoint is marked
+  verified yet, so native calling is inert in production by design.
+- Stage 4 `380e2f3`: measurement harness records CHARACTER counts only and prints "Token measurement
+  unavailable for this endpoint or protocol." No percentage improvement is claimed anywhere.
+- Tests: 20 scanner, 14 filter, 14 native, 4 measurement. Full suite 3793, 4 skipped, 0 failures.
+- Device status: NOT device-tested. The leak fix is only observable on a live streamed turn.
