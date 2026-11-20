@@ -286,3 +286,15 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | UI | none |
 | Tests | 12 persistence, 9 lifecycle, 11 runtime, 14 component = 46 diag tests |
 | Device status | not device-tested; call sites compile-verified only |
+
+## P4.4 wiring — restart survival (2026-11-20)
+
+| Item | Value |
+|---|---|
+| Call site | `CodeSpaceApplication.onCreate` -> `CopilotDiag.attach` |
+| File | `filesDir/diagnostics/copilot-events.jsonl` |
+| Flush | every 5 events, plus explicit `flush()` |
+| Retention | 500 events / 3 days, trimmed on load |
+| Failure mode | memory-only, startup unaffected |
+| Tests | 8 wiring, 54 diagnostic total, 0 failures |
+| Device status | not device-tested |

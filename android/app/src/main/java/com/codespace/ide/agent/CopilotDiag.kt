@@ -61,6 +61,10 @@ object CopilotDiag {
                 ),
             )
         }
+        if (++sinceSave >= 5) {
+            sinceSave = 0
+            runCatching { sink?.let { persistTo(it) } }
+        }
     }
 
     /**
@@ -93,6 +97,13 @@ object CopilotDiag {
     fun clear() {
         synchronized(ring) { ring.clear() }
         persisted = 0
+        sinceSave = 0
+    }
+
+    /** Stops writing to the attached file. Events already on disk are untouched. */
+    fun detach() {
+        sink = null
+        sinceSave = 0
     }
 
     /** Counts per kind, for a compact summary row. */
@@ -124,6 +135,25 @@ object CopilotDiag {
 
     const val MAX_PERSISTED = 500
     const val KEEP_DAYS = 3
+
+    /**
+     * P4.4 wiring: the file the app attached, plus a counter so the disk is touched once every
+     * few events rather than on every one. Null means memory-only, which is the honest state in
+     * JVM tests and before the Application has started.
+     */
+    @Volatile private var sink: File? = null
+    @Volatile private var sinceSave = 0
+
+    /** Points diagnostics at a file and restores whatever survived the last process. */
+    fun attach(file: File): Int {
+        sink = file
+        return loadFrom(file)
+    }
+
+    fun sinkFile(): File? = sink
+
+    /** Writes anything pending now. Safe at any time; never throws. */
+    fun flush(): Boolean = sink?.let { persistTo(it) } ?: false
 
     /** How many events have already reached the file, so a save never rewrites what it wrote. */
     @Volatile private var persisted = 0

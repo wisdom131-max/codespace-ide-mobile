@@ -38,6 +38,14 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             .build()
 
     override fun onCreate() {
+        // P4.4: attach the diagnostic sink before anything else can fail, so events from startup
+        // onward survive a restart. A failure here leaves diagnostics memory-only - it must never
+        // block startup.
+        try {
+            com.codespace.ide.agent.CopilotDiag.attach(
+                java.io.File(filesDir, "diagnostics/copilot-events.jsonl"),
+            )
+        } catch (_: Throwable) { /* diagnostics never block startup */ }
         // BATCH10-P00 (advisor addendum 2026-10-18): BUILD STAMP is the FIRST Output
         // line — "[start] build <hash> run <n> <time>". The owner's saved logs then
         // always identify WHICH APK produced them (we were guessing before). The

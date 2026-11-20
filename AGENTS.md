@@ -7988,3 +7988,20 @@ What is NOT real, stated plainly:
 - No diagnostic history UI exists.
 - The ChatSession call sites are compile-verified only. No unit test drives them, so their runtime
   emission is unverified.
+
+---
+
+### [2026-11-20 11:20 WAT] [TOOLS] P4.4 wiring - diagnostics now survive a restart
+
+- Closes the gap recorded at 10:40. `CopilotDiag.attach(file)` is called in
+  `CodeSpaceApplication.onCreate` against `filesDir/diagnostics/copilot-events.jsonl`, restoring
+  whatever the previous process left and pointing the sink at that file.
+- `record()` flushes every 5 events; `flush()` writes on demand; `detach()` stops writing and
+  leaves the file alone. `clear()` resets the write counters so a cleared ring cannot skip a save.
+- A failed write or an unwritable path leaves diagnostics memory-only and never blocks startup:
+  the Application call is wrapped, and every diag call site is already wrapped in runCatching.
+- 8 wiring tests: restore after restart, ordering across a restart, flush-every-5, explicit flush,
+  no sink, unattached recording, unwritable sink, and clear/detach isolation. 54 diagnostic tests
+  total, 0 failures.
+- Full suite was NOT re-run after this commit; the last green full run was 3887 tests, 4 skipped,
+  0 failures at e1d60d3.
