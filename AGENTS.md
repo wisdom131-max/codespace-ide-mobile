@@ -8242,3 +8242,22 @@ nothing device-verified.
   is Integration Reliability because of D1. Nothing in it was implemented.
 - P4.3 (Compose UI test) could not be closed: `ui-test-junit4` is androidTest-only, which needs a
   device or emulator (deferred), and Robolectric with Compose needs an unauthorized download.
+
+---
+
+### [2026-11-20 16:35 WAT] [CI] final campaign CI record
+
+| Commit | CI run | Result |
+|---|---|---|
+| `215c835` (approval card fix, P4.1/P4.2) | 44739749901 | success (attempt 1) |
+| `b0bb689` (audit + roadmap docs) | 44739787514 | success (attempt 2) |
+
+Local full suite at `b0bb689`: 3,979 tests, 4 skipped, 0 failed.
+
+**Recurring infrastructure flake, recorded honestly.** The APK step failed twice with
+`Plugin [id: 'com.google.dagger.hilt.android', version: '2.52'] was not found` - once on `0b04edb`
+(code) and once on `b0bb689`, which changed only Markdown files. A documentation-only commit cannot
+affect Gradle plugin resolution, so this is a runner-side fetch failure against Google Maven / the
+plugin portal, not a repository defect. Both were resolved by re-running the failed job; no workflow,
+signing or plugin version was changed. If it recurs, the next evidence to gather is whether the
+runner can reach `dl.google.com` at build time.
