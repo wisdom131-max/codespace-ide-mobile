@@ -137,6 +137,9 @@ class ChatSession internal constructor(
     private val modeSource: (() -> ChatMode)? = null,
 ) {
     private val streamBuf = StringBuilder()
+    /** STAGE 2: text the protocol filter has released for display, and the filter itself. */
+    private var streamBufVisible = ""
+    private var streamFilter = com.codespace.ide.agent.ProtocolStreamFilter()
 
     /**
      * 2026-11-04 guard (c): everything this TURN showed the model - tool results, file reads,
@@ -835,6 +838,10 @@ class ChatSession internal constructor(
             supportsContentParts = !com.codespace.ide.engine.EndpointUrls.isCloudflare(liveBaseUrl),
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
+        // STAGE 2: a new turn starts with an empty filter, or a fragment from the last turn
+        // could swallow the first words of this one.
+        streamFilter = com.codespace.ide.agent.ProtocolStreamFilter()
+        streamBufVisible = ""
         if (continuationPrefix != null) streamBuf.append(continuationPrefix)
         turnContext.clear()
         wsBlock.takeIf { it.isNotBlank() }?.let { turnContext.add(it) }
@@ -1319,7 +1326,12 @@ class ChatSession internal constructor(
                     retryKeepLen = 0
                 }
                 streamBuf.append(ev.text)
-                val text = streamBuf.toString()
+                // STAGE 2: the row shows only what the filter has released, so a protocol
+                // fragment that is still arriving can never be painted as assistant prose.
+                val text = streamFilter.accept(ev.text).let { fresh ->
+                    if (fresh.isEmpty()) streamBufVisible else streamBufVisible + fresh
+                }
+                streamBufVisible = text
                 val st = ui.value
                 val rowsNow = st.rows
                 val rows = if (rowsNow.lastOrNull() is ChatRowModel.AssistantStream)
