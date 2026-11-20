@@ -135,7 +135,7 @@ in an unusual way and it will occasionally promote a sentence that reads like a 
 transient. Precision over recall is the deliberate choice for a memory that costs prompt space.
 
 
-## Stage 8 — Review Queue and Rejection Ledger (implemented 2026-11-20, commit 3c5b6b9)
+## Stage 8 — Review Queue and Rejection Ledger (implemented 2026-11-20, commit 0a89b2d)
 
 Behaviour: Stage 7 detection now ENQUEUES (`ReviewQueue.enqueue`) instead of saving. States are
 PENDING / ACCEPTED / REJECTED in one document (`memory-review.json`); there is no second ledger file,

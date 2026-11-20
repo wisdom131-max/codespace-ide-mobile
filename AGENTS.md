@@ -7773,4 +7773,4 @@ collapsed) with Accept / Reject / Reconsider. A corrupt queue reads as empty, wh
 promote a candidate.
 
 Tests: ReviewQueueTest 21, MemoryExtractionTest updated to the queue contract. Full suite 3687,
-4 skipped, 0 failures. Commit 3c5b6b9.
+4 skipped, 0 failures. Commit 0a89b2d.
