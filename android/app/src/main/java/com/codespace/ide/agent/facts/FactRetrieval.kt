@@ -95,7 +95,9 @@ object FactRetrieval {
 
     /** STAGE 6 — the newest fact by the time it is about, for "what is the latest ..." questions. */
     fun latest(facts: List<Fact>, projectId: String? = null): Fact? =
-        facts.filter { it.belongsTo(projectId) && it.isRetrievable() }
+        // STAGE 11: "the latest" needs a date. An undated fact is not a candidate for "most
+        // recent" - returning one would present a save time as the moment it was decided.
+        facts.filter { it.belongsTo(projectId) && it.isRetrievable() && it.knownTime() > 0L }
             .maxWithOrNull(
                 compareBy<Fact> { it.factTime() }.thenBy { it.updatedAt }.thenBy { it.id },
             )

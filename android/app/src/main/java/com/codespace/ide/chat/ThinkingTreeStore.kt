@@ -82,8 +82,10 @@ object ThinkingTreeStore {
                     turnId = o.optString("turnId", "").ifBlank { null },
                     label = o.optString("label", ""),
                     detail = o.optString("detail", ""),
-                    ok = o.optBoolean("ok", true),
-                    state = state,
+                    // STAGE 11: an interrupted step is reported as UNKNOWN with ok=false, so no
+                    // renderer can show it as running or as a success.
+                    ok = if (interrupted) false else o.optBoolean("ok", true),
+                    state = if (interrupted) "UNKNOWN" else state,
                     atMs = o.optLong("atMs", 0L),
                     interrupted = interrupted,
                 ),

@@ -193,3 +193,15 @@ fun Fact.factTime(): Long = when {
 /** True when [factTime] came from a transcript header rather than from the save path. */
 fun Fact.hasVerifiedTime(): Boolean =
     timeSource == TimeSource.TRANSCRIPT_VERIFIED && sourceConversationAt > 0L
+
+/**
+ * STAGE 11 — the date a user may be SHOWN. 0 means genuinely unknown.
+ *
+ * Deliberately different from [factTime], which falls back to createdAt so ordering always has a
+ * key: a save time is fine for sorting and is never a conversation date.
+ */
+fun Fact.knownTime(): Long = when {
+    sourceConversationAt > 0L -> sourceConversationAt
+    sourceMessageAt > 0L -> sourceMessageAt
+    else -> 0L
+}

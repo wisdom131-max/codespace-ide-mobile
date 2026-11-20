@@ -7824,3 +7824,28 @@ target (`CopilotAccessibility.MIN_TOUCH_DP`, docs/04-android-frontend.md, C12-PA
 
 Tests: 17 new in `ThinkingTreeStoreTest`. NOT device-tested: the collapsed-height change is a layout
 change and needs a real screen to confirm.
+---
+
+### [2026-11-20 04:20 WAT] [MEMORY] Stage 11 - evaluation and regression (programme complete)
+
+`FactsMemoryEvaluationTest` (17 tests) runs one deterministic scenario per programme stage:
+extraction, review, manual save, retrieval, supersession, chronology, provenance, timeline,
+Thinking Tree, corruption, secrets and scope. No network, no device, no model calls.
+
+MEASURED on the labelled fixture (printed as `EVAL ...` in the test log):
+- extraction precision 1.00, recall 1.00 over 8 messages (4 positive, 4 negative labels)
+- retrieval top-1 3/3 on 3 paraphrased questions over 3 facts
+These are FIXTURE numbers. They prove the pipeline routes correctly; they are NOT evidence of
+model quality, which is unmeasured (no live provider is called from the suite).
+
+THREE REAL DEFECTS found and fixed by this stage, all reproducible before the fix:
+1. `FactRetrieval.latest()` returned an UNDATED fact as "the latest", presenting a save time as a
+   decision date. It now requires `knownTime() > 0`.
+2. A reworded rejected candidate ("...before pushing anything.") returned to the queue, because
+   equivalence was character-similarity only. Word-overlap (Jaccard >= 0.7) now blocks it.
+3. A Thinking Tree step still ACTIVE at process death restored with `state = "ACTIVE"` and
+   `ok = true`. It now restores `UNKNOWN` with `ok = false`.
+Also added `Fact.knownTime()`: the date a user may be SHOWN (0 = unknown), separate from
+`factTime()`, which keeps its createdAt fallback as an ordering key only.
+
+Full suite 3741, 4 skipped, 0 failures. NOT device-tested.

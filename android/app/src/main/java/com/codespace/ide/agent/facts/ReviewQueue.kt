@@ -174,7 +174,15 @@ object ReviewQueue {
         val kb = keyOf(b)
         if (ka == kb) return true
         if (ka.length < 8 || kb.length < 8) return false
-        return FactText.similarity(ka, kb) >= 0.82
+        if (FactText.similarity(ka, kb) >= 0.82) return true
+        // STAGE 11: character similarity alone let "…before pushing" and "…before pushing
+        // anything." back in as a new suggestion. Word overlap catches the reworded repeat
+        // without matching two different statements that merely share a topic.
+        val ta = ka.split(' ').filter { it.length > 2 }.toSet()
+        val tb = kb.split(' ').filter { it.length > 2 }.toSet()
+        if (ta.isEmpty() || tb.isEmpty()) return false
+        val shared = ta.intersect(tb).size.toDouble()
+        return shared / ta.union(tb).size >= 0.7
     }
 
     // ------------------------------------------------------------------ write

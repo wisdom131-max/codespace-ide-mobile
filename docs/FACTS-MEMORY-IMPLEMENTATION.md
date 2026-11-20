@@ -179,3 +179,35 @@ No 48dp padding rule exists in the repo; the 48dp rules are touch targets and re
 
 Limitations: no device verification of the collapsed layout; tree steps are written per tool row, so
 a very long tool loop costs one small file write per step.
+
+## Stage 11 - Evaluation and regression (FINAL)
+
+| Item | Value |
+|---|---|
+| Status | Implemented, unit-tested, CI pending at commit time |
+| Test file | `app/src/test/java/com/codespace/ide/agent/facts/FactsMemoryEvaluationTest.kt` |
+| Run it | `./gradlew :app:testProdDebugUnitTest --tests "com.codespace.ide.agent.facts.*"` |
+| Full suite | 3741 tests, 4 skipped, 0 failures |
+
+### Dataset design
+- Extraction: 8 labelled messages (4 must yield one durable candidate, 4 must yield none:
+  chatter, a question, an observation, an acknowledgement).
+- Retrieval: 3 facts, 3 paraphrased questions, one expected top-1 each.
+- Chronology: verified / user-stated / unknown facts with a fixed clock.
+- Provenance: one fully-specified transcript link and one empty provenance.
+- Review: capture, accept, reject, reworded repeat, manual save.
+- Timeline: create, supersede, refused save, duplicate event.
+- Tree: append twice, restore, cross-conversation isolation, interrupted step.
+
+### Metrics and method
+- Extraction precision = tp / (tp + fp); recall = tp / (tp + fn); tp = min(expected, actual) per
+  message. Measured: 1.00 / 1.00.
+- Retrieval top-1 accuracy = correct top fact / questions. Measured: 3/3.
+- Scope isolation violations, duplicate events, fabricated provenance: asserted at zero.
+- Model quality (does Copilot phrase a good memory?): UNAVAILABLE. The suite never calls a
+  provider, so no percentage is reported and none should be inferred.
+
+### Defects this stage found and fixed
+1. `latest()` could return an undated fact as the most recent.
+2. A reworded rejected candidate could return to the queue.
+3. An interrupted Thinking Tree step restored as ACTIVE/ok.
