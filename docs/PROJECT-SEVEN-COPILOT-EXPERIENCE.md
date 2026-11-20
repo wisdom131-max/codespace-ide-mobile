@@ -579,3 +579,21 @@ panel's own read-aloud is suppressed, so a reply is not spoken twice. `SubmitTur
 ### Limitations held, not resolved
 Orb is word-boundary-synchronised, not amplitude-synchronised. Capture is muted while speaking as the
 echo strategy. Platform recognition is turn-based. Nothing here is device-verified.
+
+## Reconciliation 2026-11-20 (after P2 Voice Mode removal)
+
+**Status: reconciled. No source-level defect found; one evidence gap found and closed.**
+
+- `782f74b` and `21478b5` are in `main` history; CI `44003217965` was 26/26 on `782f74b`.
+- `CopilotBindings` / `CopilotPresentation` still behave as 7.11 left them: a refused step reads
+  "refused before it ran", a step with real output reads as run, an unanswered step reads unknown
+  with no safe retry.
+- **Gap closed:** `a015d0f` (P2 Voice Mode removal) deleted `Stage711IntegrationTest.kt` in full
+  because it imported the removed voice turn machine. Four voice-independent cases were restored
+  unchanged: `a tool that only reports ok is never rendered as done`, `refused, failed and
+  unanswered results stay three different answers`, `an unanswered tool call is never described as
+  a success`, `sources are bounded and the omitted count is exact`. All four pass on current `main`.
+- The voice seam cases stay deleted by design. `agent/voice/` still holds dictation, TTS, VAD and
+  capture; Voice Mode itself stays removed.
+- Area 7.9 accessibility remains PARTIAL as recorded above. Nothing in Project Seven is
+  device-verified.

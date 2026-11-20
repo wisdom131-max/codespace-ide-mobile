@@ -8143,3 +8143,22 @@ runtime emission is unverified. P4 is therefore still NOT complete.
   replace it; no extraction behaviour was changed.
 - Verified as already present, not rewritten: destination verification in
   `ArchiveDestinationVerifier` (refuses escaping entries, reports duplicates).
+
+---
+
+### [2026-11-20 14:40 WAT] [SEVEN] Project Seven reconciliation
+
+- Verified: `782f74b` (7.11 code) and `21478b5` (docs) are present in `main` history; CI
+  `44003217965` was 26/26. `CopilotBindings.kt` and `CopilotPresentation.kt` are present and their
+  behaviour is unchanged.
+- FOUND AND FIXED: commit `a015d0f` (P2 Voice Mode removal) deleted
+  `chat/panel/Stage711IntegrationTest.kt` whole, because the file imported the removed voice turn
+  machine. Four of its cases never touched voice - the two 7.11 defect regressions (refused is not
+  failed; an ok result is not uncertain) and the research source bound. The removal therefore took
+  Project Seven's only 7.11 regression evidence with it. Those four cases are restored unchanged in
+  the same file, with a header explaining what was restored and why the voice seam cases are not.
+- Behaviour itself was NOT regressed: all four restored cases pass against current `main`.
+- The voice seam cases (turn machine, speaking pulse) stay removed: those classes were deleted by
+  owner decision and testing them would reintroduce Voice Mode.
+- Dictation and read-aloud remain present (`agent/voice/`: VoiceRecognizer, AndroidTtsProvider,
+  VadPolicy, VoiceCapture, VoiceSettings).

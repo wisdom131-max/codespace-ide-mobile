@@ -706,3 +706,10 @@ runtime emission is unverified. P4 is therefore still NOT complete.
   replace it; no extraction behaviour was changed.
 - Verified as already present, not rewritten: destination verification in
   `ArchiveDestinationVerifier` (refuses escaping entries, reports duplicates).
+
+---
+
+### [2026-11-20 14:40 WAT] [SEVEN] Project Seven reconciliation
+
+`Stage711IntegrationTest.kt` restored (4 voice-independent cases) after `a015d0f` deleted it along
+with Voice Mode. See AGENTS.md for the full record.
