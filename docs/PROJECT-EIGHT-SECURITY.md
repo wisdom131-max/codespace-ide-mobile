@@ -332,3 +332,13 @@ this branch, not a merge: combining Project Seven into main still needs the owne
   inspected and component-tested, never exercised on a device.
 - The execution-boundary guard is source-level; reflection or a new dispatcher would not be caught.
 - Archive link handling is limited to the text listing contract the verifier consumes.
+
+## Area 5 — secrets and pattern redaction (2026-11-20)
+
+- `CopilotDiag.redact` covers: bearer headers, sk/pk/ghp/glpat/xox style keys, Google `AIza` keys,
+  AWS `AKIA` ids, JWTs, Basic auth, and credential assignments (api_key, apikey, token,
+  access_token, refresh_token, client_secret, secret, password, authorization, key, sig).
+- Redaction runs inside `record(...)`, i.e. before the JSONL write and before the history UI reads
+  it. There is no second, later redaction step to rely on.
+- Tests: `RedactPatternsTest` (10). Not covered: secrets embedded in a binary payload or a
+  non-UTF8 tool output, and secrets that match no known shape.

@@ -8087,3 +8087,17 @@ runtime emission is unverified. P4 is therefore still NOT complete.
 - LIMITATION: the retry call sites are compile-verified. No ChatSession integration test drives
   them, so runtime emission of these three events is unverified. Failover only runs on Auth or
   OutOfCredits with opt-in enabled.
+
+---
+
+### [2026-11-20 13:20 WAT] [SECURITY] P8.5 - pattern-based redaction hardening
+
+- `CopilotDiag.redact` gained shape-based families that a key=value rule alone missed: Google API
+  keys (AIza...), AWS access key ids (AKIA...), JWTs (three dot-separated base64url segments),
+  Basic auth blobs, and a wider assignment list (apikey, access_token, refresh_token,
+  client_secret, key, sig) so a credential pasted into an error message or a URL query is caught.
+- Fail-closed by design: a bare `key:` assignment is now redacted too. Over-redaction is
+  acceptable; a leaked credential is not. Verified that ordinary prose ("keyboard shortcut",
+  "tool write_file failed after 1200ms") survives unchanged.
+- 10 new tests in RedactPatternsTest; 23 focused diagnostic tests pass.
+- Applies before persistence and before display, because the UI reads the same recorded events.

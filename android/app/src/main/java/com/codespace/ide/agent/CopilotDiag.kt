@@ -120,8 +120,17 @@ object CopilotDiag {
         var out = s
         out = out.replace(Regex("(?i)bearer\\s+[A-Za-z0-9._-]{8,}"), "Bearer [redacted]")
         out = out.replace(Regex("(?i)(sk|pk|ghp|gho|glpat|xoxb|xoxp)[-_][A-Za-z0-9_-]{8,}"), "[redacted-key]")
+        // P8.5: pattern families that a key=value rule alone would miss. Each is a shape, not a
+        // word, so it also catches a secret pasted into an error message or a URL query.
+        out = out.replace(Regex("AIza[0-9A-Za-z_-]{30,}"), "[redacted-key]")      // Google API key
+        out = out.replace(Regex("AKIA[0-9A-Z]{16}"), "[redacted-key]")            // AWS access key id
         out = out.replace(
-            Regex("(?i)(api[_-]?key|token|secret|password|authorization)\\s*[=:]\\s*\\S+"),
+            Regex("eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{4,}"),
+            "[redacted-jwt]",
+        )
+        out = out.replace(Regex("(?i)basic\\s+[A-Za-z0-9+/=]{12,}"), "Basic [redacted]")
+        out = out.replace(
+            Regex("(?i)(api[_-]?key|apikey|token|secret|password|authorization|access[_-]?token|refresh[_-]?token|client[_-]?secret|key|sig)\\s*[=:]\\s*\\S+"),
             "$1=[redacted]",
         )
         return out
