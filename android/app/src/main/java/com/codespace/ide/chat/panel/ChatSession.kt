@@ -1611,8 +1611,16 @@ class ChatSession internal constructor(
                         callId = com.codespace.ide.chat.panel.WriteCallIdentity.idFor(
                             name, argsJson))
                 }
-                outcome.result?.result
-                    ?: ("FAILED: " + (outcome.refusal ?: "the call could not run"))
+                // P2: an oversized result is offloaded before it can reach the next request.
+                // Small results pass through untouched.
+                com.codespace.ide.agent.ContextOffload.apply(
+                    java.io.File(ctx.filesDir, "workspace"),
+                    projectId,
+                    conversationId,
+                    calls[idx].name,
+                    outcome.result?.result
+                        ?: ("FAILED: " + (outcome.refusal ?: "the call could not run")),
+                )
             } catch (t: Throwable) {
                 "FAILED: " + (t.message ?: "unknown error")
             }

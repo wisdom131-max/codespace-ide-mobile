@@ -219,3 +219,16 @@ programme only at the edges: `ToolCallScan` and `ProtocolStreamFilter` keep prot
 transcript that Stage 3.1 and Stage 9 read, and `NativeToolCalling` routes through the same
 `executeTool` gate the memory tools already use. It adds no memory behaviour and changes no fact,
 review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMPLEMENTED.md`.
+
+## P2 — Context Offloading (2026-11-20)
+
+| Item | Value |
+|---|---|
+| Status | Implemented, integrated, unit-tested, CI pending at commit time |
+| Threshold | 12,000 characters |
+| Excerpts | 1,000 head + 1,000 tail, always labelled not-in-full |
+| Storage | `files/workspace/offload/<project>/<session>/<tool>-<hash>.txt` |
+| Retention | 7 days, swept on the next offload |
+| Isolation | reference path validated; `..` refused |
+| Failure mode | explicit "NOT available" line, never a silent drop |
+| Device status | not device-tested |

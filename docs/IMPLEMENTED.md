@@ -432,3 +432,21 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
   unavailable for this endpoint or protocol." No percentage improvement is claimed anywhere.
 - Tests: 20 scanner, 14 filter, 14 native, 4 measurement. Full suite 3793, 4 skipped, 0 failures.
 - Device status: NOT device-tested. The leak fix is only observable on a live streamed turn.
+
+---
+
+### [2026-11-20 08:05 WAT] [TOOLS] P2 - context offloading
+
+- `ContextOffload`: past 12,000 characters a tool result is written complete to
+  `files/workspace/offload/<project>/<session>/<tool>-<hash>.txt` and the model receives a pointer,
+  an explicit "not shown in full" line, and 1,000-character head and tail excerpts.
+- Small results are untouched; the existing `TOOL_RESULT_BUDGET_CHARS` trimming still runs on top.
+- The same output twice reuses one file. References are refused if they escape their session
+  directory, so one session cannot read another's scratch output.
+- A failed write says so plainly and says the full output is NOT available - it never pretends to
+  be complete and never loses the text silently.
+- Retention: scratch files older than 7 days are deleted on the next offload; a cleanup failure
+  never fails the tool call.
+- Wired at the single result path in `ChatSession.executeOnce`, so approvals and the execution gate
+  are unchanged.
+- 14 tests including a simulated 5 MB build log. Not device-tested.
