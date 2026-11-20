@@ -232,3 +232,13 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | Isolation | reference path validated; `..` refused |
 | Failure mode | explicit "NOT available" line, never a silent drop |
 | Device status | not device-tested |
+
+## P3 — Lexical Retrieval (2026-11-20)
+
+| Item | Value |
+|---|---|
+| Status | Implemented, integrated into grep_search ordering, unit-tested |
+| Fixture | 5 documents, 14 assertions |
+| Metric | top-1 correctness on labelled queries; no percentage claimed |
+| Scope | ranker is pure; callers keep scope filters |
+| Device status | not device-tested |

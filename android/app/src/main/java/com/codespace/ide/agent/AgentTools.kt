@@ -2878,7 +2878,16 @@ You can use multiple tools in sequence. When done, give a final summary.
             return if (notes.isEmpty()) "No matches for '$pattern' in $path"
                    else "No matches for '$pattern' in $path (but: " + notes.joinToString("; ") + ")"
         }
-        var joined = results.joinToString("\n")
+        // P3: order matches so an exact identifier, filename or phrase leads. Nothing is dropped -
+        // unmatched lines keep their original order after the ranked ones.
+        val uniq = results.distinct()
+        val rankedIds = LexicalRanker.rank(
+            pattern,
+            uniq.map { LexicalRanker.Candidate(it, it, it.substringBefore(':').substringAfterLast('/')) },
+            uniq.size,
+        ).map { it.id }
+        val ordered = rankedIds + uniq.filterNot { rankedIds.contains(it) }
+        var joined = ordered.joinToString("\n")
         if (fileCapHit) joined += "\n[NOTE: 500-file scan cap hit — matches may be MISSING beyond it; narrow the path]"
         if (skippedLarge > 0) joined += "\n[NOTE: $skippedLarge file(s) over 100KB were skipped by the search cap]"
         return truncMark(joined, 4000)  // CH06 (P4h)

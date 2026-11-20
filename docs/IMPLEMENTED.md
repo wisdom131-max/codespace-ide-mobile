@@ -450,3 +450,19 @@ What does not work, and why it is not simply a bug to fix later: `docs/LIMITATIO
 - Wired at the single result path in `ChatSession.executeOnce`, so approvals and the execution gate
   are unchanged.
 - 14 tests including a simulated 5 MB build log. Not device-tested.
+
+---
+
+### [2026-11-20 08:30 WAT] [TOOLS] P3 - lexical retrieval
+
+- `LexicalRanker`: identifier-aware tokenization (snake_case, camelCase, paths), exact-phrase and
+  exact-identifier bonuses, path bonus, explainable reasons per score, duplicate-id collapse.
+- Short queries (under 3 chars) score on tokens only, so a one-letter query cannot win by substring
+  and drown real matches in false positives.
+- Integrated into `grep_search`: matches are ordered so exact identifiers, filenames and phrases
+  lead. Nothing is filtered or dropped, so no result disappears to make the ranking look good.
+- Semantic retrieval is untouched; `fuse()` combines the two with explicit weights so a surprising
+  order can be traced.
+- Offloaded P2 references are rankable as plain text but never resolved by the ranker - only the
+  caller's scoped read may open them.
+- 14 fixture tests (5 documents). This measures deterministic routing, not model quality.
