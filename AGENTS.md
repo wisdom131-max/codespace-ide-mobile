@@ -7918,3 +7918,20 @@ Full suite 3741, 4 skipped, 0 failures. NOT device-tested.
   produced at runtime. The component and its tests exist; the wiring does not. Recorded here so
   nobody reads this entry as "diagnostics are live".
 - 14 tests.
+
+---
+
+### [2026-11-20 09:30 WAT] [TOOLS] P3 completion - fusion wired into real retrieval
+
+- Closes the gap recorded at 08:30: `LexicalRanker` alone was not retrieval. `RetrievalFusion` now
+  normalises the semantic hit count to 0..1, weights it (1.0) above the lexical score (0.45), and
+  returns the reasons behind each order. Exact identifiers and phrases can lead; a weak substring
+  match cannot outrank a strong semantic one.
+- `semanticSearch` in AgentTools now ranks through the fusion. The term count is still computed and
+  kept, and every matched file still reaches the caller - fusion reorders, it never filters.
+- `FactRetrieval.rank` adds +10 for an exact phrase and +8 for an exact identifier in fact text.
+  Scope, status and `belongsTo` filters run first, so the bonus can never lift a fact out of its
+  scope or revive a superseded one. Provenance and confidence scoring are untouched.
+- No second memory store, no second retrieval engine, no change to fact persistence.
+- Tests: 14 fusion + 6 Facts & Memory retrieval (22 facts-package regression alongside). Fixture is
+  small and labelled as such; this measures deterministic routing, not model quality.

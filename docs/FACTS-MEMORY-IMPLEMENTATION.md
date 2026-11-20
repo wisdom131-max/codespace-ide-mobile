@@ -252,3 +252,14 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | Privacy | every field redacted; no raw prompts or outputs |
 | Telemetry | none, local only |
 | Device status | not device-tested |
+
+## P3 completion — fusion and Facts & Memory (2026-11-20)
+
+| Item | Value |
+|---|---|
+| Status | Integrated into `semanticSearch` and `FactRetrieval.rank`; unit-tested |
+| Weights | semantic 1.0 (normalised), lexical 0.45 |
+| Fact bonus | +10 exact phrase, +8 exact identifier, after scope/status filters |
+| Dedup | by source id in `RetrievalFusion.merge` |
+| Fixture | 14 fusion + 6 facts assertions |
+| Device status | not device-tested |

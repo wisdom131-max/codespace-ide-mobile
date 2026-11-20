@@ -2784,10 +2784,19 @@ You can use multiple tools in sequence. When done, give a final summary.
             return "Could not build a search pattern from that query."
         }
         val (files, skipped) = walkTextFiles(root, pattern, null, context)
-        val scored = files.map { (rel, text) ->
-            val score = terms.count { text.contains(it, ignoreCase = true) }
-            Triple(rel, score, text)
-        }.sortedByDescending { it.second }.take(40)
+        // P3 completion: the term count and the lexical score are fused on one scale here, so an
+        // exact identifier or filename can lead a weaker topical match. The count itself is kept,
+        // and every file still reaches the caller - fusion reorders, it never filters.
+        val raw = files.map { (rel, text) ->
+            Triple(rel, terms.count { text.contains(it, ignoreCase = true) }, text)
+        }
+        val maxHits = raw.maxOfOrNull { it.second } ?: 0
+        val fusedIds = com.codespace.ide.agent.RetrievalFusion.merge(
+            raw.map { (rel, hits, text) ->
+                com.codespace.ide.agent.RetrievalFusion.score(query, rel, text, hits, maxHits, rel)
+            },
+        ).map { it.id }
+        val scored = fusedIds.mapNotNull { id -> raw.firstOrNull { it.first == id } }.take(40)
         if (scored.isEmpty()) return "No files mention any of: " + terms.joinToString(", ") + "."
         val sb = StringBuilder()
         sb.append("[keyword search, not a semantic index] Best matches for '").append(query).append("':\n")

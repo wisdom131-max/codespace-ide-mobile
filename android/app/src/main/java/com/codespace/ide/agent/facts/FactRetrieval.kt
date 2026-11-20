@@ -156,6 +156,15 @@ object FactRetrieval {
                 val usedDays = ((now - f.lastUsedAt) / 86_400_000L).coerceAtLeast(0L)
                 if (usedDays <= 7) score += 2.0
             }
+            // P3 completion: an exact identifier, filename or distinctive phrase is evidence the
+            // token-overlap score cannot see. Scope, status and belongsTo filters ran above, so
+            // this bonus can never lift a fact out of its own scope or revive a rejected one.
+            val lex = com.codespace.ide.agent.LexicalRanker.score(
+                request,
+                com.codespace.ide.agent.LexicalRanker.Candidate(f.id, f.content),
+            )
+            if (lex.reasons.contains("exact phrase")) score += 10.0
+            if (lex.reasons.any { it.startsWith("identifier ") }) score += 8.0
             out.add(Ranked(f, score))
         }
         return out.sortedWith(
