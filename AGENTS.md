@@ -8162,3 +8162,12 @@ runtime emission is unverified. P4 is therefore still NOT complete.
   owner decision and testing them would reintroduce Voice Mode.
 - Dictation and read-aloud remain present (`agent/voice/`: VoiceRecognizer, AndroidTtsProvider,
   VadPolicy, VoiceCapture, VoiceSettings).
+
+---
+
+### [2026-11-20 14:55 WAT] [AUDIT] nine-scenario cross-project audit
+
+Written to `docs/INTEGRATION-AUDIT-2026-11-20.md`. Honest headline: one scenario is end-to-end with
+the provider faked (5), one is verified through the persisted file (8), five are component-level
+(1, 3, 4, 7, 9) and two are partially integrated (2, 6). No scenario is device-verified and none is
+verified against a real provider or MCP server.

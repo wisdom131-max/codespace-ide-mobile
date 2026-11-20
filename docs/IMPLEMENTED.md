@@ -713,3 +713,10 @@ runtime emission is unverified. P4 is therefore still NOT complete.
 
 `Stage711IntegrationTest.kt` restored (4 voice-independent cases) after `a015d0f` deleted it along
 with Voice Mode. See AGENTS.md for the full record.
+
+---
+
+### [2026-11-20 14:55 WAT] [AUDIT] nine-scenario cross-project audit
+
+See `docs/INTEGRATION-AUDIT-2026-11-20.md`. Classifications: 5 end-to-end (provider faked),
+8 verified through the persisted file, 1/3/4/7/9 component-level, 2/6 partially integrated.
