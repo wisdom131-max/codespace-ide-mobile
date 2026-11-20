@@ -683,7 +683,21 @@ class ChatSession internal constructor(
             providerSupportsContinuation = providerSupportsContinuation,
         )
         lastContinuation = plan
-        if (!plan.allowed) return plan.state
+        if (!plan.allowed) {
+            runCatching {
+                com.codespace.ide.agent.CopilotDiag.record(
+                    com.codespace.ide.agent.CopilotDiag.Kind.CONTINUATION_SKIPPED, "turn", false,
+                    "not eligible: " + plan.state.name,
+                )
+            }
+            return plan.state
+        }
+        runCatching {
+            com.codespace.ide.agent.CopilotDiag.record(
+                com.codespace.ide.agent.CopilotDiag.Kind.CONTINUATION_STARTED, "turn", true,
+                "finish " + lastFinish.name,
+            )
+        }
         lastFinish = com.codespace.ide.engine.FinishReason.UNKNOWN
         continuationInFlight = true
         _continuationUi.value = ContinuationState.CONTINUING
@@ -1736,6 +1750,8 @@ class ChatSession internal constructor(
                 // PHASE 4a: ONE gate decides allow / stage / refuse, from the tool's real
                 // effect rather than a hand-kept list. Ask refuses writes outright; Edit turns
                 // every file writer into a proposal, not just the three it used to know.
+                // P4.1: the real approval decision, recorded where it is made. The value is
+                // computed first and used exactly as before - diagnostics never influence it.
                 val writeDecision = WritePolicy.decide(
                     mode,
                     call.name,
@@ -1756,6 +1772,14 @@ class ChatSession internal constructor(
                     }
                     WritePolicy.Decision.ALLOW -> Unit
                     WritePolicy.Decision.STAGE -> Unit
+                }
+                runCatching {
+                    val k = when (writeDecision) {
+                        WritePolicy.Decision.ALLOW -> com.codespace.ide.agent.CopilotDiag.Kind.APPROVAL_GRANTED
+                        WritePolicy.Decision.STAGE -> com.codespace.ide.agent.CopilotDiag.Kind.APPROVAL_REQUIRED
+                        WritePolicy.Decision.REFUSE -> com.codespace.ide.agent.CopilotDiag.Kind.APPROVAL_DENIED
+                    }
+                    com.codespace.ide.agent.CopilotDiag.record(k, call.name, writeDecision != WritePolicy.Decision.REFUSE, "write policy")
                 }
                 if (writeDecision == WritePolicy.Decision.STAGE) {
                     val staged = try {

@@ -273,3 +273,16 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | Not wired | approval events, provider/retry events, continuation events, UI reader |
 | Failure safety | every diag call wrapped; results and exceptions pass through unchanged |
 | Device status | not device-tested |
+
+## P4 completion — persistence and partial lifecycle (2026-11-20)
+
+| Item | Value |
+|---|---|
+| Persistent storage | `persistTo`/`loadFrom` implemented and tested; **no call site yet** |
+| Retention | 500 events, 3 days, corrupt/torn lines skipped |
+| Approval events | WritePolicy ALLOW/STAGE/REFUSE wired; cancellation and MCP not wired |
+| Continuation events | started/skipped wired; completed/failed not emitted |
+| Provider events | kinds only, nothing emits them |
+| UI | none |
+| Tests | 12 persistence, 9 lifecycle, 11 runtime, 14 component = 46 diag tests |
+| Device status | not device-tested; call sites compile-verified only |

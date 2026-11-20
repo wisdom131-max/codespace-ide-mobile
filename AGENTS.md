@@ -7955,3 +7955,36 @@ Full suite 3741, 4 skipped, 0 failures. NOT device-tested.
 - Tests: 11 runtime tests that execute the real traced pathway and read the events back, plus the
   14 existing component tests.
 - Full suite after this work: 3866 tests, 4 skipped, 0 failures.
+
+---
+
+### [2026-11-20 10:40 WAT] [TOOLS] P4 completion - persistence, approval and continuation
+
+What is now real:
+
+- Persistence (P4.4): `CopilotDiag.persistTo(file)` appends JSONL, `loadFrom(file)` reads it back
+  with a 500-event / 3-day retention and skips malformed or torn lines. Ring raised 200 -> 500 so
+  a reloaded history is not silently halved. 12 tests including a restart simulation, ordering,
+  retention, expiry, corrupt line, torn final write, unwritable path and redaction-before-disk.
+- Approval (P4.1, partial): `WritePolicy.decide` in ChatSession records APPROVAL_GRANTED (ALLOW),
+  APPROVAL_REQUIRED (STAGE) and APPROVAL_DENIED (REFUSE) at the point the decision is made. The
+  decision value is computed first and used unchanged.
+- Continuation (P4.3, partial): `continueTurn` records CONTINUATION_SKIPPED with the state when the
+  plan is not allowed, and CONTINUATION_STARTED with the finish reason when it is.
+- Event taxonomy extended with the approval, continuation and provider kinds; 9 lifecycle tests
+  cover distinctness, denial-not-grant, skipped-not-started, correlation and redaction.
+
+What is NOT real, stated plainly:
+
+- `persistTo`/`loadFrom` have no call site yet. Nothing invokes them at startup or shutdown, so
+  diagnostics do NOT currently survive a restart in the app, even though the storage works and is
+  tested. The acceptance criterion "diagnostics survive process restarts" is therefore NOT met.
+- PROVIDER_REQUEST_START/SUCCESS/FAILURE exist as kinds only. No provider pathway emits them; the
+  provider request layer was not instrumented.
+- CONTINUATION_COMPLETED and CONTINUATION_FAILED are not emitted; only started/skipped are.
+- APPROVAL_CANCELLED is not emitted; user cancellation in the approval sheet is not instrumented.
+- MCP hard approval and general Agent permission settings were not separately instrumented or
+  tested; the WritePolicy hook does not cover them.
+- No diagnostic history UI exists.
+- The ChatSession call sites are compile-verified only. No unit test drives them, so their runtime
+  emission is unverified.
