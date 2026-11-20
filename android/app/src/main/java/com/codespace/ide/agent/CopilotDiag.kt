@@ -24,6 +24,7 @@ object CopilotDiag {
         CONTINUATION_CANCELLED,
         PROVIDER_REQUEST_START, PROVIDER_REQUEST_SUCCESS, PROVIDER_REQUEST_FAILURE,
         PROVIDER_REQUEST_CANCELLED,
+        RETRY_SCHEDULED, RETRY_STARTED, RETRY_EXHAUSTED,
     }
 
     /** Bounded so a long session cannot grow memory without limit. */

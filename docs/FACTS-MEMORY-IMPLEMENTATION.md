@@ -333,3 +333,14 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | Tests | 7 |
 | Not covered | ChatSession integration test; device verification |
 | Still missing | retry events, MCP hard approval, approval cancelled, execution authorized |
+
+## P4.3 — retry lifecycle (2026-11-20)
+
+| Item | Value |
+|---|---|
+| Kinds | RETRY_SCHEDULED, RETRY_STARTED, RETRY_EXHAUSTED |
+| User retry | `ChatSession.retry()` -> RETRY_STARTED |
+| Failover | slot chosen -> RETRY_SCHEDULED; no slot left -> RETRY_EXHAUSTED |
+| Behaviour change | none; limits, backoff and cancellation untouched |
+| Tests | 27 focused diagnostic tests (labels cover the new kinds) |
+| Not covered | ChatSession integration test for the retry call sites |

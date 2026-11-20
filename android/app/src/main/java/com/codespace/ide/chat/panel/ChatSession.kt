@@ -1155,6 +1155,11 @@ class ChatSession internal constructor(
     fun retry() {
         val t = ui.value.lastUserText
         if (t.isNotBlank() && !ui.value.streaming) {
+            // P4.3: a user-initiated retry is the one real retry the user controls.
+            com.codespace.ide.agent.CopilotDiag.record(
+                com.codespace.ide.agent.CopilotDiag.Kind.RETRY_STARTED,
+                selection.value.providerId, true, "user retry",
+            )
             sendCore(t, confirmOverBudget = false, reuseStaged = true, replaceTurn = true)
         }
     }
@@ -1466,8 +1471,20 @@ class ChatSession internal constructor(
                 val nextSlot: String? = if (err is ChatError.Auth || err is ChatError.OutOfCredits) {
                     if (failoverOptIn()) chooseNextSlot(poolSlotsFor(selection.value.providerId).filter { it !in keySlotsSeen }) else null
                 } else null
+                if (nextSlot == null && failoverAttempts > 0) {
+                    // P4.3: the opt-in failover policy has no further key to try.
+                    com.codespace.ide.agent.CopilotDiag.record(
+                        com.codespace.ide.agent.CopilotDiag.Kind.RETRY_EXHAUSTED,
+                        selection.value.providerId, false, "attempts " + failoverAttempts,
+                    )
+                }
                 if (nextSlot != null) {
                     failoverAttempts++
+                    // P4.3: a next stored key was chosen; the dispatch below is the real start.
+                    com.codespace.ide.agent.CopilotDiag.record(
+                        com.codespace.ide.agent.CopilotDiag.Kind.RETRY_SCHEDULED,
+                        selection.value.providerId, true, "attempt " + (failoverAttempts + 1),
+                    )
                     keySlotsSeen.add(nextSlot)
                     appendRow(ChatRowModel.InfoNote(
                         "Key rejected - switching to the next stored key (visible, opt-in, not silent)"))

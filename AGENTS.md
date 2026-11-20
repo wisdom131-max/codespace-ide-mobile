@@ -8069,3 +8069,21 @@ Still NOT done in P4: RETRY_SCHEDULED / RETRY_STARTED / RETRY_EXHAUSTED events, 
 events, APPROVAL_CANCELLED at the approval sheet, and EXECUTION_AUTHORIZED. The ChatSession call
 sites for continuation are compile-verified; no ChatSession integration test drives them, so their
 runtime emission is unverified. P4 is therefore still NOT complete.
+
+---
+
+### [2026-11-20 13:05 WAT] [RETRY] P4.3 - retry lifecycle events on the real paths
+
+- RETRY_SCHEDULED / RETRY_STARTED / RETRY_EXHAUSTED added and wired to the two retry mechanisms
+  that actually exist in ChatSession:
+  * user retry (`retry()`) records RETRY_STARTED with the provider id before `sendCore`.
+  * the opt-in key failover records RETRY_SCHEDULED when a next stored key is chosen, and
+    RETRY_EXHAUSTED when the policy has no further key (guarded by `failoverAttempts > 0`, so a
+    first failure with failover disabled emits nothing).
+- No new retry system was introduced and no retry limit, backoff or cancellation behaviour was
+  changed; these are the same decisions the code already made, now recorded.
+- Provider id only: no key material, no slot names, no prompts, no URLs.
+- 27 focused diagnostic tests pass; compile of the prod-debug variant clean.
+- LIMITATION: the retry call sites are compile-verified. No ChatSession integration test drives
+  them, so runtime emission of these three events is unverified. Failover only runs on Auth or
+  OutOfCredits with opt-in enabled.
