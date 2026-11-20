@@ -242,3 +242,13 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | Metric | top-1 correctness on labelled queries; no percentage claimed |
 | Scope | ranker is pure; callers keep scope filters |
 | Device status | not device-tested |
+
+## P4 — Observability Lite (2026-11-20)
+
+| Item | Value |
+|---|---|
+| Status | Component implemented and unit-tested; NOT wired into the runtime path |
+| Storage | in-memory ring, 200 events, cleared per session |
+| Privacy | every field redacted; no raw prompts or outputs |
+| Telemetry | none, local only |
+| Device status | not device-tested |

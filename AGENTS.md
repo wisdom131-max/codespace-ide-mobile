@@ -7903,3 +7903,18 @@ Full suite 3741, 4 skipped, 0 failures. NOT device-tested.
 - Offloaded P2 references are rankable as plain text but never resolved by the ranker - only the
   caller's scoped read may open them.
 - 14 fixture tests (5 documents). This measures deterministic routing, not model quality.
+
+---
+
+### [2026-11-20 08:55 WAT] [TOOLS] P4 - observability lite
+
+- `CopilotDiag`: bounded in-memory ring (200 events) of typed events - SESSION, TOOL_START,
+  TOOL_END, APPROVAL, OFFLOAD, RETRIEVAL, PROVIDER_ERROR, CONTINUATION - each with time, session
+  correlation id, name, ok flag and a short detail. No network, no file writes, no telemetry.
+- Redaction runs on every field before it is stored: bearer headers, provider key shapes and
+  key=value credentials are stripped. Raw prompts and complete tool outputs are never recorded.
+- Events die with the process by design; that is stated, not hidden.
+- HONEST GAP: the ring is not yet called from `executeTool` or the chat path, so no events are
+  produced at runtime. The component and its tests exist; the wiring does not. Recorded here so
+  nobody reads this entry as "diagnostics are live".
+- 14 tests.
