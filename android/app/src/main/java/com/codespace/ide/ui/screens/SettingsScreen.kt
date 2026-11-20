@@ -412,6 +412,7 @@ fun SettingsScreen(
             // configuration, so it belongs in Settings, not in the chat panel header.
             // Shows slot names and counts only, never key values.
             ProvidersAndModelsSection(tokenStore)
+            com.codespace.ide.ui.diag.DiagHistorySection()
 
             // ── Language Servers (P1e, read-only status) ─────────────────────
             LspServersStatusSection()

@@ -8005,3 +8005,24 @@ What is NOT real, stated plainly:
   total, 0 failures.
 - Full suite was NOT re-run after this commit; the last green full run was 3887 tests, 4 skipped,
   0 failures at e1d60d3.
+
+---
+
+### [2026-11-20 12:05 WAT] [UI] P4.5 - diagnostic history screen
+
+- New `ui/diag/DiagHistoryModel.kt` holds all the logic (filter by kind, failures-only, bounding,
+  labels, clock time, summary, clear) so it is testable without Compose.
+- New `ui/diag/DiagHistorySection.kt` renders it and is mounted in `SettingsScreen` directly under
+  `ProvidersAndModelsSection`. It reads `CopilotDiag.recent()` - there is no second event list, so
+  the screen shows exactly what the recorder stored and already redacted.
+- Rows show time, kind label, ok/failed; tapping expands tool name, detail and session. Filters:
+  All / Failures only / per-kind list. Clear asks for confirmation and states that project files
+  are untouched. Empty state and no-match state are distinct.
+- Bounded: `MAX_ROWS` 200 rows and a 320dp list, so a long history cannot exhaust a low-memory
+  device. Compose LazyColumn with keys.
+- 13 tests: empty state, newest-first ordering, kind filter, failures filter, bounding, labels for
+  every kind, clock-time format, summary counts, redaction through the model, available kinds,
+  outcome text, clear, and the integration test the campaign asked for - an event recorded, flushed,
+  cleared (process death), re-attached (restart) and then visible through the model the UI renders.
+- The screen itself is not instrumented by a Compose UI test; the logic and the persisted pathway
+  are covered, rendering is compile-verified only.

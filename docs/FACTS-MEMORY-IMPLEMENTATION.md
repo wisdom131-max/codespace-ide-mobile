@@ -298,3 +298,16 @@ review, timeline or tree storage. See AGENTS.md [TOOLS] 2026-11-20 and `docs/IMP
 | Failure mode | memory-only, startup unaffected |
 | Tests | 8 wiring, 54 diagnostic total, 0 failures |
 | Device status | not device-tested |
+
+## P4.5 — diagnostic history UI (2026-11-20)
+
+| Item | Value |
+|---|---|
+| Files | `ui/diag/DiagHistoryModel.kt`, `ui/diag/DiagHistorySection.kt` |
+| Mount point | `SettingsScreen`, under `ProvidersAndModelsSection` |
+| Source of truth | `CopilotDiag.recent()` — no duplicate list |
+| Filters | All, failures-only, per-kind |
+| Clear | confirmation dialog, states project files untouched |
+| Bound | 200 rows, 320dp list |
+| Tests | 13 (incl. restart-visible integration) |
+| Not covered | Compose rendering test; device verification |
