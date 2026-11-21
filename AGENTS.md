@@ -8666,3 +8666,31 @@ not a smaller prompt.
 
 ROLLBACK: single commit, `git revert` restores the text protocol exactly.
 
+---
+
+**2026-11-21 (eighth commit) — catalog 21: the payload budget threw its own answer away.**
+
+[BUDGET] `ModelCatalog.payloadBudgetChars` looked model-aware and was not. It computed a figure from
+the model's context window, then clamped it with `coerceIn(8_000, userMaxChars)` whose DEFAULT ceiling
+was 48,000 - so a 1,050,000-token model and a 131,072-token model both came out at 48,000 characters.
+A million tokens of context were paid for and roughly 12k of them used. The "cramped workspace" was
+never a missing allocator; it was an allocator that discarded its own result.
+
+`userMaxChars` is now an OVERRIDE (default 0 = let the model decide) rather than the ceiling, and the
+per-send limit is `min(window allowance, SAFETY_MAX_CHARS)`, floored at `MIN_PAYLOAD_CHARS`.
+
+SAFETY_MAX_CHARS (160,000) is deliberately NOT the model window. Sending a million-token prefix from a
+phone is a cost and latency event rather than a capability: on a metered API one such turn can cost
+more than a month of ordinary use, and a mid-range device spends minutes streaming it. The window says
+what is POSSIBLE; this says what is SANE per send. That is why this is 160k and not 2.5M.
+
+Files: `engine/.../ModelCatalog.kt`, `engine/.../PayloadBudgetTest.kt` (new, 6 tests).
+
+Verified: engine suite passing, including that a large window now exceeds the old flat 48k, that a
+bigger window never gets a smaller budget, that a 10M-token window still respects the safety ceiling,
+and that an explicit override wins in both directions.
+
+NOTE: this is live immediately, because the app already calls `payloadBudgetChars(...)` when building
+EngineConfig. It raises the ceiling per model; it does not force a bigger prompt, since assembly still
+has its own caps (AGENT_CAP 12,500 / ASK_CAP 5,000) which are the next thing to raise.
+
