@@ -8780,3 +8780,22 @@ Files: `chat/panel/HandoffSession.kt`.
 VERIFICATION: not locally compilable (app module needs the Android SDK); CI is the authority. Braces
 and parens balanced, no dangling reference to the removed variable, `send(payload)` is the only send.
 
+---
+
+**2026-11-22 (thirteenth commit) — AUDIT FIX: the done signal was unreachable on native tool calling.**
+
+[DONE] Audit pass over tonight's own commits found a real defect in 03a9450/fd29b0a. doneInstruction()
+tells the model to call `task_complete`, and AgentToolWire.decide() correctly removes it and ends the
+turn - but nothing ever GAVE the model that tool. With native tool calling now switched on (fb2dfbe),
+a model receives its tools as schemas and cannot emit one it was not offered. So on precisely the
+providers where the wire is strongest, the completion declaration could never be made, and the loop
+still ended only by silence - the exact failure the done signal was added to fix.
+
+Fix: `ChatSession.doneDeclaration()` advertises task_complete alongside the offered tools, inside the
+sendTools branch only. Deliberately NOT added to ToolRegistry: the registry is the set of things that
+RUN, and ToolCatalogueTest.everyAdvertisedToolAppearsExactlyOnce requires every registered tool to
+appear in the catalogue with a group, title and description. This is a protocol token that never
+executes, so registering it would have meant inventing a catalogue entry and a fake group for
+something that does nothing.
+
+Not verified locally: app module cannot be compiled in the authoring environment. CI is the first build.

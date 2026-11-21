@@ -878,6 +878,7 @@ class ChatSession internal constructor(
                             parametersJson = it.schema,
                         )
                     }
+                    .plus(doneDeclaration())
             } else {
                 emptyList()
             },
@@ -1281,6 +1282,30 @@ class ChatSession internal constructor(
      * are untouched, only the advertised list grows. A provider that never supported function
      * calling still sees plain text, so nothing here is provider-specific.
      */
+    /**
+     * PROJECT EIGHT 8.9 (catalog 13, audit fix): the completion declaration is a PROTOCOL token,
+     * not an executable tool.
+     *
+     * It is deliberately NOT added to ToolRegistry. The registry is the set of things that RUN, and
+     * ToolCatalogueTest requires every registered tool to appear in the catalogue with a group,
+     * title and description. This never runs - AgentToolWire.decide() removes it and ends the turn -
+     * so advertising it alongside the offered tools is both sufficient and honest.
+     *
+     * The defect this fixes: doneInstruction() TOLD the model to call task_complete but nothing
+     * ever GAVE it the tool. A model using native tool calling cannot emit a tool it was not
+     * offered, so on exactly the providers where the wire is strongest the done signal was
+     * unreachable. Called only from inside the sendTools branch, so a tool-less mode still
+     * advertises nothing.
+     */
+    private fun doneDeclaration(): List<com.codespace.ide.engine.ToolDeclaration> = listOf(
+        com.codespace.ide.engine.ToolDeclaration(
+            name = AgentToolWire.DONE_TOOL,
+            description = "Declare the request finished. Call only when nothing is left to do. " +
+                "Do NOT call it when you are blocked, out of steps or waiting on something - say " +
+                "in plain words what is unfinished instead.",
+        ),
+    )
+
     private fun buildInstruction(
         mode: ChatMode,
         sendTools: Boolean,
