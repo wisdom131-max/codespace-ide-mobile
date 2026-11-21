@@ -795,7 +795,15 @@ class ChatSession internal constructor(
         }
         // WP3 reasoning control: bounded 1024 for native thinking providers,
         // OFF for effort-kind (a default reasoning_effort 400s non-reasoning models).
-        val reasoningBudget = if (sel.providerId == "gemini" || sel.providerId == "anthropic") 1024 else 0
+        // PROJECT EIGHT 8.1: the budget comes from the effort the user actually chose, not from a
+        // constant. ReasoningBudget returns 0 for providers that cannot take a reasoning control,
+        // and for effort-kind providers it returns 0 until the user opts in (sending
+        // reasoning_effort to a non-reasoning model is a 400). Null effort means "not chosen", so
+        // this line changes nothing until the picker's menu is wired.
+        val reasoningBudget = com.codespace.ide.engine.ReasoningBudget.forProvider(
+            sel.providerId,
+            com.codespace.ide.chat.panel.ChatSettingsPrefs.reasoningEffort(sel.providerId),
+        )
         // MISSION part 1: the model is told WHERE it is before it is asked anything. The
         // block is capped to a quarter of the payload budget so a big tree can never
         // crowd out the conversation, and a cut block says it was cut.
