@@ -8612,3 +8612,23 @@ Files: `engine/.../ClockNote.kt` (new), `engine/.../ClockNoteTest.kt` (new, 5 te
 Verified: engine compiled with kotlinc 1.9.24 / JDK 17; full suite **326 tests passing** (321 + 5 new),
 covering a fixed instant in Lagos, UTC and New York, the negative-offset label, and single-line output.
 
+---
+
+**2026-11-21 (sixth commit) — catalog 27: Anthropic prompt caching.**
+
+[CACHE] There was no `cache_control` anywhere, so every turn re-sent the whole static prefix at full
+price. Anthropic caches in the order tools -> system -> messages, so ONE breakpoint on the last tool
+covers both the tool definitions and the system instruction - the two blocks that are byte-identical
+on every turn of a session. Only the last declaration is marked; a breakpoint per tool would spend
+the (4) allowed slots for no extra coverage.
+
+Files: `engine/.../AnthropicAdapter.kt`, `engine/.../ToolDeclarationsTest.kt`.
+
+Verified: engine suite **329 tests passing** (326 + 3 new), covering exactly-one-breakpoint, the
+breakpoint sitting after the last declaration, no breakpoint when no tools are sent, and that OpenAI
+and Gemini carry none.
+
+NOTE: this only takes effect once tools are actually advertised. With no declarations there is no
+tools array, so there is nothing to breakpoint and behaviour is unchanged. The saving therefore lands
+with the same commit that switches native tools on.
+

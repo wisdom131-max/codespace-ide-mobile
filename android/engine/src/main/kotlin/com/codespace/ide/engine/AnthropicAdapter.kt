@@ -34,6 +34,7 @@ class AnthropicAdapter : ProviderAdapter {
     override fun withTools(body: String, config: EngineConfig): String {
         if (config.toolDeclarations.isEmpty()) return body
         val sb = StringBuilder(",\"tools\":[")
+        val last = config.toolDeclarations.lastIndex
         config.toolDeclarations.forEachIndexed { i, t ->
             if (i > 0) sb.append(',')
             sb.append("{\"name\":\"")
@@ -42,7 +43,15 @@ class AnthropicAdapter : ProviderAdapter {
                 .append(escapeJson(t.description))
                 .append("\",\"input_schema\":")
                 .append(t.schema)
-                .append("}")
+            // PROJECT EIGHT 8.4 (catalog 27): one cache breakpoint on the LAST tool.
+            //
+            // Anthropic caches the prefix in the order tools -> system -> messages, so a breakpoint
+            // here covers the tool definitions AND the system instruction: the two blocks that are
+            // byte-identical on every turn of a session. That is where the ~90% input saving lives.
+            // Only the last declaration gets it; a breakpoint per tool would burn the (4) allowed
+            // slots for no extra coverage.
+            if (i == last) sb.append(",\"cache_control\":{\"type\":\"ephemeral\"}")
+            sb.append("}")
         }
         sb.append("]")
         return spliceTools(body, sb.toString())

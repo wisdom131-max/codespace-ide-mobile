@@ -195,6 +195,39 @@ class ToolDeclarationsTest {
         assertFalse(body.contains("say \"hi\""))
     }
 
+
+    // ── catalog 27: prompt caching ────────────────────────────────────────────────────────
+
+    @Test
+    fun `anthropic marks one cache breakpoint, on the last declaration only`() {
+        val cfg = anthropicCfg(listOf(readFile, writeFile))
+        val body = anthropic.withTools(anthropic.payload(emptyList(), "hi", cfg), cfg)
+        // Exactly one breakpoint: the prefix is cached once, and the four allowed slots are not
+        // spent on a declaration that is already inside the cached prefix.
+        assertEquals("exactly one cache breakpoint", 1, Regex("cache_control").findAll(body).count())
+        // It must sit on the LAST declaration, or the prefix would end before the final tool and
+        // every turn would re-send the tail.
+        val lastToolAt = body.lastIndexOf("\"name\":\"write_file\"")
+        val breakpointAt = body.indexOf("cache_control")
+        assertTrue("breakpoint must follow the last declaration", breakpointAt > lastToolAt)
+        assertTrue(body.contains("{\"type\":\"ephemeral\"}"))
+    }
+
+    @Test
+    fun `no tools means no cache breakpoint`() {
+        val cfg = anthropicCfg(emptyList())
+        val body = anthropic.withTools(anthropic.payload(emptyList(), "hi", cfg), cfg)
+        assertFalse(body.contains("cache_control"))
+    }
+
+    @Test
+    fun `only anthropic carries cache_control`() {
+        val oa = openAiCfg(listOf(readFile))
+        val gm = geminiCfg(listOf(readFile))
+        assertFalse(openAi.withTools(openAi.payload(emptyList(), "hi", oa), oa).contains("cache_control"))
+        assertFalse(gemini.withTools(gemini.payload(emptyList(), "hi", gm), gm).contains("cache_control"))
+    }
+
     @Test
     fun `splicing a fragment keeps the closing brace last`() {
         assertEquals("{\"a\":1,\"tools\":[]}", spliceTools("{\"a\":1}", ",\"tools\":[]"))
