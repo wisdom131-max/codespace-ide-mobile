@@ -8698,3 +8698,26 @@ with the instruction work rather than here.
 
 ROLLBACK: single commit; `git revert` restores the previous behaviour exactly.
 
+---
+
+**2026-11-21 (tenth commit) — catalog 13 second half: the model is now ASKED to declare completion.**
+
+[DONE] The previous commit taught the wire to RECOGNISE `task_complete` but nothing told the model to
+emit one, so it changed no behaviour. This wires the request into the instruction, only when tools are
+sent (it is a tool call; Ask mode has nothing to finish).
+
+The instruction carries both halves deliberately. Telling a model only "say when you are done" gets
+you a declaration whether or not the work finished, which is worse than silence because it makes a
+half-done task look complete. So the same sentence names the other exit: blocked, out of steps, unsure
+or waiting - say so in words and do not declare. That is what makes "finished" and "gave up" actually
+distinguishable, which is the entire point.
+
+Budget: the extra text is charged against the cap BEFORE memory is fitted, so the memory block shrinks
+rather than the total exceeding it - the existing invariant, unchanged.
+
+Files: `chat/panel/AgentToolWire.kt`, `chat/panel/ChatInstructions.kt`.
+
+VERIFICATION: still not locally compilable (app module needs the Android SDK). CI is the authority.
+NOTE on the previous commit's red build: run 44952615340 failed on `com.google.dagger.hilt.android`
+2.52 failing to resolve from Google/MavenRepo - a dependency-fetch flake, NOT this code. Re-ran it.
+

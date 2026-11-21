@@ -39,6 +39,25 @@ internal object AgentToolWire {
     const val DONE_TOOL: String = "task_complete"
 
     /**
+     * PROJECT EIGHT 8.7 (catalog 13), second half: recognising a declaration is useless until the
+     * model is told to make one.
+     *
+     * The negative half matters as much as the positive. A model that is told only "say when you are
+     * done" will say it whether or not it finished, which is worse than silence because it makes a
+     * half-done task look complete. So the same sentence names the other exit: if it stopped early,
+     * say so in words. That is the difference between "finished" and "gave up" actually being
+     * distinguishable, which is the whole point of the signal.
+     */
+    fun doneInstruction(): String = buildString {
+        append("## FINISHING\n")
+        append("When the request is fully done, call ").append(DONE_TOOL)
+        append(" with no arguments, instead of simply stopping.\n")
+        append("If you stopped early - blocked, out of steps, unsure, or waiting on something - do NOT ")
+        append("call it: say in plain words what is unfinished and what you need. Declaring completion ")
+        append("on unfinished work is a failure, not a shortcut.")
+    }
+
+    /**
      * Rounds per user message. A runaway agent loop is a real failure mode (each round is a
      * paid API call and possibly a destructive command), so it is capped and the cap is
      * announced to the model rather than silently enforced.

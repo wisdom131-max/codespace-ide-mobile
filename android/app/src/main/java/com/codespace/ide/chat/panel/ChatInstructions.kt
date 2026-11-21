@@ -67,7 +67,9 @@ internal object ChatInstructions {
         val visible = offered.toSet() + loaded
         val total = ToolRegistry.exposedNames(mode).size
         val base = ChatModePrompts.instruction(mode) +
-            (if (sendTools) AgentToolWire.protocol(mode, visible) else "") +
+            // catalog 13: the completion signal is only meaningful when tools are on, because it is
+            // a tool call. In Ask mode there is nothing to finish.
+            (if (sendTools) AgentToolWire.protocol(mode, visible) + "\n\n" + AgentToolWire.doneInstruction() else "") +
             toolsetLine(sendTools, visible.size, total) +
             (if (mcpDocs.isBlank()) "" else "\n\n## EXTERNAL MCP TOOLS (loaded for this task)\n" + mcpDocs) +
             (if (wsBlock.isEmpty()) "" else "\n\n" + wsBlock)
