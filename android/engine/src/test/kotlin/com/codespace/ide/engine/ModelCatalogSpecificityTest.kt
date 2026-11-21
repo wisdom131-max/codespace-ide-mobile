@@ -49,6 +49,6 @@ class ModelCatalogSpecificityTest {
     }
 
     @Test fun anUnknownModelStillGetsTheUsersOwnBudget() {
-        assertEquals(48_000, ModelCatalog.payloadBudgetChars(ModelCatalog.capabilityFor("x", "nope")))
+        assertEquals(ModelCatalog.SAFETY_MAX_CHARS, ModelCatalog.payloadBudgetChars(ModelCatalog.capabilityFor("x", "nope")))
     }
 }

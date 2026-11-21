@@ -8721,3 +8721,34 @@ VERIFICATION: still not locally compilable (app module needs the Android SDK). C
 NOTE on the previous commit's red build: run 44952615340 failed on `com.google.dagger.hilt.android`
 2.52 failing to resolve from Google/MavenRepo - a dependency-fetch flake, NOT this code. Re-ran it.
 
+---
+
+**2026-11-21 (eleventh commit) — catalog 21 RE-APPLIED, with the tests repaired rather than the code reverted.**
+
+[OWNER DECISION 2026-11-21] The 48k cap is to be REMOVED and the budget scaled to the model. This is
+now an explicit owner decision, not my inference. It was reverted once because two existing tests
+failed; the correct response was to fix the tests, not to back out. That is what this commit does.
+
+WHAT WAS ACTUALLY WRONG: `payloadBudgetChars` read the model's context window, then clamped the result
+with `coerceIn(8_000, userMaxChars)` whose DEFAULT ceiling was 48,000. A 1,048,576-token model and a
+131,072-token model both came out at 48,000 characters, so a million tokens of context were paid for
+and roughly 12k used.
+
+NOW: `userMaxChars` is an OVERRIDE (default 0 = let the model decide), the per-send limit is
+`min(window allowance, SAFETY_MAX_CHARS)`, floored at `MIN_PAYLOAD_CHARS`.
+
+SAFETY_MAX_CHARS = 160,000 is deliberately NOT the model window. Sending a million-token prefix from a
+phone is a cost and latency event rather than a capability: on a metered API one such turn can cost
+more than a month of ordinary use. The window says what is POSSIBLE; this says what is SANE per send.
+
+TESTS UPDATED, NOT DELETED: `ModelCatalogTest.budgetScalesWithContextWindowAndStaysCapped` and
+`ModelCatalogSpecificityTest.anUnknownModelStillGetsTheUsersOwnBudget` both asserted the flat 48,000.
+They now assert the ceiling, and the scaling test gained a MID-window case (50,000 tokens -> 90,000
+chars) because without it the test would still pass if every model were simply pinned to the ceiling -
+the same defect pointing the other way.
+
+Files: `engine/.../ModelCatalog.kt`, `ModelCatalogTest.kt`, `ModelCatalogSpecificityTest.kt`,
+`PayloadBudgetTest.kt` (new, 6 tests).
+
+Verified: engine suite 336 tests, all passing locally before push.
+

@@ -28,20 +28,26 @@ class ModelCatalogTest {
 
     @Test
     fun budgetScalesWithContextWindowAndStaysCapped() {
-        // Big-window model: scaled 1,048,576*3*0.6 = 1,887k -> capped at the user max.
+        // Big-window model: scaled 1,048,576*3*0.6 = 1,887k -> held to the SAFETY ceiling, which is
+        // a per-send cost/latency guard, not the model's limit.
         val big = ModelCatalog.capabilityFor("gemini", "gemini-3.8-flash")!!
-        assertEquals(48_000, ModelCatalog.payloadBudgetChars(big))
-        // Small-window model: 131,072*3*0.6 = 236k -> still capped.
+        assertEquals(ModelCatalog.SAFETY_MAX_CHARS, ModelCatalog.payloadBudgetChars(big))
+        // Small-window model: 131,072*3*0.6 = 236k -> also above the ceiling.
         val small = ModelCatalog.capabilityFor("groq", "llama-3.3-70b-instruct")!!
-        assertEquals(48_000, ModelCatalog.payloadBudgetChars(small))
+        assertEquals(ModelCatalog.SAFETY_MAX_CHARS, ModelCatalog.payloadBudgetChars(small))
+        // A MID-window model must land strictly between floor and ceiling. Without this case the
+        // test passes even if every model is simply pinned to the ceiling, which is the defect the
+        // 48k version had in the other direction.
+        val mid = ModelCapability("mid-test", 50_000, supportsImages = false, supportsPdf = false)
+        assertEquals(90_000, ModelCatalog.payloadBudgetChars(mid))
         // A tiny 20k-token model: 20,000*3*0.6 = 36,000 chars — under the cap.
         val tiny = ModelCapability("tiny-test", 20_000, supportsImages = false, supportsPdf = false)
         assertEquals(36_000, ModelCatalog.payloadBudgetChars(tiny))
         // Floor: a 2k-token model would get 3,600 -> floored at 8,000.
         val floor = ModelCapability("floor-test", 2_000, supportsImages = false, supportsPdf = false)
         assertEquals(8_000, ModelCatalog.payloadBudgetChars(floor))
-        // Unknown model -> user max, behavior unchanged from the pre-catalog era.
-        assertEquals(48_000, ModelCatalog.payloadBudgetChars(null))
+        // Unknown model -> the safety ceiling: no window to scale from, so the sane default stands.
+        assertEquals(ModelCatalog.SAFETY_MAX_CHARS, ModelCatalog.payloadBudgetChars(null))
         // User max is respected when smaller than the scaled estimate.
         val tinyKnown = ModelCapability("c", 500_000, supportsImages = false, supportsPdf = false)
         assertEquals(20_000, ModelCatalog.payloadBudgetChars(tinyKnown, userMaxChars = 20_000))

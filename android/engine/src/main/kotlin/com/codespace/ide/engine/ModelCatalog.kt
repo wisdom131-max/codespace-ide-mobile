@@ -98,11 +98,40 @@ object ModelCatalog {
      * the pre-catalog cap, so big-window models behave exactly as before) and
      * floored at 8k. Unknown model -> the user's max. ESTIMATE by definition.
      */
-    fun payloadBudgetChars(capability: ModelCapability?, userMaxChars: Int = 48_000): Int {
-        if (capability == null || capability.contextTokens <= 0) return userMaxChars
-        val scaled = (capability.contextTokens * CHARS_PER_TOKEN_ESTIMATE * 0.6).toInt()
-        return scaled.coerceIn(8_000, userMaxChars)
+    /**
+     * PROJECT EIGHT 8.6 (catalog 21) — the per-send payload budget, scaled to the MODEL.
+     *
+     * The previous version looked model-aware and was not: it computed the window allowance and then
+     * clamped it with `coerceIn(8_000, userMaxChars)`, whose default ceiling was 48_000. A model with
+     * a 1,050,000-token window and one with 131,072 both came out at 48,000 characters, so a million
+     * tokens of context were paid for and 12k of them used. That is the real shape of the "cramped
+     * workspace" complaint: not a missing allocator, an allocator that threw its own answer away.
+     *
+     * [userMaxChars] is now an OVERRIDE, not the ceiling: 0 (the default) means "let the model
+     * decide". A caller that knows a provider limit can still lower it, and an explicit value still
+     * wins in both directions.
+     *
+     * [SAFETY_MAX_CHARS] is deliberately NOT the model window. Sending a million-token prefix from a
+     * phone is a cost and latency event, not a capability: on a metered API one such turn can cost
+     * more than a month of ordinary use, and a mid-range device spends minutes streaming it. The
+     * window sets what is POSSIBLE; this sets what is SANE per send.
+     */
+    fun payloadBudgetChars(capability: ModelCapability?, userMaxChars: Int = 0): Int {
+        val windowChars = if (capability != null && capability.contextTokens > 0) {
+            (capability.contextTokens * CHARS_PER_TOKEN_ESTIMATE * 0.6).toInt()
+        } else {
+            SAFETY_MAX_CHARS
+        }
+        val sane = windowChars.coerceAtMost(SAFETY_MAX_CHARS)
+        val chosen = if (userMaxChars > 0) userMaxChars else sane
+        return chosen.coerceAtLeast(MIN_PAYLOAD_CHARS)
     }
+
+    /** Below this a request cannot carry a useful instruction plus a file, so it is never the answer. */
+    const val MIN_PAYLOAD_CHARS: Int = 8_000
+
+    /** Per-send ceiling regardless of window: a cost and latency guard, not a model limit. */
+    const val SAFETY_MAX_CHARS: Int = 160_000
 
     // Verified 2026-10-28 from the live OpenRouter /models dump (context_length
     // + architecture.input_modalities). No entry here is from memory.
