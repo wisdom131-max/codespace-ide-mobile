@@ -8632,3 +8632,37 @@ NOTE: this only takes effect once tools are actually advertised. With no declara
 tools array, so there is nothing to breakpoint and behaviour is unchanged. The saving therefore lands
 with the same commit that switches native tools on.
 
+---
+
+**2026-11-21 (seventh commit) — 8.5: native tool calling is SWITCHED ON, with the duplication fixed.**
+
+[TOOLS] Earlier commits gave the engine the ability to advertise native tool schemas but nothing sent
+any, so behaviour was unchanged. This commit connects it, and fixes the one thing that made doing so
+dangerous.
+
+THE DEFECT IT HAD TO FIX FIRST: the round loop pasted every tool result into the next request as a
+user-text block (`basePayload`), while `ConversationContinuity` ALSO splices the same results as proper
+per-provider tool messages. With native tools on, every result would arrive TWICE - once labelled as a
+tool result, once dressed up as something the user said. That doubles the token cost and tells the
+model the wrong speaker. So `basePayload` is now suppressed when declarations are present, and the
+continuation carries a short "Continue." user turn instead of an empty one, because an empty message
+is not valid on every wire.
+
+Advertises ONLY the tools offered this turn (`offer.names`), never the whole ~120-tool registry, which
+would cost more than the text list it replaces. Nothing is advertised when the mode plan withholds
+tools.
+
+Files: `android/app/src/main/java/com/codespace/ide/chat/panel/ChatSession.kt`.
+
+Verified: braces and parens balanced; every referenced symbol (`ToolRegistry.exposed`, `offer.names`,
+`toolPlan.sendTools`, `ToolSpec.description/schema`, `EngineConfig.toolDeclarations`) confirmed present.
+The app module cannot be compiled outside the Android SDK, so CI is the compile authority and the
+device is the behaviour authority.
+
+STILL TO DO, deliberately: the prompt ALSO still carries the prose tool list. That is the token saving
+and it is NOT taken yet - removing the prose is the risky half and should follow one confirmed good
+tool call on device. Until then this commit buys structured schemas and correct tool-result framing,
+not a smaller prompt.
+
+ROLLBACK: single commit, `git revert` restores the text protocol exactly.
+

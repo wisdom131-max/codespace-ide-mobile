@@ -863,6 +863,24 @@ class ChatSession internal constructor(
             maxPayloadChars = com.codespace.ide.engine.ModelCatalog.payloadBudgetChars(resolveCapability(sel)),
             // P0.1: Cloudflare /ai/v1 takes a STRING content; everything else keeps parts.
             supportsContentParts = !com.codespace.ide.engine.EndpointUrls.isCloudflare(liveBaseUrl),
+            // PROJECT EIGHT 8.5 (catalog 58): advertise THIS TURN'S offered tools as native schemas.
+            //
+            // Only the tools actually offered, never the whole registry: advertising all ~120 would
+            // cost more than the text list it replaces and blow the payload budget. Only when the
+            // plan says tools may be sent, so a tool-less mode still sends nothing.
+            toolDeclarations = if (toolPlan.sendTools) {
+                ToolRegistry.exposed(mode)
+                    .filter { it.name in offer.names }
+                    .map {
+                        com.codespace.ide.engine.ToolDeclaration(
+                            name = it.name,
+                            description = it.description,
+                            parametersJson = it.schema,
+                        )
+                    }
+            } else {
+                emptyList()
+            },
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
         // STAGE 2: a new turn starts with an empty filter, or a fragment from the last turn
@@ -1893,7 +1911,17 @@ class ChatSession internal constructor(
             // P4.6/4.7: a chain of ten tools used to send all ten results again, unbounded, on a
             // phone. Past the ceiling the OLDER results are compressed with an explicit marker and
             // exact repeats dropped; the newest result, anything pinned and anything cited survive.
-            val basePayload = if (results.length > TOOL_RESULT_BUDGET_CHARS) {
+            // PROJECT EIGHT 8.5 (catalog 58): when the tools are advertised natively, the results
+            // travel as PROPER tool messages (ConversationContinuity renders tool_calls/tool_result
+            // per provider). Sending the pasted text block as well would deliver every result TWICE
+            // - once labelled as a tool result, once dressed up as something the user said - which
+            // doubles the token cost and tells the model the wrong speaker. So the text block is
+            // suppressed and the continuation carries a short user turn instead of an empty one,
+            // because an empty message is not valid on every wire.
+            val nativeResults = refreshed.toolDeclarations.isNotEmpty()
+            val basePayload = if (nativeResults) {
+                "Continue."
+            } else if (results.length > TOOL_RESULT_BUDGET_CHARS) {
                 com.codespace.ide.agent.ToolContextTrim.trim(resultItems, TOOL_RESULT_BUDGET_CHARS).render().trim()
             } else {
                 results.toString().trim()
