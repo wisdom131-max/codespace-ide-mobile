@@ -8752,3 +8752,31 @@ Files: `engine/.../ModelCatalog.kt`, `ModelCatalogTest.kt`, `ModelCatalogSpecifi
 
 Verified: engine suite 336 tests, all passing locally before push.
 
+---
+
+**2026-11-21 (twelfth commit) — catalog 8: the continuation guard measured length, not substance.**
+
+[CONTINUATION] Owner-reported bug: the "+" continuation opens a new session that remembers nothing.
+The audit blamed SessionHandoff and was wrong - the digest IS used and the summary IS rendered. The
+real defect was in the GUARD at the call site.
+
+`if (summaryPayload.isBlank() || summaryPayload.trim().length < 40)` was testing the length of
+`handoff.render()`, but render() ALWAYS emits its header plus a "this is a handoff, not the transcript"
+line. A handoff with no content at all therefore produced a payload far longer than 40 characters,
+passed the guard, and was sent. The successor received a heading with nothing under it - which is
+exactly "remembers nothing". Length was never evidence of substance.
+
+Now substance is checked field by field (generatedSummary, decisions, constraints, progress, open,
+files, evidence, limitations). When there is none, `fallbackHandoff` carries the last 12 turns
+verbatim, each capped at 600 chars, under a header that states plainly it is verbatim and not a
+summary - a labelled excerpt is honest, a summary-shaped void is not.
+
+WHY THE SUMMARY WAS EMPTY IN THE FIRST PLACE: two sources, both usually dry. The generated summary
+only exists after the engine has had to compress an over-long history; the pattern sections only fill
+in when the conversation happens to use their wording. An ordinary working session has neither.
+
+Files: `chat/panel/HandoffSession.kt`.
+
+VERIFICATION: not locally compilable (app module needs the Android SDK); CI is the authority. Braces
+and parens balanced, no dangling reference to the removed variable, `send(payload)` is the only send.
+

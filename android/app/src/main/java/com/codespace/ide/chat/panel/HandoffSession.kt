@@ -65,15 +65,31 @@ internal fun startHandoffSession(
     )
     // P0.6 (2026-11-19): never mint a successor that only LOOKS informed. An empty or trivial
     // summary is a failed handoff and is reported, not sent as if it were context.
-    val summaryPayload = handoff.render()
-    if (summaryPayload.isBlank() || summaryPayload.trim().length < 40) {
+    // PROJECT EIGHT 8.8 (catalog 8): the guard below was measuring the wrong thing.
+    //
+    // It checked the LENGTH of the rendered text, but render() always emits its header and its
+    // "this is a handoff, not the transcript" line, so a handoff with no content whatsoever still
+    // produced a payload comfortably over 40 characters. It passed the check and was sent: the new
+    // session received a heading with nothing underneath, which is precisely the "remembers nothing"
+    // report. Length was never evidence of substance.
+    //
+    // Substance is now checked field by field, and when there is none the most recent turns are
+    // carried verbatim instead of an empty frame. Verbatim is deliberately second best and says so
+    // in its own header: a labelled excerpt is honest, a summary-shaped void is not.
+    val substantive = handoff.generatedSummary.isNotBlank() ||
+        handoff.decisions.isNotEmpty() || handoff.constraints.isNotEmpty() ||
+        handoff.progress.isNotEmpty() || handoff.open.isNotEmpty() ||
+        handoff.files.isNotEmpty() || handoff.evidence.isNotEmpty() ||
+        handoff.limitations.isNotEmpty()
+    val payload = if (substantive) handoff.render() else fallbackHandoff(source)
+    if (payload.isBlank()) {
         manager.session(projectId, created.meta.id)?.appendNotice(
             "Continuation started WITHOUT a usable summary: the parent session had nothing worth " +
                 "carrying. Ask again here, or let the parent finish a turn first.",
         )
         return "Continued, but the summary was empty - this session starts without the parent context."
     }
-    manager.session(projectId, created.meta.id)?.send(summaryPayload)
+    manager.session(projectId, created.meta.id)?.send(payload)
     // PROJECT SEVEN 7.7: tell the owner WHAT was carried, counted from the summary the successor
     // actually received, instead of a bare "continued". Retention-on-disk is checked, not assumed.
     val carried = CopilotPresentation.carriedContext(
@@ -96,4 +112,35 @@ private fun handoffRetentionFileExists(context: Context, sessionId: String): Boo
     val safe = sessionId.replace(Regex("[^A-Za-z0-9._-]"), "_").take(40)
     val tag = Integer.toHexString(sessionId.hashCode())
     return java.io.File(dir, safe + "-" + tag + ".summary").exists()
+}
+
+/**
+ * PROJECT EIGHT 8.8 (catalog 8): what a continuation carries when nothing pattern-matched.
+ *
+ * The handoff's sections only fill in when the conversation happens to contain the wording they
+ * look for, and the generated summary only exists once the engine has had to compress an over-long
+ * history. An ordinary working session has neither, which left the successor with a header and no
+ * content. The recent turns always exist, so they are the reliable floor.
+ *
+ * Bounded on both axes: the last few turns, each cut short. This is a fallback, not a transcript,
+ * and it says so in its own words so the model does not mistake an excerpt for the full record.
+ */
+private const val MAX_FALLBACK_TURNS = 12
+private const val MAX_FALLBACK_CHARS = 600
+
+private fun fallbackHandoff(rows: List<ChatRowModel>): String {
+    val kept = rows.mapNotNull { row ->
+        when (row) {
+            is ChatRowModel.User -> "user: " + row.text.trim()
+            is ChatRowModel.AssistantStream -> "assistant: " + row.text.trim()
+            else -> null
+        }
+    }.filter { it.length > 6 }.takeLast(MAX_FALLBACK_TURNS)
+    if (kept.isEmpty()) return ""
+    return buildString {
+        append("Continuing from an earlier conversation. Nothing in it matched the usual patterns ")
+        append("for decisions or open questions, so these are the most recent turns VERBATIM rather ")
+        append("than a summary. They are context to build on, not work to redo.\n\n")
+        kept.forEach { append("- ").append(it.take(MAX_FALLBACK_CHARS)).append("\n") }
+    }
 }
