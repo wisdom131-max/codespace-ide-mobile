@@ -11,6 +11,28 @@ package com.codespace.ide.engine
  * closes the stream (the engine's DONE-less completion path covers it).
  */
 class GeminiAdapter : ProviderAdapter {
+
+    /**
+     * PROJECT EIGHT 8.2: Gemini nests declarations under tools[].functionDeclarations and calls the
+     * schema `parameters` (an OpenAPI subset). One object, one array, same JSON Schema text.
+     */
+    override fun withTools(body: String, config: EngineConfig): String {
+        if (config.toolDeclarations.isEmpty()) return body
+        val sb = StringBuilder(",\"tools\":[{\"functionDeclarations\":[")
+        config.toolDeclarations.forEachIndexed { i, t ->
+            if (i > 0) sb.append(',')
+            sb.append("{\"name\":\"")
+                .append(escapeJson(t.name))
+                .append("\",\"description\":\"")
+                .append(escapeJson(t.description))
+                .append("\",\"parameters\":")
+                .append(t.schema)
+                .append("}")
+        }
+        sb.append("]}]")
+        return spliceTools(body, sb.toString())
+    }
+
     override val providerId = "gemini"
     override val streamKind = StreamProvider.GEMINI
 

@@ -25,6 +25,29 @@ package com.codespace.ide.engine
  * budget_tokens Required[int] (docs floor: 1024).
  */
 class AnthropicAdapter : ProviderAdapter {
+
+    /**
+     * PROJECT EIGHT 8.2: Anthropic names the schema `input_schema` and has no tool_choice to send -
+     * its default is already "the model decides". Sending tool_choice here would be inventing a
+     * parameter this wire does not take.
+     */
+    override fun withTools(body: String, config: EngineConfig): String {
+        if (config.toolDeclarations.isEmpty()) return body
+        val sb = StringBuilder(",\"tools\":[")
+        config.toolDeclarations.forEachIndexed { i, t ->
+            if (i > 0) sb.append(',')
+            sb.append("{\"name\":\"")
+                .append(escapeJson(t.name))
+                .append("\",\"description\":\"")
+                .append(escapeJson(t.description))
+                .append("\",\"input_schema\":")
+                .append(t.schema)
+                .append("}")
+        }
+        sb.append("]")
+        return spliceTools(body, sb.toString())
+    }
+
     override val providerId = "anthropic"
     override val streamKind = StreamProvider.ANTHROPIC
 

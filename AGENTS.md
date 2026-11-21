@@ -8539,3 +8539,40 @@ authority on them. Engine suite unchanged at 310 passing.
 
 Next: native tool calling (item 58), the largest token saving.
 
+---
+
+**2026-11-21 (third commit) — 8.2 native tool advertisement: the engine can finally send a tools array.**
+
+[TOOLS] The engine could already PARSE native tool calls (`ToolCallNormaliser`,
+`ProviderStreamNormaliser`, `StreamProvider`) but no adapter ever ADVERTISED a tool: there was no
+field on `EngineConfig` to carry a declaration, so every request went out as a text prompt and the
+model answered with a `<tool>` block. Parsing without advertising cannot produce a native call, which
+is why that whole subsystem sat unused.
+
+Added `ToolDeclaration` (provider-neutral name/description/JSON-Schema-as-text) and a `withTools` seam
+on `ProviderAdapter` whose default is identity. Each of the three adapters renders its own shape:
+OpenAI `tools[].function` with `tool_choice: auto`, Anthropic `tools[].input_schema` with NO
+tool_choice (that wire has no such field), Gemini `tools[].functionDeclarations` with `parameters`.
+
+The splice happens on the FINISHED body in `ChatEngineImpl`, at both build sites, before the budget
+guard runs, so the size the guard measures is the size actually sent. Splicing per-variant would have
+been a silent regression: each adapter has a plain, an attachment and a tool-exchange payload, and one
+that forgets the tools looks like "the agent stopped calling tools when I attached a file". Tests pin
+all three variants.
+
+Files: `engine/.../ToolDeclarations.kt` (new), `engine/.../ToolDeclarationsTest.kt` (new, 11 tests),
+`EngineModels.kt`, `ProviderAdapter.kt`, `OpenAIAdapter.kt`, `AnthropicAdapter.kt`, `GeminiAdapter.kt`,
+`ChatEngineImpl.kt`.
+
+Verified: engine compiled with kotlinc 1.9.24 / JDK 17; full suite **321 tests passing** (310 + 11 new),
+including that no declarations leaves every body byte-identical.
+
+NOT yet wired, so runtime behaviour is unchanged: nothing passes `toolDeclarations` from the app.
+`agent/NativeToolCalling.kt` already builds the three declaration shapes and is fully tested by
+`NativeToolCallingTest`, but it is referenced ONLY by its own test file - no production caller. Wiring
+`ChatSession`/`AgentToolWire` to build declarations from the registry and pass them here is the next
+step, and the reason this commit changes no behaviour on its own.
+
+Next: wire NativeToolCalling into the send path, then item 13 (MAX_ROUNDS 6 -> higher plus a done
+predicate).
+

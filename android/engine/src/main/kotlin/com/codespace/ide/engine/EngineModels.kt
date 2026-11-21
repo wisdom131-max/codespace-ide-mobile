@@ -103,6 +103,11 @@ data class EngineConfig(
      * so a caller that does not set a mode keeps byte-identical payloads.
      */
     val systemInstruction: String = "",
+    /**
+     * PROJECT EIGHT 8.2: tools advertised natively in this send. Empty means "send no tools array",
+     * which keeps every existing request byte-identical - the same contract [systemInstruction] has.
+     */
+    val toolDeclarations: List<ToolDeclaration> = emptyList(),
 )
 
 /** Events emitted while a send runs. Cold flow: nothing starts until collect. */

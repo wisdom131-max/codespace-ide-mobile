@@ -228,7 +228,13 @@ class ChatEngineImpl(
             maxOutputTokens = config.maxResponseTokens.coerceAtLeast(0),
         )
         lastFitDroppedChars = effectiveFit.droppedChars
-        val payload = adapter.payloadWithHistory(window, userText, attachments, config, exchanges())
+        // PROJECT EIGHT 8.2: tools are spliced into the FINISHED body, before the budget guard, so
+        // the size the guard measures is the size actually sent. Splicing after the check would let
+        // a large tool list push a request over a provider limit the guard had already approved.
+        val payload = adapter.withTools(
+            adapter.payloadWithHistory(window, userText, attachments, config, exchanges()),
+            config,
+        )
         val overBudget = BudgetGuard.checkPayload(payload.length, config.maxPayloadChars)
         if (overBudget != null && !config.confirmOverBudget) {
             state.append(ChatRole.ASSISTANT, "", MessageState.ERROR)
@@ -357,7 +363,10 @@ class ChatEngineImpl(
                 if (flip == null) throw inner
                 retriedCeilingField = true
                 attemptCfg = attemptCfg.copy(maxTokensField = flip)
-                attemptPayload = adapter.payloadWithHistory(window, userText, attachments, attemptCfg, exchanges())
+                attemptPayload = adapter.withTools(
+                    adapter.payloadWithHistory(window, userText, attachments, attemptCfg, exchanges()),
+                    attemptCfg,
+                )
                 parser = SseParser()
                 done = false
             }

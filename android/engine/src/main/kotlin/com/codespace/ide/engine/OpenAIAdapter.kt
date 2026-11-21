@@ -7,6 +7,30 @@ package com.codespace.ide.engine
  * pure extraction, not a redesign.
  */
 class OpenAIAdapter : ProviderAdapter {
+
+    /**
+     * PROJECT EIGHT 8.2: advertise the tools as an OpenAI `tools` array.
+     *
+     * `tool_choice: auto` lets the model decide, which is what the text protocol already implied.
+     * The `parameters` value is passed through verbatim so a schema the caller built survives intact.
+     */
+    override fun withTools(body: String, config: EngineConfig): String {
+        if (config.toolDeclarations.isEmpty()) return body
+        val sb = StringBuilder(",\"tools\":[")
+        config.toolDeclarations.forEachIndexed { i, t ->
+            if (i > 0) sb.append(',')
+            sb.append("{\"type\":\"function\",\"function\":{\"name\":\"")
+                .append(escapeJson(t.name))
+                .append("\",\"description\":\"")
+                .append(escapeJson(t.description))
+                .append("\",\"parameters\":")
+                .append(t.schema)
+                .append("}}")
+        }
+        sb.append("],\"tool_choice\":\"auto\"")
+        return spliceTools(body, sb.toString())
+    }
+
     override val providerId = "openai"
     override val streamKind = StreamProvider.OPENAI
 

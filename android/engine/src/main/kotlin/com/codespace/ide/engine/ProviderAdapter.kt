@@ -42,6 +42,14 @@ interface ProviderAdapter {
         exchanges: List<ToolExchange>,
     ): String = payload(window, userText, attachments, config)
 
+    /**
+     * PROJECT EIGHT 8.2: this provider's tools fragment spliced into a finished request body.
+     *
+     * Default is identity, so an adapter that has not opted in sends exactly what it sent before.
+     * Overridden by the three adapters that can express a tools array.
+     */
+    fun withTools(body: String, config: EngineConfig): String = body
+
     /** Next visible text delta from one SSE data payload; null if none. */
     fun extractDelta(data: String): String?
 
