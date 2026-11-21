@@ -1294,11 +1294,15 @@ class ChatSession internal constructor(
                 com.codespace.ide.agent.McpClientManager.suggestFor(appContext, request, loaded)
             }.getOrNull().orEmpty()
         } else ""
-        return ChatInstructions.build(
+        val composed = ChatInstructions.build(
             mode, sendTools, offered, wsBlock,
             if (mcpHint.isBlank()) mcpDocs else mcpDocs + "\n\n" + mcpHint,
             loaded, memory,
         )
+        // PROJECT EIGHT 8.3 (catalog B1): the agent had no clock, so "what time is it", "today" and
+        // "in an hour" were answered against the training cutoff. Appended here because every send
+        // passes through this one builder, including the continuation at the second call site.
+        return composed + "\n\n" + com.codespace.ide.engine.ClockNote.now()
     }
 
     /**

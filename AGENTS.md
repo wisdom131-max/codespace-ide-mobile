@@ -8592,3 +8592,23 @@ Verified: CI is the compile authority for the app module. No engine change, engi
 
 Next: give the agent a clock (B1), then the native tool-call event that unblocks item 58's other half.
 
+---
+
+**2026-11-21 (fifth commit) — catalog B1: the agent now has a clock.**
+
+[AGENT] There was no date, time or timezone anywhere in the prompt. "What time is it", "today" and
+"in an hour" were therefore answered against the training cutoff, and relative instructions were
+resolved against nothing. No prompt tuning fixes a fact the host never supplies.
+
+Added `engine/.../ClockNote.kt` and appended one line to the instruction in `ChatSession`, at the
+single builder both send sites pass through. Uses `java.util` rather than `java.time` on purpose: this
+module also ships to Android builds whose minSdk may sit below 26, where `java.time` is missing unless
+core-library desugaring is on, and a clock is not worth a NoClassDefFoundError on older devices. The
+line names the zone AND the UTC offset, because a bare "21:40" tells a model nothing about where it is.
+
+Files: `engine/.../ClockNote.kt` (new), `engine/.../ClockNoteTest.kt` (new, 5 tests),
+`android/app/src/main/java/com/codespace/ide/chat/panel/ChatSession.kt`.
+
+Verified: engine compiled with kotlinc 1.9.24 / JDK 17; full suite **326 tests passing** (321 + 5 new),
+covering a fixed instant in Lagos, UTC and New York, the negative-offset label, and single-line output.
+
