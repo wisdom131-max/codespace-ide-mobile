@@ -47,6 +47,19 @@ class ClockNoteTest {
         assertTrue("15:40 in New York in November", line.contains("15:40"))
     }
 
+
+    @Test
+    fun `the offset follows the requested instant, not today`() {
+        // July in New York is EDT (UTC-04:00); November is EST (UTC-05:00). A clock that reads the
+        // offset at "now" instead of at the requested instant gets this wrong for half the year,
+        // which is the defect this test exists to catch.
+        val summer = java.time.Instant.parse("2026-07-15T16:00:00Z").toEpochMilli()
+        val line = ClockNote.now(summer, TimeZone.getTimeZone("America/New_York"), Locale.US)
+        assertTrue(line, line.contains("UTC-04:00"))
+        assertTrue("12:00 in New York in July", line.contains("12:00"))
+        assertFalse("must not label a summer instant with the winter offset", line.contains("UTC-05:00"))
+    }
+
     @Test
     fun `the line is a single line so it cannot break the prompt layout`() {
         val line = ClockNote.now(instant, TimeZone.getTimeZone("Africa/Lagos"), Locale.US)

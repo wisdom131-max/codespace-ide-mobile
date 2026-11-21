@@ -41,7 +41,10 @@ object ClockNote {
         val fmt = SimpleDateFormat(PATTERN, locale)
         fmt.timeZone = timeZone
         val stamp = fmt.format(Date(epochMillis))
-        return "Current local time: $stamp (${zoneLabel(timeZone)}, ${offsetLabel(timeZone)})"
+        // The offset MUST be read at the requested instant, not at "now". A zone that observes
+        // daylight saving has a different offset in July than in November, so passing the instant is
+        // the difference between "21:40 (EST, UTC-05:00)" being true and being confidently wrong.
+        return "Current local time: $stamp (${zoneLabel(timeZone)}, ${offsetLabel(timeZone, epochMillis)})"
     }
 
     /** Short zone name, or the raw id when the platform has no friendly name. */
