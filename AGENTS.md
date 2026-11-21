@@ -8576,3 +8576,19 @@ step, and the reason this commit changes no behaviour on its own.
 Next: wire NativeToolCalling into the send path, then item 13 (MAX_ROUNDS 6 -> higher plus a done
 predicate).
 
+---
+
+**2026-11-21 (fourth commit) — catalog 13: the 6-round cap was why long work "just stops".**
+
+[AGENT] `AgentToolWire.MAX_ROUNDS` was 6. A poll, a build, a test run or any multi-file edit needs
+more rounds than that, so the loop hit the ceiling and said "send again to continue" - which reads as
+the agent losing the thread rather than a cap doing its job. Raised to 25, which is a runaway guard
+rather than a working limit; the message still names the number so a loop is distinguishable from a
+long job.
+
+File: `android/app/src/main/java/com/codespace/ide/chat/panel/AgentToolWire.kt`.
+
+Verified: CI is the compile authority for the app module. No engine change, engine suite untouched.
+
+Next: give the agent a clock (B1), then the native tool-call event that unblocks item 58's other half.
+

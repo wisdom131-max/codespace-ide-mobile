@@ -34,7 +34,19 @@ internal object AgentToolWire {
      * paid API call and possibly a destructive command), so it is capped and the cap is
      * announced to the model rather than silently enforced.
      */
-    const val MAX_ROUNDS = 6
+    /**
+     * PROJECT EIGHT 8.3 (catalog 13): how many tool rounds one request may take.
+     *
+     * This was 6, and 6 is the reason long work "just stops": a poll, a build, a test run or any
+     * multi-file edit needs more rounds than that, so the loop hit the ceiling and told the owner
+     * "send again to continue" - which looks like the agent losing the thread, not a cap. A real
+     * coding turn routinely needs 15-25 rounds.
+     *
+     * 25 is a runaway guard, not a working limit: it is high enough that ordinary work never meets
+     * it, and the message when it is met still names the number so the owner can tell a loop from
+     * a long job.
+     */
+    const val MAX_ROUNDS = 25
 
     private val CALL_REGEX =
         Regex("""<(tool|tool_call)>\s*(\{.*?\})\s*</\1>""", RegexOption.DOT_MATCHES_ALL)
