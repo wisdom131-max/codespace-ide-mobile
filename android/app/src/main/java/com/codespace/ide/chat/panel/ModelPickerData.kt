@@ -97,7 +97,13 @@ internal object ModelPickerData {
      */
     fun effortFor(providerId: String): Effort =
         Effort.fromBudget(
-            if (providerId == "gemini" || providerId == "anthropic") 1024 else 0,
+            // PROJECT EIGHT 8.1: derived from the value the ENGINE will actually send, which is now
+            // the stored choice. Reading the constant here was how the row summary stayed truthful
+            // about a control that did nothing; now it is truthful about one that works.
+            com.codespace.ide.engine.ReasoningBudget.forProvider(
+                providerId,
+                ChatSettingsPrefs.reasoningEffort(providerId),
+            ),
         )
 
     /** True when the model came from the bundled catalog rather than this endpoint. */

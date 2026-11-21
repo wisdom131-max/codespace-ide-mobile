@@ -122,6 +122,63 @@ memory is fitted, so the total cannot exceed the cap and memory shrinks instead 
 
 14 new tests (9 accounting, 5 reminder). App 3,569 / engine 291, 0 failures. NOT device-tested.
 
+## ATTRIBUTION — CHANGES MADE BY THE OWNER'S AI ASSISTANT, NOT THE BUILDER
+
+**Who:** Superagent, the owner's personal AI assistant, working under the owner's direct instruction
+on 2026-11-21. Not the AI builder. If you are the builder and something here looks unfamiliar or
+contradicts your memory of the code, this section is why.
+
+**Why the owner asked for this:** the effort control in the model picker was cosmetic. This file
+should say so plainly so the defect is not re-introduced by a future rebuild that "tidies up" an
+unused-looking object.
+
+**What was wrong (verified by reading the code at `1beba2b`):**
+
+1. `ChatSession` computed `reasoningBudget` as
+   `if (providerId == "gemini" || providerId == "anthropic") 1024 else 0`. A constant.
+2. `ModelPickerData.effortFor(providerId)` derived the effort label from that same constant, so the
+   row summary described a control that could not change anything.
+3. There was no setter and no storage for an effort choice anywhere in `ChatSettingsPrefs`. The menu
+   had nowhere to write.
+4. Consequence the owner could feel: choosing "High" sent exactly what "Low" sent, and every
+   effort-kind provider (OpenAI, OpenRouter, xAI) was sent **no reasoning parameter at all**, because
+   `OpenAIAdapter.reasoningEffort` returns null for a budget of 0.
+
+**What changed:**
+
+- NEW `android/engine/src/main/kotlin/com/codespace/ide/engine/ReasoningBudget.kt` — one tested
+  source of truth mapping the user's effort choice to the token budget every adapter already
+  understands. Native-thinking providers (Gemini, Anthropic) take it as a token budget; effort-kind
+  providers derive low/medium/high from the same number, so there is no second mapping to drift.
+- NEW `android/engine/src/test/kotlin/com/codespace/ide/engine/ReasoningBudgetTest.kt` — 19 tests.
+- `ChatSettingsPrefs`: added `reasoningEffort(providerId)` / `setReasoningEffort(...)`, stored per
+  provider, so "high" for Gemini does not silently mean "high" for a local Ollama model.
+- `ChatSession`: the hardcoded constant is replaced by `ReasoningBudget.forProvider(providerId, stored)`.
+- `ModelPickerData.effortFor`: now reports what the engine will actually send, not a constant.
+
+**Deliberate safety decision — do not "simplify" this away:** an unset effort does NOT mean "off" and
+does NOT mean "low" uniformly. `ReasoningBudget.defaultFor` returns 1024 for Gemini and Anthropic
+(exactly what every request sent before this change, so wiring it in changes nothing) and 0 for
+effort-kind providers (the preset table's own note says reasoning_effort must stay off by default,
+because sending it to a non-reasoning model is a 400). An unrecognised provider gets 0: never guess
+a capability.
+
+**What was verified, and how:** the `engine` module was compiled with kotlinc 1.9.24 on JDK 17 and its
+**full test suite was run: 310 tests, all passing** (291 before this change + 19 new). The engine
+module is pure JVM with no Android dependency, which is why this was possible outside Gradle.
+
+**What was NOT verified, stated so nobody assumes otherwise:** the `app` module was not compiled and
+the app was not run. The assistant's environment has no Android SDK and no device, so `ChatSession`,
+`ChatSettingsPrefs` and `ModelPickerData` are edited-but-unbuilt here; the first real compile is CI.
+Runtime behaviour (that the wire now carries the chosen effort) has not been observed and needs a
+device test with a real key.
+
+**Still to do, so this is not mistaken for finished:** the effort submenu in the model picker still
+has no selection handler wired to `ChatSettingsPrefs.setReasoningEffort`. Until that lands, the stored
+value stays unset and behaviour is identical to before — which is the intended safe state.
+
+---
+
 ## CURRENT STATE
 
 | Field | Value |
@@ -8428,3 +8485,32 @@ state consistency is **prepared but not executed**: `androidTestImplementation` 
 `androidx.test.ext:junit`, espresso-core, the Compose BOM and `ui-test-junit4`, but no emulator or
 device exists in this environment, so no test source was added that could not be run and no
 accessibility claim is made beyond the static counts above.
+
+---
+
+**2026-11-21 — PROJECT EIGHT 8.1, reasoning effort reaches the wire (assistant-authored).**
+
+[REASONING] The effort menu in the model picker changed nothing. `ChatSession` hardcoded
+`reasoningBudget = 1024` for Gemini/Anthropic and `0` for everyone else; `ModelPickerData.effortFor`
+derived its label from the same constant; `ChatSettingsPrefs` had no effort setter, so the menu had
+nowhere to write. Every effort-kind provider (OpenAI, OpenRouter, xAI) received no reasoning
+parameter at all, because `OpenAIAdapter.reasoningEffort` returns null for a budget of 0.
+
+Added `engine/.../ReasoningBudget.kt`, the single mapping from effort name to token budget, with
+`defaultFor` preserving today's behaviour exactly (1024 for native-thinking providers, 0 for
+effort-kind, 0 for unknown). Added `ReasoningBudgetTest` (19). Wired `ChatSettingsPrefs`
+(per-provider storage), `ChatSession` (reads the stored choice) and `ModelPickerData.effortFor`
+(reports the real value).
+
+Files: `android/engine/src/main/kotlin/com/codespace/ide/engine/ReasoningBudget.kt` (new),
+`android/engine/src/test/kotlin/com/codespace/ide/engine/ReasoningBudgetTest.kt` (new),
+`android/app/src/main/java/com/codespace/ide/chat/panel/ChatSettingsPrefs.kt`,
+`android/app/src/main/java/com/codespace/ide/chat/panel/ChatSession.kt`,
+`android/app/src/main/java/com/codespace/ide/chat/panel/ModelPickerData.kt`.
+
+Verified: engine module compiled on JDK 17 with kotlinc 1.9.24, full suite 310 tests passing
+(291 + 19 new). Not verified: app module compile and runtime behaviour — no Android SDK or device in
+the authoring environment; CI is the first build.
+
+Next on roadmap: wire the picker's effort submenu to `setReasoningEffort`, then native tool calling
+(item 58), which is the larger token saving.

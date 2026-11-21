@@ -85,6 +85,9 @@ object ChatSettingsPrefs {
     /** M5: "current_session" | "all_sessions". Read at every memory access, not cached. */
     private const val KEY_MEMORY_SCOPE = "memory_scope"
 
+    /** PROJECT EIGHT 8.1: per-provider reasoning effort, appended with the provider id. */
+    private const val KEY_EFFORT_PREFIX = "reasoning_effort_"
+
     @Volatile private var prefs: SharedPreferences? = null
 
     fun ensure(ctx: Context) {
@@ -122,6 +125,29 @@ object ChatSettingsPrefs {
 
     fun setFailoverOptIn(enabled: Boolean) {
         prefs?.edit()?.putBoolean(KEY_FAILOVER, enabled)?.apply()
+    }
+
+    /**
+     * PROJECT EIGHT 8.1: the reasoning effort the user picked, per provider.
+     *
+     * Until this existed there was nowhere to store the choice, so the effort menu in the model
+     * picker could not change anything: `ModelPickerData.effortFor` derived a display label from a
+     * hardcoded 1024 and no setter was ever called. Stored per provider because "high" for a
+     * Gemini model says nothing about what the user wants from a local Ollama model.
+     *
+     * Returns null when nothing has been chosen, which callers must treat as "use the provider's
+     * default" rather than "off" — see ReasoningBudget.defaultFor.
+     */
+    fun reasoningEffort(providerId: String): String? =
+        prefs?.getString(KEY_EFFORT_PREFIX + providerId.lowercase(), null)
+
+    fun setReasoningEffort(providerId: String, effort: String?) {
+        val key = KEY_EFFORT_PREFIX + providerId.lowercase()
+        // Explicit editor variable rather than a scope function: `apply { }` and Editor.apply()
+        // share a name, and the ambiguous form is a compile trap for no benefit.
+        val editor = prefs?.edit() ?: return
+        if (effort.isNullOrBlank()) editor.remove(key) else editor.putString(key, effort)
+        editor.apply()
     }
 
     /** WP7: last applied selection, or null (panel falls back to defaults). */
