@@ -30,6 +30,15 @@ internal sealed interface ToolDecision {
 internal object AgentToolWire {
 
     /**
+     * PROJECT EIGHT 8.7 (catalog 13): the tool name a model uses to say it has finished.
+     *
+     * Deliberately NOT in ToolRegistry: nothing executes it, so registering it would advertise a
+     * capability that does nothing and put it in the approval path for no reason. It reaches the
+     * model through the instruction instead, and is recognised here.
+     */
+    const val DONE_TOOL: String = "task_complete"
+
+    /**
      * Rounds per user message. A runaway agent loop is a real failure mode (each round is a
      * paid API call and possibly a destructive command), so it is capped and the cap is
      * announced to the model rather than silently enforced.
@@ -316,6 +325,15 @@ internal object AgentToolWire {
                     "usually finishes the call before the reply is cut.",
             )
         }
+        // PROJECT EIGHT 8.7 (catalog 13): a completion declaration is not a tool call.
+        //
+        // The loop ends only when a reply carries no call, so from outside "finished" and "gave up"
+        // are indistinguishable: the model that did the work and the model that lost the thread both
+        // simply stop emitting calls. task_complete makes finishing an explicit statement instead of
+        // an absence. It is filtered here rather than added to the registry because it needs no
+        // execution - declaring IS the behaviour - and a declaration arriving beside real calls must
+        // not stop those calls running, so only the declaration is removed and the rest proceed.
+        calls.removeAll { it.name == DONE_TOOL }
         if (calls.isEmpty()) return ToolDecision.Answer(visible)
 
         if (!modeRunsTools(mode)) {

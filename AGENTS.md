@@ -8666,3 +8666,35 @@ not a smaller prompt.
 
 ROLLBACK: single commit, `git revert` restores the text protocol exactly.
 
+---
+
+**2026-11-21 (ninth commit) — catalog 13: finishing becomes a statement, not an absence.**
+
+[DONE] The loop ends when a reply carries no tool call, which makes a finished task and an abandoned
+one look identical from outside: the model that did the work and the model that lost the thread both
+simply stop emitting calls. `task_complete` makes finishing explicit.
+
+Recognised in `AgentToolWire.decide()` and filtered out of the call list BEFORE the empty check, so a
+bare declaration returns `Answer` and ends the turn, while a declaration arriving beside real calls is
+removed and the real calls still run. Nothing executes it, so it is deliberately NOT in ToolRegistry:
+registering it would advertise a capability that does nothing and drag it into the approval path.
+
+The declaration also lands BEFORE the MAX_ROUNDS refusal, so finishing at the cap reads as finished
+rather than as "stopped to avoid a loop" - the cap is about runaway calls, and a declaration is not a
+call.
+
+Files: `chat/panel/AgentToolWire.kt`, `chat/panel/DoneSignalTest.kt` (new, 4 tests).
+
+VERIFICATION STATUS - READ THIS: the change itself was reviewed line by line, but the app module could
+not be compiled locally (ToolRegistry -> ToolEffect -> editor/agent packages, a chain that cannot be
+sliced without the Android SDK). CI is the compile authority and it has NOT yet run on this commit.
+The 4 tests cover: a bare declaration ends the turn and leaks no markup; a declaration beside a real
+call does not cancel it; ordinary tools are unaffected; a declaration at MAX_ROUNDS is Answer, not a
+loop refusal.
+
+NOT YET DONE: nothing tells the model to emit `task_complete`. It is recognised but not requested, so
+it changes no behaviour until the instruction mentions it. That is the next small step, and it belongs
+with the instruction work rather than here.
+
+ROLLBACK: single commit; `git revert` restores the previous behaviour exactly.
+
