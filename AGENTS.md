@@ -8514,3 +8514,28 @@ the authoring environment; CI is the first build.
 
 Next on roadmap: wire the picker's effort submenu to `setReasoningEffort`, then native tool calling
 (item 58), which is the larger token saving.
+
+---
+
+**2026-11-21 (second commit) — 8.1 completed: the effort control now exists and persists.**
+
+[REASONING] Group A wired the engine to a stored effort but nothing stored one: `ModelPickerSpec`
+produced `effortMenu()` since BATCH 8 and `hasEffortMenu` was computed per row, yet no Composable
+rendered either, and no callback existed. The "Thinking Effort" submenu named in the spec's own header
+comment had never been built. So the dial was still dead from the user's side.
+
+Added `Effort.fromName` (inverse of the persisted word, null when nothing is stored);
+`ModelPickerSection` now takes `onEffort` and renders a Low / Medium / High row for the selected
+model only when its catalog row says it can reason (absent, not disabled, because sending a reasoning
+parameter to a non-reasoning model is a 400); `ChatPanelScreen` holds the choice in composition so the
+chips repaint on tap and persists it per provider through `ChatSettingsPrefs.setReasoningEffort`.
+
+Files: `ModelPickerSpec.kt`, `ModelPickerSection.kt`, `ChatPanelScreen.kt` (all under
+`android/app/src/main/java/com/codespace/ide/chat/panel/`).
+
+Verified: no syntax errors; `ModelPickerSpec.kt` compiles clean with zero errors under kotlinc 1.9.24
+in isolation. The two Compose files cannot be type-checked outside the Android SDK, so CI is the
+authority on them. Engine suite unchanged at 310 passing.
+
+Next: native tool calling (item 58), the largest token saving.
+

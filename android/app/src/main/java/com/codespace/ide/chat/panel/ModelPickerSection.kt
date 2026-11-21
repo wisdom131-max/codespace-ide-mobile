@@ -41,6 +41,12 @@ internal fun ModelPickerSection(
     onPick: (PickerModel) -> Unit,
     /** 7.6 A/B: a truthful sentence about the list's origin and age, or null to show nothing. */
     listNote: String? = null,
+    /**
+     * PROJECT EIGHT 8.1: called when the user picks a thinking effort for the selected model.
+     * The spec has produced [ModelPickerSpec.effortMenu] since BATCH 8, but nothing rendered it and
+     * there was no callback, so the control described in the spec's own header never existed.
+     */
+    onEffort: (Effort) -> Unit = {},
 ) {
     val c = ChatTokens.LocalChatColors.current
     var query by remember(providerId) { mutableStateOf("") }
@@ -112,6 +118,41 @@ internal fun ModelPickerSection(
         }
         state.emptyMessage?.let {
             Text(it, color = c.textSecondary, fontSize = ChatTokens.FONT_SMALL.sp)
+        }
+        // PROJECT EIGHT 8.1: thinking effort, offered only for a model whose catalog row says it can
+        // reason. Sending a reasoning parameter to a model that cannot take one is a 400, so the
+        // control is absent rather than disabled - the spec's own honesty rule.
+        val selectedModel = models.firstOrNull { it.modelId == current.modelId }
+        if (selectedModel != null) {
+            val options = ModelPickerSpec.effortMenu(selectedModel, effort)
+            if (options.isNotEmpty()) {
+                Text(
+                    "Thinking effort",
+                    color = c.textSecondary,
+                    fontSize = ChatTokens.FONT_MICRO.sp,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                )
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    options.forEach { pair ->
+                        val option = pair.first
+                        val chosen = pair.second
+                        Text(
+                            (if (chosen) "\u2713 " else "") + option.label,
+                            color = if (chosen) c.accent else c.text,
+                            fontSize = ChatTokens.FONT_SMALL.sp,
+                            fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier
+                                .clickable { onEffort(option) }
+                                .padding(end = 14.dp, top = 4.dp, bottom = 6.dp)
+                                .semantics {
+                                    contentDescription = option.label + " thinking effort. " +
+                                        option.description +
+                                        if (chosen) ", currently selected" else ""
+                                },
+                        )
+                    }
+                }
+            }
         }
     }
 }

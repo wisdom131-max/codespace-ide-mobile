@@ -36,6 +36,17 @@ internal enum class Effort(val label: String, val description: String, val budge
          * Inverse of the adapters' mapping (OpenAIAdapter.reasoningEffort: <4096 low,
          * <16384 medium, else high). Used to show the effort a stored budget implies.
          */
+        /**
+         * PROJECT EIGHT 8.1: the persisted effort word back to an enum. Null means "nothing has
+         * been stored", which callers must treat as "use the provider default" rather than "off".
+         */
+        fun fromName(name: String?): Effort? = when (name?.trim()?.lowercase()) {
+            "low" -> LOW
+            "medium" -> MEDIUM
+            "high" -> HIGH
+            else -> null
+        }
+
         fun fromBudget(budgetTokens: Int): Effort = when {
             budgetTokens < 4096 -> LOW
             budgetTokens < 16384 -> MEDIUM

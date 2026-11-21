@@ -940,6 +940,14 @@ private fun ProviderModelDialog(
                             ?.ids ?: emptyList(),
                     )
                 }
+                // PROJECT EIGHT 8.1: the chosen effort, held in composition so the chips repaint on
+                // tap and persisted per provider. Null means "not chosen", which keeps the provider
+                // default and therefore changes no behaviour until the user actually picks one.
+                val effortState = androidx.compose.runtime.remember(current.providerId) {
+                    androidx.compose.runtime.mutableStateOf(
+                        ChatSettingsPrefs.reasoningEffort(current.providerId)
+                    )
+                }
                 ModelPickerSection(
                     providerId = current.providerId,
                     current = current,
@@ -952,7 +960,13 @@ private fun ProviderModelDialog(
                         unreadable = modelListsUnreadable,
                         shown = pickerModels.size,
                     ),
-                    effort = ModelPickerData.effortFor(current.providerId),
+                    effort = Effort.fromName(effortState.value)
+                        ?: ModelPickerData.effortFor(current.providerId),
+                    onEffort = { picked ->
+                        val word = picked.name.lowercase()
+                        effortState.value = word
+                        ChatSettingsPrefs.setReasoningEffort(current.providerId, word)
+                    },
                     onPick = { picked ->
                         // The SAME onApply the dialog already used, so the picked model is the
                         // model the next request uses - no second selection path.
