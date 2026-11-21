@@ -97,7 +97,11 @@ class ChatSessionMappingTest {
     fun overBudgetCardThenSendAnywayOverridesOnce() {
         val t = ScriptedTransport(geminiChunks)
         val s = session(t)
-        s.send("x".repeat(60_000))
+        // PROJECT EIGHT 8.6 (catalog 21): this used a hardcoded 60,000, which stopped being "over
+        // budget" the moment the per-send ceiling scaled to the model. Expressed against the
+        // ceiling itself, so the test keeps testing the over-budget PATH rather than a number that
+        // happens to exceed it today.
+        s.send("x".repeat(com.codespace.ide.engine.ModelCatalog.SAFETY_MAX_CHARS + 1_000))
         awaitIdle(s)
         val over = s.ui.value.rows.last()
         assertTrue("over-budget shows the Send-anyway card", over is ChatRowModel.OverBudget)
