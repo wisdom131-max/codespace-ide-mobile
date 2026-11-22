@@ -1452,7 +1452,14 @@ class ChatSession internal constructor(
     }
 
     private fun appendRow(row: ChatRowModel) {
-        ui.value = ui.value.copy(rows = ui.value.rows + listOf(row))
+        // PROJECT EIGHT 8.53 (catalog 85 wiring): Redaction existed and nothing used it. A provider
+        // error can echo the request back, and a request can contain a key. Every failure row
+        // passes through this one function, so this is the place that guarantees a key never
+        // reaches the screen - rather than each of the failure sites remembering to scrub.
+        val safe = if (row is ChatRowModel.Failed)
+            row.copy(detail = com.codespace.ide.engine.Redaction.sanitize(row.detail))
+        else row
+        ui.value = ui.value.copy(rows = ui.value.rows + listOf(safe))
     }
 
     private fun onEvent(
