@@ -1341,7 +1341,13 @@ class ChatSession internal constructor(
 
     private fun taskBlock(): String = com.codespace.ide.engine.PromptBlocks.render(
         "",
-        if (taskSteps.isEmpty()) "" else "## ALREADY DONE THIS TURN\n" + taskSteps.joinToString(", "),
+        // PROJECT EIGHT 8.50 (catalog 4 wiring): PlanDigest existed and nothing rendered through
+        // it. A comma list of tool names tells the model nothing about progress; a rendered plan
+        // shows each step with its state, which is what lets a continuation pick up mid-task
+        // instead of restarting.
+        if (taskSteps.isEmpty()) "" else com.codespace.ide.engine.PlanDigest.render(
+            taskSteps.map { com.codespace.ide.engine.PlanDigest.Step(it, true) },
+        ),
         // PROJECT EIGHT 8.47 (catalog 10 wiring): the critic pass, as a checklist the model
         // answers to itself before declaring completion. Free at runtime - a few lines of
         // text, no extra call - and shown only once a tool has run, because a pure question
