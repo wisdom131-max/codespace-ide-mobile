@@ -14,6 +14,19 @@ object Blackboard {
 
     data class Note(val key: String, val value: String, val writer: String, val seq: Long, val atMs: Long)
 
+    /**
+     * One board for the process, so a tool can post what it found without threading a new
+     * argument through every call site. Tests keep their own Board.
+     */
+    private val shared = Board()
+
+    fun post(key: String, value: String, writer: String, atMs: Long): Note =
+        shared.write(key, value, writer, atMs)
+
+    fun note(key: String): Note? = shared.read(key)
+
+    fun notes(): List<Note> = shared.snapshot()
+
     class Board {
         private val notes = LinkedHashMap<String, Note>()
         private var seq = 0L
