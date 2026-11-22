@@ -365,8 +365,6 @@ class ChatEngineImpl(
                         state.update(responseMsg.id) {
                             it.copy(text = builder.toString(), state = MessageState.DONE)
                         }
-                        terminalEmitted = true
-                        terminalEmitted = true
                 emit(EngineEvent.Completed(builder.length, finishOf(endReason, attemptCfg)))
                         break
                     }
