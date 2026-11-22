@@ -250,7 +250,15 @@ internal object AgentToolWire {
                 }
             }
         }
-        return ArgsOutcome.Unbalanced
+        // PROJECT EIGHT 8.44 (catalog 60 wiring): an unbalanced argument object used to DROP the
+        // call, so one missing brace cost the entire reply. Repair is attempted on the same tail
+        // Found uses before giving up. If it cannot be made valid the call is still skipped,
+        // exactly as before, so nothing that used to fail now passes silently.
+        val repaired = com.codespace.ide.engine.ArgumentRepair.repair(body.substring(start))
+        return when (repaired) {
+            is com.codespace.ide.engine.ArgumentRepair.Result.Ok -> ArgsOutcome.Found(repaired.json)
+            is com.codespace.ide.engine.ArgumentRepair.Result.Failed -> ArgsOutcome.Unbalanced
+        }
     }
 
     /**
