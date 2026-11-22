@@ -647,6 +647,34 @@ class ChatSession internal constructor(
         // here, at the only point a new turn begins.
         taskSteps.clear()
         evidence = com.codespace.ide.engine.EvidenceLedger()
+        currentGoal = userText
+        // PROJECT EIGHT 8.58 (catalog 32 wiring): a task that died at step 9 resumes at step 9.
+        // TaskCheckpoint could always serialise a position; there was nowhere to put it. The
+        // store is that place. A checkpoint that cannot be read is REPORTED, never silently
+        // reset: resuming from the wrong position is worse than resuming from none.
+        appContext?.let { ctx ->
+            val raw = com.codespace.ide.store.ProjectStore.of(ctx).get(checkpointKey())
+            if (raw != null) {
+                when (val r = com.codespace.ide.engine.TaskCheckpoint.read(raw)) {
+                    is com.codespace.ide.engine.TaskCheckpoint.Restore.Ok ->
+                        if (!r.state.isComplete && r.state.stepIndex > 0) {
+                            appendRow(
+                                ChatRowModel.InfoNote(
+                                    "Picking up where the last turn stopped: " + r.state.stepIndex +
+                                        " of " + r.state.totalSteps + " steps were already done.",
+                                ),
+                            )
+                        }
+                    is com.codespace.ide.engine.TaskCheckpoint.Restore.Unreadable ->
+                        appendRow(
+                            ChatRowModel.InfoNote(
+                                "A saved checkpoint could not be read (" + r.reason +
+                                    "), so this turn starts from the beginning.",
+                            ),
+                        )
+                }
+            }
+        }
         // PROJECT EIGHT 8.40 (catalog 77 + 79 wiring): a paste is DATA, never instructions.
         // Scanning at the one entry point covers every route into the send - typed, pasted,
         // shared in - instead of each caller remembering to check. Flagged content is still
@@ -1016,6 +1044,12 @@ class ChatSession internal constructor(
         sendJob = scope.launch {
             try {
                 engine.send(userText, attachments, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, attachments, confirmOverBudget, gen) }
+                // A turn that ran to completion has no position to resume, so the checkpoint is
+                // cleared. That leaves exactly one kind of checkpoint on disk: one written by a
+                // turn that died. Cancellation does not reach this line, which is the point.
+                appContext?.let { ctx ->
+                    com.codespace.ide.store.ProjectStore.of(ctx).remove(checkpointKey())
+                }
                 // PROJECT SEVEN 7.4 (with PROJECT SIX 6.1): if the request had to leave turns behind, or
                 // could not fit, say so once. Silent history loss is the thing this line exists to stop.
                 engine.lastContextDecision?.notice?.let { note ->
@@ -1351,6 +1385,12 @@ class ChatSession internal constructor(
      * actually performed, so 'the tests pass' is judged against something that really ran.
      */
     private var evidence = com.codespace.ide.engine.EvidenceLedger()
+
+    /** The request this turn is serving, so a checkpoint can name what it was for. */
+    private var currentGoal: String = ""
+
+    /** Where this conversation's checkpoint lives in the store. */
+    private fun checkpointKey(): String = "checkpoint/" + conversationId
 
     private fun taskBlock(): String = com.codespace.ide.engine.PromptBlocks.render(
         "",
@@ -1780,6 +1820,21 @@ class ChatSession internal constructor(
                     else -> "tool"
                 },
                 call.name,
+            )
+        }
+        // Saved after every round, so the newest position is the one that survives a kill.
+        appContext?.let { ctx ->
+            com.codespace.ide.store.ProjectStore.of(ctx).put(
+                checkpointKey(),
+                com.codespace.ide.engine.TaskCheckpoint.write(
+                    com.codespace.ide.engine.TaskCheckpoint.State(
+                        goal = currentGoal.take(400),
+                        stepIndex = toolRound,
+                        totalSteps = 25,
+                        done = taskSteps.map { com.codespace.ide.engine.TaskCheckpoint.Done(it, it) },
+                        updatedAt = System.currentTimeMillis(),
+                    ),
+                ),
             )
         }
         // Section 5: one change set per tool round, so two separate operations can never be
