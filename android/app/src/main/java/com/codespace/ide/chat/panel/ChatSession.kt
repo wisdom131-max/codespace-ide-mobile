@@ -1452,7 +1452,10 @@ class ChatSession internal constructor(
      * is spelled out and every bound is checked explicitly.
      */
     private fun orderedSteps(): List<String> {
-        val steps = taskSteps
+        // taskSteps is a LinkedHashSet, so it has no indices and no indexing. Converting to a list
+        // first is what makes the ordering possible at all - the earlier version indexed the set
+        // directly and could never have compiled.
+        val steps = taskSteps.toList()
         if (steps.size < 2) return steps
         val nodes = ArrayList<com.codespace.ide.engine.StepGraph.Node>()
         for (i in steps.indices) {
