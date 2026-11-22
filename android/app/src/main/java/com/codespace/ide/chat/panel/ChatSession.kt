@@ -1327,6 +1327,15 @@ class ChatSession internal constructor(
         ),
     )
 
+    /**
+     * PROJECT EIGHT 8.48 (catalog 89 wiring): one place to turn a behaviour off without a code
+     * change. Defaults are ON because each was built to be used; the value is that a noisy guard
+     * or a widening search can be switched off in one line instead of reverted under pressure.
+     */
+    private val flags = com.codespace.ide.engine.FeatureFlags(
+        mapOf("claim_guard" to true, "search_widen" to true, "self_critique" to true),
+    )
+
     /** What this turn has already done, so a continuation cannot silently repeat itself. */
     private val taskSteps = LinkedHashSet<String>()
 
@@ -1548,7 +1557,7 @@ class ChatSession internal constructor(
                 // evidence is this turn's OWN ledger - a tool that actually ran - never the model's
                 // word. Only an ANSWER is checked; progress narration is not a claim. The answer
                 // itself is never edited: the note sits beside it, so the user sees both.
-                val claimNotice = if (kind != ChatRowModel.StreamKind.ANSWER) emptyList() else {
+                val claimNotice = if (kind != ChatRowModel.StreamKind.ANSWER || !flags.isOn("claim_guard")) emptyList() else {
                     val ids = buildSet {
                         if (taskSteps.any { it.contains("test", true) }) add("tests")
                         if (taskSteps.any { it.contains("build", true) }) add("build")
