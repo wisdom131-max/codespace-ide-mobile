@@ -1024,7 +1024,19 @@ You can use multiple tools in sequence. When done, give a final summary.
             return truncMark("[document text — best effort, no OCR]\n" + extracted, 16000)
         }
         if (file.length() > 500_000) return "File too large (${file.length()} bytes). Use run_command with head/tail."
-        return truncMark(file.readText(), 16000)  // CH06 (P4h)
+        val full = try { file.readText() } catch (t: Throwable) {
+            return "Could not read " + path + ": " + (t.message ?: "read failed")
+        }
+        val cut = truncMark(full, 16000)  // CH06 (P4h)
+        // PROJECT EIGHT 8.55 (catalog 44 wiring): CodeChunker existed and nothing used it. A large
+        // file used to arrive as its first 16000 characters with no sign that anything followed,
+        // so the model believed it had read the whole file and answered from a fragment. The
+        // outline names the sections that were cut, with line ranges, so the rest can be asked for
+        // deliberately instead of guessed at.
+        if (full.length <= 16000) return cut
+        val outline = com.codespace.ide.engine.CodeChunker.chunk(full)
+            .joinToString("\n") { "  " + it.header + " (lines " + it.startLine + "-" + it.endLine + ")" }
+        return cut + "\n\n[truncated: " + full.length + " characters total. Sections not shown:]\n" + outline
     }
 
     /**
