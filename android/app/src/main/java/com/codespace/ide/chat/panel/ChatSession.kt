@@ -1442,8 +1442,13 @@ class ChatSession internal constructor(
         // answers to itself before declaring completion. Free at runtime - a few lines of
         // text, no extra call - and shown only once a tool has run, because a pure question
         // has nothing to check.
-        if (taskSteps.isEmpty()) "" else "## BEFORE YOU FINISH\n" +
-            com.codespace.ide.engine.SelfCritique.CHECKLIST.joinToString("\n") { "- " + it },
+        // PROJECT NINE 9.51 (catalog 16 WIRED): the checklist text lives in the prompt registry now,
+        // so it can be versioned or overridden without touching this file.
+        if (taskSteps.isEmpty()) "" else com.codespace.ide.engine.PromptRegistry.body(
+            "critic.checklist",
+            "## BEFORE YOU FINISH\n" +
+                com.codespace.ide.engine.SelfCritique.CHECKLIST.joinToString("\n") { "- " + it },
+        ),
     )
 
     private fun buildInstruction(

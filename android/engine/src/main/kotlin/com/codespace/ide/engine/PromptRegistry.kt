@@ -30,4 +30,21 @@ object PromptRegistry {
 
         fun size(): Int = entries.size
     }
+
+    private val entries = LinkedHashMap<String, Entry>()
+
+    fun put(name: String, body: String, version: Int = 1): Entry {
+        val e = Entry(name, version, body)
+        entries[name] = e
+        return e
+    }
+
+    fun body(name: String, fallback: String = ""): String = entries[name]?.body ?: fallback
+
+    init {
+        // Seeded here rather than in the app, so the text has one home and can be versioned or
+        // overridden without editing a call site.
+        put("critic.checklist", "## BEFORE YOU FINISH\n" +
+            SelfCritique.CHECKLIST.joinToString("\n") { "- " + it })
+    }
 }
