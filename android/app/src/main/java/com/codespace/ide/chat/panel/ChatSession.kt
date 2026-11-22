@@ -868,6 +868,8 @@ class ChatSession internal constructor(
             // Only the tools actually offered, never the whole registry: advertising all ~120 would
             // cost more than the text list it replaces and blow the payload budget. Only when the
             // plan says tools may be sent, so a tool-less mode still sends nothing.
+            // PROJECT EIGHT 8.10: the clock rides here, outside the cached prefix.
+            volatileSystemTail = com.codespace.ide.engine.ClockNote.now(),
             toolDeclarations = if (toolPlan.sendTools) {
                 ToolRegistry.exposed(mode)
                     .filter { it.name in offer.names }
@@ -1345,7 +1347,11 @@ class ChatSession internal constructor(
         // PROJECT EIGHT 8.3 (catalog B1): the agent had no clock, so "what time is it", "today" and
         // "in an hour" were answered against the training cutoff. Appended here because every send
         // passes through this one builder, including the continuation at the second call site.
-        return composed + "\n\n" + com.codespace.ide.engine.ClockNote.now()
+        // PROJECT EIGHT 8.10: the clock is NOT appended here any more. It used to be, which made
+        // the system instruction change every minute and made prompt caching impossible on the one
+        // provider that supports it. It travels as volatileSystemTail instead: same text for the
+        // model, but kept out of the cached prefix.
+        return composed
     }
 
     /**

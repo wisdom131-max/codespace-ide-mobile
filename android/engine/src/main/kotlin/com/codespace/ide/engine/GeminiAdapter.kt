@@ -151,8 +151,11 @@ class GeminiAdapter : ProviderAdapter {
 
     /** Gemini's own system slot, emitted only when a mode set one. */
     internal fun systemField(config: EngineConfig): String =
-        if (config.systemInstruction.isBlank()) ""
-        else "\"systemInstruction\":{\"parts\":[{\"text\":\"" + escapeJson(config.systemInstruction) + "\"}]},"
+        if (config.systemInstruction.isBlank() && config.volatileSystemTail.isBlank()) ""
+        else "\"systemInstruction\":{\"parts\":[{\"text\":\"" + escapeJson(
+            if (config.volatileSystemTail.isBlank()) config.systemInstruction
+            else config.systemInstruction + "\n\n" + config.volatileSystemTail
+        ) + "\"}]},"
 
     internal fun escapeJson(s: String): String {
         val sb = StringBuilder(s.length + 8)

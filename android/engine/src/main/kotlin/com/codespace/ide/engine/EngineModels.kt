@@ -58,6 +58,16 @@ data class EngineConfig(
      * Set by the engine from a LEARNED provider limit, or explicitly by an owner who knows one.
      */
     val requestCharsBudget: Int = 0,
+    /**
+     * The part of the instruction that CHANGES between sends - in practice the clock.
+     *
+     * PROJECT EIGHT 8.10: this used to be appended to systemInstruction by the caller, which made
+     * the whole system prompt change every minute. That is fatal to prompt caching: a cached block
+     * that never repeats is a guaranteed miss, and on Anthropic it also invalidates the tool
+     * definitions cached ahead of it. Split out, the static instruction stays byte-stable and the
+     * clock rides beside it, uncached and costing a few dozen tokens.
+     */
+    val volatileSystemTail: String = "",
     /** Tools advertised in this send, recorded in the Chat Log so size can be attributed. */
     val toolsOffered: Int = 0,
     /**

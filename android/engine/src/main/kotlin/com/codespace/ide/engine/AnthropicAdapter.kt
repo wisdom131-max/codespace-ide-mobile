@@ -208,10 +208,33 @@ class AnthropicAdapter : ProviderAdapter {
     internal fun roleJson(role: ChatRole): String =
         if (role == ChatRole.USER) "user" else "assistant"
 
-    /** Anthropic takes the instruction OUTSIDE the message list; blank adds nothing. */
-    internal fun systemField(config: EngineConfig): String =
-        if (config.systemInstruction.isBlank()) ""
-        else ",\"system\":\"" + escapeJson(config.systemInstruction) + "\""
+    /**
+     * Anthropic takes the instruction OUTSIDE the message list, as a string OR an array of blocks.
+     *
+     * PROJECT EIGHT 8.10: blocks, so the static instruction can carry a cache breakpoint while the
+     * clock does not. A breakpoint on the static block caches the tool definitions and this
+     * instruction together - the two large, unchanging parts of every request. The clock is a
+     * second, uncached block: it changes every minute, so caching it would miss every time and
+     * would drag the tools down with it.
+     *
+     * Blank both = nothing added, exactly as before.
+     */
+    internal fun systemField(config: EngineConfig): String {
+        val head = config.systemInstruction
+        val tail = config.volatileSystemTail
+        if (head.isBlank() && tail.isBlank()) return ""
+        val blocks = StringBuilder(",\"system\":[")
+        if (head.isNotBlank()) {
+            blocks.append("{\"type\":\"text\",\"text\":\"").append(escapeJson(head)).append("\"")
+            blocks.append(",\"cache_control\":{\"type\":\"ephemeral\"}}")
+        }
+        if (tail.isNotBlank()) {
+            if (head.isNotBlank()) blocks.append(',')
+            blocks.append("{\"type\":\"text\",\"text\":\"").append(escapeJson(tail)).append("\"}")
+        }
+        blocks.append("]")
+        return blocks.toString()
+    }
 
     internal fun escapeJson(s: String): String {
         val sb = StringBuilder(s.length + 8)

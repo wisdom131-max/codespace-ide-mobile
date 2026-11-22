@@ -193,9 +193,15 @@ class OpenAIAdapter : ProviderAdapter {
     }
 
     /** The mode instruction as a leading system message; blank adds nothing. */
-    internal fun systemMsg(config: EngineConfig): String =
-        if (config.systemInstruction.isBlank()) ""
-        else "{\"role\":\"system\",\"content\":\"" + escapeJson(config.systemInstruction) + "\"},"
+    internal fun systemMsg(config: EngineConfig): String {
+        // PROJECT EIGHT 8.10: the clock arrives as a separate volatile tail so Anthropic can cache
+        // the static instruction. OpenAI-compatible endpoints have no equivalent breakpoint, so the
+        // two parts are simply rejoined here and the model sees the same text it always did.
+        val text = if (config.volatileSystemTail.isBlank()) config.systemInstruction
+        else config.systemInstruction + "\n\n" + config.volatileSystemTail
+        return if (text.isBlank()) ""
+        else "{\"role\":\"system\",\"content\":\"" + escapeJson(text) + "\"},"
+    }
 
     internal fun escapeJson(s: String): String {
         val sb = StringBuilder(s.length + 8)

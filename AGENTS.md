@@ -8799,3 +8799,30 @@ executes, so registering it would have meant inventing a catalogue entry and a f
 something that does nothing.
 
 Not verified locally: app module cannot be compiled in the authoring environment. CI is the first build.
+
+---
+
+**2026-11-22 (fourteenth commit) — AUDIT FIX: the clock was defeating prompt caching.**
+
+[CACHE] Self-audit of the previous night's commits found an interaction between two of them.
+The clock (catalog 18) was appended to the system instruction by `ChatSession.buildInstruction`.
+The cache breakpoint (catalog 27) sits on the last tool definition. Anthropic caches in the order
+tools -> system -> messages, so the breakpoint covered the TOOLS ONLY, and the system instruction
+was never cached at all. Worse, it could not be: it changed every minute because the clock was
+inside it, so even a breakpoint on it would have missed on every single send and invalidated the
+tools cached ahead of it.
+
+The instruction is now split. `EngineConfig.volatileSystemTail` carries the part that changes; the
+static instruction stays byte-stable. On Anthropic `system` is sent as a content-block ARRAY with
+one `cache_control` breakpoint on the static block and none on the clock - the same field, in the
+form that can be cached (Anthropic accepts a string or an array of blocks). OpenAI and Gemini have
+no equivalent breakpoint, so the two parts are rejoined there and the model sees exactly the text it
+saw before.
+
+`ModeInstructionPayloadTest.anthropicCarriesTheInstructionTopLevelNeverInTheMessages` asserted the
+old `"system":"..."` string form. Repaired to assert the block form plus the breakpoint, and a new
+test `theClockRidesOutsideTheCachedBlockOnAnthropic` pins the invariant that matters: exactly one
+cache breakpoint, and it is never on the clock.
+
+Engine suite: 337 tests pass (336 before + 1 new). The app module is not compiled here; CI is the
+first build. `ChatSession` now passes the clock as `volatileSystemTail` instead of appending it.
