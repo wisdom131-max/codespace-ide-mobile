@@ -1699,6 +1699,15 @@ You can use multiple tools in sequence. When done, give a final summary.
         // "created" beats inventing a diff against nothing.
         val change = if (before == null) null
                      else com.codespace.ide.engine.DiffContext.between(before, content, maxLines = 40)
+        // PROJECT NINE 9.50 (catalog 34 WIRED): a write is the one thing a later step almost always
+        // needs to know about, and it had no shared place to record it. Posted to the blackboard so
+        // the next step can read what was just written instead of re-reading the file to find out.
+        com.codespace.ide.engine.Blackboard.post(
+            key = "last.write",
+            value = target.absolutePath + " (" + content.length + " chars)",
+            writer = "write_file",
+            atMs = System.currentTimeMillis(),
+        )
         return if (change != null && change.changed) wrote + "\n" + change.text else wrote
     }
 
