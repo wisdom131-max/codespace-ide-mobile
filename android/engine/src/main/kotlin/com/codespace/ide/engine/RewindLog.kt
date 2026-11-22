@@ -11,6 +11,15 @@ package com.codespace.ide.engine
  */
 object RewindLog {
 
+    /** One log for the process; tests keep their own instance. */
+    private val shared = Log()
+
+    fun save(label: String, state: String, atMs: Long): Snapshot = shared.save(label, state, atMs)
+
+    fun latestSnapshot(): Snapshot? = shared.latest()
+
+    fun snapshots(): List<Snapshot> = shared.list()
+
     data class Snapshot(val id: Long, val label: String, val state: String, val atMs: Long)
 
     class Log(private val maxSnapshots: Int = 20) {
