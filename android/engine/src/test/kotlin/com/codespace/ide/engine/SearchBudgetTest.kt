@@ -28,3 +28,17 @@ class SearchBudgetTest {
         assertTrue(SearchBudget.fit(items, 0).isEmpty())
     }
 }
+
+class SearchBudgetBoundaryTest {
+
+    @Test
+    fun aResultStraddlingTheCapIsDroppedWholeNotSliced() {
+        val items = listOf(
+            SearchBudget.Item("a", "x".repeat(60)),
+            SearchBudget.Item("b", "y".repeat(60)),
+        )
+        val kept = SearchBudget.fit(items, 100)
+        assertEquals(1, kept.size)
+        assertEquals(60, kept.single().text.length)
+    }
+}
