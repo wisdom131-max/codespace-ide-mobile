@@ -63,7 +63,27 @@ class OpenAIAdapter : ProviderAdapter {
         val effort = reasoningEffort(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
             "\"" + config.maxTokensField + "\":" + config.maxResponseTokens + ",\"messages\":[" + systemMsg(config) + msgs + "]" +
-            reasoningJson(config) + "}"
+            reasoningJson(config) + cacheKeyJson(config) + "}"
+    }
+
+    /**
+     * PROJECT EIGHT 8.13 (catalog 27, second provider): steer requests that share a prefix onto the
+     * same OpenAI prompt cache.
+     *
+     * OpenAI caches automatically above roughly 1024 tokens, so unlike Anthropic there is nothing to
+     * mark. `prompt_cache_key` only improves ROUTING: two requests with the same key are more likely
+     * to land on a machine that already holds the prefix.
+     *
+     * Sent ONLY for the official OpenAI preset. Every third-party "OpenAI-compatible" server in the
+     * preset list is a different implementation, and several reject unknown top-level fields; a 400
+     * on every send is far worse than a missed cache hit.
+     */
+    internal fun cacheKeyJson(config: EngineConfig): String {
+        if (config.providerId != "openai") return ""
+        if (config.systemInstruction.isBlank() && config.toolDeclarations.isEmpty()) return ""
+        val basis = config.modelId + "|" + config.systemInstruction.hashCode() + "|" +
+            config.toolDeclarations.size
+        return ",\"prompt_cache_key\":\"" + escapeJson(basis) + "\""
     }
 
     /**
