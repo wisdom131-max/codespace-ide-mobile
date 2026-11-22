@@ -1429,6 +1429,20 @@ class ChatSession internal constructor(
     /** Where this conversation's checkpoint lives in the store. */
     private fun checkpointKey(): String = "checkpoint/" + conversationId
 
+    /**
+     * PROJECT NINE 9.53 (catalog 19 WIRED): a small set for the selector to choose from. Deliberately
+     * short - two worked examples beat a page of rules, and a long list is what the selector exists
+     * to avoid.
+     */
+    private val fewShotExamples = listOf(
+        com.codespace.ide.engine.FewShotSelector.Example(
+            "read-first", "Read the file before editing it, then re-read after the edit.", setOf("edit", "file")),
+        com.codespace.ide.engine.FewShotSelector.Example(
+            "test-first", "Run the build after a code change and report the real result.", setOf("build", "test")),
+        com.codespace.ide.engine.FewShotSelector.Example(
+            "search-first", "Search for the symbol before assuming where it lives.", setOf("search", "find")),
+    )
+
     private fun taskBlock(): String = com.codespace.ide.engine.PromptBlocks.render(
         "",
         // PROJECT EIGHT 8.50 (catalog 4 wiring): PlanDigest existed and nothing rendered through
@@ -1455,7 +1469,9 @@ class ChatSession internal constructor(
             "critic.checklist",
             "## BEFORE YOU FINISH\n" +
                 com.codespace.ide.engine.SelfCritique.CHECKLIST.joinToString("\n") { "- " + it },
-        ),
+        ) + if (taskSteps.isEmpty()) "" else "\n" + com.codespace.ide.engine.FewShotSelector
+            .select(taskSteps.joinToString(" "), fewShotExamples, 2)
+            .joinToString("\n") { "- " + it.text },
     )
 
     private fun buildInstruction(
