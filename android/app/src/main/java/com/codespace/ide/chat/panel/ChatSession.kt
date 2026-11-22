@@ -1443,6 +1443,26 @@ class ChatSession internal constructor(
             "search-first", "Search for the symbol before assuming where it lives.", setOf("search", "find")),
     )
 
+    /**
+     * PROJECT NINE 9.57 (catalog 5 WIRED): steps that declare "after:<n>" are ordered so a
+     * dependency is rendered before the step that needs it. A cycle or an unknown dependency falls
+     * back to the order the plan was written in, because a scrambled plan is worse than an unordered
+     * one.
+     */
+    private fun orderedSteps(): List<String> {
+        if (taskSteps.size < 2) return taskSteps
+        val nodes = taskSteps.mapIndexed { i, raw ->
+            val dep = Regex("after:([0-9]+)").find(raw)?.groupValues?.get(1)?.toIntOrNull()
+            val depends = if (dep != null && dep in taskSteps.indices) listOf("s" + dep) else emptyList()
+            com.codespace.ide.engine.StepGraph.Node("s" + i, depends)
+        }
+        val result = com.codespace.ide.engine.StepGraph.order(nodes)
+        if (result !is com.codespace.ide.engine.StepGraph.Result.Order) return taskSteps
+        val ordered = result.ids.mapNotNull { it.removePrefix("s").toIntOrNull() }
+            .filter { it in taskSteps.indices }
+        return if (ordered.size == taskSteps.size) ordered.map { taskSteps[it] } else taskSteps
+    }
+
     private fun taskBlock(): String = com.codespace.ide.engine.PromptBlocks.render(
         "",
         // PROJECT EIGHT 8.50 (catalog 4 wiring): PlanDigest existed and nothing rendered through
@@ -1455,7 +1475,7 @@ class ChatSession internal constructor(
             "## PLAN\n{{plan}}",
             mapOf(
                 "plan" to com.codespace.ide.engine.PlanDigest.render(
-                    taskSteps.map { com.codespace.ide.engine.PlanDigest.Step(it, true) },
+                    orderedSteps().map { com.codespace.ide.engine.PlanDigest.Step(it, true) },
                 ),
             ),
         ).text,
