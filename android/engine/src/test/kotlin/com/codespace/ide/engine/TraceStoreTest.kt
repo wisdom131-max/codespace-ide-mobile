@@ -35,3 +35,15 @@ class TraceStoreTest {
         assertNull(TraceStore.Store().latest())
     }
 }
+
+class TraceAttributionTest {
+
+    @Test
+    fun aTraceIsAttributableToItsSession() {
+        val shelf = TraceStore.Store()
+        shelf.add("turn:abc", "kept=3", 1L)
+        shelf.add("turn:xyz", "kept=9", 2L)
+        assertEquals("turn:abc", shelf.all().first().label)
+        assertEquals("turn:xyz", shelf.latest()?.label)
+    }
+}

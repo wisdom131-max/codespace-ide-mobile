@@ -190,7 +190,10 @@ class ChatEngineImpl(
         // where the answer exists. "Why did it forget what I said" was previously unanswerable
         // after the fact, because nothing kept the fit outcome once the turn ended.
         TraceStore.record(
-            label = "turn",
+            // The label carries the session, not just "turn". A shared shelf mixes every session
+            // in the process, so without this a trace could not be attributed to a conversation and
+            // would answer nothing.
+            label = "turn:" + sessionId,
             rendered = "mode=" + mode + " budgetChars=" + budgetChars +
                 " kept=" + fit.messages.size + " dropped=" + (eligible.size - fit.messages.size),
             atMs = System.currentTimeMillis(),
