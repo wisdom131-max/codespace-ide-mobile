@@ -867,6 +867,7 @@ class ChatSession internal constructor(
             systemInstruction = buildInstruction(
                 mode, toolPlan.sendTools, wsBlock, offer.names, memoryAtSend,
                 nativeToolWire = nativeDeclarations.isNotEmpty(),
+                blocks = taskBlock(),
             ),
             providerId = sel.providerId,
             baseUrl = liveBaseUrl,
@@ -1313,6 +1314,15 @@ class ChatSession internal constructor(
         ),
     )
 
+    /** What this turn has already done, so a continuation cannot silently repeat itself. */
+    private val taskSteps = LinkedHashSet<String>()
+
+    private fun taskBlock(): String = com.codespace.ide.engine.PromptBlocks.render(
+        "",
+        if (taskSteps.isEmpty()) "" else "## ALREADY DONE THIS TURN\n" + taskSteps.joinToString(", "),
+        "",
+    )
+
     private fun buildInstruction(
         mode: ChatMode,
         sendTools: Boolean,
@@ -1321,6 +1331,7 @@ class ChatSession internal constructor(
         memory: String = "",
         request: String = requestAtSend,
         nativeToolWire: Boolean = false,
+        blocks: String = "",
     ): String {
         // 2026-11-11 (Wave 1 Group A budget fix): this used to append AgentToolWire.protocol(mode)
         // - which advertised the ENTIRE mode catalogue - and then the filtered block on top, so the
@@ -1348,7 +1359,7 @@ class ChatSession internal constructor(
         val composed = ChatInstructions.build(
             mode, sendTools, offered, wsBlock,
             if (mcpHint.isBlank()) mcpDocs else mcpDocs + "\n\n" + mcpHint,
-            loaded, memory, nativeToolWire,
+            loaded, memory, nativeToolWire, blocks,
         )
         // PROJECT EIGHT 8.3 (catalog B1): the agent had no clock, so "what time is it", "today" and
         // "in an hour" were answered against the training cutoff. Appended here because every send
@@ -1688,6 +1699,8 @@ class ChatSession internal constructor(
         // must not consume the budget that exists to stop runaway tool loops.
         val pollOnly = calls.isNotEmpty() && calls.all { AgentToolWire.isPollTool(it.name) }
         if (!pollOnly) toolRound++
+        // Group A (catalog 31): record what was done, not just that something was done.
+        calls.forEach { taskSteps.add(it.name) }
         // Section 5: one change set per tool round, so two separate operations can never be
         // merged into one misleading Files Changed row.
         com.codespace.ide.agent.AgentWriteJournal.beginOperation(conversationId)
@@ -1954,6 +1967,7 @@ class ChatSession internal constructor(
                     // on the wire. nativeDeclarations is a local of the send function and is
                     // not in scope in this continuation path.
                     nativeToolWire = cfg.toolDeclarations.isNotEmpty(),
+                    blocks = taskBlock(),
                 ))
             } else cfg
             // P4.6/4.7: a chain of ten tools used to send all ten results again, unbounded, on a

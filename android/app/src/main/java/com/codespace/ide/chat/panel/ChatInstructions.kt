@@ -64,6 +64,8 @@ internal object ChatInstructions {
         loaded: Set<String> = ToolLoadout.extra(),
         memory: String = "",
         nativeToolWire: Boolean = false,
+        /** Plan/ledger/rules block. Empty = byte-identical to before. */
+        blocks: String = "",
     ): String {
         val visible = offered.toSet() + loaded
         val total = ToolRegistry.exposedNames(mode).size
@@ -83,8 +85,8 @@ internal object ChatInstructions {
         val reminder = if (base.length >= reminderThresholdFor(mode)) {
             "\n\n" + ChatModePrompts.constraints(mode)
         } else ""
-        val room = capFor(mode) - base.length - reminder.length
-        return base + fitMemory(memory, room) + reminder
+        val room = capFor(mode) - base.length - reminder.length - blocks.length
+        return base + (if (blocks.isBlank()) "" else "\n\n" + blocks) + fitMemory(memory, room) + reminder
     }
 
     /**
