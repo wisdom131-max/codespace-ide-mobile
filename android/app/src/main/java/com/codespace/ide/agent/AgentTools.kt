@@ -1690,7 +1690,16 @@ You can use multiple tools in sequence. When done, give a final summary.
         // U6-d: re-scanning is not enough - a write inside CLOSED folders stays invisible.
         // Reveal expands the ancestors (never opens the file, never collapses anything).
         com.codespace.ide.util.ExplorerReveal.requestFor(target.absolutePath)
-        return "Wrote ${content.length} chars to ${target.absolutePath}"
+        val wrote = "Wrote ${content.length} chars to ${target.absolutePath}"
+        // PROJECT NINE 9.49 (catalog 30 WIRED): the model was told a character count and nothing
+        // about what changed, so on the next edit it re-sent the whole file to be safe. A bounded
+        // diff of what actually changed removes that need.
+        //
+        // Only when there WAS a previous version: a brand-new file has no diff to show, and saying
+        // "created" beats inventing a diff against nothing.
+        val change = if (before == null) null
+                     else com.codespace.ide.engine.DiffContext.between(before, content, maxLines = 40)
+        return if (change != null && change.changed) wrote + "\n" + change.text else wrote
     }
 
     /**
