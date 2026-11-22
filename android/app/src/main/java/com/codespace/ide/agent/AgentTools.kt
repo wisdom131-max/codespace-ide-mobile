@@ -2921,9 +2921,9 @@ You can use multiple tools in sequence. When done, give a final summary.
         // keeps precision - "fact" alone would match half the repo - while still bridging prose
         // to identifiers, because QueryRewriter emits the split parts (fact, retrieval) as well.
         val searchTerms = com.codespace.ide.engine.QueryRewriter
-            .rewrite(pattern, 12).split(' ').map { it.trim() }.filter { it.length > 1 }
+            .rewrite(pattern, 12).map { it.trim() }.filter { it.length > 1 }
         fun hit(line: String): Boolean {
-            if (hit(line)) return true
+            if (line.contains(pattern, ignoreCase = true)) return true
             if (searchTerms.size < 2) return false
             val low = line.lowercase()
             return searchTerms.all { low.contains(it.lowercase()) }
