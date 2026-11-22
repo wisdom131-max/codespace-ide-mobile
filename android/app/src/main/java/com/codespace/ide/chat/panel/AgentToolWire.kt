@@ -155,6 +155,20 @@ internal object AgentToolWire {
         ToolRegistry.allows(mode, toolName)
 
     /** Every mode now has at least one permitted tool, so the protocol is always sent. */
+    /**
+     * PROJECT EIGHT 8.20 (catalog 58 caveat): the NAMES, without the prose.
+     *
+     * When the request already carries full function schemas, the long description of every tool
+     * is paid for twice. This keeps the names in the prompt as a cheap fallback - an
+     * OpenAI-compatible server that silently ignores the `tools` field still leaves the model
+     * knowing what exists - while dropping the descriptions that the schemas already carry.
+     */
+    fun compactNames(visible: Set<String>): String =
+        if (visible.isEmpty()) "" else
+            "\n\n## TOOLS\nThese are supplied as callable function schemas; call them directly " +
+                "rather than writing a tool request as text. Available: " +
+                visible.sorted().joinToString(", ") + "."
+
     fun modeRunsTools(mode: ChatMode): Boolean = true
 
     /**

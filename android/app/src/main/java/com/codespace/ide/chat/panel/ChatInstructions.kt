@@ -63,13 +63,17 @@ internal object ChatInstructions {
         mcpDocs: String,
         loaded: Set<String> = ToolLoadout.extra(),
         memory: String = "",
+        nativeToolWire: Boolean = false,
     ): String {
         val visible = offered.toSet() + loaded
         val total = ToolRegistry.exposedNames(mode).size
         val base = ChatModePrompts.instruction(mode) +
             // catalog 13: the completion signal is only meaningful when tools are on, because it is
             // a tool call. In Ask mode there is nothing to finish.
-            (if (sendTools) AgentToolWire.protocol(mode, visible) + "\n\n" + AgentToolWire.doneInstruction() else "") +
+            (if (!sendTools) "" else
+                (if (nativeToolWire) AgentToolWire.compactNames(visible)
+                 else AgentToolWire.protocol(mode, visible)) +
+                "\n\n" + AgentToolWire.doneInstruction()) +
             toolsetLine(sendTools, visible.size, total) +
             (if (mcpDocs.isBlank()) "" else "\n\n## EXTERNAL MCP TOOLS (loaded for this task)\n" + mcpDocs) +
             (if (wsBlock.isEmpty()) "" else "\n\n" + wsBlock)

@@ -845,11 +845,29 @@ class ChatSession internal constructor(
         memoryAtSend = memoryBlockFor(userText)
         requestAtSend = userText
         loadoutVersionAtSend = ToolLoadout.version()
+        // PROJECT EIGHT 8.20: hoisted so the instruction can know whether the schemas are already
+        // on the wire. Built once per send; advertising and documenting must agree.
+        val nativeDeclarations = if (toolPlan.sendTools) {
+            ToolRegistry.exposed(mode)
+                .filter { it.name in offer.names }
+                .map {
+                    com.codespace.ide.engine.ToolDeclaration(
+                        name = it.name,
+                        description = it.description,
+                        parametersJson = it.schema,
+                    )
+                }
+                .plus(doneDeclaration())
+        } else {
+            emptyList()
+        }
         val cfg = EngineConfig(
             modelId = sel.modelId,
             // U4-d: the mode rides the provider's own system slot (see ChatModePrompts).
             systemInstruction = buildInstruction(
-                mode, toolPlan.sendTools, wsBlock, offer.names, memoryAtSend),
+                mode, toolPlan.sendTools, wsBlock, offer.names, memoryAtSend,
+                nativeToolWire = nativeDeclarations.isNotEmpty(),
+            ),
             providerId = sel.providerId,
             baseUrl = liveBaseUrl,
             apiKey = key ?: "",   // no-key presets (Ollama): blank key, header omitted
@@ -870,20 +888,7 @@ class ChatSession internal constructor(
             // plan says tools may be sent, so a tool-less mode still sends nothing.
             // PROJECT EIGHT 8.10: the clock rides here, outside the cached prefix.
             volatileSystemTail = com.codespace.ide.engine.ClockNote.now(),
-            toolDeclarations = if (toolPlan.sendTools) {
-                ToolRegistry.exposed(mode)
-                    .filter { it.name in offer.names }
-                    .map {
-                        com.codespace.ide.engine.ToolDeclaration(
-                            name = it.name,
-                            description = it.description,
-                            parametersJson = it.schema,
-                        )
-                    }
-                    .plus(doneDeclaration())
-            } else {
-                emptyList()
-            },
+            toolDeclarations = nativeDeclarations,
         ).copy(confirmOverBudget = confirmOverBudget)
         streamBuf.setLength(0)
         // STAGE 2: a new turn starts with an empty filter, or a fragment from the last turn
@@ -1315,7 +1320,8 @@ class ChatSession internal constructor(
         offered: List<String>,
         memory: String = "",
         request: String = requestAtSend,
-    ): String {
+                    nativeToolWire = nativeDeclarations.isNotEmpty(),
+            ): String {
         // 2026-11-11 (Wave 1 Group A budget fix): this used to append AgentToolWire.protocol(mode)
         // - which advertised the ENTIRE mode catalogue - and then the filtered block on top, so the
         // prompt carried both (Agent 13,170 chars, Ask 5,848, measured). Composition now lives in
@@ -1943,7 +1949,8 @@ class ChatSession internal constructor(
             val refreshed = if (ToolLoadout.version() != loadoutVersionAtSend) {
                 loadoutVersionAtSend = ToolLoadout.version()
                 cfg.copy(systemInstruction = buildInstruction(
-                    mode, true, wsBlockForRefresh, offeredAtSend, memoryAtSend))
+                    mode, true, wsBlockForRefresh, offeredAtSend, memoryAtSend                nativeToolWire = nativeDeclarations.isNotEmpty(),
+            ))
             } else cfg
             // P4.6/4.7: a chain of ten tools used to send all ten results again, unbounded, on a
             // phone. Past the ceiling the OLDER results are compressed with an explicit marker and
