@@ -244,7 +244,17 @@ object FactRetrieval {
         // confidence) would otherwise inject every fact with no relation to the question, which is
         // the exact failure this filter exists to prevent.
         val related = rankedFactsWithOverlap(facts, requestTokens, projectId, now)
-        val relevant = related.filter { it.score > 8.0 }
+        // PROJECT EIGHT 8.30 (catalog 41 wiring): age softens a fact instead of being ignored.
+        // Applied to the SCORE, never as a filter, so an old fact still appears when nothing
+        // better exists. Preferences and constraints are exempt - a rule does not become less
+        // true with age - and recency runs from last USE, so a fact still in play does not
+        // fade merely for being old.
+        val aged = related.map { r ->
+            val f = if (com.codespace.ide.engine.MemoryDecay.isExempt(r.fact.category.id)) 1.0
+            else com.codespace.ide.engine.MemoryDecay.factor(r.fact.updatedAt, r.fact.lastUsedAt, 0, now)
+            r to (r.score * f)
+        }
+        val relevant = aged.filter { it.second > 8.0 }.sortedByDescending { it.second }.map { it.first }
         // Pinned rules first, then whatever earned its place by relevance. A fact that is BOTH is
         // not repeated: the map keeps one copy, in the pinned position.
         val merged = LinkedHashMap<String, Fact>()
