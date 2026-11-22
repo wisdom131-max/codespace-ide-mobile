@@ -641,6 +641,12 @@ class ChatSession internal constructor(
     internal var mode: ChatMode = ChatModePersistence.toUi(initialMode)
 
     fun send(userText: String, confirmOverBudget: Boolean = false) {
+        // DEFECT FIX: a turn's ledger belongs to the TURN. Nothing cleared it, so 'already done
+        // this turn' accumulated across the whole session - the block grew without bound and
+        // told the model that work from an hour ago had happened in this reply. Both are reset
+        // here, at the only point a new turn begins.
+        taskSteps.clear()
+        evidence = com.codespace.ide.engine.EvidenceLedger()
         // PROJECT EIGHT 8.40 (catalog 77 + 79 wiring): a paste is DATA, never instructions.
         // Scanning at the one entry point covers every route into the send - typed, pasted,
         // shared in - instead of each caller remembering to check. Flagged content is still
@@ -1344,7 +1350,7 @@ class ChatSession internal constructor(
      * guard inferred evidence by string-matching tool names. A ledger records the KIND of work
      * actually performed, so 'the tests pass' is judged against something that really ran.
      */
-    private val evidence = com.codespace.ide.engine.EvidenceLedger()
+    private var evidence = com.codespace.ide.engine.EvidenceLedger()
 
     private fun taskBlock(): String = com.codespace.ide.engine.PromptBlocks.render(
         "",
