@@ -344,3 +344,69 @@ object ErrorTaxonomy {
         return if (t.length <= 120) t else t.take(117) + "..."
     }
 }
+
+/**
+ * PROJECT EIGHT 8.14 (catalog 99): the taxonomy NAMED failures; nothing counted them.
+ *
+ * A cluster is the smallest set of buckets that answers "what is actually going wrong", and it is
+ * deliberately coarser than the taxonomy: two different 429 bodies are one problem, and knowing
+ * that a run of failures was all rate limiting is more useful than knowing which sentence the
+ * provider used. Clusters are stable strings so they can be counted over time without a migration.
+ *
+ * Mapping is EXHAUSTIVE over the sealed type: adding a ChatError without deciding its cluster is a
+ * compile error, not a silent "other".
+ */
+enum class FailureCluster(val id: String) {
+    AUTH("auth"),
+    CREDITS("credits"),
+    RATE_LIMIT("rate_limit"),
+    PAYLOAD("payload"),
+    MODEL("model"),
+    REQUEST("request"),
+    PROVIDER_DOWN("provider_down"),
+    NETWORK("network"),
+    BUDGET("budget"),
+    USER_STOP("user_stop"),
+}
+
+fun ChatError.cluster(): FailureCluster = when (this) {
+    is ChatError.Auth -> FailureCluster.AUTH
+    is ChatError.OutOfCredits -> FailureCluster.CREDITS
+    is ChatError.RateLimited -> FailureCluster.RATE_LIMIT
+    is ChatError.PromptTooLarge -> FailureCluster.PAYLOAD
+    is ChatError.ModelNotFound -> FailureCluster.MODEL
+    is ChatError.BadRequest -> FailureCluster.REQUEST
+    is ChatError.Server -> FailureCluster.PROVIDER_DOWN
+    is ChatError.Network -> FailureCluster.NETWORK
+    is ChatError.OverBudget -> FailureCluster.BUDGET
+    is ChatError.Cancelled -> FailureCluster.USER_STOP
+}
+
+/**
+ * Counts clusters across a session so a repeated cause is visible instead of a list of symptoms.
+ * Bounded: the map holds at most one entry per cluster, so this cannot grow with traffic.
+ */
+class FailureTally {
+    private val counts = LinkedHashMap<FailureCluster, Int>()
+
+    @Synchronized
+    fun record(error: ChatError): FailureCluster {
+        val cluster = error.cluster()
+        counts[cluster] = (counts[cluster] ?: 0) + 1
+        return cluster
+    }
+
+    @Synchronized
+    fun count(cluster: FailureCluster): Int = counts[cluster] ?: 0
+
+    @Synchronized
+    fun snapshot(): Map<FailureCluster, Int> = LinkedHashMap(counts)
+
+    /** The cluster seen most often, ties broken by first appearance. Null before any failure. */
+    @Synchronized
+    fun worst(): FailureCluster? =
+        counts.entries.maxByOrNull { it.value }?.key
+
+    @Synchronized
+    fun clear() = counts.clear()
+}
