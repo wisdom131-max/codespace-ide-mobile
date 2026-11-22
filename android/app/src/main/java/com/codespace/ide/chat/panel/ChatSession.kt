@@ -648,6 +648,19 @@ class ChatSession internal constructor(
         taskSteps.clear()
         evidence = com.codespace.ide.engine.EvidenceLedger()
         currentGoal = userText
+        // PROJECT EIGHT 8.59 (catalog 48 wiring): SemanticCacheKey existed and nothing used it.
+        // Used for DEDUPLICATION, not for replaying a stored answer. In an editor a cached answer
+        // goes stale the moment a file changes, which is constantly - so replaying one would be a
+        // correctness bug dressed as a speed feature. Refusing a double send is the part that is
+        // both safe and the part that actually spends money twice.
+        val sendKey = com.codespace.ide.engine.SemanticCacheKey.of(userText, selection.value.modelId)
+        val nowMs = System.currentTimeMillis()
+        val lastSend = recentSends[sendKey]
+        if (lastSend != null && nowMs - lastSend < 8_000) {
+            appendRow(ChatRowModel.InfoNote("That message was just sent, so it was not sent twice."))
+            return
+        }
+        recentSends[sendKey] = nowMs
         // PROJECT EIGHT 8.58 (catalog 32 wiring): a task that died at step 9 resumes at step 9.
         // TaskCheckpoint could always serialise a position; there was nowhere to put it. The
         // store is that place. A checkpoint that cannot be read is REPORTED, never silently
@@ -1388,6 +1401,9 @@ class ChatSession internal constructor(
 
     /** The request this turn is serving, so a checkpoint can name what it was for. */
     private var currentGoal: String = ""
+
+    /** Recently sent requests, so a double tap cannot spend the same request twice. */
+    private val recentSends = HashMap<String, Long>()
 
     /** Where this conversation's checkpoint lives in the store. */
     private fun checkpointKey(): String = "checkpoint/" + conversationId
