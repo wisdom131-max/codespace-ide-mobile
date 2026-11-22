@@ -1392,6 +1392,14 @@ You can use multiple tools in sequence. When done, give a final summary.
             else -> com.codespace.ide.chat.panel.ChatMode.ASK
         }
         val permitted = com.codespace.ide.chat.panel.ToolRegistry.exposedNames(mode).toSet()
+        // PROJECT NINE 9.60 (catalog 9 WIRED): the mesh assigns a peer to any delegated step that did
+        // not name a role, round-robin across the roles this batch actually uses. A step that names
+        // its role is untouched, so nothing changes for a fully-specified delegation.
+        val meshPeers = (0 until rows.length())
+            .mapNotNull { rows.optJSONObject(it)?.optString("role") }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .map { com.codespace.ide.engine.AgentMesh.Peer(it, it) }
         val requests = ArrayList<com.codespace.ide.agent.subagents.DelegationScheduler.Request>()
         for (index in 0 until rows.length()) {
             val row = rows.optJSONObject(index) ?: continue
@@ -1401,7 +1409,9 @@ You can use multiple tools in sequence. When done, give a final summary.
             }
             requests.add(
                 com.codespace.ide.agent.subagents.DelegationScheduler.Request(
-                    roleId = row.optString("role"),
+                    roleId = row.optString("role").ifBlank {
+                        com.codespace.ide.engine.AgentMesh.nextRoundRobin(meshPeers, index)?.id ?: ""
+                    },
                     title = row.optString("title"),
                     planStepId = step,
                     reads = row.optJSONArray("reads")?.let { a ->
