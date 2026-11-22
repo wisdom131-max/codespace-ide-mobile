@@ -1445,22 +1445,33 @@ class ChatSession internal constructor(
 
     /**
      * PROJECT NINE 9.57 (catalog 5 WIRED): steps that declare "after:<n>" are ordered so a
-     * dependency is rendered before the step that needs it. A cycle or an unknown dependency falls
-     * back to the order the plan was written in, because a scrambled plan is worse than an unordered
-     * one.
+     * dependency is rendered before the step that needs it.
+     *
+     * Written without inference-heavy expressions on purpose. The first version of this was pushed
+     * and broke the app build, and the log is not readable from here, so every list and every index
+     * is spelled out and every bound is checked explicitly.
      */
     private fun orderedSteps(): List<String> {
-        if (taskSteps.size < 2) return taskSteps
-        val nodes = taskSteps.mapIndexed { i, raw ->
-            val dep = Regex("after:([0-9]+)").find(raw)?.groupValues?.get(1)?.toIntOrNull()
-            val depends = if (dep != null && dep in taskSteps.indices) listOf("s" + dep) else emptyList()
-            com.codespace.ide.engine.StepGraph.Node("s" + i, depends)
+        val steps = taskSteps
+        if (steps.size < 2) return steps
+        val nodes = ArrayList<com.codespace.ide.engine.StepGraph.Node>()
+        for (i in steps.indices) {
+            val match = Regex("after:([0-9]+)").find(steps[i])
+            val dep = match?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val depends = ArrayList<String>()
+            if (dep != null && dep >= 0 && dep < steps.size) depends.add("s" + dep)
+            nodes.add(com.codespace.ide.engine.StepGraph.Node("s" + i, depends))
         }
         val result = com.codespace.ide.engine.StepGraph.order(nodes)
-        if (result !is com.codespace.ide.engine.StepGraph.Result.Order) return taskSteps
-        val ordered = result.ids.mapNotNull { it.removePrefix("s").toIntOrNull() }
-            .filter { it in taskSteps.indices }
-        return if (ordered.size == taskSteps.size) ordered.map { taskSteps[it] } else taskSteps
+        if (result is com.codespace.ide.engine.StepGraph.Result.Order) {
+            val ordered = ArrayList<String>()
+            for (id in result.ids) {
+                val idx = id.removePrefix("s").toIntOrNull()
+                if (idx != null && idx >= 0 && idx < steps.size) ordered.add(steps[idx])
+            }
+            if (ordered.size == steps.size) return ordered
+        }
+        return steps
     }
 
     private fun taskBlock(): String = com.codespace.ide.engine.PromptBlocks.render(
