@@ -178,6 +178,18 @@ class ChatEngineImpl(
                 return@flow
             }
         }
+        // PROJECT NINE 9.45 (catalog 6 WIRED): the bus existed and nothing published to it, so a
+        // stream of events about the turn was never recorded. Published here, before the turn runs,
+        // so a reader can tell a started turn from one that never happened.
+        AgentEventBus.publish("turn.start", "session=" + sessionId, System.currentTimeMillis())
+        // PROJECT NINE 9.46 (catalog 33 WIRED): a snapshot of the transcript BEFORE the turn, which
+        // is the only moment a rewind can be taken from. Bookkeeping only: nothing reads it back yet
+        // in the UI, but the state it would need now exists.
+        RewindLog.save(
+            label = "turn:" + sessionId,
+            state = state.snapshot().size.toString() + " messages",
+            atMs = System.currentTimeMillis(),
+        )
         state.append(ChatRole.USER, userText, MessageState.DONE)
         val eligible = state.snapshot().filter { it.state == MessageState.DONE && it.text.isNotEmpty() }
         val mode = HistoryMode.parse(config.historyMode)
