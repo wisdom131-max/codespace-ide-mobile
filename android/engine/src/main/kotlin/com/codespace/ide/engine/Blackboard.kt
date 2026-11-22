@@ -27,9 +27,12 @@ object Blackboard {
 
         fun read(key: String): Note? = notes[key]
 
-        fun since(afterSeq: Long): List<Note> = notes.values.filter { it.seq > afterSeq }
+        // A key keeps its original slot in the map when it is overwritten, so reading straight from
+        // the map returns notes out of sequence as soon as anything is rewritten. Sorting is what
+        // makes the class doc true.
+        fun since(afterSeq: Long): List<Note> = notes.values.filter { it.seq > afterSeq }.sortedBy { it.seq }
 
-        fun snapshot(): List<Note> = notes.values.toList()
+        fun snapshot(): List<Note> = notes.values.sortedBy { it.seq }
 
         fun size(): Int = notes.size
     }

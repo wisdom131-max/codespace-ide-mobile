@@ -36,3 +36,24 @@ class BlackboardTest {
         assertNull(Blackboard.Board().read("nothing"))
     }
 }
+
+class BlackboardOrderTest {
+
+    @Test
+    fun anOverwrittenNoteSortsByItsNewSequence() {
+        val b = Blackboard.Board()
+        b.write("a", "first", "s1", 1L)
+        b.write("b", "second", "s2", 2L)
+        b.write("a", "rewritten", "s3", 3L)
+        assertEquals(listOf("b", "a"), b.snapshot().map { it.key })
+    }
+
+    @Test
+    fun sinceIsInSequenceOrder() {
+        val b = Blackboard.Board()
+        val first = b.write("a", "1", "s1", 1L)
+        b.write("b", "2", "s2", 2L)
+        b.write("a", "3", "s3", 3L)
+        assertEquals(listOf("b", "a"), b.since(first.seq).map { it.key })
+    }
+}
