@@ -1435,9 +1435,16 @@ class ChatSession internal constructor(
         // it. A comma list of tool names tells the model nothing about progress; a rendered plan
         // shows each step with its state, which is what lets a continuation pick up mid-task
         // instead of restarting.
-        if (taskSteps.isEmpty()) "" else com.codespace.ide.engine.PlanDigest.render(
-            taskSteps.map { com.codespace.ide.engine.PlanDigest.Step(it, true) },
-        ),
+        // PROJECT NINE 9.52 (catalog 18 WIRED): the plan block is rendered through the template
+        // engine, so its shape is data rather than string concatenation buried in this file.
+        if (taskSteps.isEmpty()) "" else com.codespace.ide.engine.PromptTemplate.render(
+            "## PLAN\n{{plan}}",
+            mapOf(
+                "plan" to com.codespace.ide.engine.PlanDigest.render(
+                    taskSteps.map { com.codespace.ide.engine.PlanDigest.Step(it, true) },
+                ),
+            ),
+        ).text,
         // PROJECT EIGHT 8.47 (catalog 10 wiring): the critic pass, as a checklist the model
         // answers to itself before declaring completion. Free at runtime - a few lines of
         // text, no extra call - and shown only once a tool has run, because a pure question
