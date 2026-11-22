@@ -1,6 +1,34 @@
 package com.codespace.ide.engine
 
 object EpisodicMemory {
+
+    /**
+     * Where episodes are kept. The type could render and parse an episode and there was nowhere to
+     * put one, which is exactly why item 36 sat unwired: the gap was storage, not logic.
+     *
+     * Bounded, because a phone should not accumulate every turn forever.
+     */
+    class Shelf(private val maxEpisodes: Int = 50) {
+
+        private val items = ArrayDeque<Episode>()
+
+        fun save(e: Episode) {
+            items.addLast(e)
+            while (items.size > maxEpisodes) items.removeFirst()
+        }
+
+        fun recent(): List<Episode> = items.toList()
+
+        fun size(): Int = items.size
+    }
+
+    private val shared = Shelf()
+
+    fun record(id: String, startedAt: Long, summary: String, files: List<String> = emptyList()) {
+        shared.save(Episode(id, startedAt, summary, files))
+    }
+
+    fun recentEpisodes(): List<Episode> = shared.recent()
     data class Episode(val id: String, val startedAt: Long, val summary: String, val files: List<String> = emptyList())
     private fun clean(s: String) = s.replace("\t", " ").replace("\n", " ")
     fun render(e: Episode): String =
