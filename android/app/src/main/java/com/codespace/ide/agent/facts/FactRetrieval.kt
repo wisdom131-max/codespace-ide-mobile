@@ -249,12 +249,22 @@ object FactRetrieval {
         // better exists. Preferences and constraints are exempt - a rule does not become less
         // true with age - and recency runs from last USE, so a fact still in play does not
         // fade merely for being old.
-        val aged = related.map { r ->
-            val f = if (com.codespace.ide.engine.MemoryDecay.isExempt(r.fact.category.id)) 1.0
-            else com.codespace.ide.engine.MemoryDecay.factor(r.fact.updatedAt, r.fact.lastUsedAt, 0, now)
-            r to (r.score * f)
-        }
-        val relevant = aged.filter { it.second > 8.0 }.sortedByDescending { it.second }.map { it.first }
+        // PROJECT EIGHT 8.31 (catalog 41 wiring, CORRECTED): decay may break a TIE, never
+        // reorder across scopes.
+        //
+        // The first attempt multiplied the score and re-sorted by the product. That overrode the
+        // scope-aware ordering the ranking had already computed, and the budget tests caught it:
+        // a fact from another project climbed to the front, and the prompt grew past its cap.
+        //
+        // Two STABLE sorts. The second re-establishes the original score as primary, so decay
+        // only decides between facts that were already level. Selection is unchanged: the filter
+        // still reads the ORIGINAL score, so the same facts are chosen in the same order.
+        val relevant = related.filter { it.score > 8.0 }
+            .sortedByDescending { r ->
+                if (com.codespace.ide.engine.MemoryDecay.isExempt(r.fact.category.id)) 1.0
+                else com.codespace.ide.engine.MemoryDecay.factor(r.fact.updatedAt, r.fact.lastUsedAt, 0, now)
+            }
+            .sortedByDescending { it.score }
         // Pinned rules first, then whatever earned its place by relevance. A fact that is BOTH is
         // not repeated: the map keeps one copy, in the pinned position.
         val merged = LinkedHashMap<String, Fact>()
