@@ -186,6 +186,15 @@ class ChatEngineImpl(
         val budgetChars = if (config.requestCharsBudget > 0) config.requestCharsBudget
                           else learnedBudgetChars(config)
         val fit = HistoryBudget.fit(eligible, mode, systemChars = 0, budgetChars = budgetChars)
+        // PROJECT NINE 9.42 (catalog 91 WIRED): every turn files a readable trace at the one point
+        // where the answer exists. "Why did it forget what I said" was previously unanswerable
+        // after the fact, because nothing kept the fit outcome once the turn ended.
+        TraceStore.record(
+            label = "turn",
+            rendered = "mode=" + mode + " budgetChars=" + budgetChars +
+                " kept=" + fit.messages.size + " dropped=" + (eligible.size - fit.messages.size),
+            atMs = System.currentTimeMillis(),
+        )
         // PROJECT SIX 6.2: turns about to leave the window are summarised BEFORE they go, once each,
         // and the summary rides at the head of the request clearly labelled as generated. A message
         // already represented by the ledger is not summarised a second time on a later send.
