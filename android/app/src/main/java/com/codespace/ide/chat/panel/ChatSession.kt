@@ -673,12 +673,12 @@ class ChatSession internal constructor(
                 when (val r = com.codespace.ide.engine.TaskCheckpoint.read(raw)) {
                     is com.codespace.ide.engine.TaskCheckpoint.Restore.Ok ->
                         if (!r.state.isComplete && r.state.stepIndex > 0) {
-                            appendRow(
-                                ChatRowModel.InfoNote(
-                                    "Picking up where the last turn stopped: " + r.state.stepIndex +
-                                        " of " + r.state.totalSteps + " steps were already done.",
-                                ),
-                            )
+                            val progress = if (r.state.totalSteps > 0) {
+                                r.state.stepIndex + " of " + r.state.totalSteps + " steps were already done."
+                            } else {
+                                r.state.stepIndex + " steps were already done."
+                            }
+                            appendRow(ChatRowModel.InfoNote("Picking up where the last turn stopped: " + progress))
                         }
                     is com.codespace.ide.engine.TaskCheckpoint.Restore.Unreadable ->
                         appendRow(
@@ -1867,7 +1867,10 @@ class ChatSession internal constructor(
                     com.codespace.ide.engine.TaskCheckpoint.State(
                         goal = currentGoal.take(400),
                         stepIndex = toolRound,
-                        totalSteps = 25,
+                        // No fixed round cap exists in this app, so claiming a total would be
+                        // invented. Zero means "unknown"; the steps DONE is the number that is
+                        // actually known.
+                        totalSteps = 0,
                         done = taskSteps.map { com.codespace.ide.engine.TaskCheckpoint.Done(it, it) },
                         updatedAt = System.currentTimeMillis(),
                     ),
