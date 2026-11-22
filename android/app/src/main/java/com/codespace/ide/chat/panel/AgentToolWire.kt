@@ -39,6 +39,19 @@ internal object AgentToolWire {
     const val DONE_TOOL: String = "task_complete"
 
     /**
+     * PROJECT EIGHT 8.11 (catalog 13): tools that only ASK about the world and never change it.
+     *
+     * A batch made up entirely of these is waiting, not working. Raising the step cap from 6 to 25
+     * made long jobs survivable but did not remove the cause: asking "is the build finished yet"
+     * cost a step exactly like writing a file did, so one long build could eat the whole budget
+     * while doing nothing. Poll-only batches are now free.
+     */
+    val POLL_TOOLS: Set<String> = setOf("job_status", "terminal_list")
+
+    fun isPollTool(name: String): Boolean = name in POLL_TOOLS
+
+
+    /**
      * PROJECT EIGHT 8.7 (catalog 13), second half: recognising a declaration is useless until the
      * model is told to make one.
      *

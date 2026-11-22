@@ -1675,7 +1675,13 @@ class ChatSession internal constructor(
             appendRow(ChatRowModel.InfoNote("Tool execution is unavailable in this build."))
             return
         }
-        toolRound++
+        // PROJECT EIGHT 8.11 (catalog 13): a POLL IS NOT A STEP.
+        //
+        // A batch made up entirely of status polls costs no round. A batch that polls AND acts
+        // still costs one, because it did work. Polling a running build is waiting, and waiting
+        // must not consume the budget that exists to stop runaway tool loops.
+        val pollOnly = calls.isNotEmpty() && calls.all { AgentToolWire.isPollTool(it.name) }
+        if (!pollOnly) toolRound++
         // Section 5: one change set per tool round, so two separate operations can never be
         // merged into one misleading Files Changed row.
         com.codespace.ide.agent.AgentWriteJournal.beginOperation(conversationId)

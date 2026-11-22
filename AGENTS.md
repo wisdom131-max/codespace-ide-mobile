@@ -8826,3 +8826,21 @@ cache breakpoint, and it is never on the clock.
 
 Engine suite: 337 tests pass (336 before + 1 new). The app module is not compiled here; CI is the
 first build. `ChatSession` now passes the clock as `volatileSystemTail` instead of appending it.
+
+---
+
+**2026-11-22 (fifteenth commit) — catalog 13 finished: a poll is not a step.**
+
+[AGENT] The step cap was raised from 6 to 25, which made long jobs survivable but left the cause
+in place: `runTools` incremented `toolRound` for every batch, so asking "is the build finished yet"
+cost a step exactly like writing a file did. One long build could spend the whole budget while
+doing no work at all, and the model would then be cut off mid-task looking like it had given up.
+
+`AgentToolWire.POLL_TOOLS` names the tools that only ASK about the world (`job_status`,
+`terminal_list`). A batch made up ENTIRELY of those no longer increments the counter. A batch that
+polls and also acts still counts, because it did work - the exemption is for waiting, not for a
+free ride. The step cap therefore keeps its purpose (stopping runaway tool loops) without
+punishing patience.
+
+App-side only; the app module is not compiled here, so CI is the first build. Engine suite
+unaffected and still 337.
