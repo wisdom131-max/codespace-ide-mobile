@@ -2942,6 +2942,11 @@ You can use multiple tools in sequence. When done, give a final summary.
         fun hit(line: String): Boolean {
             if (line.contains(pattern, ignoreCase = true)) return true
             if (searchTerms.size < 2) return false
+            // PROJECT EIGHT 8.56 (catalog 98 wiring): ShadowDecision existed and nothing gated on it.
+            // Widening changes what the tool returns, so it is bucketed per project rather than
+            // all-or-nothing: a project that gets it keeps getting it, and the percentage can be
+            // dialled down without a code change if the extra recall ever costs precision.
+            if (!com.codespace.ide.engine.ShadowDecision.inCanary(path, 100)) return false
             val low = line.lowercase()
             return searchTerms.all { low.contains(it.lowercase()) }
         }
