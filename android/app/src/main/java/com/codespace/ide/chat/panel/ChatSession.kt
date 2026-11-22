@@ -1082,7 +1082,20 @@ class ChatSession internal constructor(
                 }
                 ui.value = ui.value.copy(streaming = false)
             } catch (t: Throwable) {
-                appendRow(ChatRowModel.Failed(t.message ?: "Send failed", "", true))
+                // PROJECT EIGHT 8.61 (catalog 93/94/95 wiring): ProviderErrors could name a failure
+                // precisely and nothing rendered that name, so the user met a raw exception string.
+                // The class decides the headline and whether a retry is honest; the raw text still
+                // travels as the detail, because a message scrubbed of what the provider said is a
+                // message nobody can diagnose.
+                val cls = com.codespace.ide.engine.ProviderErrors.classify(t)
+                appendRow(
+                    ChatRowModel.Failed(
+                        com.codespace.ide.engine.ErrorAdvice.headline(cls),
+                        (com.codespace.ide.engine.ErrorAdvice.advice(cls) + " " +
+                            com.codespace.ide.engine.Redaction.sanitize(t.message ?: "")).trim(),
+                        com.codespace.ide.engine.ErrorAdvice.retryable(cls),
+                    ),
+                )
                 ui.value = ui.value.copy(streaming = false)
             }
         }
