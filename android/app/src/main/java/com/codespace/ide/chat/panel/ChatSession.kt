@@ -1539,7 +1539,24 @@ class ChatSession internal constructor(
                         .fromLedger(allSources.drop(ledgerMark)) else emptyList()
                 val rowsWithSources =
                     if (turnSources.isEmpty()) rows else rows + listOf(ChatRowModel.Sources(turnSources))
-                ui.value = st.copy(rows = rowsWithSources, streaming = false)
+                // PROJECT EIGHT 8.41 (catalog 80 wiring): a claim of success needs evidence, and the
+                // evidence is this turn's OWN ledger - a tool that actually ran - never the model's
+                // word. Only an ANSWER is checked; progress narration is not a claim. The answer
+                // itself is never edited: the note sits beside it, so the user sees both.
+                val claimNotice = if (kind != ChatRowModel.StreamKind.ANSWER) emptyList() else {
+                    val ids = buildSet {
+                        if (taskSteps.any { it.contains("test", true) }) add("tests")
+                        if (taskSteps.any { it.contains("build", true) }) add("build")
+                        if (taskSteps.any { it.contains("write", true) || it.contains("edit", true) }) add("files")
+                    }
+                    com.codespace.ide.engine.ClaimGuard.describe(
+                        com.codespace.ide.engine.ClaimGuard.unsupported(
+                            shown,
+                            com.codespace.ide.engine.ClaimGuard.Evidence(ids),
+                        ),
+                    ).let { note -> if (note.isBlank()) emptyList() else listOf(ChatRowModel.InfoNote(note)) }
+                }
+                ui.value = st.copy(rows = rowsWithSources + claimNotice, streaming = false)
                 // PHASE 2: the turn is genuinely over, so the queue may advance. Only here.
                 drainQueueAfterTurn()
                 when (decision) {
