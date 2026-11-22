@@ -118,6 +118,15 @@ data class EngineConfig(
      * which keeps every existing request byte-identical - the same contract [systemInstruction] has.
      */
     val toolDeclarations: List<ToolDeclaration> = emptyList(),
+    /**
+     * PROJECT NINE 9.58 (catalog 15): models to try, in order, when a send fails for a reason the
+     * provider itself calls retryable. Empty by default, which is the owner's decision and also the
+     * safe one: a request with no chain behaves exactly as it did before.
+     *
+     * Same provider only. The adapter, endpoint and headers are chosen before the attempt loop, so a
+     * model from another provider would be sent to the wrong endpoint - worse than failing.
+     */
+    val fallbackModels: List<String> = emptyList(),
 )
 
 /** Events emitted while a send runs. Cold flow: nothing starts until collect. */
