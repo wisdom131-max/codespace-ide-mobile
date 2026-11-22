@@ -164,6 +164,20 @@ class ChatEngineImpl(
     override fun restoreHistory(history: List<ChatMessage>) = state.restore(history)
 
     override fun send(userText: String, attachments: List<ChatAttachment>, config: EngineConfig): Flow<EngineEvent> = flow {
+        // PROJECT NINE 9.41 (catalog 79 WIRED): refuse input that cannot be sent BEFORE it is
+        // appended, so a pasted binary blob fails with a specific reason instead of travelling to
+        // the provider and returning as an unhelpful error that costs a round.
+        //
+        // Only when there is no attachment. A photo with no caption is a legitimate send, and a
+        // blank check would refuse it, which is why the attachment case is exempt rather than
+        // special-cased afterwards.
+        if (attachments.isEmpty()) {
+            val limits = InputLimits.check(userText)
+            if (!limits.ok) {
+                emit(EngineEvent.Failed(ChatError.BadRequest(limits.reason)))
+                return@flow
+            }
+        }
         state.append(ChatRole.USER, userText, MessageState.DONE)
         val eligible = state.snapshot().filter { it.state == MessageState.DONE && it.text.isNotEmpty() }
         val mode = HistoryMode.parse(config.historyMode)
