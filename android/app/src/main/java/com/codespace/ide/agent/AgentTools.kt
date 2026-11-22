@@ -2954,6 +2954,15 @@ You can use multiple tools in sequence. When done, give a final summary.
             if (line.contains(pattern, ignoreCase = true)) literalHits.add(display)
             else if (hit(line)) widenedHits.add(display)
         }
+        // PROJECT EIGHT 8.57 (catalog 47 wiring): ask the index before walking the tree.
+        // LexicalIndex knew the SQL and had no handle to run it against; ProjectStore supplies
+        // one. SQLite ranks these with bm25, so the order is relevance, not walk order.
+        val store = com.codespace.ide.store.ProjectStore.of(context)
+        val indexedHits = store.searchFiles(searchTerms, 60)
+        if (indexedHits.isNotEmpty()) return indexedHits.joinToString("\n").take(12000)
+        // What the walk reads is indexed on the way past, so the next search for a different
+        // pattern is answered by SQLite instead of re-reading the whole tree.
+        val indexQueue = ArrayList<Pair<String, String>>()
         // CH06 (P4h): the walk caps are now HONEST — the old take(500) stopped
         // silently (matches looked complete) and large files were skipped with
         // no note. Cap hit + skipped-file count now ride the result.
@@ -2974,15 +2983,19 @@ You can use multiple tools in sequence. When done, give a final summary.
                             record(line, "${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
                     }
                 } else {
-                    f.useLines { lines ->
-                        lines.forEachIndexed { i, line ->
-                            if (hit(line))
-                                record(line, "${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
-                        }
+                    val text = f.readText()
+                    text.lineSequence().forEachIndexed { i, line ->
+                        if (hit(line))
+                            record(line, "${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
+                    }
+                    if (indexQueue.size < 120 && text.length <= 60_000) {
+                        indexQueue.add(f.absolutePath to text)
                     }
                 }
             } catch (_: Exception) {}
         }
+        // Written after the walk, not during it: the search result never waits on indexing.
+        indexQueue.forEach { (p, b) -> store.indexFile(p, b) }
         // Fusion last: both lists are complete, so one ordering is produced from the evidence.
         val fused = com.codespace.ide.engine.ReciprocalRankFusion
             .fuse(listOf(literalHits.toList(), widenedHits.toList()))
