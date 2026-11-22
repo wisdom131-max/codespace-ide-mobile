@@ -1320,8 +1320,8 @@ class ChatSession internal constructor(
         offered: List<String>,
         memory: String = "",
         request: String = requestAtSend,
-                    nativeToolWire = nativeDeclarations.isNotEmpty(),
-            ): String {
+        nativeToolWire: Boolean = false,
+    ): String {
         // 2026-11-11 (Wave 1 Group A budget fix): this used to append AgentToolWire.protocol(mode)
         // - which advertised the ENTIRE mode catalogue - and then the filtered block on top, so the
         // prompt carried both (Agent 13,170 chars, Ask 5,848, measured). Composition now lives in
@@ -1348,7 +1348,7 @@ class ChatSession internal constructor(
         val composed = ChatInstructions.build(
             mode, sendTools, offered, wsBlock,
             if (mcpHint.isBlank()) mcpDocs else mcpDocs + "\n\n" + mcpHint,
-            loaded, memory,
+            loaded, memory, nativeToolWire,
         )
         // PROJECT EIGHT 8.3 (catalog B1): the agent had no clock, so "what time is it", "today" and
         // "in an hour" were answered against the training cutoff. Appended here because every send
@@ -1949,7 +1949,8 @@ class ChatSession internal constructor(
             val refreshed = if (ToolLoadout.version() != loadoutVersionAtSend) {
                 loadoutVersionAtSend = ToolLoadout.version()
                 cfg.copy(systemInstruction = buildInstruction(
-                    mode, true, wsBlockForRefresh, offeredAtSend, memoryAtSend                nativeToolWire = nativeDeclarations.isNotEmpty(),
+                    mode, true, wsBlockForRefresh, offeredAtSend, memoryAtSend,
+                    nativeToolWire = nativeDeclarations.isNotEmpty(),
             ))
             } else cfg
             // P4.6/4.7: a chain of ten tools used to send all ten results again, unbounded, on a
