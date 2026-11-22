@@ -326,6 +326,11 @@ class ChatEngineImpl(
         var attemptCfg = config
         var attemptPayload = payload
         var retriedCeilingField = false
+        // catalog 15: models already tried this turn, so a chain cannot loop back to a failed one.
+        val triedModels = LinkedHashSet<String>()
+        // catalog 11: candidate answers, kept when the same question ends up asked twice.
+        val candidates = ArrayList<String>()
+        var askedTwice = false
         try {
           while (true) {
             try {
@@ -419,6 +424,26 @@ class ChatEngineImpl(
                 // The text stays exactly as streamed; this row only says it is not the whole answer.
                 emit(EngineEvent.Truncated(endReason, truncatedNote(endReason)))
             }
+            // PROJECT NINE 9.59 (catalog 11 WIRED): an empty answer is not an answer. The question
+            // is asked once more, then the consensus picker chooses between the candidates. The
+            // one-retry limit is what keeps this honest: a second blank answer is the result.
+            if (builder.isBlank() && !askedTwice) {
+                askedTwice = true
+                candidates.add(builder.toString())
+                builder.setLength(0)
+                parser = SseParser()
+                done = false
+                continue
+            }
+            candidates.add(builder.toString())
+            if (candidates.size > 1) {
+                val chosen = DebateConsensus.decide(candidates)?.answer
+                if (!chosen.isNullOrEmpty() && chosen != builder.toString()) {
+                    builder.setLength(0)
+                    builder.append(chosen)
+                    state.update(responseMsg.id) { it.copy(text = chosen) }
+                }
+            }
             break   // the attempt finished; the retry loop may only re-run on a named refusal
             } catch (inner: TransportHttpException) {
                 // ONE retry, and only when the provider's own 400/422 NAMES the answer-ceiling
@@ -428,7 +453,26 @@ class ChatEngineImpl(
                 val flip = if (!retriedCeilingField && builder.isEmpty())
                     MaxTokensField.retryWith(attemptCfg.maxTokensField, inner.status, inner.body)
                 else null
-                if (flip == null) throw inner
+                if (flip == null) {
+                    // PROJECT NINE 9.58 (catalog 15 WIRED): a retryable refusal with nothing
+                    // rendered yet is what a fallback chain is for. Only while the answer is still
+                    // empty - retrying after text has streamed would render two answers.
+                    if (builder.isNotEmpty()) throw inner
+                    val chain = FallbackChain.Chain(
+                        models = config.fallbackModels,
+                        enabled = config.fallbackModels.isNotEmpty(),
+                    )
+                    val next = FallbackChain.nextAfter(chain, attemptCfg.modelId, true, triedModels)
+                    if (next == null) throw inner
+                    triedModels.add(attemptCfg.modelId)
+                    attemptCfg = attemptCfg.copy(modelId = next)
+                    attemptPayload = adapter.withTools(
+                        adapter.payloadWithHistory(window, userText, attachments, attemptCfg, exchanges()),
+                        attemptCfg,
+                    )
+                    parser = SseParser()
+                    done = false
+                } else {
                 retriedCeilingField = true
                 attemptCfg = attemptCfg.copy(maxTokensField = flip)
                 attemptPayload = adapter.withTools(
@@ -437,6 +481,7 @@ class ChatEngineImpl(
                 )
                 parser = SseParser()
                 done = false
+                }
             }
           }
         } catch (t: TransportHttpException) {
