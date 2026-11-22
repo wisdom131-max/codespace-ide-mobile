@@ -654,13 +654,15 @@ class ChatSession internal constructor(
         // correctness bug dressed as a speed feature. Refusing a double send is the part that is
         // both safe and the part that actually spends money twice.
         val sendKey = com.codespace.ide.engine.SemanticCacheKey.of(userText, selection.value.modelId)
-        val nowMs = System.currentTimeMillis()
-        val lastSend = recentSends[sendKey]
-        if (lastSend != null && nowMs - lastSend < 8_000) {
-            appendRow(ChatRowModel.InfoNote("That message was just sent, so it was not sent twice."))
+        // Only an identical request that is STILL RUNNING is a double tap. A different question
+        // sent mid-answer is a deliberate replacement and must go through; so must asking the
+        // same question again once the previous answer has landed. A time window cannot tell
+        // those apart, which is why this checks what is in flight rather than what was recent.
+        if (ui.value.streaming && inFlightKey == sendKey) {
+            appendRow(ChatRowModel.InfoNote("That message is already being sent, so it was not sent twice."))
             return
         }
-        recentSends[sendKey] = nowMs
+        inFlightKey = sendKey
         // PROJECT EIGHT 8.58 (catalog 32 wiring): a task that died at step 9 resumes at step 9.
         // TaskCheckpoint could always serialise a position; there was nowhere to put it. The
         // store is that place. A checkpoint that cannot be read is REPORTED, never silently
@@ -1402,8 +1404,14 @@ class ChatSession internal constructor(
     /** The request this turn is serving, so a checkpoint can name what it was for. */
     private var currentGoal: String = ""
 
-    /** Recently sent requests, so a double tap cannot spend the same request twice. */
-    private val recentSends = HashMap<String, Long>()
+    /**
+     * The request currently in flight, so a double tap cannot spend it twice.
+     *
+     * Deliberately not a history of everything sent: a history would refuse a deliberate re-ask
+     * of a question that has already been answered, which is a normal thing to want. Only the
+     * request that is actually running can be a duplicate of itself.
+     */
+    private var inFlightKey: String? = null
 
     /** Where this conversation's checkpoint lives in the store. */
     private fun checkpointKey(): String = "checkpoint/" + conversationId
