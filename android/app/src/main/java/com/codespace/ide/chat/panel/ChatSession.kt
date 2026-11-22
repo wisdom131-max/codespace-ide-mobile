@@ -1333,7 +1333,12 @@ class ChatSession internal constructor(
     private fun taskBlock(): String = com.codespace.ide.engine.PromptBlocks.render(
         "",
         if (taskSteps.isEmpty()) "" else "## ALREADY DONE THIS TURN\n" + taskSteps.joinToString(", "),
-        "",
+        // PROJECT EIGHT 8.47 (catalog 10 wiring): the critic pass, as a checklist the model
+        // answers to itself before declaring completion. Free at runtime - a few lines of
+        // text, no extra call - and shown only once a tool has run, because a pure question
+        // has nothing to check.
+        if (taskSteps.isEmpty()) "" else "## BEFORE YOU FINISH\n" +
+            com.codespace.ide.engine.SelfCritique.CHECKLIST.joinToString("\n") { "- " + it },
     )
 
     private fun buildInstruction(
