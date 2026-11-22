@@ -1339,6 +1339,13 @@ class ChatSession internal constructor(
     /** What this turn has already done, so a continuation cannot silently repeat itself. */
     private val taskSteps = LinkedHashSet<String>()
 
+    /**
+     * PROJECT EIGHT 8.52 (catalog 80 evidence wiring): EvidenceLedger existed and the claim
+     * guard inferred evidence by string-matching tool names. A ledger records the KIND of work
+     * actually performed, so 'the tests pass' is judged against something that really ran.
+     */
+    private val evidence = com.codespace.ide.engine.EvidenceLedger()
+
     private fun taskBlock(): String = com.codespace.ide.engine.PromptBlocks.render(
         "",
         // PROJECT EIGHT 8.50 (catalog 4 wiring): PlanDigest existed and nothing rendered through
@@ -1564,11 +1571,10 @@ class ChatSession internal constructor(
                 // word. Only an ANSWER is checked; progress narration is not a claim. The answer
                 // itself is never edited: the note sits beside it, so the user sees both.
                 val claimNotice = if (kind != ChatRowModel.StreamKind.ANSWER || !flags.isOn("claim_guard")) emptyList() else {
-                    val ids = buildSet {
-                        if (taskSteps.any { it.contains("test", true) }) add("tests")
-                        if (taskSteps.any { it.contains("build", true) }) add("build")
-                        if (taskSteps.any { it.contains("write", true) || it.contains("edit", true) }) add("files")
-                    }
+                    val ids = com.codespace.ide.engine.ClaimGuard.Claim.values()
+                        .map { it.id }
+                        .filter { evidence.has(it) }
+                        .toSet()
                     com.codespace.ide.engine.ClaimGuard.describe(
                         com.codespace.ide.engine.ClaimGuard.unsupported(
                             shown,
@@ -1750,7 +1756,19 @@ class ChatSession internal constructor(
         val pollOnly = calls.isNotEmpty() && calls.all { AgentToolWire.isPollTool(it.name) }
         if (!pollOnly) toolRound++
         // Group A (catalog 31): record what was done, not just that something was done.
-        calls.forEach { taskSteps.add(it.name) }
+        calls.forEach { call ->
+            taskSteps.add(call.name)
+            val n = call.name.lowercase()
+            evidence.record(
+                when {
+                    n.contains("test") -> "tests"
+                    n.contains("build") || n.contains("gradle") -> "build"
+                    n.contains("write") || n.contains("edit") || n.contains("create") -> "files"
+                    else -> "tool"
+                },
+                call.name,
+            )
+        }
         // Section 5: one change set per tool round, so two separate operations can never be
         // merged into one misleading Files Changed row.
         com.codespace.ide.agent.AgentWriteJournal.beginOperation(conversationId)
