@@ -3317,7 +3317,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                     com.codespace.ide.agent.research.SiteAdapters.feed(page.body, url)
                 com.codespace.ide.agent.research.SiteAdapters.Kind.GENERIC -> ""
             }
-            val extracted = if (adapted.isNotBlank()) adapted else {
+            val rawExtracted = if (adapted.isNotBlank()) adapted else {
                 when {
                     page.contentType.contains("json", true) -> prettyJson(page.body, 5000)
                     page.contentType.contains("html", true) || page.body.trimStart().startsWith("<") ->
@@ -3325,6 +3325,12 @@ You can use multiple tools in sequence. When done, give a final summary.
                     else -> page.body.take(5000)
                 }
             }
+            // PROJECT NINE 9.55 (catalog 25 WIRED): a long page used to be shipped whole, which is
+            // most of why a fetch could eat a turn's budget. Past 6,000 characters the page is
+            // compressed down to the sentences that matter, against the page's own title.
+            val extracted = if (rawExtracted.length > 6000)
+                com.codespace.ide.engine.ExtractiveCompressor.compress(rawExtracted, page.title, 12).text
+            else rawExtracted
             if (extracted.isBlank()) {
                 return "Fetched $url (HTTP ${page.code}, ${page.contentType.ifBlank { "unknown type" }}) " +
                     "but no readable text was found. The page may be script-rendered."
