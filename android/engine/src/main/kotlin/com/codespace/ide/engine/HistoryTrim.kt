@@ -21,11 +21,17 @@ object HistoryTrim {
         val pinned: Boolean = false,
     )
 
-    data class Plan(val dropped: Set<Int>, val keptTokens: Int, val droppedTokens: Int)
+    data class Plan(
+        val dropped: Set<Int>,
+        val keptTokens: Int,
+        val droppedTokens: Int,
+        /** False when even dropping everything droppable leaves the transcript over budget. */
+        val fits: Boolean,
+    )
 
     fun plan(entries: List<Entry>, budgetTokens: Int): Plan {
         val total = entries.sumOf { it.tokens }
-        if (total <= budgetTokens) return Plan(emptySet(), total, 0)
+        if (total <= budgetTokens) return Plan(emptySet(), total, 0, true)
         var over = total - budgetTokens
         val dropped = LinkedHashSet<Int>()
         val order = entries
@@ -37,6 +43,7 @@ object HistoryTrim {
             over -= e.tokens
         }
         val droppedTokens = entries.filter { dropped.contains(it.index) }.sumOf { it.tokens }
-        return Plan(dropped, total - droppedTokens, droppedTokens)
+        val kept = total - droppedTokens
+        return Plan(dropped, kept, droppedTokens, kept <= budgetTokens)
     }
 }

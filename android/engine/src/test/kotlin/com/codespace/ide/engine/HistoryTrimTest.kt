@@ -51,3 +51,19 @@ class HistoryTrimTest {
         assertEquals(500, plan.keptTokens)
     }
 }
+
+class HistoryTrimFitTest {
+
+    @Test
+    fun aPlanThatCannotFitSaysSo() {
+        val entries = listOf(HistoryTrim.Entry(0, HistoryTrim.Priority.MUST_KEEP, 900))
+        val plan = HistoryTrim.plan(entries, 100)
+        assertTrue("mustKeep alone is over budget, so fits must be false", !plan.fits)
+    }
+
+    @Test
+    fun aPlanThatFitsSaysSo() {
+        val entries = listOf(HistoryTrim.Entry(0, HistoryTrim.Priority.LOW, 90))
+        assertTrue(HistoryTrim.plan(entries, 100).fits)
+    }
+}
