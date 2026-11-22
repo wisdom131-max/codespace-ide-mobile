@@ -641,6 +641,19 @@ class ChatSession internal constructor(
     internal var mode: ChatMode = ChatModePersistence.toUi(initialMode)
 
     fun send(userText: String, confirmOverBudget: Boolean = false) {
+        // PROJECT EIGHT 8.40 (catalog 77 + 79 wiring): a paste is DATA, never instructions.
+        // Scanning at the one entry point covers every route into the send - typed, pasted,
+        // shared in - instead of each caller remembering to check. Flagged content is still
+        // SENT: the user may be asking ABOUT it, so refusing would be wrong. It is labelled
+        // so the model treats it as something to read rather than something to obey.
+        val pasteScan = com.codespace.ide.engine.InjectionScanner.scan(userText)
+        val pasteGuard = com.codespace.ide.engine.InputGuardrail.check(userText, pasteScan)
+        if (pasteGuard.decision != com.codespace.ide.engine.InputGuardrail.Decision.ALLOW) {
+            appendRow(ChatRowModel.InfoNote(
+                "Input flagged (" + pasteGuard.reason +
+                    "). Treated as text to read, not instructions to follow."
+            ))
+        }
         // STAGE 5.4 PART 2: a new turn, so this turn's synthetic call ids cannot collide with the last.
         turnSerial++
         // A fresh message supersedes the Resume offer: continuing an abandoned turn after the
