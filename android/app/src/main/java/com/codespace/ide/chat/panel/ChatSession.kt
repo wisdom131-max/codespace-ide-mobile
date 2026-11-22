@@ -674,9 +674,9 @@ class ChatSession internal constructor(
                     is com.codespace.ide.engine.TaskCheckpoint.Restore.Ok ->
                         if (!r.state.isComplete && r.state.stepIndex > 0) {
                             val progress = if (r.state.totalSteps > 0) {
-                                r.state.stepIndex + " of " + r.state.totalSteps + " steps were already done."
+                                "${r.state.stepIndex} of ${r.state.totalSteps} steps were already done."
                             } else {
-                                r.state.stepIndex + " steps were already done."
+                                "${r.state.stepIndex} steps were already done."
                             }
                             appendRow(ChatRowModel.InfoNote("Picking up where the last turn stopped: " + progress))
                         }
