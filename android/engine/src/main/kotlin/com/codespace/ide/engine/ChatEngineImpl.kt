@@ -182,6 +182,14 @@ class ChatEngineImpl(
         // stream of events about the turn was never recorded. Published here, before the turn runs,
         // so a reader can tell a started turn from one that never happened.
         AgentEventBus.publish("turn.start", "session=" + sessionId, System.currentTimeMillis())
+        // PROJECT NINE 9.47 (catalog 36 WIRED): the episode type could render and parse and had
+        // nowhere to keep one. Each turn now files a short episode, so "what did I ask earlier"
+        // has an answer that is not a re-read of the whole transcript.
+        EpisodicMemory.record(
+            id = sessionId + ":" + System.currentTimeMillis(),
+            startedAt = System.currentTimeMillis(),
+            summary = userText.take(200),
+        )
         // PROJECT NINE 9.46 (catalog 33 WIRED): a snapshot of the transcript BEFORE the turn, which
         // is the only moment a rewind can be taken from. Bookkeeping only: nothing reads it back yet
         // in the UI, but the state it would need now exists.
