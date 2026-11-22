@@ -2969,7 +2969,19 @@ You can use multiple tools in sequence. When done, give a final summary.
         // Fusion last: both lists are complete, so one ordering is produced from the evidence.
         val fused = com.codespace.ide.engine.ReciprocalRankFusion
             .fuse(listOf(literalHits.toList(), widenedHits.toList()))
-        val results: List<String> = fused.map { it.id }
+        val ranked: List<String> = fused.map { it.id }
+        // PROJECT EIGHT 8.51 (catalog 54 wiring): MetadataFilter existed and nothing applied it.
+        // A query that names a language or a path shape should not return a hit from every
+        // other one. The filter can never empty the result: if it would, the unfiltered
+        // ranking stands, because a wrong filter must not be indistinguishable from no match.
+        val spec = com.codespace.ide.engine.MetadataFilter.specFromQuery(pattern)
+        val kept = com.codespace.ide.engine.MetadataFilter
+            .apply(
+                ranked.map { com.codespace.ide.engine.MetadataFilter.Doc(it, it.substringBefore(':')) },
+                spec,
+            )
+            .map { it.id }
+        val results: List<String> = if (kept.isEmpty()) ranked else kept
         if (results.isEmpty()) {
             val notes = buildList {
                 if (fileCapHit) add("the 500-file scan cap was hit — results are PARTIAL; narrow the path")
