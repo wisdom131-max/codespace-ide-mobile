@@ -19,9 +19,17 @@ object AttentionAnchors {
             val line = rule.trim()
             if (line.isEmpty()) continue
             if (kept.size >= maxRules) break
-            if (used + line.length > maxChars) break
-            kept.add(line)
-            used += line.length
+            val remaining = maxChars - used
+            if (remaining <= 0) break
+            // Truncate rather than give up. Breaking on an over-long rule meant one wordy saved rule
+            // silently disabled every anchor after it, which is the opposite of the point.
+            val fitted = when {
+                line.length <= remaining -> line
+                remaining > 4 -> line.take(remaining - 3).trimEnd() + "..."
+                else -> line.take(remaining)
+            }
+            kept.add(fitted)
+            used += fitted.length
         }
         if (kept.isEmpty()) return ""
         return kept.joinToString("\n") { "- " + it }
