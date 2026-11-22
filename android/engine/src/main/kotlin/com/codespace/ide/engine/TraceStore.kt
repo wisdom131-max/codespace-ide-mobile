@@ -11,6 +11,19 @@ package com.codespace.ide.engine
  */
 object TraceStore {
 
+    /**
+     * One shelf for the whole process. The engine files a turn here without needing a new
+     * constructor argument, and a reader has exactly one place to look. Tests use their own Store
+     * instance instead, so a shared shelf never makes one test depend on another.
+     */
+    private val shared = Store()
+
+    fun record(label: String, rendered: String, atMs: Long): Record = shared.add(label, rendered, atMs)
+
+    fun recent(afterSeq: Long): List<Record> = shared.since(afterSeq)
+
+    fun latestRecord(): Record? = shared.latest()
+
     data class Record(val seq: Long, val label: String, val rendered: String, val atMs: Long)
 
     class Store(private val maxRecords: Int = 50) {
