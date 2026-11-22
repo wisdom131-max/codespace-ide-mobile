@@ -1472,7 +1472,17 @@ class ChatSession internal constructor(
         ) + if (taskSteps.isEmpty()) "" else "\n" + com.codespace.ide.engine.FewShotSelector
             .select(taskSteps.joinToString(" "), fewShotExamples, 2)
             .joinToString("\n") { "- " + it.text },
-    )
+    ).also {
+        // PROJECT NINE 9.54 (catalog 38 WIRED): the finish checklist is a procedure worth keeping,
+        // not just prompt text rebuilt every turn. Learned once (the book refuses duplicates) so a
+        // later step can match it by request instead of re-deriving it.
+        com.codespace.ide.engine.SkillBook.learn(
+            com.codespace.ide.engine.SkillRecord.Skill(
+                name = "finish-checklist",
+                steps = com.codespace.ide.engine.SelfCritique.CHECKLIST,
+            ),
+        )
+    }
 
     private fun buildInstruction(
         mode: ChatMode,

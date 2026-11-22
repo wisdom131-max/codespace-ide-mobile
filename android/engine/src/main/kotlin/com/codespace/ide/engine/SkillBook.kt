@@ -49,4 +49,11 @@ object SkillBook {
         private fun terms(s: String): Set<String> =
             s.lowercase().split(Regex("[^a-z0-9_]+")).filter { it.length >= 3 }.toSet()
     }
+
+    /** One book for the process, so a procedure learned in one turn is available to the next. */
+    private val shared = Book()
+
+    fun learn(skill: SkillRecord.Skill): Boolean = shared.learn(skill)
+
+    fun match(request: String): SkillRecord.Skill? = shared.match(request)
 }
