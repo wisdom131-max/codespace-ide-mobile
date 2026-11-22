@@ -2912,6 +2912,22 @@ You can use multiple tools in sequence. When done, give a final summary.
         val dir = File(resolveToolPath(context, path))
         if (!dir.exists()) return "Directory not found: $path"
         val results = mutableListOf<String>()
+        // PROJECT EIGHT 8.42 (catalog 52 wiring): a literal substring match cannot find a code
+        // identifier from prose. "fact retrieval" never matched FactRetrieval, so the tool said
+        // "no matches" on files that plainly contained it.
+        //
+        // Deliberately conservative: the literal pattern still wins outright, and the widened
+        // form requires EVERY derived term to appear on the line. Requiring all rather than any
+        // keeps precision - "fact" alone would match half the repo - while still bridging prose
+        // to identifiers, because QueryRewriter emits the split parts (fact, retrieval) as well.
+        val searchTerms = com.codespace.ide.engine.QueryRewriter
+            .rewrite(pattern, 12).split(' ').map { it.trim() }.filter { it.length > 1 }
+        fun hit(line: String): Boolean {
+            if (hit(line)) return true
+            if (searchTerms.size < 2) return false
+            val low = line.lowercase()
+            return searchTerms.all { low.contains(it.lowercase()) }
+        }
         // CH06 (P4h): the walk caps are now HONEST — the old take(500) stopped
         // silently (matches looked complete) and large files were skipped with
         // no note. Cap hit + skipped-file count now ride the result.
@@ -2928,13 +2944,13 @@ You can use multiple tools in sequence. When done, give a final summary.
                 val stagedContent = com.codespace.ide.chat.PendingChangesStore.overlayFor(f.absolutePath)
                 if (stagedContent != null) {
                     stagedContent.lineSequence().forEachIndexed { i, line ->
-                        if (line.contains(pattern, ignoreCase = true))
+                        if (hit(line))
                             results.add("${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
                     }
                 } else {
                     f.useLines { lines ->
                         lines.forEachIndexed { i, line ->
-                            if (line.contains(pattern, ignoreCase = true))
+                            if (hit(line))
                                 results.add("${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
                         }
                     }
