@@ -1950,8 +1950,11 @@ class ChatSession internal constructor(
                 loadoutVersionAtSend = ToolLoadout.version()
                 cfg.copy(systemInstruction = buildInstruction(
                     mode, true, wsBlockForRefresh, offeredAtSend, memoryAtSend,
-                    nativeToolWire = nativeDeclarations.isNotEmpty(),
-            ))
+                    // cfg is THIS send's config, so its declarations are exactly what went
+                    // on the wire. nativeDeclarations is a local of the send function and is
+                    // not in scope in this continuation path.
+                    nativeToolWire = cfg.toolDeclarations.isNotEmpty(),
+                ))
             } else cfg
             // P4.6/4.7: a chain of ten tools used to send all ten results again, unbounded, on a
             // phone. Past the ceiling the OLDER results are compressed with an explicit marker and
