@@ -2911,7 +2911,12 @@ You can use multiple tools in sequence. When done, give a final summary.
     private fun searchFiles(path: String, pattern: String, context: android.content.Context): String {
         val dir = File(resolveToolPath(context, path))
         if (!dir.exists()) return "Directory not found: $path"
-        val results = mutableListOf<String>()
+        // PROJECT EIGHT 8.49 (catalog 53 wiring): two ranked lists, fused, instead of one flat
+        // pile. A line matching the literal pattern is stronger evidence than one that merely
+        // contains every derived term, and ReciprocalRankFusion is how that difference survives
+        // into the order the model reads. A line in both lists wins outright.
+        val literalHits = LinkedHashSet<String>()
+        val widenedHits = LinkedHashSet<String>()
         // PROJECT EIGHT 8.42 (catalog 52 wiring): a literal substring match cannot find a code
         // identifier from prose. "fact retrieval" never matched FactRetrieval, so the tool said
         // "no matches" on files that plainly contained it.
@@ -2927,6 +2932,10 @@ You can use multiple tools in sequence. When done, give a final summary.
             if (searchTerms.size < 2) return false
             val low = line.lowercase()
             return searchTerms.all { low.contains(it.lowercase()) }
+        }
+        fun record(line: String, display: String) {
+            if (line.contains(pattern, ignoreCase = true)) literalHits.add(display)
+            else if (hit(line)) widenedHits.add(display)
         }
         // CH06 (P4h): the walk caps are now HONEST — the old take(500) stopped
         // silently (matches looked complete) and large files were skipped with
@@ -2945,18 +2954,22 @@ You can use multiple tools in sequence. When done, give a final summary.
                 if (stagedContent != null) {
                     stagedContent.lineSequence().forEachIndexed { i, line ->
                         if (hit(line))
-                            results.add("${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
+                            record(line, "${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
                     }
                 } else {
                     f.useLines { lines ->
                         lines.forEachIndexed { i, line ->
                             if (hit(line))
-                                results.add("${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
+                                record(line, "${f.absolutePath}:${i + 1}: ${line.trim().take(200)}")
                         }
                     }
                 }
             } catch (_: Exception) {}
         }
+        // Fusion last: both lists are complete, so one ordering is produced from the evidence.
+        val fused = com.codespace.ide.engine.ReciprocalRankFusion
+            .fuse(listOf(literalHits.toList(), widenedHits.toList()))
+        val results: List<String> = fused.map { it.id }
         if (results.isEmpty()) {
             val notes = buildList {
                 if (fileCapHit) add("the 500-file scan cap was hit — results are PARTIAL; narrow the path")
