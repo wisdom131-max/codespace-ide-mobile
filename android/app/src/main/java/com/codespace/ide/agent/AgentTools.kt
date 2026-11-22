@@ -2959,7 +2959,18 @@ You can use multiple tools in sequence. When done, give a final summary.
         // one. SQLite ranks these with bm25, so the order is relevance, not walk order.
         val store = com.codespace.ide.store.ProjectStore.of(context)
         val indexedHits = store.searchFiles(searchTerms, 60)
-        if (indexedHits.isNotEmpty()) return indexedHits.joinToString("\n").take(12000)
+        if (indexedHits.isNotEmpty()) {
+            // PROJECT NINE 9.43 (catalog 55 support WIRED): the index path used a blind
+            // take(12000), which cuts whatever line happens to land on the boundary and drops
+            // everything after it with no note. A half line is worse than no line: the model reads
+            // a truncated match as if that were the whole content. Whole results are kept, and the
+            // cap still holds.
+            val kept = com.codespace.ide.engine.SearchBudget.fit(
+                indexedHits.map { com.codespace.ide.engine.SearchBudget.Item(it, it) },
+                12000,
+            )
+            return kept.joinToString("\n") { it.text }
+        }
         // What the walk reads is indexed on the way past, so the next search for a different
         // pattern is answered by SQLite instead of re-reading the whole tree.
         val indexQueue = ArrayList<Pair<String, String>>()
