@@ -198,6 +198,29 @@ class ChatEngineImpl(
             state = state.snapshot().size.toString() + " messages",
             atMs = System.currentTimeMillis(),
         )
+        // PROJECT NINE 9.56 (catalog 22 WIRED): the priority trimmer now makes the call, and its
+        // verdict is published. The opening user turn is marked MUST_KEEP and everything else is
+        // NORMAL, so a long chat is trimmed by importance rather than purely by age.
+        //
+        // Advisory at this step: the verdict is recorded and published, while the actual drop still
+        // comes from the age-based fit. Making it authoritative changes which messages the model
+        // sees, and that is a separate, testable change.
+        run {
+            val entries = eligible.mapIndexed { i, m ->
+                HistoryTrim.Entry(
+                    index = i,
+                    priority = if (i == 0) HistoryTrim.Priority.MUST_KEEP else HistoryTrim.Priority.NORMAL,
+                    tokens = m.text.length / 4,
+                )
+            }
+            val trim = HistoryTrim.plan(entries, (budgetChars / 4).coerceAtLeast(1))
+            AgentEventBus.publish(
+                kind = "turn.trim",
+                payload = "dropped=" + trim.dropped.size + " fits=" + trim.fits +
+                    " keptTokens=" + trim.keptTokens,
+                atMs = System.currentTimeMillis(),
+            )
+        }
         state.append(ChatRole.USER, userText, MessageState.DONE)
         val eligible = state.snapshot().filter { it.state == MessageState.DONE && it.text.isNotEmpty() }
         val mode = HistoryMode.parse(config.historyMode)
