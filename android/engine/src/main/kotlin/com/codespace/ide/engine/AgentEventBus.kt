@@ -12,6 +12,18 @@ package com.codespace.ide.engine
  */
 object AgentEventBus {
 
+    /**
+     * One bus for the process, so the engine can publish without a constructor change and a reader
+     * has a single place to look. Tests use their own Bus instance.
+     */
+    private val shared = Bus()
+
+    fun publish(kind: String, payload: String, atMs: Long): Event = shared.publish(kind, payload, atMs)
+
+    fun since(afterSeq: Long): List<Event> = shared.since(afterSeq)
+
+    fun recent(): List<Event> = shared.all()
+
     data class Event(val seq: Long, val kind: String, val payload: String, val atMs: Long)
 
     class Bus(private val maxEvents: Int = 200) {
