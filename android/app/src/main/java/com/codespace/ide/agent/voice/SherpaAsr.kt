@@ -92,21 +92,19 @@ object SherpaModelStore {
      * The same shared location the embedding model uses, so a model survives an uninstall, with the
      * app's own folder as the fallback when shared storage is not writable.
      */
-    fun dir(context: Context): File {
-        val shared = File("/storage/emulated/0/CodespaceIDE/models/asr")
-        if (shared.isDirectory || shared.mkdirs()) {
-            if (shared.canWrite()) return shared
-        }
-        val own = File(context.getExternalFilesDir(null) ?: context.filesDir, "models/asr")
-        own.mkdirs()
-        return own
-    }
+    fun dir(context: Context): File =
+        com.codespace.ide.agent.models.ModelDownloads.speechDir(context)
 
+    /**
+     * Presence, not integrity: this runs on the microphone tap, and hashing 45MB there would make the
+     * mic feel broken. Integrity is checked once, at download time, by EmbeddingDownloader - which
+     * refuses a file whose checksum is wrong and keeps the partial for a resumed retry.
+     */
     fun isInstalled(context: Context, model: SherpaModel = SherpaModels.DEFAULT): Boolean {
         val d = dir(context)
         return model.files.all { f ->
             val file = File(d, f.name)
-            file.isFile && file.length() == f.bytes && sha256(file) == f.sha256
+            file.isFile && file.length() == f.bytes
         }
     }
 

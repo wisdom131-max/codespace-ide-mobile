@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.codespace.ide.agent.image.ImageModels
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.agent.voice.SherpaModelStore
+import com.codespace.ide.agent.models.ModelDownloads
 
 /**
  * Settings → Providers and Models. This is the surface the owner asked the keys to
@@ -178,7 +179,7 @@ private fun ImageGenerationSection() {
 @Composable
 private fun OnDeviceSpeechSection() {
     val context = LocalContext.current
-    var status by remember { mutableStateOf(SherpaModelStore.status(context)) }
+    var status by remember { mutableStateOf(ModelDownloads.statusLine(context)) }
     var busy by remember { mutableStateOf(false) }
     var percent by remember { mutableStateOf(0) }
     val handler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
@@ -206,14 +207,13 @@ private fun OnDeviceSpeechSection() {
                         busy = true
                         percent = 0
                         Thread({
-                            val result = SherpaModelStore.ensureDownloaded(context) { done, total ->
-                                val p = if (total > 0) ((done * 100) / total).toInt() else 0
-                                handler.post { percent = p }
-                            }
+                            // The shared path: same resume, same checksum, same retry as the
+                            // embedding model, and it shows up on the same status screen.
+                            ModelDownloads.ensureAll(context)
+                            handler.post { status = ModelDownloads.statusLine(context) }
                             handler.post {
                                 busy = false
-                                status = result.exceptionOrNull()?.message
-                                    ?: SherpaModelStore.status(context)
+                                status = ModelDownloads.statusLine(context)
                             }
                         }, "vncode-asr-download").start()
                     }

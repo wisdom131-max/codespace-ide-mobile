@@ -296,7 +296,14 @@ internal fun rememberVoiceLoop(
                 if (granted) {
                     state.value = VoiceLoopState.LISTENING
                     // On-device when its model is installed: our recorder, our VAD, our engine.
-                    if (localReady) captureRef[0]?.start() else beginMic()
+                    if (localReady) {
+                        captureRef[0]?.start()
+                    } else {
+                        // Not ready: keep listening with the platform recogniser now, and heal the
+                        // model in the background so the next turn can be fully offline.
+                        com.codespace.ide.agent.models.ModelDownloads.ensureSpeech(context)
+                        beginMic()
+                    }
                 } else {
                     permission.launch(Manifest.permission.RECORD_AUDIO)
                 }

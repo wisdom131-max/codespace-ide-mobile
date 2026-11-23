@@ -729,7 +729,11 @@ private fun ChatBody(
     LaunchedEffect(showContextWindow, embeddingRowHidden) {
         if (showContextWindow && !embeddingRowHidden) {
             while (true) {
-                embeddingStatus = com.codespace.ide.agent.embedding.TrainedEmbeddings.describe(localCtx)
+                // One status line for BOTH models, and reading it is what starts them: the owner
+                // should never have to press download for a model the app already knows it needs.
+                embeddingStatus = com.codespace.ide.agent.models.ModelDownloads.autoStart(localCtx).let {
+                    com.codespace.ide.agent.models.ModelDownloads.statusLine(localCtx)
+                }
                 kotlinx.coroutines.delay(700L)
             }
         }
