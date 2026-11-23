@@ -30,7 +30,7 @@ object SearchRank {
         for (s in literal + widened) {
             all[s] = Line(s, s.substringBefore(":"), s)
         }
-        if (all.isEmpty()) return ""
+        if (all.isEmpty()) return noMatches(query)
 
         val candidates = all.values.toList()
         val spec = MetadataFilter.specFromQuery(query)
@@ -40,7 +40,7 @@ object SearchRank {
             .toSet()
         // An empty allow-list means the filter found nothing to say, not that nothing matched.
         val kept = if (allowed.isEmpty()) candidates else candidates.filter { allowed.contains(it.id) }
-        if (kept.isEmpty()) return ""
+        if (kept.isEmpty()) return noMatches(query)
 
         val semantic = SemanticRanker.rank(query, kept.map { SemanticRanker.Doc(it.id, it.text) }, limit)
         val keptIds = kept.map { it.id }.toSet()
@@ -78,4 +78,14 @@ object SearchRank {
             .fit(marked.mapIndexed { i, b -> SearchBudget.Item(i.toString(), b) }, maxChars)
             .joinToString("\n\n") { it.text }
     }
+
+    /**
+     * PROJECT NINE 10.05 (catalog 53 WIRED): a search that finds nothing used to return an empty
+     * string, and the model would either give up or repeat the same search. HyDE's prompt is
+     * returned instead: the model writes the passage that WOULD answer the question and searches
+     * again with its distinctive words. The generator is the model itself, so this costs no extra
+     * call and nothing is invented on its behalf.
+     */
+    private fun noMatches(query: String): String =
+        "No matches for \"" + query + "\".\n" + HydePrompt.build(query)
 }

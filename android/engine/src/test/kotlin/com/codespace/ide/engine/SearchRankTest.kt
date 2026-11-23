@@ -7,8 +7,10 @@ import org.junit.Test
 class SearchRankTest {
 
     @Test
-    fun nothingFoundIsAnEmptyString() {
-        assertEquals("", SearchRank.rank("anything", emptyList(), emptyList()))
+    fun nothingFoundSaysHowToFindIt() {
+        val out = SearchRank.rank("anything", emptyList(), emptyList())
+        assertTrue("says nothing matched", out.contains("No matches"))
+        assertTrue("hands over the HyDE prompt", out.contains("Question: anything"))
     }
 
     @Test
