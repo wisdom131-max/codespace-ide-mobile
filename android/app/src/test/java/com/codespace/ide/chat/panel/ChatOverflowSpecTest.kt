@@ -60,8 +60,9 @@ class ChatOverflowSpecTest {
     @Test
     fun `every other item is always enabled`() {
         val items = ChatOverflowSpec.items(canUndo = true, canRedo = true, viewByDefault = true, canMoveToEditor = true)
-        // Eight since P7.D appended Read Replies Aloud; every one of them must still be actionable.
-        assertEquals(8, items.size)
+        // Nine since Catalog 92 appended Context Window, eight since P7.D appended Read Replies
+        // Aloud; every one of them must still be actionable.
+        assertEquals(9, items.size)
         assertTrue(items.all { it.enabled })
         assertNull(items.first { it.action == ChatOverflowAction.UNDO_LAST_EDIT }.reason)
     }
