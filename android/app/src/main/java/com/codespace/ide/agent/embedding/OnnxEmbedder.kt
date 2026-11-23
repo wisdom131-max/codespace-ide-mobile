@@ -27,35 +27,38 @@ class OnnxEmbedder(modelFile: File, vocabFile: File) : Closeable {
         val n = ids.size
         val shape = longArrayOf(1L, n.toLong())
         val mask = LongArray(n) { 1L }
-        var idsTensor: OnnxTensor? = null
-        var maskTensor: OnnxTensor? = null
-        try {
-            idsTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(ids), shape)
-            maskTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(mask), shape)
-            val inputs = HashMap<String, OnnxTensor>(2)
-            inputs["input_ids"] = idsTensor
-            inputs["attention_mask"] = maskTensor
-            session.run(inputs).use { result ->
-                @Suppress("UNCHECKED_CAST")
-                val hidden = result.get(0).value as Array<Array<FloatArray>>
-                val dim = hidden[0][0].size
-                val pooled = FloatArray(dim)
-                for (t in 0 until n) {
-                    val row = hidden[0][t]
-                    for (d in 0 until dim) pooled[d] += row[d]
+        // Non-null locals inside the try: a nullable tensor cannot be handed to a map that wants a
+        // real one, and the compiler is right to refuse it.
+        val pooled: FloatArray = try {
+            val idsTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(ids), shape)
+            val maskTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(mask), shape)
+            try {
+                val inputs = HashMap<String, OnnxTensor>(2)
+                inputs["input_ids"] = idsTensor
+                inputs["attention_mask"] = maskTensor
+                session.run(inputs).use { result ->
+                    @Suppress("UNCHECKED_CAST")
+                    val hidden = result.get(0).value as Array<Array<FloatArray>>
+                    val dim = hidden[0][0].size
+                    val out = FloatArray(dim)
+                    for (t in 0 until n) {
+                        val row = hidden[0][t]
+                        for (d in 0 until dim) out[d] += row[d]
+                    }
+                    var norm = 0.0
+                    for (d in 0 until dim) norm += out[d].toDouble() * out[d]
+                    norm = Math.sqrt(norm)
+                    if (norm > 1e-8) {
+                        for (d in 0 until dim) out[d] = (out[d] / norm).toFloat()
+                    }
+                    out
                 }
-                var norm = 0.0
-                for (d in 0 until dim) norm += pooled[d].toDouble() * pooled[d]
-                norm = Math.sqrt(norm)
-                if (norm > 1e-8) {
-                    for (d in 0 until dim) pooled[d] = (pooled[d] / norm).toFloat()
-                }
-                return pooled
+            } finally {
+                idsTensor.close()
+                maskTensor.close()
             }
-        } finally {
-            idsTensor?.close()
-            maskTensor?.close()
         }
+        return pooled
     }
 
     override fun close() {
