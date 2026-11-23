@@ -39,6 +39,36 @@ internal object AttachmentPicker {
     const val MAX_ENTRIES = 400
 
     /**
+     * OWNER REPORT (2026-11-23): "the attachment menu showed files that were supposed to be hidden,
+     * example: ide-trash and some others".
+     *
+     * The picker listed a raw directory, so every internal folder the app keeps inside a project
+     * (trash, version history, autosave), every VCS folder and every build cache appeared as if it
+     * were the owner's own content. The Explorer has hidden these for a long time; the picker never
+     * asked. It asks now.
+     *
+     * Scope is deliberate: this hides entries in the ATTACHMENT PICKER only. The Explorer's own
+     * list is untouched, and nothing is deleted or moved - these entries simply are not offered.
+     */
+    private val HIDDEN_NAMES = setOf(
+        // VCS
+        ".git", ".svn", ".hg", ".DS_Store",
+        // tool + IDE caches
+        ".gradle", ".idea", ".kotlin", ".m2", ".venv", ".cache",
+        // framework caches
+        ".next", ".nuxt", ".dart_tool", ".expo", ".terraform", ".tox",
+        // app-internal folders the owner never attaches from
+        ".ide-trash", ".versionhistory", ".autosave",
+        // dependency + build output
+        "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache",
+        "build", "out", "dist", "target",
+    )
+
+    /** True when the picker must not offer this entry at all. */
+    fun isHiddenEntry(name: String): Boolean =
+        name in HIDDEN_NAMES || name.endsWith(".chatapply.tmp") || name.startsWith(".chatapply.")
+
+    /**
      * The label on a file is the TYPE, chosen from the extension: that is what the reference
      * grid shows (Word/Excel/PowerPoint/PDF/photo), and it is the only signal that stays
      * truthful without opening the file.
@@ -104,6 +134,9 @@ internal object AttachmentPicker {
             if (!seen.add(path)) continue
             if (out.size >= cap) { truncated = true; break }
             val name = f.name
+            // Hidden BEFORE the cap is applied, so noise cannot eat the 400 entries the owner
+            // actually needs to see.
+            if (isHiddenEntry(name)) continue
             val isDir = try { f.isDirectory } catch (t: Throwable) { false }
             val size = if (isDir) 0L else try { f.length() } catch (t: Throwable) { 0L }
             out.add(PickerEntry(name, path, isDir, size, kindOf(name, isDir)))

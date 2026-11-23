@@ -111,4 +111,34 @@ class AttachmentPickerTest {
         assertEquals("2 KB", AttachmentPicker.sizeLabel(2048))
         assertEquals("1.5 MB", AttachmentPicker.sizeLabel((1.5 * 1024 * 1024).toLong()))
     }
+
+    /**
+     * OWNER REPORT (2026-11-23): the picker listed .ide-trash and other internal folders. Every one
+     * of these must be absent from the listing, while ordinary files beside them still appear.
+     */
+    @Test
+    fun internalFoldersAndBuildCachesAreNeverOffered() {
+        val dir = root
+        File(dir, ".ide-trash").mkdirs()
+        File(dir, ".versionhistory").mkdirs()
+        File(dir, ".autosave").mkdirs()
+        File(dir, ".git").mkdirs()
+        File(dir, "node_modules").mkdirs()
+        File(dir, "build").mkdirs()
+        File(dir, ".ide-trash/hidden.txt").writeText("x")
+        File(dir, "keep.txt").writeText("x")
+        val names = AttachmentPicker.listing(dir).entries.map { it.name }
+        assertEquals(listOf("keep.txt"), names)
+    }
+
+    /** Hidden entries must not consume the 400-entry budget either. */
+    @Test
+    fun hiddenEntriesDoNotEatTheCap() {
+        val dir = root
+        File(dir, ".ide-trash").mkdirs()
+        repeat(5) { i -> File(dir, "real" + i + ".txt").writeText("x") }
+        val listing = AttachmentPicker.listing(dir, cap = 5)
+        assertEquals(5, listing.entries.size)
+        assertFalse(listing.truncated)
+    }
 }

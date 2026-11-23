@@ -1170,20 +1170,49 @@ private fun readAttachment(
         }
         val bytes = buf.toByteArray()
         val name = uri.lastPathSegment ?: "file"
-        val mime = resolver.getType(uri) ?: guessMimeFromName(name)
-        // WP9: text kinds travel as TEXT (no base64 inflation); binaries as base64.
-        val isTextKind = mime.startsWith("text/") || mime == "application/json" ||
-            mime == "application/xml" || mime == "application/yaml" || mime == "application/x-yaml"
+        val declared = resolver.getType(uri)?.trim().orEmpty()
+        val fromName = guessMimeFromName(name)
+        val binaryDeclared = declared.startsWith("image/") || declared == "application/pdf"
+        // OWNER REPORT (2026-11-23): files were refused that are plainly readable. The type the
+        // provider declares is often useless (octet-stream, or nothing at all), so the CONTENT is
+        // the last word: if it decodes as text, it is text. Images and PDFs keep their declared
+        // kind and never take this path, so nothing that needs base64 is ever read as characters.
+        val sniffed = if (binaryDeclared) null else decodeTextOrNull(bytes)
+        val isTextKind = sniffed != null
+        val mime = when {
+            binaryDeclared -> declared
+            isTextKind && (declared.isBlank() || declared == "application/octet-stream") -> "text/plain"
+            declared.isNotBlank() -> declared
+            isTextKind -> "text/plain"
+            else -> fromName.ifBlank { "application/octet-stream" }
+        }
         session.addPending(
             name = name,
             mimeType = mime,
             base64 = if (isTextKind) "" else android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
             sizeBytes = bytes.size.toLong(),
-            text = if (isTextKind) String(bytes, Charsets.UTF_8) else null,
+            text = sniffed,
         )
     } catch (t: Throwable) {
         session.addPending("unreadable", "", "", 0L) // kind gate prints the honest unreadable note
     }
+}
+
+/**
+ * Returns the bytes as text when they really are text, or null when they are not.
+ *
+ * A NUL byte in the first 8 KB means binary, which is the same rule `file` uses. Anything that
+ * decodes without a shower of replacement characters is text the owner can meaningfully attach.
+ * Deliberately content-based: extension lists always lag behind, and the owner reported files being
+ * refused that were perfectly readable.
+ */
+private fun decodeTextOrNull(bytes: ByteArray): String? {
+    if (bytes.isEmpty()) return null
+    val probe = if (bytes.size > 8192) bytes.copyOfRange(0, 8192) else bytes
+    if (probe.any { it == 0.toByte() }) return null
+    val text = String(bytes, Charsets.UTF_8)
+    val bad = text.count { it == '\uFFFD' }
+    return if (bad * 100 > maxOf(1, text.length)) null else text
 }
 
 private fun guessMimeFromName(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {

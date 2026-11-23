@@ -471,7 +471,14 @@ class ChatSession internal constructor(
         // Android's resolver returns null for plenty of ordinary files (.md, .kt, .json from
         // some providers), so a blank type is not an unreadable file - it is an unanswered
         // question. The name answers it, and it is already what the chip shows the user.
-        val mime = mimeType.ifBlank { mimeForName(name) }
+        // OWNER REPORT (2026-11-23): "my attachment refused some files". Android hands back
+        // application/octet-stream for ordinary source and data files (.kt, .gradle, .log, files
+        // with no extension at all), and that string was taken literally, so a readable text file
+        // was refused as an unsupported kind. An unknown type is an unanswered question, not a
+        // verdict: the name answers it, and if the name cannot, the reader sniffs the content.
+        val declared = mimeType.trim()
+        val mime = if (declared.isBlank() || declared == "application/octet-stream" ||
+            declared == "binary/octet-stream") mimeForName(name) else declared
         // WP9 redaction gate: credential-shaped files never leave the device.
         if (looksLikeCredentialFile(name)) {
             appendRow(ChatRowModel.InfoNote(
@@ -483,7 +490,8 @@ class ChatSession internal constructor(
             mime == "application/yaml" || mime == "application/x-yaml"
         if (!isTextKind && mime != "application/pdf" && !mime.startsWith("image/")) {
             appendRow(ChatRowModel.InfoNote(
-                "Attachment refused: images, PDF and text files can be attached (got " + mime + ")."))
+                "Attachment refused: images, PDF and text files can be attached (got " +
+                    mime.ifBlank { "an unknown type" } + ")."))
             return
         }
         // Capability gate applies to IMAGES/PDF only - every text model takes text.
