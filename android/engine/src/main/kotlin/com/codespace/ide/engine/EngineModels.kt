@@ -106,6 +106,12 @@ data class EngineConfig(
     /** One reasoning control, mapped per provider (Gemini: thinkingBudget; bounded, never -1/dynamic). */
     val reasoningBudget: Int = 1024,
     /**
+     * PROJECT NINE 9.91 (catalog 87): let the complexity router choose the reasoning budget for the
+     * request instead of one fixed number for every question. Off by default, so nothing changes
+     * until it is switched on - the same pattern as the fallback chain and the answer cache.
+     */
+    val routeReasoning: Boolean = false,
+    /**
      * PROJECT NINE 9.80 (catalog 88 WIRED): replay an identical question instead of paying for it
      * twice. Off by default: a cached answer is only safe once the stamp matches, and the stamp is
      * the model plus the conversation length, so a changed conversation never replays.
