@@ -11,8 +11,6 @@ import com.codespace.ide.chat.ui.ChatRowModel
  */
 object CopilotAccessibility {
 
-    /** The owner's stated minimum for anything tappable. */
-    const val MIN_TOUCH_DP = 48
 
     fun toolLabel(activity: ChatRowModel.ToolActivity, state: CopilotPresentation.TaskState): String {
         val what = activity.label.ifBlank { "tool step" }

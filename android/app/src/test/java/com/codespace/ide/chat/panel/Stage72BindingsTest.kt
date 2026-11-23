@@ -143,7 +143,18 @@ class Stage72BindingsTest {
 
     @Test
     fun `the touch target constant meets the stated minimum`() {
-        assertTrue(CopilotAccessibility.MIN_TOUCH_DP >= 48)
+        // OWNER DECISION (2026-11-23): the "everything tappable is 48dp" rule was removed entirely -
+        // 48dp is a recommended TOUCH TARGET, not a required drawn height, and the collapsed tree
+        // header was wasting a third of a line of transcript. The compact header must still clear the
+        // WCAG 2.2 minimum of 24dp, so this test now defends THAT instead of the old number.
+        assertTrue(
+            "the compact header clears the WCAG 24dp minimum",
+            com.codespace.ide.chat.ui.ChatTokens.HEADER_MIN_DP >= 24,
+        )
+        assertTrue(
+            "and it is genuinely compact, not 48dp",
+            com.codespace.ide.chat.ui.ChatTokens.HEADER_MIN_DP < 48,
+        )
     }
 
     @Test

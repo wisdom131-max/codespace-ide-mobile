@@ -97,6 +97,15 @@ object ChatTokens {
     const val NEW_SESSION_VISUAL_HEIGHT = 34
 
     // Typography (sp)
+    /**
+     * OWNER DECISION (2026-11-23): the collapsed tree header is COMPACT, like VS Code's chat rows,
+     * not 48dp. 48dp is the recommended *touch target* on Android - about 9mm - but a touch target
+     * is not the drawn shape. This row is full width, so the finger has hundreds of dp horizontally;
+     * what it does not need is 48dp of empty height in a transcript the user is scanning. 28dp sits
+     * above the WCAG 2.2 minimum of 24dp and well under the old 48.
+     */
+    const val HEADER_MIN_DP = 28
+
     const val FONT_MICRO = 10
     const val FONT_SMALL = 12
     const val FONT_BODY = 14

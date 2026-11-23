@@ -222,12 +222,14 @@ fun ToolActivityRow(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            // PROJECT SEVEN 7.9: the whole header is the control, at least 48dp tall. The chevron on
+            // PROJECT SEVEN 7.9, revised 2026-11-23: the whole header is the control. It is COMPACT
+            // (see ChatTokens.HEADER_MIN_DP) because the row is full width and 48dp of empty height
+            // in a transcript is wasted space, not accessibility. The chevron on
             // its own was roughly a 12dp tap target, which is unusable with a thumb and invisible to
             // TalkBack as anything but a triangle.
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = com.codespace.ide.chat.panel.CopilotAccessibility.MIN_TOUCH_DP.dp)
+                .heightIn(min = ChatTokens.HEADER_MIN_DP.dp)
                 .clickable { expanded = !expanded }
                 .semantics(mergeDescendants = true) {
                     contentDescription = p.title + ". " +
@@ -397,11 +399,12 @@ fun ActivityGroupRow(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            // PROJECT SEVEN 7.9: the header is the control, at least 48dp tall, and it announces what
-            // the group contains instead of reading out a lone triangle.
+            // PROJECT SEVEN 7.9, revised 2026-11-23: the header is the control and it announces what
+            // the group contains instead of reading out a lone triangle. Height is compact; width
+            // is the full row, which is what makes it easy to hit.
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = com.codespace.ide.chat.panel.CopilotAccessibility.MIN_TOUCH_DP.dp)
+                .heightIn(min = ChatTokens.HEADER_MIN_DP.dp)
                 .clickable { expanded = !expanded }
                 .semantics(mergeDescendants = true) {
                     contentDescription = com.codespace.ide.chat.panel.CopilotAccessibility.groupLabel(
