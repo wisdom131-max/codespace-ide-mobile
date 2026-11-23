@@ -49,6 +49,9 @@ internal enum class ChatOverflowAction(val label: String) {
 
     /** P7.D (appended, not inserted): read finished replies aloud. Off by default. */
     READ_REPLIES_ALOUD("Read Replies Aloud"),
+
+    /** Catalog 92: how full the context window is, and what is filling it. */
+    SHOW_CONTEXT_WINDOW("Context Window"),
 }
 
 internal data class ChatOverflowItem(

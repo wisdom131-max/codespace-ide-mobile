@@ -145,6 +145,7 @@ private fun ChatBody(
     var flowLevel by remember(projectId) {
         mutableStateOf(com.codespace.ide.agent.ChatPermissionStore.level(ctx))
     }
+    var showContextWindow by remember(projectId) { mutableStateOf(false) }
     var showTranscripts by remember(projectId) { mutableStateOf(false) }
     var transcriptRead by remember(projectId) { mutableStateOf(com.codespace.ide.chat.voice.VoiceTranscriptRead(emptyList())) }
     var viewByDefault by remember { mutableStateOf(ChatSettingsPrefs.showChatByDefault()) }
@@ -557,7 +558,7 @@ private fun ChatBody(
                 readAloud = readAloud,
                 canMoveToEditor = onMoveToEditor != null,
                 approvalsLabel = ApprovalLevelSpec.menuLabel(flowLevel),
-            ),
+            ) + ChatOverflowItem(ChatOverflowAction.SHOW_CONTEXT_WINDOW, enabled = true),
             colors = c,
             onPick = { action ->
                 showOverflow = false
@@ -601,6 +602,7 @@ private fun ChatBody(
                         }
                     }
                     ChatOverflowAction.MANAGE_APPROVALS -> showApprovals = true
+                    ChatOverflowAction.SHOW_CONTEXT_WINDOW -> showContextWindow = true
                     ChatOverflowAction.SHOW_VIEW_BY_DEFAULT -> {
                         viewByDefault = !viewByDefault
                         ChatSettingsPrefs.setShowChatByDefault(viewByDefault)
@@ -627,6 +629,17 @@ private fun ChatBody(
                     ". " + ApprovalLevelSpec.row(picked).detail
             },
             onDismiss = { showApprovals = false },
+        )
+    }
+    if (showContextWindow) {
+        ContextWindowPanel(
+            colors = c,
+            report = com.codespace.ide.engine.ContextMeter.latest,
+            onCompact = {
+                showContextWindow = false
+                notice = "Older turns are summarised automatically once the window fills."
+            },
+            onDismiss = { showContextWindow = false },
         )
     }
     if (showTranscripts) {
