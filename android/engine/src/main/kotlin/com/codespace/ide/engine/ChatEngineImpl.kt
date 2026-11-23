@@ -330,6 +330,19 @@ class ChatEngineImpl(
             adapter.payloadWithHistory(window, userText, attachments, if (config.routeReasoning) config.copy(reasoningBudget = RoutedBudget.forRequest(userText, config.reasoningBudget)) else config, exchanges()),
             config,
         )
+        // PROJECT NINE 10.02 (catalog 92): the engine is the only place that knows every part of the
+        // request, so it measures the context once here and the panel reads the result. Measured,
+        // never estimated: instructions, tool definitions, the conversation window, and the space
+        // held back for the reply.
+        ContextMeter.record(
+            segments = ContextMeter.Segments(
+                systemChars = config.systemInstruction.length,
+                toolChars = config.toolDeclarations.sumOf { it.toString().length },
+                messageChars = window.sumOf { it.text.length },
+                reservedChars = config.maxResponseTokens * 4,
+            ),
+            windowTokens = config.maxPayloadChars / 4,
+        )
         val overBudget = BudgetGuard.checkPayload(payload.length, config.maxPayloadChars)
         if (overBudget != null && !config.confirmOverBudget) {
             state.append(ChatRole.ASSISTANT, "", MessageState.ERROR)
