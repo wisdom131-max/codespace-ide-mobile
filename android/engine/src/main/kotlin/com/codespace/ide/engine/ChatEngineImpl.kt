@@ -424,17 +424,10 @@ class ChatEngineImpl(
                 // The text stays exactly as streamed; this row only says it is not the whole answer.
                 emit(EngineEvent.Truncated(endReason, truncatedNote(endReason)))
             }
-            // PROJECT NINE 9.59 (catalog 11 WIRED): an empty answer is not an answer. The question
-            // is asked once more, then the consensus picker chooses between the candidates. The
-            // one-retry limit is what keeps this honest: a second blank answer is the result.
-            if (builder.isBlank() && !askedTwice) {
-                askedTwice = true
-                candidates.add(builder.toString())
-                builder.setLength(0)
-                parser = SseParser()
-                done = false
-                continue
-            }
+            // CATALOG 11: the retry that produced a second candidate was removed - a reply that
+            // carries only a tool call has no text, so "empty" was not evidence of a bad answer and
+            // asking again re-ran the tools. The picker stays wired for the case that does produce
+            // two candidates (a partial answer followed by a fallback answer).
             candidates.add(builder.toString())
             if (candidates.size > 1) {
                 val chosen = DebateConsensus.decide(candidates)?.answer
