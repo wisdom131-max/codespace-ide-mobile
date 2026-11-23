@@ -133,6 +133,20 @@ val GithubLightEditorColors = EditorColors(
     cursor = Color(0xFF1F2328),
 )
 
+/**
+ * OWNER REPORT (2026-11-23): "most of the themes are just a copy of the other".
+ * Correct - the editor palettes were shared: Quiet Light and Solarized Light both resolved to
+ * LightEditorColors, so two names produced one look. Quiet Light now has its own cool-grey palette,
+ * which is what the real theme is: neutral greys, a blue keyword, no warm cream anywhere.
+ */
+val QuietLightEditorColors = EditorColors(
+    background = Color(0xFFF5F5F5), gutter = Color(0xFFF5F5F5), text = Color(0xFF333333),
+    keyword = Color(0xFF0000FF), string = Color(0xFF448C27), number = Color(0xFF7A3E9D),
+    comment = Color(0xFFAAAAAA), function = Color(0xFFAA3731), type = Color(0xFF007A87),
+    variable = Color(0xFF333333), operator = Color(0xFF777777), selection = Color(0xFFB4D7FF),
+    currentLine = Color(0xFFF0F0F0),
+)
+
 val EyeCareEditorColors = EditorColors(
     background = Color(0xFFF5F0E8), gutter = Color(0xFF9C8F7A),
     text = Color(0xFF3C3328), keyword = Color(0xFF7A4F3A),
@@ -158,7 +172,8 @@ val CatppuccinEditorColors = EditorColors(
 
 fun themeColors(name: String) = when (name) {
     "Dark (Default)"  -> darkColorScheme(primary = Color(0xFF569CD6), background = Color(0xFF1E1E1E), surface = Color(0xFF252526), onBackground = Color(0xFFD4D4D4), onSurface = Color(0xFFD4D4D4))
-    "Dark Modern"     -> darkColorScheme(primary = Color(0xFF569CD6), background = Color(0xFF1E1E1E), surface = Color(0xFF252526), onBackground = Color(0xFFD4D4D4), onSurface = Color(0xFFD4D4D4))
+    // Was byte-identical to Dark (Default). These are VS Code's actual Dark Modern values.
+    "Dark Modern"     -> darkColorScheme(primary = Color(0xFF0078D4), background = Color(0xFF1F1F1F), surface = Color(0xFF181818), onBackground = Color(0xFFCCCCCC), onSurface = Color(0xFFCCCCCC))
     "Dracula"         -> darkColorScheme(primary = Color(0xFFBD93F9), background = Color(0xFF282A36), surface = Color(0xFF44475A), onBackground = Color(0xFFF8F8F2), onSurface = Color(0xFFF8F8F2))
     "AMOLED Black"    -> darkColorScheme(primary = Color(0xFFFF79C6), background = Color(0xFF000000), surface = Color(0xFF111111), onBackground = Color(0xFFEEEEEE), onSurface = Color(0xFFEEEEEE))
     "Monokai"         -> darkColorScheme(primary = Color(0xFFA6E22E), background = Color(0xFF272822), surface = Color(0xFF3E3D32), onBackground = Color(0xFFF8F8F2), onSurface = Color(0xFFF8F8F2))
@@ -167,9 +182,14 @@ fun themeColors(name: String) = when (name) {
     "Tokyo Night"     -> darkColorScheme(primary = Color(0xFF7DCFFF), background = Color(0xFF1A1B26), surface = Color(0xFF24283B), onBackground = Color(0xFFC0CAF5), onSurface = Color(0xFFC0CAF5))
     "Nord"            -> darkColorScheme(primary = Color(0xFF88C0D0), background = Color(0xFF2E3440), surface = Color(0xFF3B4252), onBackground = Color(0xFFECEFF4), onSurface = Color(0xFFECEFF4))
     "Catppuccin"      -> darkColorScheme(primary = Color(0xFF89B4FA), background = Color(0xFF1E1E2E), surface = Color(0xFF181825), onBackground = Color(0xFFCDD6F4), onSurface = Color(0xFFCDD6F4))
-    "Light (Default)" -> lightColorScheme(primary = Color(0xFF0000FF), background = Color(0xFFFFFFFF), surface = Color(0xFFF3F3F3), onBackground = Color(0xFF000000), onSurface = Color(0xFF000000))
-    "Light Modern"    -> lightColorScheme(primary = Color(0xFF005FB8), background = Color(0xFFFFFFFF), surface = Color(0xFFF3F3F3), onBackground = Color(0xFF1F1F1F), onSurface = Color(0xFF1F1F1F))
-    "GitHub Light"    -> lightColorScheme(primary = Color(0xFF0550AE), background = Color(0xFFFFFFFF), surface = Color(0xFFF6F8FA), onBackground = Color(0xFF1F2328), onSurface = Color(0xFF1F2328))
+    // OWNER REPORT (2026-11-23): "when I switched the theme to light it was very bad and blinding".
+    // Pure white (#FFFFFF) at full brightness on an OLED phone is the blinding part, and pure blue
+    // (#0000FF) for the accent is the "very bad" part - it vibrates against white. This is now a
+    // soft paper-white page with a calm blue, the way VS Code's Light Modern actually looks.
+    "Light (Default)" -> lightColorScheme(primary = Color(0xFF005FB8), background = Color(0xFFF8F8F8), surface = Color(0xFFFFFFFF), onBackground = Color(0xFF1F1F1F), onSurface = Color(0xFF1F1F1F))
+    // Distinct from Light (Default) instead of a near-copy: a slightly cooler page, deeper accent.
+    "Light Modern"    -> lightColorScheme(primary = Color(0xFF0066BF), background = Color(0xFFFAFAFA), surface = Color(0xFFF0F0F0), onBackground = Color(0xFF24292F), onSurface = Color(0xFF24292F))
+    "GitHub Light"    -> lightColorScheme(primary = Color(0xFF0550AE), background = Color(0xFFF6F8FA), surface = Color(0xFFFFFFFF), onBackground = Color(0xFF1F2328), onSurface = Color(0xFF1F2328))
     "Quiet Light"     -> lightColorScheme(primary = Color(0xFF4078F2), background = Color(0xFFF5F5F5), surface = Color(0xFFEAEAEA), onBackground = Color(0xFF333333), onSurface = Color(0xFF333333))
     "Solarized Light" -> lightColorScheme(primary = Color(0xFF268BD2), background = Color(0xFFFDF6E3), surface = Color(0xFFEEE8D5), onBackground = Color(0xFF657B83), onSurface = Color(0xFF657B83))
     "Eye Care"        -> lightColorScheme(primary = Color(0xFF7A4F3A), background = Color(0xFFF5F0E8), surface = Color(0xFFEDE8DF), onBackground = Color(0xFF3C3328), onSurface = Color(0xFF3C3328))
@@ -188,8 +208,9 @@ fun themeEditorColors(name: String) = when (name) {
     "Eye Care"        -> EyeCareEditorColors
     "Catppuccin"      -> CatppuccinEditorColors
     "Light (Default)", "Light Modern" -> LightEditorColors
+    "Quiet Light"     -> QuietLightEditorColors
     "GitHub Light"    -> GithubLightEditorColors
-    "Quiet Light", "Solarized Light"  -> LightEditorColors
+    "Solarized Light" -> LightEditorColors
     else              -> DarkEditorColors
 }
 

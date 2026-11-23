@@ -538,19 +538,33 @@ private fun PssTopBar(
                 Spacer(Modifier.width(14.dp))
                 // Command field — rounded RECTANGLE (8dp corners), not a pill. Widened
                 // so the 8dp radius reads as a proper rectangle, not a tiny pill shape.
+                // OWNER REPORT (2026-11-23): "a search icon and a thick black round-edged white
+                // outline ... I need the black thick part removed and made into the VS Code type
+                // picture I showed", plus "the testing text was a little bit downward".
+                // VS Code's command centre is a SUBTLE inset field on the title bar, not a black
+                // slab: a hairline border, a faint fill that follows the theme, and the label
+                // optically centred. The downward drift came from uneven vertical padding with no
+                // fixed height, so the text sat on its baseline instead of the middle.
                 Row(
                     Modifier
                         .widthIn(min = 260.dp)
-                        .background(menuBg, WorkspaceShapes.CommandFieldShape)
+                        .heightIn(min = 26.dp)
+                        .background(tabTextInactive.copy(alpha = 0.10f), WorkspaceShapes.CommandFieldShape)
                         .clickable { onShowCommandPalette() }
-                        .padding(horizontal = 16.dp, vertical = 5.dp)
-                        .border(1.dp, dividerColor, WorkspaceShapes.CommandFieldShape),
+                        .padding(horizontal = 14.dp, vertical = 3.dp)
+                        .border(1.dp, dividerColor.copy(alpha = 0.55f), WorkspaceShapes.CommandFieldShape),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    Icon(Icons.Default.Search, null, tint = tabTextInactive, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Search, null, tint = tabTextInactive, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(projectName, fontSize = 13.sp, color = tabTextInactive, maxLines = 1)
+                    Text(
+                        projectName, fontSize = 13.sp, color = tabTextInactive, maxLines = 1,
+                        // Kills the extra font padding that pushed the label below centre.
+                        style = androidx.compose.ui.text.TextStyle(
+                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                        ),
+                    )
                 }
             }
         }
@@ -2982,8 +2996,23 @@ private fun PssOverlays(
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
                 ) {
                     Column(Modifier.padding(8.dp)) {
+                        // OWNER REPORT (2026-11-23): "when I sign in my name is supposed to be shown
+                        // in there but I think the name there is fixed, not an account name". It was
+                        // literally a hardcoded string - the panel never asked who was signed in.
+                        // It now reads the real account from the token store, and re-reads every time
+                        // the panel opens, so signing in or out elsewhere is reflected immediately.
+                        // With nothing connected it says so instead of inventing a person.
+                        val accountCtx = androidx.compose.ui.platform.LocalContext.current
+                        var accountName by remember { mutableStateOf(
+                            com.codespace.ide.data.SecureTokenStore(accountCtx).githubUsername) }
+                        LaunchedEffect(showPersonMenu) {
+                            if (showPersonMenu) {
+                                accountName = com.codespace.ide.data.SecureTokenStore(accountCtx).githubUsername
+                            }
+                        }
                         Text("Signed in as", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f), modifier = Modifier.padding(8.dp))
-                        Text("Wisdom Ijezie", fontSize = 13.sp, color = MenuText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp))
+                        Text(accountName ?: "Not signed in", fontSize = 13.sp, color = MenuText,
+                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp))
                         HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 8.dp))
                         listOf(
                             "Settings" to { onShowPersonMenuChange(false); onOpenSettings() },
@@ -5176,17 +5205,31 @@ private fun PssEditorColumn(
                         .clip(WorkspaceShapes.EditorShape),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        // OWNER REPORT (2026-11-23): "when I rotate the screen some texts seem to
+                        // slip out ... I want the landscape mode fixed properly and colour/theme
+                        // aware". The watermark was sized by WIDTH at 80%, which in landscape is
+                        // enormous relative to a short screen, so it pushed both lines of text off
+                        // the bottom. It is now sized against the axis that actually has room, and
+                        // the two hardcoded greys are replaced with palette colours so the welcome
+                        // screen follows the theme instead of staying light-on-white in Light mode.
+                        val welcomeLandscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation ==
+                            android.content.res.Configuration.ORIENTATION_LANDSCAPE
                         androidx.compose.foundation.Image(
                             painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.vncode_watermark),
                             contentDescription = null,
-                            modifier = Modifier.fillMaxWidth(0.8f),
+                            modifier = if (welcomeLandscape) Modifier.fillMaxHeight(0.4f) else Modifier.fillMaxWidth(0.8f),
                         )
-                        Spacer(Modifier.height(16.dp))
-                        Text("Visual Node Code", fontSize = 22.sp, color = Color(0xFFAAAAAA), fontWeight = FontWeight.Light)
+                        Spacer(Modifier.height(if (welcomeLandscape) 8.dp else 16.dp))
+                        Text("Visual Node Code", fontSize = if (welcomeLandscape) 18.sp else 22.sp,
+                            color = tabTextInactive, fontWeight = FontWeight.Light, maxLines = 1)
                         Spacer(Modifier.height(8.dp))
-                        Text("Open Explorer → tap a file to start", fontSize = 13.sp, color = Color(0xFFCCCCCC))
-
+                        Text("Open Explorer → tap a file to start", fontSize = 13.sp,
+                            color = tabTextInactive, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
             }
