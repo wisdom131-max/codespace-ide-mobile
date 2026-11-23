@@ -5246,11 +5246,19 @@ private fun PssEditorColumn(
                             modifier = if (welcomeLandscape) Modifier.fillMaxHeight(0.4f) else Modifier.fillMaxWidth(0.8f),
                         )
                         Spacer(Modifier.height(if (welcomeLandscape) 8.dp else 16.dp))
+                        // OWNER REPORT (2026-11-23): "I want that grey on black fixed for that
+                        // specific theme setting". The theme-aware change went one step too far:
+                        // tabTextInactive is the INACTIVE TAB grey, which is deliberately dim - on
+                        // AMOLED Black it is #555555 on #000000 and on GitHub Dark #484F58 on
+                        // #0D1117, both of which read as grey-on-black. The welcome screen is not an
+                        // inactive tab, so it uses the theme's real text colour, with the second line
+                        // at 75% so there is still a hierarchy without either line going dim.
                         Text("Visual Node Code", fontSize = if (welcomeLandscape) 18.sp else 22.sp,
-                            color = tabTextInactive, fontWeight = FontWeight.Light, maxLines = 1)
+                            color = tabText, fontWeight = FontWeight.Light, maxLines = 1)
                         Spacer(Modifier.height(8.dp))
                         Text("Open Explorer → tap a file to start", fontSize = 13.sp,
-                            color = tabTextInactive, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            color = tabText.copy(alpha = 0.75f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
             }
