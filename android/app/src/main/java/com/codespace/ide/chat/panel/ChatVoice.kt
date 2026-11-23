@@ -14,6 +14,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.codespace.ide.agent.voice.RecognitionPlan
 import com.codespace.ide.agent.voice.VadPolicy
+import com.codespace.ide.agent.voice.SherpaAsr
+import com.codespace.ide.agent.voice.SherpaModelStore
 import com.codespace.ide.agent.voice.VoiceCapture
 import com.codespace.ide.agent.voice.VoiceRecognizer
 import com.codespace.ide.chat.panel.voice.AmbientFloor
@@ -65,6 +67,7 @@ internal fun rememberVoiceLoop(
     onTranscript: (String) -> Unit,
 ): VoiceLoop {
     val context = LocalContext.current
+    val handler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     val state = remember { mutableStateOf(VoiceLoopState.IDLE) }
     val level = remember { mutableStateOf(0f) }
     val partial = remember { mutableStateOf("") }
@@ -79,11 +82,33 @@ internal fun rememberVoiceLoop(
     val problem = rememberUpdatedState(onProblem)
     val transcript = rememberUpdatedState(onTranscript)
 
+    // OWN OUR AUDIO (owner decision 2026-11-23): when the vendored sherpa-onnx model is installed,
+    // words come from the device itself - nothing leaves the phone, and the cloud disclosure line has
+    // nothing to disclose. Otherwise the platform recogniser stays the fallback.
+    val localAsr = remember {
+        if (SherpaModelStore.isInstalled(context)) SherpaAsr(context) else null
+    }
+    val localReady = localAsr?.isReady == true
+
+
     val move: (VoiceEvent) -> Unit = { event ->
         state.value = VoiceLoopPolicy.next(state.value, event, readAloud = true)
     }
     // onRmsChanged reports dB above the noise floor: about -2 in silence, 10 for close speech.
     val levelFrom: (Float) -> Float = { db -> ((db + 2f) / 12f).coerceIn(0f, 1f) }
+    /**
+     * ONE place where words arrive, whether they came from the on-device engine or the platform
+     * recogniser, so the two paths cannot drift apart in what the owner sees.
+     */
+    val deliver: (String) -> Unit = { text ->
+        val clean = text.trim()
+        if (clean.isNotEmpty()) {
+            move(VoiceEvent.Heard(clean))
+            transcript.value(clean)
+            state.value = VoiceLoopState.IDLE
+        }
+    }
+
 
     /**
      * OWN OUR AUDIO (owner request, 2026-11-23): while the reply is being read, the microphone is
@@ -98,6 +123,7 @@ internal fun rememberVoiceLoop(
     val capture = remember {
         VoiceCapture(
             context = context.applicationContext,
+            keepAudio = true,
             onLevel = { energy -> if (state.value == VoiceLoopState.SPEAKING) level.value = energy },
             onSpeechStarted = {
                 val guardMs = if (captureRef[0]?.echoCancelled == true) 150L else 450L
@@ -114,7 +140,33 @@ internal fun rememberVoiceLoop(
                     beginMicRef[0]?.invoke()
                 }
             },
-            onSpeechEnded = { },
+            onSpeechEnded = {
+                val engine = localAsr
+                if (state.value == VoiceLoopState.LISTENING && engine != null && engine.isReady) {
+                    // Our own VAD decided the turn is over; hand the audio we kept to the engine.
+                    val pcm = captureRef[0]?.takeAudio() ?: ShortArray(0)
+                    captureRef[0]?.stop()
+                    if (pcm.isNotEmpty()) {
+                        Thread({
+                            val text = runCatching {
+                                engine.reset()
+                                engine.accept(pcm)
+                                engine.text()
+                            }.getOrDefault("")
+                            handler.post {
+                                if (text.isBlank()) {
+                                    problem.value("Nothing was recognised. Tap the mic and try again.")
+                                    state.value = VoiceLoopState.IDLE
+                                } else {
+                                    deliver(text)
+                                }
+                            }
+                        }, "vncode-local-asr").start()
+                    } else {
+                        state.value = VoiceLoopState.IDLE
+                    }
+                }
+            },
             onError = { reason ->
                 // Our own microphone failing must not kill a reply that is already playing; it only
                 // means this reply cannot be interrupted by voice.
@@ -243,7 +295,8 @@ internal fun rememberVoiceLoop(
                     PackageManager.PERMISSION_GRANTED
                 if (granted) {
                     state.value = VoiceLoopState.LISTENING
-                    beginMic()
+                    // On-device when its model is installed: our recorder, our VAD, our engine.
+                    if (localReady) captureRef[0]?.start() else beginMic()
                 } else {
                     permission.launch(Manifest.permission.RECORD_AUDIO)
                 }
@@ -287,6 +340,7 @@ internal fun rememberVoiceLoop(
             speaker.onFinished = null
             micRef[0]?.release()
             captureRef[0]?.close()
+            localAsr?.release()
         }
     }
 

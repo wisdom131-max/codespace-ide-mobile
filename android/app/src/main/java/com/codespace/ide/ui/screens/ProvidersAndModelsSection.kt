@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.agent.image.ImageModels
 import com.codespace.ide.editor.ProjectSettingsStore
+import com.codespace.ide.agent.voice.SherpaModelStore
 
 /**
  * Settings → Providers and Models. This is the surface the owner asked the keys to
@@ -76,6 +77,7 @@ fun ProvidersAndModelsSection(tokenStore: SecureTokenStore) {
             )
         }
         ImageGenerationSection()
+        OnDeviceSpeechSection()
         // Slot NAMES only, never values: this is the readout the device sheet asks for.
         for (slot in snapshot.keySlots.filter { it.hasKey }.sortedBy { it.slotName }) {
             Text(
@@ -163,6 +165,61 @@ private fun ImageGenerationSection() {
             androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
                 Text(model.label + "  (" + model.provider + ")", fontSize = 12.sp, color = Color(0xFF9A9A9A))
                 Text(model.reason, style = MaterialTheme.typography.bodySmall, color = Color(0xFF8A8A8A))
+            }
+        }
+    }
+}
+
+/**
+ * OWNER DECISION (2026-11-23): the sherpa-onnx library is vendored in the repo, so the only thing
+ * missing on a fresh install is the model. It is downloaded here, verified file by file against its
+ * pinned checksum, and stored beside the embedding model so it survives an uninstall.
+ */
+@Composable
+private fun OnDeviceSpeechSection() {
+    val context = LocalContext.current
+    var status by remember { mutableStateOf(SherpaModelStore.status(context)) }
+    var busy by remember { mutableStateOf(false) }
+    var percent by remember { mutableStateOf(0) }
+    val handler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().padding(top = 20.dp)) {
+        Text("On-device speech", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Recognises speech on the phone with nothing sent to a server. Used by the chat microphone.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Text(status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+        if (busy) {
+            Text(
+                "Downloading " + percent + "%",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        } else {
+            Row(
+                Modifier
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF2A3A2E))
+                    .clickable {
+                        busy = true
+                        percent = 0
+                        Thread({
+                            val result = SherpaModelStore.ensureDownloaded(context) { done, total ->
+                                val p = if (total > 0) ((done * 100) / total).toInt() else 0
+                                handler.post { percent = p }
+                            }
+                            handler.post {
+                                busy = false
+                                status = result.exceptionOrNull()?.message
+                                    ?: SherpaModelStore.status(context)
+                            }
+                        }, "vncode-asr-download").start()
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Text("Download model (45MB)", fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
         }
     }

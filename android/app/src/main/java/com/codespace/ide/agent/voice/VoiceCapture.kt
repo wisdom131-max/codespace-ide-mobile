@@ -77,6 +77,7 @@ class VoiceCapture(
             onError("Microphone permission has not been granted.")
             return false
         }
+        keptLen = 0
         val frameBytes = FRAME_SAMPLES * 2
         val minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING)
         if (minBuffer <= 0) {
@@ -184,7 +185,6 @@ class VoiceCapture(
 
     fun stop() {
         running.set(false)
-        keptLen = 0
         releaseEffects()
         val recorder = record ?: return
         record = null

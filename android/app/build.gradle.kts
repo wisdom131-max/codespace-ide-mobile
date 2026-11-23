@@ -212,6 +212,12 @@ dependencies {
     // PROJECT NINE 10.26: the trained embedding model runs on ONNX Runtime. Chosen over a
     // Play-Services downloader because the model must be verifiable and stored where we say.
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.1")
+    // OWNER DECISION (2026-11-23): vendor the OFFICIAL prebuilt library, pinned by checksum, rather
+    // than inventing Maven coordinates or adopting a third-party repackage. sherpa-onnx 2.0.3,
+    // static-linked onnxruntime, so it cannot fight the onnxruntime-android used by the embedder:
+    // its classes.jar carries 135 com.k2fsa classes and ZERO ai.onnxruntime ones.
+    // sha256 7744a3a8f08f017d59c2d8ed8d9b700345561f5abe9f4e06dc6eaef3a0b977b4 (39MB, 4 ABIs).
+    implementation(files("libs/sherpa-onnx-2.0.3-static.aar"))
 
     // Firebase BOM — manages all Firebase lib versions
     implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
