@@ -510,7 +510,9 @@ private fun ChatBody(
     ChatQueueStrip(
         queued = queuedNow,
         steer = steerNow,
-        colors = c,
+        // Read straight from the local rather than relying on an outer `c`: the strip is called from
+        // a long composable and this keeps it correct even if the scope around it changes.
+        colors = ChatTokens.LocalChatColors.current,
         onEdit = { i ->
             editingQueued = i
             editingQueuedText = queuedNow.getOrElse(i) { "" }
