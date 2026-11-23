@@ -60,8 +60,31 @@ internal class Speaker {
     private var tts: TextToSpeech? = null
     private var onState: (SpeechState) -> Unit = {}
 
+    /** Sentences waiting to be spoken, each with the emotion it was classified as. */
+    private val pending = ArrayDeque<EmotionProsody.Line>()
+    private var speakingId: String? = null
+    private var seq = 0
+
     fun attach(engine: TextToSpeech?, ready: Boolean, reason: String?) {
         tts = engine
+        // OWNER REQUEST (2026-11-23): read-aloud should "exercise emotions". Pitch and rate are set
+        // per SENTENCE, and a sentence is only spoken once the previous one reports done - otherwise
+        // changing pitch for sentence two can still colour sentence one, because the engine reads
+        // the setting when it synthesises, not when it was queued.
+        engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) = Unit
+            override fun onDone(utteranceId: String?) {
+                if (utteranceId == null || utteranceId != speakingId) return
+                val next = tts ?: return
+                Handler(Looper.getMainLooper()).post { speakNext(next) }
+            }
+            override fun onError(utteranceId: String?) {
+                fail(utteranceId)
+            }
+            override fun onError(utteranceId: String?, errorCode: Int) {
+                fail(utteranceId)
+            }
+        })
         state = if (ready) SpeechState.Idle else SpeechState.Unavailable(reason ?: "No speech engine is available.")
         onState(state)
     }
@@ -80,12 +103,52 @@ internal class Speaker {
             return
         }
         engine.stop()
-        val queued = engine.speak(body, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE)
-        state = if (queued == TextToSpeech.SUCCESS) SpeechState.Speaking else SpeechState.Idle
+        pending.clear()
+        pending.addAll(EmotionProsody.plan(body))
+        if (pending.isEmpty()) {
+            state = SpeechState.Idle
+            onState(state)
+            return
+        }
+        state = SpeechState.Speaking
         onState(state)
+        speakNext(engine)
+    }
+
+    /** Speak the next sentence at ITS own pitch and rate. */
+    private fun speakNext(engine: TextToSpeech) {
+        val line = pending.removeFirstOrNull()
+        if (line == null) {
+            speakingId = null
+            state = SpeechState.Idle
+            onState(state)
+            return
+        }
+        engine.setPitch(line.prosody.pitch)
+        engine.setSpeechRate(line.prosody.rate)
+        val id = UTTERANCE + "-" + (seq++)
+        speakingId = id
+        if (engine.speak(line.text, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) {
+            pending.clear()
+            speakingId = null
+            state = SpeechState.Idle
+            onState(state)
+        }
+    }
+
+    private fun fail(utteranceId: String?) {
+        if (utteranceId != null && utteranceId != speakingId) return
+        Handler(Looper.getMainLooper()).post {
+            pending.clear()
+            speakingId = null
+            state = SpeechState.Idle
+            onState(state)
+        }
     }
 
     fun stop() {
+        pending.clear()
+        speakingId = null
         tts?.stop()
         if (state == SpeechState.Speaking) {
             state = SpeechState.Idle

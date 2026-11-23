@@ -343,7 +343,8 @@ private fun ChatBody(
             title = "Chat",
             colors = c,
             onSessions = onOpenSessions,
-            onMic = dictate,
+            // OWNER REQUEST (2026-11-23): our own listening surface, not Google's activity.
+            onMic = dictate.start,
             onNewSession = onNewSession,
             onOverflow = { showOverflow = true },
             onClose = onClosePanel,
@@ -725,6 +726,16 @@ private fun ChatBody(
                 kotlinx.coroutines.delay(700L)
             }
         }
+    }
+    // The custom listening surface. Drawn as a full-screen dialog so nothing of the system
+    // recogniser is ever visible, with the bars driven by the real microphone level.
+    if (dictate.listening) {
+        VoiceWaveOverlay(
+            partial = dictate.partial,
+            level = dictate.level,
+            disclosure = dictate.disclosure,
+            onCancel = dictate.cancel,
+        )
     }
     if (showContextWindow) {
         ContextWindowPanel(
