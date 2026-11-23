@@ -31,6 +31,9 @@ class ChatOverflowSpecTest {
                 // P7.D appended after P6 for the same reason: read-aloud is a new toggle, not a
                 // rearrangement of the six reference labels.
                 "Read Replies Aloud",
+                // Catalog 92: appended after the approved nine, for the same reason every
+                // addition since M3 was appended rather than inserted.
+                "Context Window",
             ),
             ChatOverflowSpec.order.map { it.label },
         )

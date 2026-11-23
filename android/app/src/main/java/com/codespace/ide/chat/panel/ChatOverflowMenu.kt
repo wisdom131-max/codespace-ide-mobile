@@ -104,6 +104,9 @@ internal object ChatOverflowSpec {
         ChatOverflowItem(ChatOverflowAction.MANAGE_APPROVALS, enabled = true, label = approvalsLabel),
         // P7.D: appended last so the six-label reference and its seventh item keep their order.
         ChatOverflowItem(ChatOverflowAction.READ_REPLIES_ALOUD, enabled = true, checked = readAloud),
+        // Catalog 92: appended last, like every addition since the six-label reference, so the
+        // signed-off order is never rearranged.
+        ChatOverflowItem(ChatOverflowAction.SHOW_CONTEXT_WINDOW, enabled = true),
     )
 }
 

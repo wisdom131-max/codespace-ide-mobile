@@ -558,7 +558,7 @@ private fun ChatBody(
                 readAloud = readAloud,
                 canMoveToEditor = onMoveToEditor != null,
                 approvalsLabel = ApprovalLevelSpec.menuLabel(flowLevel),
-            ) + ChatOverflowItem(ChatOverflowAction.SHOW_CONTEXT_WINDOW, enabled = true),
+            ),
             colors = c,
             onPick = { action ->
                 showOverflow = false
