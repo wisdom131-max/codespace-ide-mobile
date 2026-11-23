@@ -47,10 +47,12 @@ fun KeysManagerDialog(
     var editingSlot by remember { mutableStateOf<String?>(null) }
     var editValue by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf<String?>(null) }
-    val slots: List<StoredKeySlot> = remember(bump) {
+    // Hoisted: the new Test/Fetch-models actions need the SAME reader the rows use, so a key that was
+    // just saved is the key that gets tested - not a stale copy read before the save.
+    val reader = remember(bump) {
         StoredCredentialsReader(tokenStore, com.codespace.ide.chat.CustomEndpointStore)
-            .snapshot().keySlots
     }
+    val slots: List<StoredKeySlot> = remember(bump) { reader.snapshot().keySlots }
 
     fun write(slotSuffix: String, value: String?) {
         // KEY SAFE: normalise the paste BEFORE it is stored. A quoted key, a doubled 'Bearer', an
@@ -91,6 +93,14 @@ fun KeysManagerDialog(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     )
                 }
+                // Ollama first, as a LOCAL SERVER rather than a key slot. It has no key to enter, so
+                // it never belonged in the keyed list; VS Code renders it the same way.
+                LocalModelsSection(
+                    accent = c.accent,
+                    textSecondary = c.textSecondary,
+                    textPrimary = c.text,
+                    fontSizeSmall = ChatTokens.FONT_SMALL.toFloat(),
+                )
                 ProviderPresets.ALL.filter { it.requiresKey }.forEach { p ->
                     KeyProviderSection(
                         label = p.label,
@@ -102,6 +112,15 @@ fun KeysManagerDialog(
                         onEditCancel = { editingSlot = null },
                         onValueChange = { editValue = it },
                         onWrite = ::write,
+                    )
+                    // The two actions built-in keys were missing. Same fetcher as custom endpoints.
+                    KeyProviderActions(
+                        providerId = p.providerId,
+                        reader = reader,
+                        accent = c.accent,
+                        textSecondary = c.textSecondary,
+                        textPrimary = c.text,
+                        fontSizeSmall = ChatTokens.FONT_SMALL.toFloat(),
                     )
                 }
                 val covered = ProviderPresets.ALL.map { it.providerId }.toSet()

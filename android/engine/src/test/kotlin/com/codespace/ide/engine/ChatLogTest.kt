@@ -82,4 +82,40 @@ class ChatLogTest {
     }
 
 
+
+    @Test
+    fun aZeroToolCountExplainsItself() {
+        // OWNER REPORT (2026-11-23): a bare "tools offered: 0" left the owner inferring the cause
+        // from a contradiction in his own log. Uses this file's own idiom (record + report) rather
+        // than a constructor call, which is what three earlier attempts got wrong.
+        ChatLog.clear()
+        ChatLog.record(
+            ChatLogEntry(
+                at = System.currentTimeMillis(), mode = "BALANCED",
+                providerId = "custom_cloud_flare", modelId = "m",
+                endpointPath = "/ai/v1/chat/completions", requestChars = 11_041,
+                httpStatus = 200, outcome = "Completed", providerMessage = "", toolsOffered = 0,
+                historyDropped = 0, learnedLimitChars = 0, retriedCeilingField = false,
+            ),
+        )
+        val r = ChatLog.report()
+        assertTrue(r.contains("tools: none advertised this turn"))
+    }
+
+    @Test
+    fun announcedToolCallsWithNoToolsAreCalledOut() {
+        // The exact contradiction from the owner's log: end reason tool_calls with zero tools sent.
+        ChatLog.clear()
+        ChatLog.record(
+            ChatLogEntry(
+                at = System.currentTimeMillis(), mode = "BALANCED", providerId = "p", modelId = "m",
+                endpointPath = "/v1/chat/completions", requestChars = 900,
+                httpStatus = 200, outcome = "Completed", providerMessage = "", toolsOffered = 0,
+                historyDropped = 0, learnedLimitChars = 0, retriedCeilingField = false,
+                endReason = "tool_calls",
+            ),
+        )
+        val r = ChatLog.report()
+        assertTrue(r.contains("NO tools advertised"))
+    }
 }

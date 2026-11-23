@@ -155,6 +155,18 @@ fun FactsScreen(
         }
 
         // ── filters: scope, then category ──
+        // TOKEN-PANEL STYLE: the filters are a section like any other, so they sit in the same
+        // full-width panel as the rest instead of floating as bare rows at the top of the screen.
+        Column(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp)).background(panel)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+        Text(
+            "Filters",
+            color = textSec, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 2.dp),
+        )
         FilterRow(
             labels = listOf("All scopes", "User", "Project"),
             selected = when (scopeFilter) {
@@ -181,6 +193,7 @@ fun FactsScreen(
             accent = accent, surface = panel, textPri = textPri, textSec = textSec,
             onSelect = { idx -> showHistory = idx == 1 },
         )
+        }
 
         // STAGE 8: candidates waiting for a decision, above the saved facts so they cannot be
         // mistaken for memories the app already trusts.
