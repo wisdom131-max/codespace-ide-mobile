@@ -3,6 +3,7 @@ package com.codespace.ide.chat.panel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -325,7 +326,12 @@ private fun ChatBody(
     }
 
 
-    Column(Modifier.fillMaxSize().background(c.bg)) {
+    // OWNER REPORT (2026-11-23): "my keyboard pops up and covers the whole input box so I can't see
+    // what I'm typing". The panel never asked for the keyboard inset, so the composer sat underneath
+    // it. imePadding lifts the panel by exactly the keyboard height; where the window already
+    // resizes (adjustResize) the inset arrives consumed and this adds nothing, so it cannot
+    // double-count. The composer therefore stays visible whether or not the host resizes.
+    Column(Modifier.fillMaxSize().background(c.bg).imePadding()) {
         // U3: the model picker lives in the composer toolbar where the reference puts it.
         // M2: the header carries the surface title and the session controls.
         ChatPanelHeaderRow(

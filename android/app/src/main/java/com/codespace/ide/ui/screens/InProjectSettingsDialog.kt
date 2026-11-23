@@ -221,11 +221,15 @@ fun InProjectSettingsDialog(
                                 it.category.label.lowercase().contains(q)
                             }
                         } else if (activeCategory == SettingsCategory.COMMONLY_USED) {
-                            val ranked = SettingsUsageTracker.rankedIds()
-                            val used = allRows.filter { it.id in ranked }
+                            // OWNER REPORT (2026-11-23): "the commonly used row shows all of the
+                            // 'ai agent flow' row even though I didn't use them". The list was
+                            // built as used + unused, so with no usage recorded it fell back to
+                            // EVERY setting grouped by category - the opposite of the tab's name.
+                            // Only rows actually touched appear now; the empty-state line above
+                            // already explains the tab when nothing has been used yet.
+                            SettingsUsageTracker.rankedIds()
+                                .mapNotNull { id -> allRows.firstOrNull { it.id == id } }
                                 .sortedByDescending { SettingsUsageTracker.count(it.id) }
-                            val unused = allRows.filter { it.id !in ranked }
-                            used + unused
                         } else {
                             allRows.filter { it.category == activeCategory }
                         }
@@ -894,6 +898,13 @@ private fun ConnectorsHubRow(
     accent: Color,
     textPri: Color,
     textSec: Color,
+    // OWNER REPORT (2026-11-23): "in ai agent flow row it shows a connectors hub tappable button and
+    // when I tapped it it was the model catalog ... there are 2 connectors buttons, the other one is
+    // the real road to the connectors panel". The label and detail were HARDCODED, so three different
+    // rows (Connectors Hub, Local Skills, Model Catalogue) all introduced themselves as the Connectors
+    // Hub while opening their own panel. One row is now told what it is.
+    title: String = "Connectors Hub",
+    detail: String = "Manage GitHub, GitLab, Notion, Jira, Discord, Canva and other service connections",
 ) {
     Row(
         Modifier.fillMaxWidth()
@@ -902,9 +913,8 @@ private fun ConnectorsHubRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("Connectors Hub", color = textPri, fontSize = 13.sp)
-            Text("Manage GitHub, GitLab, Notion, Jira, Discord, Canva and other service connections",
-                color = textSec, fontSize = 11.sp)
+            Text(title, color = textPri, fontSize = 13.sp)
+            Text(detail, color = textSec, fontSize = 11.sp)
         }
         Spacer(Modifier.width(12.dp))
         Text("Open", color = accent, fontSize = 12.sp)

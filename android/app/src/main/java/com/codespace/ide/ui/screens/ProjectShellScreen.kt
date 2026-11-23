@@ -2898,14 +2898,9 @@ private fun PssOverlays(
                             }
                         }
                         item {
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable { onOpenConnectorsHub(null); onShowGearMenuChange(false) }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("Services (Firebase / Supabase / n8n) — in Connectors", fontSize = 13.sp, color = MenuText)
-                            }
+                            // REMOVED (owner 2026-11-23): the 'Services (Firebase / Supabase / n8n)'
+                            // entry is gone. The Connectors Hub in the project settings already covers
+                            // it, and two doors to the same room is a menu that lies about its scope.
                         }
                         item {
                             Row(
