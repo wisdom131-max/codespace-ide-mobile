@@ -327,7 +327,7 @@ class ChatEngineImpl(
             }
         }
         val payload = adapter.withTools(
-            adapter.payloadWithHistory(window, userText, attachments, config, exchanges()),
+            adapter.payloadWithHistory(window, userText, attachments, if (config.routeReasoning) config.copy(reasoningBudget = RoutedBudget.forRequest(userText, config.reasoningBudget)) else config, exchanges()),
             config,
         )
         val overBudget = BudgetGuard.checkPayload(payload.length, config.maxPayloadChars)
