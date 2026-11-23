@@ -442,15 +442,6 @@ class ChatEngineImpl(
             // carries only a tool call has no text, so "empty" was not evidence of a bad answer and
             // asking again re-ran the tools. The picker stays wired for the case that does produce
             // two candidates (a partial answer followed by a fallback answer).
-            // PROJECT NINE 9.61 (catalog 11): ask once more when the answer carried no text AND no
-            // tool ran. A tool-only reply also has no text, and re-asking would run the tools twice:
-            // duplicate writes, duplicate cost. The guard is on the exchanges, not the text alone.
-            if (builder.isBlank() && !askedTwice && exchanges().isEmpty()) {
-                askedTwice = true
-                parser = SseParser()
-                done = false
-                continue
-            }
             candidates.add(builder.toString())
             if (candidates.size > 1) {
                 val chosen = DebateConsensus.decide(candidates)?.answer
