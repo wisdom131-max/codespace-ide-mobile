@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.codespace.ide.chat.panel.voice.VoiceLoopState
 import com.codespace.ide.chat.ui.ChatColors
 import com.codespace.ide.chat.ui.ChatTokens
 
@@ -35,6 +36,9 @@ internal fun ChatPanelHeaderRow(
     colors: ChatColors,
     onSessions: () -> Unit,
     onMic: () -> Unit,
+    /** The voice loop's state, so the header chip can animate in place (owner request 2026-11-23). */
+    micState: VoiceLoopState = VoiceLoopState.IDLE,
+    micLevel: Float = 0f,
     /** Project 2.26: opens the full voice conversation surface. Deliberate, never automatic. */
     onNewSession: () -> Unit,
     onOverflow: () -> Unit,
@@ -61,7 +65,9 @@ internal fun ChatPanelHeaderRow(
         HeaderChip("Sessions", colors, onSessions)
         // M3 voice: the dictation trigger. It sits beside the composer rather than inside the
         // composer's tested 40 dp toolbar row, which is video-faithful and width-sensitive.
-        HeaderChip("Mic", colors, onMic)
+        // Was a text chip reading "Mic". It is now the meter: the reference screenshot puts the
+        // soundwave here, and a chip that animates is worth more than a word that does not.
+        VoiceMicChip(state = micState, level = micLevel, colors = colors, onClick = onMic)
         HeaderChip("+", colors, onNewSession)
         HeaderChip("⋯", colors, onOverflow)
         if (onClose != null) HeaderChip("✕", colors, onClose)

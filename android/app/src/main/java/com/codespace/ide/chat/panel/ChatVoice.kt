@@ -15,146 +15,207 @@ import androidx.core.content.ContextCompat
 import com.codespace.ide.agent.voice.RecognitionPlan
 import com.codespace.ide.agent.voice.VadPolicy
 import com.codespace.ide.agent.voice.VoiceRecognizer
+import com.codespace.ide.chat.panel.voice.BargeInDetector
+import com.codespace.ide.chat.panel.voice.VoiceEvent
+import com.codespace.ide.chat.panel.voice.VoiceLoopPolicy
+import com.codespace.ide.chat.panel.voice.VoiceLoopState
 import java.util.Locale
 
 /**
- * M3 - REAL DICTATION FOR CHAT (owner decision: option A), rebuilt 2026-11-23.
+ * OWNER REQUEST (2026-11-23): "build a new feature adding the mic icon and the internals and the
+ * read aloud as one, building a perfect copy of how chat gpt does it - can detect interruptions and
+ * many more."
  *
- * OWNER REQUEST: "for the mic icon in the chat header I want it to be able to work perfectly
- * without showing the google icon on tap, I'd like something custom like what you see in the image
- * and I need animations for it."
+ * One loop, not three features. Dictation, the reply being read aloud, and interrupting it are the
+ * same turn:
  *
- * The old path launched [android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH] as an ACTIVITY.
- * That hands the microphone to whichever app owns that intent - on a normal phone, the Google app -
- * so the owner got Google's listening sheet with Google's icon. Nothing the app drew could cover
- * that, because it was a different activity on top of ours.
+ *   IDLE  -> tap the mic -> LISTENING  (microphone open, transcript live)
+ *   LISTENING -> speech ends -> THINKING (transcript goes to the composer, microphone closed)
+ *   THINKING -> reply finishes and read-aloud is on -> SPEAKING (microphone RE-OPENS)
+ *   SPEAKING -> the owner talks over it -> LISTENING (the reading stops mid-word)
+ *   SPEAKING -> the reading ends -> IDLE
  *
- * This path never leaves the app. [VoiceRecognizer] binds the recognition SERVICE directly: results
- * arrive through a listener, the microphone level arrives through `onRmsChanged` (which is what
- * drives the bars), and the app draws its own listening surface. No intent, no Google activity.
+ * The microphone re-opening while the app itself is talking is what makes interruption possible, and
+ * [BargeInDetector] is what keeps it from interrupting itself: a guard window for its own echo, then
+ * sustained sound above the floor before anything is cut off.
  *
- * Every way this can fail still has its own honest outcome, and permission is requested by us
- * because we are now the ones holding the microphone.
+ * Nothing here launches a system recogniser screen: the app binds the recognition service itself and
+ * draws its own state in the header, which is what the owner asked for.
  */
-internal sealed class DictationOutcome {
-    data class Heard(val text: String) : DictationOutcome()
-    data class Unavailable(val reason: String) : DictationOutcome()
-    data class Failed(val reason: String) : DictationOutcome()
-    object Cancelled : DictationOutcome()
-}
-
-/**
- * The handle the composer holds. The three readable fields are Compose state, so a screen that reads
- * them redraws as the level and the transcript change.
- */
-internal class Dictation(
-    private val listeningState: MutableState<Boolean>,
-    private val partialState: MutableState<String>,
-    private val levelState: MutableState<Float>,
-    private val disclosureState: MutableState<String?>,
-    val start: () -> Unit,
-    val cancel: () -> Unit,
+internal class VoiceLoop(
+    private val stateHolder: MutableState<VoiceLoopState>,
+    private val levelHolder: MutableState<Float>,
+    private val partialHolder: MutableState<String>,
+    val toggle: () -> Unit,
+    val stop: () -> Unit,
+    val speak: (String) -> Unit,
 ) {
-    val listening: Boolean get() = listeningState.value
-    val partial: String get() = partialState.value
-    val level: Float get() = levelState.value
-    val disclosure: String? get() = disclosureState.value
+    val state: VoiceLoopState get() = stateHolder.value
+    val level: Float get() = levelHolder.value
+    val partial: String get() = partialHolder.value
 }
 
 @Composable
-internal fun rememberDictation(onOutcome: (DictationOutcome) -> Unit): Dictation {
+internal fun rememberVoiceLoop(
+    speaker: Speaker,
+    onProblem: (String) -> Unit,
+    onTranscript: (String) -> Unit,
+): VoiceLoop {
     val context = LocalContext.current
-    val listening = remember { mutableStateOf(false) }
-    val partial = remember { mutableStateOf("") }
+    val state = remember { mutableStateOf(VoiceLoopState.IDLE) }
     val level = remember { mutableStateOf(0f) }
-    val disclosure = remember { mutableStateOf<String?>(null) }
-    val outcome = rememberUpdatedState(onOutcome)
+    val partial = remember { mutableStateOf("") }
+    val detector = remember { BargeInDetector() }
+    val micRef = remember { arrayOfNulls<VoiceRecognizer>(1) }
+    val problem = rememberUpdatedState(onProblem)
+    val transcript = rememberUpdatedState(onTranscript)
 
-    // onRmsChanged reports dB above the noise floor, roughly -2 (silence) to 10 (close speech).
-    fun levelFrom(db: Float): Float = ((db + 2f) / 12f).coerceIn(0f, 1f)
+    val move: (VoiceEvent) -> Unit = { event ->
+        state.value = VoiceLoopPolicy.next(state.value, event, readAloud = true)
+    }
+    // onRmsChanged reports dB above the noise floor: about -2 in silence, 10 for close speech.
+    val levelFrom: (Float) -> Float = { db -> ((db + 2f) / 12f).coerceIn(0f, 1f) }
 
     val recognizer = remember {
         VoiceRecognizer(
             context = context.applicationContext,
             onPartial = { text -> partial.value = text },
-            onRms = { db -> level.value = levelFrom(db) },
+            onRms = { db ->
+                level.value = levelFrom(db)
+                if (state.value == VoiceLoopState.SPEAKING && detector.onFrame(db, FRAME_MS, true)) {
+                    // Talking over the reply: stop the voice mid-word and take the microphone back.
+                    speaker.stop()
+                    detector.reset()
+                    partial.value = ""
+                    move(VoiceEvent.BargeIn)
+                }
+            },
             onFinal = { text ->
-                listening.value = false
-                level.value = 0f
                 val clean = text.trim()
+                level.value = 0f
                 partial.value = ""
+                micRef[0]?.cancel()
+                val wasSpeaking = state.value == VoiceLoopState.SPEAKING
+                if (wasSpeaking) {
+                    speaker.stop()
+                    detector.reset()
+                }
                 if (clean.isEmpty()) {
-                    outcome.value(DictationOutcome.Failed("Nothing was recognised."))
+                    if (wasSpeaking) {
+                        move(VoiceEvent.BargeIn)
+                    } else {
+                        problem.value("Nothing was recognised. Tap the mic and try again.")
+                    }
                 } else {
-                    outcome.value(DictationOutcome.Heard(clean))
+                    if (wasSpeaking) state.value = VoiceLoopState.LISTENING
+                    move(VoiceEvent.Heard(clean))
+                    transcript.value(clean)
+                    // The words land in the COMPOSER for review, not sent straight off, so this
+                    // turn is finished: back to IDLE until the owner taps the mic again. (THINKING
+                    // exists in the policy for a send-driven turn; the chat reviews first.)
+                    state.value = VoiceLoopState.IDLE
                 }
             },
             onFailure = { reason ->
-                listening.value = false
                 level.value = 0f
                 partial.value = ""
-                outcome.value(DictationOutcome.Failed(reason))
+                // A failure of the interruption microphone must not kill a reply that is playing.
+                if (state.value != VoiceLoopState.SPEAKING) {
+                    state.value = VoiceLoopState.IDLE
+                    problem.value(reason)
+                }
             },
         )
     }
+    micRef[0] = recognizer
 
-    DisposableEffect(recognizer) {
-        onDispose { recognizer.release() }
-    }
-
-    fun begin() {
+    val beginMic: () -> Unit = {
         val tag = Locale.getDefault().toLanguageTag()
         val decision = RecognitionPlan.decide(recognizer.capability(cloudAllowed = true, languageTag = tag))
-        when (decision) {
-            is RecognitionPlan.Decision.Unavailable ->
-                outcome.value(DictationOutcome.Unavailable(decision.reason))
-            else -> {
-                disclosure.value = (decision as? RecognitionPlan.Decision.Cloud)?.disclosure
-                partial.value = ""
-                level.value = 0f
-                val started = recognizer.start(decision, tag, VadPolicy.Config().endSilenceMs)
-                if (started is RecognitionPlan.Decision.Unavailable) {
-                    listening.value = false
-                    outcome.value(DictationOutcome.Unavailable(started.reason))
-                } else {
-                    listening.value = true
-                }
+        if (decision is RecognitionPlan.Decision.Unavailable) {
+            problem.value(decision.reason)
+            state.value = VoiceLoopState.IDLE
+        } else {
+            val started = recognizer.start(decision, tag, VadPolicy.Config().endSilenceMs)
+            if (started is RecognitionPlan.Decision.Unavailable) {
+                problem.value(started.reason)
+                state.value = VoiceLoopState.IDLE
             }
         }
+    }
+
+    val stopAll: () -> Unit = {
+        speaker.stop()
+        micRef[0]?.cancel()
+        detector.reset()
+        level.value = 0f
+        partial.value = ""
+        state.value = VoiceLoopState.IDLE
     }
 
     val permission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         if (granted) {
-            begin()
+            state.value = VoiceLoopState.LISTENING
+            beginMic()
         } else {
-            outcome.value(
-                DictationOutcome.Unavailable(
-                    "Microphone permission is required to dictate. Grant it in Settings, then try again.",
-                ),
+            problem.value(
+                "Microphone permission is required for voice. Grant it in Settings, then try again.",
             )
         }
     }
 
     val start: () -> Unit = {
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-        if (granted) {
-            begin()
-        } else {
-            permission.launch(Manifest.permission.RECORD_AUDIO)
+        when (state.value) {
+            VoiceLoopState.IDLE -> {
+                val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                    PackageManager.PERMISSION_GRANTED
+                if (granted) {
+                    state.value = VoiceLoopState.LISTENING
+                    beginMic()
+                } else {
+                    permission.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
+            // Any other state: the tap is a stop. One control, two meanings, the way voice modes work.
+            else -> stopAll()
         }
     }
 
-    val cancel: () -> Unit = {
-        recognizer.cancel()
-        listening.value = false
-        level.value = 0f
-        partial.value = ""
+    val speak: (String) -> Unit = { text ->
+        if (text.isNotBlank()) {
+            detector.reset()
+            speaker.speak(text)
+            state.value = VoiceLoopState.SPEAKING
+            // Re-open the microphone so the owner can talk over the reply. Without permission the
+            // reply still reads; it just cannot be interrupted.
+            val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+            if (granted) beginMic()
+        }
+    }
+
+    DisposableEffect(speaker) {
+        speaker.onFinished = {
+            if (state.value == VoiceLoopState.SPEAKING) {
+                detector.reset()
+                micRef[0]?.cancel()
+                level.value = 0f
+                partial.value = ""
+                state.value = VoiceLoopState.IDLE
+            }
+        }
+        onDispose {
+            speaker.onFinished = null
+            micRef[0]?.release()
+        }
     }
 
     return remember(recognizer) {
-        Dictation(listening, partial, level, disclosure, start, cancel)
+        VoiceLoop(state, level, partial, start, stopAll, speak)
     }
 }
+
+/** The recogniser's RMS callback is not frame-stamped; 50 ms is its usual cadence. */
+private const val FRAME_MS = 50

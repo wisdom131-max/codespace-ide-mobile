@@ -11,7 +11,7 @@ import java.util.Locale
 /**
  * P7.D - reading a reply aloud, with the same honesty as dictation.
  *
- * Input already existed (`ChatVoice.rememberDictation`, honest outcomes, no invented transcript).
+ * Input already existed (`ChatVoice.rememberVoiceLoop`, honest outcomes, no invented transcript).
  * Output did not. This is the output half: the platform speech engine, one utterance at a time, a
  * cancel that actually stops it, and a state that says whether it is speaking, idle, or unavailable.
  *
@@ -57,6 +57,8 @@ internal object SpeechText {
 internal class Speaker {
     var state: SpeechState = SpeechState.Loading
         private set
+    /** Called when the queue drains: the voice loop uses it to leave SPEAKING on its own. */
+    var onFinished: (() -> Unit)? = null
     private var tts: TextToSpeech? = null
     private var onState: (SpeechState) -> Unit = {}
 
@@ -122,6 +124,7 @@ internal class Speaker {
             speakingId = null
             state = SpeechState.Idle
             onState(state)
+            onFinished?.invoke()
             return
         }
         engine.setPitch(line.prosody.pitch)

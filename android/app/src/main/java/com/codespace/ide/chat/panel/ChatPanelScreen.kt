@@ -166,11 +166,6 @@ private fun ChatBody(
     var readAloud by remember { mutableStateOf(ChatSettingsPrefs.readAloud()) }
     var speechState by remember { mutableStateOf<SpeechState>(SpeechState.Loading) }
     val speech = rememberSpeaker { speechState = it }
-    val lastSpokenReply = session.ui.value.rows.lastOrNull { it is ChatRowModel.AssistantStream && !it.cursorOn }
-    androidx.compose.runtime.LaunchedEffect(lastSpokenReply, readAloud) {
-        val row = lastSpokenReply as? ChatRowModel.AssistantStream ?: return@LaunchedEffect
-        if (readAloud) speech.speak(row.text)
-    }
     // Attribution: the journal is process-wide, so the session that owns this screen claims it.
     val localCtx = androidx.compose.ui.platform.LocalContext.current
     DisposableEffect(projectId, activeId) {
@@ -245,21 +240,27 @@ private fun ChatBody(
     }
     var stagedNote by remember(projectId) { mutableStateOf<String?>(null) }
     var input by remember { mutableStateOf("") }
-    val dictate = rememberDictation { outcome ->
-        when (outcome) {
-            is DictationOutcome.Heard -> {
-                val failure = voiceStore.append(projectId, activeId, outcome.text, System.currentTimeMillis())
-                if (failure != null) {
-                    notice = failure
-                } else {
-                    input = if (input.isBlank()) outcome.text else input.trimEnd() + " " + outcome.text
-                    notice = "Dictated into the composer. Review it, then send."
-                }
+    // ONE voice loop (owner request 2026-11-23): dictation, read-aloud and interruption are the
+    // same turn, so they share one state instead of three independent ones.
+    val voice = rememberVoiceLoop(
+        speaker = speech,
+        onProblem = { reason -> notice = reason },
+        onTranscript = { text ->
+            val failure = voiceStore.append(projectId, activeId, text, System.currentTimeMillis())
+            if (failure != null) {
+                notice = failure
+            } else {
+                input = if (input.isBlank()) text else input.trimEnd() + " " + text
+                notice = "Dictated into the composer. Review it, then send."
             }
-            is DictationOutcome.Unavailable -> notice = outcome.reason
-            is DictationOutcome.Failed -> notice = outcome.reason
-            DictationOutcome.Cancelled -> Unit
-        }
+        },
+    )
+    // Read-aloud runs through the loop, so a spoken reply can be talked over. Declared after the
+    // loop because it uses it.
+    val lastSpokenReply = session.ui.value.rows.lastOrNull { it is ChatRowModel.AssistantStream && !it.cursorOn }
+    androidx.compose.runtime.LaunchedEffect(lastSpokenReply, readAloud) {
+        val row = lastSpokenReply as? ChatRowModel.AssistantStream ?: return@LaunchedEffect
+        if (readAloud) voice.speak(row.text)
     }
     // WP8: system picker; bytes are STAGED at attach time (read fully once),
     // then only name + mime + base64 live in memory until the send.
@@ -343,8 +344,11 @@ private fun ChatBody(
             title = "Chat",
             colors = c,
             onSessions = onOpenSessions,
-            // OWNER REQUEST (2026-11-23): our own listening surface, not Google's activity.
-            onMic = dictate.start,
+            // OWNER REQUEST (2026-11-23): our own listening surface, not Google's activity. The
+            // header chip now carries the animation, so the state and level are passed to it.
+            onMic = voice.toggle,
+            micState = voice.state,
+            micLevel = voice.level,
             onNewSession = onNewSession,
             onOverflow = { showOverflow = true },
             onClose = onClosePanel,
@@ -727,16 +731,14 @@ private fun ChatBody(
             }
         }
     }
-    // The custom listening surface. Drawn as a full-screen dialog so nothing of the system
-    // recogniser is ever visible, with the bars driven by the real microphone level.
-    if (dictate.listening) {
-        VoiceWaveOverlay(
-            partial = dictate.partial,
-            level = dictate.level,
-            disclosure = dictate.disclosure,
-            onCancel = dictate.cancel,
-        )
-    }
+    // The words go in a strip under the header; the animation stays in the chip, which is where the
+    // owner's screenshot puts it.
+    VoiceStrip(
+        state = voice.state,
+        partial = voice.partial,
+        colors = c,
+        onStop = voice.stop,
+    )
     if (showContextWindow) {
         ContextWindowPanel(
             colors = c,
