@@ -14,6 +14,7 @@ import com.codespace.ide.ui.screens.PinRegistrationDialog
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +34,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -78,6 +81,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.CheckCircle
@@ -411,11 +415,82 @@ fun SettingsScreen(
             // RESTORED 2026-10-29 at the owner's instruction: credential management is
             // configuration, so it belongs in Settings, not in the chat panel header.
             // Shows slot names and counts only, never key values.
+            Text("AI & Models", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             ProvidersAndModelsSection(tokenStore)
-            com.codespace.ide.ui.diag.DiagHistorySection()
 
-            // ── Language Servers (P1e, read-only status) ─────────────────────
-            LspServersStatusSection()
+            // ── OWNER REQUEST (2026-11-23): "a tappable glyph that takes you to their own dedicated
+            // panels the way I like my UIs, the texture of the context and token panel". Diagnosis,
+            // Language Servers and Backup were three long walls of text stacked in this page. Each is
+            // now one small tile that opens its own panel, so Settings reads as a list of places to
+            // go instead of a document to scroll.
+            var openPanel by remember { mutableStateOf<String?>(null) }
+            Text("Panels", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                PanelGlyphTile("Diagnosis", "\u25A6", Modifier.weight(1f)) { openPanel = "diag" }
+                PanelGlyphTile("Servers", "\u2318", Modifier.weight(1f)) { openPanel = "lsp" }
+                PanelGlyphTile("Backup", "\u21BB", Modifier.weight(1f)) { openPanel = "backup" }
+            }
+            Spacer(Modifier.height(8.dp))
+
+            if (openPanel != null) {
+                val panelCtx = androidx.compose.ui.platform.LocalContext.current
+                androidx.compose.ui.window.Dialog(onDismissRequest = { openPanel = null }) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    when (openPanel) {
+                                        "diag" -> "Diagnosis"
+                                        "lsp" -> "Language Servers"
+                                        else -> "Backup"
+                                    },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = { openPanel = null }) { Text("Close") }
+                            }
+                            HorizontalDivider()
+                            Column(Modifier.fillMaxWidth()) {
+                                when (openPanel) {
+                                    "diag" -> com.codespace.ide.ui.diag.DiagHistorySection()
+                                    "lsp" -> LspServersStatusSection()
+                                    else -> DeletedProjectsSection(panelCtx)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Privacy ─────────────────────────────────────────────────────
+            // OWNER REQUEST: "it should have sections for privacy and a whole bunch of other
+            // sections too". There were no privacy controls at all, so this section states plainly
+            // what stays on the device and what leaves it, which is the honest version rather than a
+            // toggle that does nothing.
+            Text("Privacy", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            ListItem(
+                headlineContent = { Text("Stays on this device") },
+                supportingContent = {
+                    Text("Project files, chat transcripts, memory facts, API keys and connector tokens. " +
+                        "Keys are held in the encrypted token store and never leave the phone except to the " +
+                        "provider you chose.")
+                },
+            )
+            ListItem(
+                headlineContent = { Text("Leaves this device") },
+                supportingContent = {
+                    Text("Only the requests you send to a model provider, and a backup archive if you " +
+                        "enable one. Diagnostics are kept locally and are never uploaded.")
+                },
+            )
+            HorizontalDivider()
 
             HorizontalDivider()
 
@@ -1673,3 +1748,29 @@ private val SETTINGS_SEARCH_INDEX = listOf(
     SettingsIndexEntry("Terminal notifications", "Notifications", "In-Project Settings (gear menu)"),
     SettingsIndexEntry("App WakeLock", "Shell", "Shell gear menu"),
 )
+
+
+/**
+ * One small tile that opens a dedicated panel. Deliberately the same chrome as the Context Window
+ * panel: rounded surface, hairline border, a glyph and a label, no icon font dependency.
+ */
+@Composable
+private fun PanelGlyphTile(
+    label: String,
+    glyph: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+            .clickable { onClick() }
+            .padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(glyph, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(4.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium)
+    }
+}

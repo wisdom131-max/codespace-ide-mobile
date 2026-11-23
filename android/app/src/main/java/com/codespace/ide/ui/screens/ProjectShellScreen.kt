@@ -2765,9 +2765,30 @@ private fun PssOverlays(
         }
 
         // Gear / Settings menu — VS Code-style bottom-left dropdown (wider, centered, rounded)
+        // OWNER REQUEST (2026-11-23): "the main menu looks too flat and I need a full UI redesign
+        // with animations". It appeared and vanished instantly, which is what makes a menu feel
+        // flat. It now grows out of the gear corner: a short fade with a slight scale, anchored to
+        // the BOTTOM-LEFT origin so it expands from the control that opened it rather than from its
+        // own centre. Exit is quicker than entry, the way native menus behave.
         var showThemesSubmenu by remember { mutableStateOf(false) }
         val themesSubmenuDensity = LocalDensity.current
-        if (showGearMenu) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showGearMenu,
+            enter = androidx.compose.animation.fadeIn(
+                animationSpec = androidx.compose.animation.core.tween(140),
+            ) + androidx.compose.animation.scaleIn(
+                initialScale = 0.90f,
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 1f),
+                animationSpec = androidx.compose.animation.core.tween(160),
+            ),
+            exit = androidx.compose.animation.fadeOut(
+                animationSpec = androidx.compose.animation.core.tween(100),
+            ) + androidx.compose.animation.scaleOut(
+                targetScale = 0.94f,
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 1f),
+                animationSpec = androidx.compose.animation.core.tween(100),
+            ),
+        ) {
             Box(
                 Modifier.fillMaxSize()
                     .pointerInput(Unit) {
