@@ -295,9 +295,14 @@ private fun LocalModelsSection() {
                         .fillMaxWidth()
                         .clickable {
                             com.codespace.ide.chat.panel.ChatSettingsPrefs.setSelection(
+                                // PanelSelection defaults to the Gemini slot and base URL. Selecting
+                                // a local model must clear the key slot and point at the local server,
+                                // or the chat would ask Ollama with Gemini's slot attached.
                                 com.codespace.ide.chat.panel.PanelSelection(
                                     providerId = "ollama",
+                                    keySlot = "",
                                     modelId = m,
+                                    baseUrl = "http://localhost:11434/v1",
                                 ),
                             )
                             chosen = m
