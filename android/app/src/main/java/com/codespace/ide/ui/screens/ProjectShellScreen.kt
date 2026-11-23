@@ -5270,11 +5270,32 @@ private fun PssEditorColumn(
                         // screen follows the theme instead of staying light-on-white in Light mode.
                         val welcomeLandscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation ==
                             android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                        androidx.compose.foundation.Image(
-                            painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.vncode_watermark),
-                            contentDescription = null,
-                            modifier = if (welcomeLandscape) Modifier.fillMaxHeight(0.4f) else Modifier.fillMaxWidth(0.8f),
-                        )
+                        // OWNER DECISION (2026-11-23): "the rest can be theme aware but the logo should
+                        // be able to stand out because that's my app's logo". The watermark is a white
+                        // gradient PNG: it pops on a dark page and disappears on a light one, and it was
+                        // just floating with no presence either way. Now it is treated as a mark -
+                        // a soft accent glow behind it on dark pages so it reads as the app's logo
+                        // rather than faint texture, and a dark tint on light pages so a white logo is
+                        // not lost on a white page. The grey text pairing is untouched.
+                        val welcomeOnDarkForLogo = (BgColor.red + BgColor.green + BgColor.blue) / 3f < 0.5f
+                        Box(contentAlignment = Alignment.Center) {
+                            if (welcomeOnDarkForLogo) {
+                                Box(
+                                    Modifier.matchParentSize().background(
+                                        androidx.compose.ui.graphics.Brush.radialGradient(
+                                            listOf(TabActiveIndicator.copy(alpha = 0.18f), Color.Transparent),
+                                        ),
+                                    ),
+                                )
+                            }
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(id = com.codespace.ide.R.drawable.vncode_watermark),
+                                contentDescription = null,
+                                colorFilter = if (welcomeOnDarkForLogo) null else
+                                    androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF1F1F1F)),
+                                modifier = if (welcomeLandscape) Modifier.fillMaxHeight(0.4f) else Modifier.fillMaxWidth(0.8f),
+                            )
+                        }
                         Spacer(Modifier.height(if (welcomeLandscape) 8.dp else 16.dp))
                         // OWNER REPORT (2026-11-23): "I want that grey on black fixed for that
                         // specific theme setting". The theme-aware change went one step too far:
