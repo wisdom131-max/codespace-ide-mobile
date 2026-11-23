@@ -1171,7 +1171,11 @@ class ChatSession internal constructor(
             return false
         }
         queuedMessages.value = after
-        ChatQueue.notice(after)?.let { appendRow(ChatRowModel.InfoNote(it)) }
+        // OWNER REPORT (2026-11-23): the queued notice was a full-width grey card in the transcript
+        // ("1 message queued - it runs when this answer finishes"), which is ugly and scrolls away
+        // from the composer it belongs to. The queue is now shown as a chip above the composer, so
+        // nothing is appended here. Refusals (full / duplicate) still speak, because those are errors
+        // the owner needs to read.
         return true
     }
 
@@ -1199,12 +1203,43 @@ class ChatSession internal constructor(
         val clean = Steering.accept(text) ?: return false
         pendingSteer = clean
         steerDelivered.value = false
-        appendRow(ChatRowModel.InfoNote(Steering.notice(Steering.Delivery.AT_NEXT_BOUNDARY)))
+        // Same ruling as the queue: a grey card saying "Steering noted" is not UI, it is a log line
+        // in the conversation. The instruction is exposed as state so the composer can show a chip
+        // that says what will be applied and lets the owner withdraw it before the boundary.
+        pendingSteerText.value = clean
         return true
     }
 
+    /** The steering instruction waiting for the next boundary, for the composer chip. */
+    internal val pendingSteerText = MutableStateFlow<String?>(null)
+
+    /** Withdraw a steering instruction that has not been delivered yet. */
+    fun clearSteer() {
+        pendingSteer = null
+        pendingSteerText.value = null
+    }
+
     /** Consume the pending instruction, if any. Called only at a real continuation boundary. */
-    private fun takeSteer(): String? = pendingSteer.also { pendingSteer = null }
+    private fun takeSteer(): String? = pendingSteer.also {
+        pendingSteer = null
+        pendingSteerText.value = null
+    }
+
+    /**
+     * OWNER REQUEST (2026-11-23): "I need my queued messages to have a little pen glyph at the side so
+     * I can edit a queued message I sent before the copilot gets to it."
+     *
+     * Edits in place, so the order the owner queued is the order they run. A blank edit is refused
+     * (nothing to send) and a duplicate of another waiting message is refused too, matching the rule
+     * that enqueue already follows - the queue never holds the same question twice.
+     */
+    fun editQueued(index: Int, text: String) {
+        val current = queuedMessages.value
+        if (index !in current.indices) return
+        val clean = ChatQueue.accept(text) ?: return
+        if (current.filterIndexed { i, _ -> i != index }.any { it == clean }) return
+        queuedMessages.value = current.toMutableList().also { it[index] = clean }
+    }
 
     /**
      * Runs the next queued message once the turn that queued it has genuinely ended.
@@ -1216,7 +1251,6 @@ class ChatSession internal constructor(
         if (ui.value.streaming) return
         val next = ChatQueue.peek(queuedMessages.value) ?: return
         queuedMessages.value = queuedMessages.value.drop(1)
-        appendRow(ChatRowModel.InfoNote("Running the next queued message."))
         send(next)
     }
 

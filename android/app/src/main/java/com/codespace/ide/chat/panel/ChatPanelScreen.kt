@@ -2,13 +2,16 @@ package com.codespace.ide.chat.panel
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -23,10 +26,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.codespace.ide.chat.keys.StoredEndpoint
@@ -36,6 +40,7 @@ import com.codespace.ide.chat.ui.ChatRowModel
 import com.codespace.ide.chat.ui.ChatTokens
 import com.codespace.ide.chat.ui.NativeChatListRenderer
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * WP2 (d-min): the chat panel on the rebuilt engine. Native renderer behind
@@ -488,6 +493,54 @@ private fun ChatBody(
         action = session.resumeUi.collectAsState().value,
         onResume = { session.resumeInterruptedTurn() },
     )
+    // OWNER REQUEST (2026-11-23): "I need VS Code's UI for steered and queued messages ... and I need
+    // my queued messages to have a little pen glyph at the side so I can edit a queued message I sent
+    // before the copilot gets to it."
+    //
+    // VS Code's own pattern: waiting messages are NOT transcript rows. They live as compact chips in
+    // the input area, where the composer is, because that is where the owner's attention already is.
+    // Ours were full-width grey cards inside the conversation, which scrolled away from the box they
+    // described and read like system log lines. Now: one chip per waiting message, numbered in queue
+    // order, one line of text, a pen to edit it and an X to cancel it. Steering gets the same
+    // treatment with its own label, and can be withdrawn before the next step reads it.
+    val queuedNow by session.queuedMessages.collectAsState()
+    val steerNow by session.pendingSteerText.collectAsState()
+    var editingQueued by remember { mutableStateOf<Int?>(null) }
+    var editingQueuedText by remember { mutableStateOf("") }
+    ChatQueueStrip(
+        queued = queuedNow,
+        steer = steerNow,
+        colors = c,
+        onEdit = { i ->
+            editingQueued = i
+            editingQueuedText = queuedNow.getOrElse(i) { "" }
+        },
+        onDrop = { i -> session.dropQueued(i) },
+        onWithdrawSteer = { session.clearSteer() },
+    )
+    editingQueued?.let { idx ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editingQueued = null },
+            title = { Text("Edit queued message", fontSize = 15.sp) },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = editingQueuedText,
+                    onValueChange = { editingQueuedText = it },
+                    label = { Text("Message") },
+                    minLines = 2,
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    session.editQueued(idx, editingQueuedText)
+                    editingQueued = null
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { editingQueued = null }) { Text("Cancel") }
+            },
+        )
+    }
     ChatInputComposer(
             value = input,
             onValueChange = { input = it },
@@ -1182,4 +1235,77 @@ private fun stageLocalFile(session: ChatSession, file: java.io.File): String? {
 private fun liveThinkingSteps(rows: List<ChatRowModel>): List<String> {
     val since = rows.indexOfLast { it is ChatRowModel.User }
     return rows.drop(since + 1).filterIsInstance<ChatRowModel.InfoNote>().map { it.text }
+}
+
+
+/**
+ * The waiting strip above the composer: steering first (it applies to the running step), then the
+ * queue in the order it will run.
+ *
+ * Kept to one line per message on purpose. A phone cannot afford a card per waiting message, and a
+ * single line with the pen and X at the end is exactly how VS Code keeps this readable. The glyphs
+ * are text, not icon fonts, so they cannot fail to resolve and stay the same size as the label.
+ */
+@Composable
+private fun ChatQueueStrip(
+    queued: List<String>,
+    steer: String?,
+    colors: com.codespace.ide.chat.ui.ChatColors,
+    onEdit: (Int) -> Unit,
+    onDrop: (Int) -> Unit,
+    onWithdrawSteer: () -> Unit,
+) {
+    if (queued.isEmpty() && steer == null) return
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (steer != null) {
+            Row(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.surfaceAlt)
+                    .padding(start = 8.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("STEERING", fontSize = 9.sp, color = colors.textSecondary, letterSpacing = 0.5.sp)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    steer, fontSize = 12.sp, color = colors.text, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "\u2715", fontSize = 12.sp, color = colors.textSecondary,
+                    modifier = Modifier.clickable { onWithdrawSteer() }.padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+        }
+        queued.forEachIndexed { index, text ->
+            Row(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.surface)
+                    .padding(start = 8.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    (index + 1).toString() + ".", fontSize = 9.sp,
+                    color = colors.textSecondary, modifier = Modifier.width(14.dp),
+                )
+                Text(
+                    text, fontSize = 12.sp, color = colors.text, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                )
+                // The pen: edit this queued message before the copilot reaches it.
+                Text(
+                    "\u270E", fontSize = 13.sp, color = colors.textSecondary,
+                    modifier = Modifier.clickable { onEdit(index) }.padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+                Text(
+                    "\u2715", fontSize = 12.sp, color = colors.textSecondary,
+                    modifier = Modifier.clickable { onDrop(index) }.padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+        }
+    }
 }
