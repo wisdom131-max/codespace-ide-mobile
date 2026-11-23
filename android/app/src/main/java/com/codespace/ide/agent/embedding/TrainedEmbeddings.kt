@@ -7,14 +7,17 @@ import java.io.File
 import kotlinx.coroutines.runBlocking
 
 /**
- * PROJECT NINE 10.26 - fetch the trained model once, then hand search over to it.
+ * PROJECT NINE 10.31 - fetch the trained model once, then hand search over to it.
  *
  * Nothing here blocks the app. Until the model is verified and loaded, search keeps using the
  * built-in hashing embedder, so a fresh install works immediately and a failed download is a
  * downgrade rather than a break.
  *
- * The model is 110MB, which no platform backup will carry, so a copy is kept in the owner's own
- * backup: a reinstall restores it instead of spending the download again.
+ * Order of preference, cheapest first:
+ *   1. a verified copy in the model's home (public storage, which survives an uninstall)
+ *   2. a verified copy anywhere else the app has kept one
+ *   3. the owner's cloud backup
+ *   4. a fresh download
  */
 object TrainedEmbeddings {
 
@@ -22,10 +25,18 @@ object TrainedEmbeddings {
     @Volatile private var attempted = false
     @Volatile var progress: Int = 0
     @Volatile var lastError: String? = null
+    @Volatile var homePath: String = ""
 
-    fun modelDir(context: Context): File = File(context.filesDir, "models")
+    fun modelDir(context: Context): File = ModelHome.writableHome(context)
 
     fun isReady(): Boolean = embedder != null
+
+    /** A verified pair in the given folder, or null. */
+    private fun verifiedIn(dir: File): Pair<File, File>? {
+        val m = File(dir, TrainedEmbedding.MODEL.name)
+        val v = File(dir, TrainedEmbedding.VOCAB.name)
+        return if (TrainedEmbedding.ready(m, v)) m to v else null
+    }
 
     /** Called at startup. Safe to call repeatedly: it works at most once per process. */
     fun ensure(context: Context, backendUrl: String = "", authToken: String = "") {
@@ -38,44 +49,69 @@ object TrainedEmbeddings {
         val canBackup = backendUrl.isNotBlank() && authToken.isNotBlank()
         Thread {
             try {
-                val dir = modelDir(app)
-                dir.mkdirs()
-                var model = File(dir, TrainedEmbedding.MODEL.name)
-                var vocab = File(dir, TrainedEmbedding.VOCAB.name)
+                val home = ModelHome.writableHome(app)
+                home.mkdirs()
+                homePath = home.absolutePath
 
-                if (!TrainedEmbedding.ready(model, vocab) && canBackup) {
-                    val restored = runBlocking {
-                        ModelBackup.restore(app, backendUrl, authToken, TrainedEmbedding.ID).getOrNull()
-                    } == true
-                    if (restored) progress = 100
+                var found = verifiedIn(home)
+                if (found == null) {
+                    // The copy that survives an uninstall may be in the other home already.
+                    for (dir in ModelHome.searchOrder(app)) {
+                        val hit = verifiedIn(dir)
+                        if (hit != null) {
+                            found = hit
+                            break
+                        }
+                    }
                 }
 
-                if (!TrainedEmbedding.ready(model, vocab)) {
-                    val gotModel = EmbeddingDownloader.fetch(TrainedEmbedding.MODEL, dir) { progress = it }
+                if (found == null && canBackup) {
+                    runBlocking { ModelBackup.restore(app, backendUrl, authToken, TrainedEmbedding.ID) }
+                    for (dir in ModelHome.searchOrder(app)) {
+                        val hit = verifiedIn(dir)
+                        if (hit != null) {
+                            found = hit
+                            progress = 100
+                            break
+                        }
+                    }
+                }
+
+                if (found == null) {
+                    val gotModel = EmbeddingDownloader.fetch(TrainedEmbedding.MODEL, home) { progress = it }
                     if (gotModel == null) {
                         lastError = "Could not download the model."
                         return@Thread
                     }
-                    model = gotModel
-                    val gotVocab = EmbeddingDownloader.fetch(TrainedEmbedding.VOCAB, dir) { }
+                    val gotVocab = EmbeddingDownloader.fetch(TrainedEmbedding.VOCAB, home) { }
                     if (gotVocab == null) {
                         lastError = "Could not download the vocabulary."
                         return@Thread
                     }
-                    vocab = gotVocab
-                    if (!TrainedEmbedding.ready(model, vocab)) {
+                    if (!TrainedEmbedding.ready(gotModel, gotVocab)) {
                         lastError = "The downloaded files did not match their checksums."
                         return@Thread
                     }
+                    found = gotModel to gotVocab
                     if (canBackup) {
                         runBlocking { ModelBackup.upload(app, backendUrl, authToken, TrainedEmbedding.ID) }
+                    }
+                }
+
+                val (model, vocab) = found
+                // Keep the good copy in the home that survives an uninstall. Best effort: a
+                // failure here costs a future download, never the working model.
+                if (model.parentFile?.absolutePath != home.absolutePath) {
+                    runCatching {
+                        model.copyTo(File(home, model.name), overwrite = true)
+                        vocab.copyTo(File(home, vocab.name), overwrite = true)
                     }
                 }
 
                 val made = OnnxEmbedder(model, vocab)
                 embedder = made
                 VectorIndex.backend = { text -> made.embed(text) }
-                // This model was trained to be told a passage is a question; documents get no prefix.
+                // This model expects a question to be announced as one; documents must not be.
                 VectorIndex.queryBackend = { text -> made.embed(TrainedEmbedding.QUERY_PREFIX + text) }
                 progress = 100
             } catch (t: Throwable) {
@@ -84,15 +120,14 @@ object TrainedEmbeddings {
         }.apply { name = "embedding-model"; isDaemon = true }.start()
     }
 
-    /** Plain language, for the context panel. Never claims ready when it is not. */
-    fun status(context: Context): String {
-        val dir = modelDir(context)
-        val said = TrainedEmbedding.describe(File(dir, TrainedEmbedding.MODEL.name), File(dir, TrainedEmbedding.VOCAB.name))
+    /** One line for the panel: where the model lives and whether it is in use. */
+    fun describe(context: Context): String {
+        val where = if (ModelHome.isPublic(context)) "shared storage" else "app storage"
         return when {
-            isReady() -> "Trained model ready"
-            lastError != null -> said + " (" + lastError + ")"
-            progress in 1..99 -> "Downloading the trained model: " + progress + "%"
-            else -> said + " - search is using the built-in matcher"
+            isReady() -> "Trained model ready (" + where + ")"
+            lastError != null -> "Trained model unavailable: " + lastError + ". Using built-in matching."
+            progress in 1..99 -> "Downloading trained model: " + progress + "%"
+            else -> "Trained model not downloaded yet. Using built-in matching."
         }
     }
 }
