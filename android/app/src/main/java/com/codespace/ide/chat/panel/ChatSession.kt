@@ -635,14 +635,11 @@ class ChatSession internal constructor(
         }
 
     /** Credential-shaped names are refused at attach (redaction rule). */
-    internal fun looksLikeCredentialFile(name: String): Boolean {
-        val n = name.lowercase()
-        val base = n.substringAfterLast('/')
-        return base == ".env" || base.startsWith(".env.") || base == "id_rsa" ||
-            base == "id_ed25519" || base == "id_dsa" || base.endsWith(".pem") ||
-            base.endsWith(".p12") || base.endsWith(".keystore") || base.endsWith(".jks") ||
-            base.contains("credentials") || base.contains("secret") || base.contains("password")
-    }
+    internal fun looksLikeCredentialFile(name: String): Boolean =
+        // The rule lives in AttachmentCredentialGate so it is testable without a device. The old
+        // version refused any name containing "credentials"/"secret"/"password", which refused
+        // ordinary source files such as CredentialsStore.kt - a false refusal the owner reported.
+        AttachmentCredentialGate.looksLikeCredential(name)
 
     internal fun formatSizeBytes(bytes: Long): String =
         if (bytes >= 1024L * 1024L) String.format("%.1f MB", bytes / (1024.0 * 1024.0))

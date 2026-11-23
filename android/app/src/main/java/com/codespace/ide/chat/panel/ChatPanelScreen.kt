@@ -1206,14 +1206,7 @@ private fun readAttachment(
  * Deliberately content-based: extension lists always lag behind, and the owner reported files being
  * refused that were perfectly readable.
  */
-private fun decodeTextOrNull(bytes: ByteArray): String? {
-    if (bytes.isEmpty()) return null
-    val probe = if (bytes.size > 8192) bytes.copyOfRange(0, 8192) else bytes
-    if (probe.any { it == 0.toByte() }) return null
-    val text = String(bytes, Charsets.UTF_8)
-    val bad = text.count { it == '\uFFFD' }
-    return if (bad * 100 > maxOf(1, text.length)) null else text
-}
+private fun decodeTextOrNull(bytes: ByteArray): String? = AttachmentTextSniff.decodeOrNull(bytes)
 
 private fun guessMimeFromName(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
     "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "gif" -> "image/gif"
@@ -1242,17 +1235,25 @@ private fun stageLocalFile(session: ChatSession, file: java.io.File): String? {
         return "Cannot read '" + file.name + "' (" + (t.message ?: "error") + ")."
     }
     val name = file.name
-    val mime = guessMimeFromName(name)
-    val ext = name.substringAfterLast('.', "").lowercase()
-    val textKind = mime.startsWith("text/") || mime == "application/json" || mime == "application/xml" ||
-        ext in setOf("py", "kt", "kts", "java", "js", "ts", "tsx", "jsx", "json", "md", "txt", "log",
-            "sh", "yml", "yaml", "toml", "gradle", "css", "html", "xml", "c", "h", "cpp", "go", "rs", "rb", "sql")
+    val declared = guessMimeFromName(name)
+    val binaryDeclared = declared.startsWith("image/") || declared == "application/pdf"
+    // OWNER REPORT (2026-11-23): this path kept its OWN hand-written list of text extensions, so a
+    // .svg, a .dart file, a .ps1, a .vue file or an extensionless README was base64'd and then
+    // refused by the kind gate as an unknown type - the same refusal the system picker had just been
+    // cured of. Both paths now decide by CONTENT, through the same tested sniffer.
+    val sniffed = if (binaryDeclared) null else AttachmentTextSniff.decodeOrNull(bytes)
+    val textKind = sniffed != null
+    val mime = when {
+        binaryDeclared -> declared
+        textKind -> "text/plain"
+        else -> declared
+    }
     session.addPending(
         name = name,
         mimeType = mime,
         base64 = if (textKind) "" else android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
         sizeBytes = bytes.size.toLong(),
-        text = if (textKind) String(bytes, Charsets.UTF_8) else null,
+        text = sniffed,
     )
     return null
 }
