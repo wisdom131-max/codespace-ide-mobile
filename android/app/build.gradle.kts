@@ -209,6 +209,10 @@ dependencies {
     // download the owner forbids; ~4MB per architecture buys an offline-from-first-launch reader.
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
+    // PROJECT NINE 10.26: the trained embedding model runs on ONNX Runtime. Chosen over a
+    // Play-Services downloader because the model must be verifiable and stored where we say.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.1")
+
     // Firebase BOM — manages all Firebase lib versions
     implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
     implementation("com.google.firebase:firebase-auth-ktx")

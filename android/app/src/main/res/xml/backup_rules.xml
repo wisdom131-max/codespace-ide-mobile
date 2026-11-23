@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The trained model is ~23MB. Android's auto-backup quota is 25MB for the WHOLE app, so
+     including it would crowd out the user's projects. It is re-fetched instead. -->
+<full-backup-content>
+    <exclude domain="file" path="models/" />
+</full-backup-content>

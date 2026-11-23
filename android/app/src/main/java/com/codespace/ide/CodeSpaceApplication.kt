@@ -114,6 +114,9 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         SettingsUsageTracker.init(this) // P-SETTINGS-RESTRUCTURE: track setting usage for "Commonly Used" ranking
         KeyBindingRegistry.init(this) // Load persisted keybinding overrides
         super.onCreate()
+        // PROJECT NINE 10.27: fetch the trained embedding model in the background. Search works
+        // on the built-in matcher until it is verified, so this can never block a cold start.
+        com.codespace.ide.agent.embedding.TrainedEmbeddings.ensure(this)
         // MK-RESTRUCTURE v2: endpoint registry must be initialized (prefs +
         // legacy migration + provider sync) BEFORE anything enumerates providers.
         try { com.codespace.ide.chat.CustomEndpointStore.init(this) } catch (_: Exception) { }
