@@ -35,7 +35,16 @@ object VectorIndex {
      * words (so "fact retrieval" is not the same vector as "retrieval fact"). The result is
      * L2-normalised, so [cosine] is a plain dot product and every vector has the same length.
      */
+    /**
+     * PROJECT NINE 10.21 (catalog 45): the trained model, when one has been verified and loaded.
+     * Null means the hashing embedder below stays in charge, which is the honest default: search
+     * must work on a fresh install with nothing downloaded.
+     */
+    @Volatile
+    var backend: ((String) -> FloatArray)? = null
+
     fun embed(text: String, dim: Int = DEFAULT_DIM): FloatArray {
+        backend?.let { return it(text) }
         val width = dim.coerceAtLeast(8)
         val v = FloatArray(width)
         if (text.isBlank()) return v
