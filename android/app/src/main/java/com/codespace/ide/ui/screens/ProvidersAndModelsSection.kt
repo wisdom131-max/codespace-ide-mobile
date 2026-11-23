@@ -37,6 +37,7 @@ import com.codespace.ide.agent.image.ImageModels
 import com.codespace.ide.editor.ProjectSettingsStore
 import com.codespace.ide.agent.voice.SherpaModelStore
 import com.codespace.ide.agent.models.ModelDownloads
+import kotlinx.coroutines.launch
 
 /**
  * Settings → Providers and Models. This is the surface the owner asked the keys to
@@ -79,6 +80,7 @@ fun ProvidersAndModelsSection(tokenStore: SecureTokenStore) {
         }
         ImageGenerationSection()
         OnDeviceSpeechSection()
+        LocalModelsSection()
         // Slot NAMES only, never values: this is the readout the device sheet asks for.
         for (slot in snapshot.keySlots.filter { it.hasKey }.sortedBy { it.slotName }) {
             Text(
@@ -221,6 +223,101 @@ private fun OnDeviceSpeechSection() {
             ) {
                 Text("Download model (45MB)", fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
+        }
+    }
+}
+
+/**
+ * OWNER ITEM (owed from 2026-11-23): Ollama as a LOCAL SERVER, the way VS Code treats it. No key
+ * step, no cloud call: the question is only "is the server up, and what has it pulled?". The probe
+ * already existed (LocalModelProbe); this is the screen that uses it.
+ */
+@Composable
+private fun LocalModelsSection() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var result by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<com.codespace.ide.chat.keys.LocalProbeResult?>(null)
+    }
+    var busy by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showModels by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var chosen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+
+    fun check() {
+        if (busy) return
+        busy = true
+        scope.launch {
+            result = com.codespace.ide.chat.keys.LocalModelProbe.tags()
+            busy = false
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) { check() }
+
+    Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+        Text("Local models (Ollama)", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "No key needed. This asks the Ollama server on port 11434 what it has pulled, " +
+                "and never sends anything to the cloud.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        val r = result
+        Text(
+            when {
+                busy -> "Checking the server..."
+                r == null -> "Not checked yet."
+                else -> com.codespace.ide.chat.keys.LocalModelProbe.statusLine(r)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Start) {
+            OutlinedButton(onClick = { check() }, enabled = !busy) { Text("Check again") }
+            if (r is com.codespace.ide.chat.keys.LocalProbeResult.Running && r.models.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = { showModels = !showModels }) {
+                    Text(if (showModels) "Hide models" else "Show models (" + r.models.size + ")")
+                }
+            }
+        }
+        if (r is com.codespace.ide.chat.keys.LocalProbeResult.Running && r.models.isEmpty()) {
+            Text(
+                "The server is up but nothing is pulled yet. In a terminal: ollama pull llama3.2",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        if (showModels && r is com.codespace.ide.chat.keys.LocalProbeResult.Running) {
+            for (m in r.models) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            com.codespace.ide.chat.panel.ChatSettingsPrefs.setSelection(
+                                com.codespace.ide.chat.panel.PanelSelection(
+                                    providerId = "ollama",
+                                    modelId = m,
+                                ),
+                            )
+                            chosen = m
+                        }
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(m, style = MaterialTheme.typography.bodySmall)
+                    if (chosen == m) {
+                        Text("selected", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+        if (chosen.isNotEmpty()) {
+            Text(
+                "Selected " + chosen + ". The chat now asks Ollama for that model.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
     }
 }
