@@ -312,27 +312,33 @@ object FactRetrieval {
         val relatedByWords = rankedFactsWithOverlap(facts, requestTokens, projectId, now)
         // The word filter is REQUIRED for precision, but it cannot see a synonym. Meaning adds the
         // candidates it would have dropped, and the ranking below decides the order for both.
-        val relatedByMeaning = if (queryVector != null) {
-            facts.filter { f ->
-                f.isRetrievable() && f.belongsTo(projectId) &&
-                    vectors[f.id]?.let { v ->
-                        v.size == queryVector.size && FactVectors.cosine(queryVector, v) > SEMANTIC_FLOOR
-                    } ?: false
+        // BUILD 4084: this block must stay in Ranked, not Fact - everything below reads .score and
+        // .fact, and the first version converted to Fact here, which broke twelve lines downstream.
+        val relatedByMeaning: List<Ranked> = if (queryVector != null) {
+            facts.mapNotNull { f ->
+                if (!f.isRetrievable() || !f.belongsTo(projectId)) return@mapNotNull null
+                val v = vectors[f.id] ?: return@mapNotNull null
+                if (v.size != queryVector.size) return@mapNotNull null
+                val sim = FactVectors.cosine(queryVector, v)
+                if (sim <= SEMANTIC_FLOOR) null else Ranked(f, SEMANTIC_WEIGHT * sim)
             }
         } else {
             emptyList()
         }
-        val related = if (relatedByMeaning.isEmpty()) {
+        val related: List<Ranked> = if (relatedByMeaning.isEmpty()) {
             relatedByWords
         } else {
+            // Re-ranked together, so a fact found BOTH ways carries one fused score instead of
+            // appearing twice with two different ones.
             rank(
-                facts = (relatedByWords + relatedByMeaning).distinctBy { it.id },
+                facts = (relatedByWords.map { it.fact } + relatedByMeaning.map { it.fact })
+                    .distinctBy { it.id },
                 request = request,
                 projectId = projectId,
                 now = now,
                 queryVector = queryVector,
                 vectors = vectors,
-            ).map { it.fact }
+            )
         }
         // PROJECT EIGHT 8.30 (catalog 41 wiring): age softens a fact instead of being ignored.
         // Applied to the SCORE, never as a filter, so an old fact still appears when nothing

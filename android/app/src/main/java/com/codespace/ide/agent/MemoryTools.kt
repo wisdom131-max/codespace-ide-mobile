@@ -7,6 +7,7 @@ import com.codespace.ide.agent.facts.FactSource
 import com.codespace.ide.agent.facts.FactProvenance
 import com.codespace.ide.agent.facts.FactSourceContext
 import com.codespace.ide.agent.facts.FactsStore
+import com.codespace.ide.agent.facts.FactVectors
 import org.json.JSONObject
 import java.io.File
 
