@@ -442,6 +442,24 @@ class ChatEngineImpl(
             // carries only a tool call has no text, so "empty" was not evidence of a bad answer and
             // asking again re-ran the tools. The picker stays wired for the case that does produce
             // two candidates (a partial answer followed by a fallback answer).
+            // PROJECT NINE 9.72 (catalog 96 WIRED): every turn is scored for tool waste and for
+            // claiming completion it did not earn. The verdict is published, so a session can be
+            // reviewed afterwards instead of guessed at.
+            run {
+                val verdict = TrajectoryEvaluator.score(
+                    TrajectoryEvaluator.Turn(
+                        toolCalls = exchanges().size,
+                        failedCalls = 0,
+                        claimedDone = builder.isNotBlank(),
+                        endedInError = false,
+                    ),
+                )
+                AgentEventBus.publish(
+                    kind = "turn.quality",
+                    payload = if (verdict.clean) "clean" else verdict.reasons.joinToString("; "),
+                    atMs = System.currentTimeMillis(),
+                )
+            }
             candidates.add(builder.toString())
             if (candidates.size > 1) {
                 val chosen = DebateConsensus.decide(candidates)?.answer
