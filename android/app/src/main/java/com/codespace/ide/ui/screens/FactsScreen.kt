@@ -672,11 +672,19 @@ private fun ReviewSection(
     var showRejected by remember { mutableStateOf(false) }
     if (pending.isEmpty() && rejected.isEmpty()) return
 
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+    // TOKEN-PANEL STYLE (owner request 2026-11-23): the same small curved-edge panel the Context
+    // Window uses, so a section reads as a PANEL instead of a loose heading floating between lists.
+    // This is the pattern the rest of the sections are being converted to.
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp)).background(surface)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
         Text(
             "Saved automatically (" + pending.size + ")",
             color = textSec,
             fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 2.dp),
         )
         for (c in pending.take(5)) {
             Column(
