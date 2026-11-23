@@ -1343,6 +1343,10 @@ class ChatSession internal constructor(
         try {
             sendCore(t, confirmOverBudget = true, reuseStaged = true)
         } finally {
+            // OWNER REPORT (2026-11-23): the button stayed on Stop after the reply had finished.
+            // Whatever path a turn leaves by - normal end, provider error, cancellation, an empty
+            // answer - the UI must never be left believing a stream is still open.
+            if (ui.value.streaming) ui.value = ui.value.copy(streaming = false)
             // Released once the turn is handed over; the streaming guard covers the rest.
             confirmInFlight.set(false)
         }

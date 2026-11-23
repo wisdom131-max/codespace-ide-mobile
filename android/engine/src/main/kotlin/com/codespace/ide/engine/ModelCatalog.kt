@@ -89,7 +89,10 @@ object ModelCatalog {
     fun honestyNote(providerId: String, modelId: String): String? = when (resolve(providerId, modelId).source) {
         Source.EXACT -> null
         Source.SUBSTRING -> "This model is matched to a known family, so its context window is an estimate."
-        Source.UNKNOWN -> "This model is not in the catalog: context and attachment limits fall back to your settings."
+        // OWNER REPORT (2026-11-23): this sentence was shown as a dialog and called the user's
+        // model a lie. A model the catalog has no row for is simply measured from the settings
+        // instead - that is a fallback, not an accusation, so it says nothing.
+        Source.UNKNOWN -> ""
     }
 
     /**

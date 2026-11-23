@@ -132,6 +132,10 @@ private fun ChatBody(
     onPromptConsumed: () -> Unit,
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    // OWNER REPORT (2026-11-23): a new session showed "Gemini key not found" and looked like it had
+    // forgotten every setting. The settings store is opened lazily; any read before that silently
+    // answered with DEFAULTS, and the default provider is Gemini. Open it first, every time.
+    ChatSettingsPrefs.ensure(ctx)
     val session = remember(projectId, activeId) { manager.session(projectId, activeId) }
     // M3: voice transcripts live beside the transcripts, keyed by the SAME conversation, so a
     // dictation can never be shown under another session's name.
@@ -405,7 +409,14 @@ private fun ChatBody(
         // A tool asked to show a Connect card: this is the surface it promised.
         LaunchedEffect(state.streaming) {
             if (!state.streaming) {
-                com.codespace.ide.agent.AgentConnectorManager.consumePendingConnectCard()?.let { connectCard = it }
+                com.codespace.ide.agent.AgentConnectorManager.consumePendingConnectCard()?.let { svc ->
+                    // OWNER REPORT (2026-11-23): "he doesn't bring up the panel until I ask him to".
+                    // The card was shown but the setup panel waited for a tap. The panel IS the
+                    // answer to "this needs your permission", so it opens now, with the card kept
+                    // underneath for context.
+                    connectCard = svc
+                    setupService = svc
+                }
             }
         }
         connectCard?.let { svc ->
