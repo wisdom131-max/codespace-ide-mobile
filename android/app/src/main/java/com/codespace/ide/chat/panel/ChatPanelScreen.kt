@@ -730,6 +730,13 @@ private fun ChatBody(
         ContextWindowPanel(
             colors = c,
             report = com.codespace.ide.engine.ContextMeter.latestFor(activeId),
+            // OWNER REPORT (2026-11-23): the token numbers were not quite right. Two things were
+            // missing, both of which VS Code has: what the provider actually billed, and a window
+            // that belongs to the model currently selected rather than the one that last replied.
+            usage = com.codespace.ide.engine.ContextMeter.usageFor(activeId),
+            modelWindowTokens = com.codespace.ide.engine.ModelCatalog
+                .capabilityFor(session.selection.value.providerId, session.selection.value.modelId)
+                ?.contextTokens,
             modelStatus = embeddingStatus,
             modelHidden = embeddingRowHidden,
             onToggleModel = {

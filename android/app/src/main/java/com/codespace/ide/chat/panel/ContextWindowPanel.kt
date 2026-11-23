@@ -26,6 +26,7 @@ import androidx.compose.ui.window.Dialog
 import com.codespace.ide.chat.ui.ChatColors
 import com.codespace.ide.chat.ui.ChatTokens
 import com.codespace.ide.engine.ContextMeter
+import kotlin.math.roundToInt
 
 /**
  * PROJECT NINE 10.03 (catalog 92) - the context window panel.
@@ -40,6 +41,18 @@ import com.codespace.ide.engine.ContextMeter
 internal fun ContextWindowPanel(
     colors: ChatColors,
     report: ContextMeter.Report?,
+    /**
+     * What the PROVIDER reported it billed for this session's last response, or null when the
+     * provider sent no usage block. VS Code's widget treats this as the numerator and so does this
+     * panel now: an estimate can be wrong in both directions, a reported count cannot.
+     */
+    usage: ContextMeter.Usage? = null,
+    /**
+     * The context window of the CURRENTLY SELECTED model. VS Code's denominator follows the
+     * selection so switching models moves the percentage immediately; the measured report only
+     * knows the window of the model that last sent a request.
+     */
+    modelWindowTokens: Int? = null,
     /** One line about the EMBEDDING model (downloading, ready, or why it fell back). */
     modelStatus: String? = null,
     modelHidden: Boolean = false,
@@ -58,6 +71,24 @@ internal fun ContextWindowPanel(
                     vertical = ChatTokens.PAD_VERTICAL.dp,
                 ),
         ) {
+            // The two halves of the VS Code model, computed once here.
+            val window = (modelWindowTokens ?: report?.windowTokens ?: 0).coerceAtLeast(0)
+            val measured = report?.usedTokens ?: 0
+            val used = usage?.totalTokens ?: measured
+            val percent = if (window <= 0) 0 else (used * 100.0 / window).roundToInt().coerceIn(0, 100)
+            // VS Code: >=90 is an error state, >=75 a warning, and the ring/pie follows the real
+            // percentage. Same thresholds here so the two agree on what "nearly full" means.
+            val severity = when {
+                percent >= 90 -> colors.error
+                percent >= 75 -> colors.warning
+                else -> colors.accent
+            }
+            val sourceLine = when {
+                usage != null -> "reported by the model (" + ContextMeter.format(usage.promptTokens) +
+                    " prompt + " + ContextMeter.format(usage.completionTokens) + " reply)"
+                report != null -> "measured estimate - this provider reported no usage"
+                else -> ""
+            }
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -72,11 +103,18 @@ internal fun ContextWindowPanel(
                     )
                     Spacer(Modifier.height(ChatTokens.GAP_TIGHT.dp))
                     Text(
-                        if (report == null) "No request measured yet"
-                        else report.usedLabel + " / " + report.windowLabel + " tokens",
+                        if (report == null && usage == null) "No request measured yet"
+                        else ContextMeter.format(used) + " / " + ContextMeter.format(window) + " tokens",
                         color = colors.textSecondary,
                         fontSize = ChatTokens.FONT_SMALL.sp,
                     )
+                    if (sourceLine.isNotEmpty()) {
+                        Text(
+                            sourceLine,
+                            color = colors.textSecondary,
+                            fontSize = ChatTokens.FONT_SMALL.sp,
+                        )
+                    }
                 }
                 // The percentage sits in a small outlined chip, the same shape as the composer chips.
                 Box(
@@ -89,12 +127,22 @@ internal fun ContextWindowPanel(
                         ),
                 ) {
                     Text(
-                        (report?.percent ?: 0).toString() + "%",
-                        color = colors.accent,
+                        percent.toString() + "%",
+                        color = severity,
                         fontSize = ChatTokens.FONT_SMALL.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
+            }
+
+            if (percent >= 75 && report != null) {
+                Spacer(Modifier.height(ChatTokens.GAP_TIGHT.dp))
+                Text(
+                    if (percent >= 90) "Almost full - compact soon or the next request will be trimmed."
+                    else "Quality may decline as limit nears.",
+                    color = severity,
+                    fontSize = ChatTokens.FONT_SMALL.sp,
+                )
             }
 
             // DEVICE REPORT T6: the embedding model gets its own row, built from the same pieces as
@@ -145,7 +193,9 @@ internal fun ContextWindowPanel(
             }
 
             Spacer(Modifier.height(ChatTokens.GAP.dp))
-            val fraction = ((report?.percent ?: 0) / 100f).coerceIn(0f, 1f)
+            val fraction = (percent / 100f).coerceIn(0f, 1f)
+            val reserveFraction = if (window <= 0) 0f
+                else ((report?.reservedTokens ?: 0).toFloat() / window).coerceIn(0f, 1f - fraction)
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -161,16 +211,19 @@ internal fun ContextWindowPanel(
                         .clip(RoundedCornerShape(3.dp))
                         .background(colors.accent),
                 )
-                // Reserved for the reply: drawn as hatching, because it is held back rather than used.
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.padding(end = 3.dp)) {
-                    repeat(9) {
+                // Reserved for the reply. It used to be nine fixed ticks - a decoration that said
+                // "some space is held back" without saying how much. Now it is a band as wide as the
+                // reserve actually is, so a 4K reserve on a 200K window looks different from a 32K
+                // reserve on a 128K window, which is the whole point of showing it.
+                if (reserveFraction > 0f) {
+                    Row(Modifier.fillMaxWidth()) {
+                        Spacer(Modifier.weight(fraction.coerceAtLeast(0.0001f)))
                         Box(
                             Modifier
-                                .width(2.dp)
+                                .weight(reserveFraction.coerceAtLeast(0.0001f))
                                 .height(6.dp)
-                                .background(colors.border),
+                                .background(colors.warning.copy(alpha = 0.45f)),
                         )
-                        Spacer(Modifier.width(2.dp))
                     }
                 }
             }
@@ -195,7 +248,11 @@ internal fun ContextWindowPanel(
                             fontSize = ChatTokens.FONT_SMALL.sp,
                         )
                         Text(
-                            tenthsLabel(section.tokens, report?.windowTokens ?: 0),
+                            // VS Code lists each part as a share of the PROMPT (percentageOfPrompt),
+                            // not only as a share of the whole window. Both are here: the prompt share
+                            // answers "where did my tokens go", the window share answers "how full".
+                            (if (used <= 0) 0 else (section.tokens * 100 / used)).toString() + "% · " +
+                                tenthsLabel(section.tokens, window),
                             color = colors.text,
                             fontSize = ChatTokens.FONT_SMALL.sp,
                         )

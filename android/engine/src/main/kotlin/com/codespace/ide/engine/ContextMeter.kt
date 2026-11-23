@@ -72,6 +72,58 @@ object ContextMeter {
     fun latestFor(sessionId: String?): Report? =
         sessionId?.takeIf { it.isNotBlank() }?.let { bySession[it] }
 
+    /**
+     * OWNER REPORT (2026-11-23): "my context window panel that shows token usage doesn't work
+     * perfectly". It did not, and the reason is what it was counting.
+     *
+     * The panel showed only the engine's own ESTIMATE of the outgoing prompt (characters / 4) and
+     * called it the tokens used. That number is a guess in one direction only: it cannot know how
+     * the provider tokenised anything, and it does not include the reply that was actually billed.
+     *
+     * VS Code's own widget (chatContextUsageWidget.ts) does it differently: the numerator is the
+     * usage the PROVIDER reported for the last response -
+     *   usedTokens = reportedContext.currentTokens ?? promptTokens + completionTokens
+     * - while the denominator follows the currently selected model, so switching models updates the
+     * percentage immediately instead of waiting for the next request. This type carries the reported
+     * half of that, so the panel can show what the model said rather than what we guessed.
+     */
+    data class Usage(val promptTokens: Int, val completionTokens: Int) {
+        val totalTokens: Int get() = promptTokens + completionTokens
+    }
+
+    /**
+     * Reported usage per session, kept apart from [bySession] on purpose: a measurement is taken
+     * BEFORE a request goes out and a usage arrives AFTER it, so they are two different facts about
+     * two different moments. Merging them into one record would let a stale measurement overwrite a
+     * fresh report.
+     */
+    private val usageBySession = java.util.concurrent.ConcurrentHashMap<String, Usage>()
+
+    /**
+     * Record what the provider said it billed. Ignored when both counts are zero, because some
+     * providers send a usage block of zeros and a zero is not evidence of anything.
+     */
+    fun recordUsage(sessionId: String, promptTokens: Int, completionTokens: Int): Usage? {
+        if (promptTokens <= 0 && completionTokens <= 0) return null
+        val usage = Usage(promptTokens.coerceAtLeast(0), completionTokens.coerceAtLeast(0))
+        if (sessionId.isNotBlank()) usageBySession[sessionId] = usage
+        return usage
+    }
+
+    /**
+     * This session's last reported usage, or null. Deliberately NO global fallback: the T10 device
+     * report was exactly that bug - one global "latest" showing another session's numbers after a
+     * switch.
+     */
+    fun usageFor(sessionId: String?): Usage? =
+        sessionId?.takeIf { it.isNotBlank() }?.let { usageBySession[it] }
+
+    /** Drop both facts for a session that no longer exists. */
+    fun forget(sessionId: String) {
+        bySession.remove(sessionId)
+        usageBySession.remove(sessionId)
+    }
+
     fun measure(segments: Segments, windowTokens: Int, charsPerToken: Int = 4): Report {
         val per = charsPerToken.coerceAtLeast(1)
         fun tokens(chars: Int) = (chars.coerceAtLeast(0) + per - 1) / per

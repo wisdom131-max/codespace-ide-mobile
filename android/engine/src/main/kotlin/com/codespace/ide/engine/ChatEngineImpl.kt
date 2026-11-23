@@ -389,6 +389,10 @@ class ChatEngineImpl(
                         for (ev in normaliser.feed(data)) {
                             // P3-A: reported usage reaches the session instead of being dropped here.
                             if (ev is StreamEvent.Usage) {
+                                // The panel needs what the provider actually billed, not just the
+                                // event stream. Recorded against this session so a switch cannot
+                                // show another conversation's numbers.
+                                ContextMeter.recordUsage(sessionId, ev.inputTokens, ev.outputTokens)
                                 emit(EngineEvent.Usage(ev.inputTokens, ev.outputTokens))
                             }
                             if (ev is StreamEvent.ToolCallCompleted && ev.call.complete) {
