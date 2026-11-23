@@ -1409,11 +1409,8 @@ You can use multiple tools in sequence. When done, give a final summary.
             }
             requests.add(
                 com.codespace.ide.agent.subagents.DelegationScheduler.Request(
-                                            roleId = row.optString("role").ifBlank {
-                            // catalog 9: the mesh assigns a step that names no role, instead of the scheduler
-                            // receiving an ownerless task.
-                            com.codespace.ide.engine.AgentMesh.nextRoundRobin(meshPeers, index)?.id ?: ""
-                        },
+                    roleId = row.optString("role").ifBlank {
+                        com.codespace.ide.engine.AgentMesh.nextRoundRobin(meshPeers, index)?.id ?: ""
                     },
                     title = row.optString("title"),
                     planStepId = step,
