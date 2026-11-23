@@ -491,6 +491,15 @@ class ChatEngineImpl(
                     userText, config.modelId, cacheStamp, builder.toString(), System.currentTimeMillis(),
                 )
             }
+            // CATALOG 11: an empty answer with no tool run is the one case where asking twice is
+            // both safe and useful - nothing executed, so nothing can be duplicated. Behind a flag
+            // because it costs a second request.
+            if (config.secondOpinionOnEmptyAnswer && builder.isBlank() && !askedTwice && exchanges().isEmpty()) {
+                askedTwice = true
+                parser = SseParser()
+                done = false
+                continue
+            }
             candidates.add(builder.toString())
             if (candidates.size > 1) {
                 val chosen = DebateConsensus.decide(candidates)?.answer

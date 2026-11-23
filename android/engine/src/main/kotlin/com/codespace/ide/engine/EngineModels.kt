@@ -117,6 +117,14 @@ data class EngineConfig(
      * the model plus the conversation length, so a changed conversation never replays.
      */
     val answerCacheEnabled: Boolean = false,
+
+    /**
+     * CATALOG 11: when a reply comes back with no text and no tool ran, ask once more and let the
+     * consensus picker choose between the candidates. Off by default because it costs a second
+     * request, and because a tool-only reply also has no text - the no-tool guard is what makes it
+     * safe rather than a duplicate of the user's own actions.
+     */
+    val secondOpinionOnEmptyAnswer: Boolean = false,
     /**
      * U4-d: the conversation-mode instruction (Ask / Edit / Agent). Carried on the wire
      * in the provider's OWN system slot - OpenAI as a leading system message, Anthropic
