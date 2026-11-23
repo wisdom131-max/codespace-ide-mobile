@@ -1,20 +1,23 @@
 package com.codespace.ide.engine
 
 /**
- * PROJECT NINE 9.70 (catalog 45 + 46 + 51 WIRED) - rank search results by meaning, not only by
- * whether the characters happen to appear.
+ * PROJECT NINE 9.71 (catalog 54 + 55 + 48 WIRED) - filter, group and record what a search found.
  *
- * The search tool could only answer "does this line contain the text". A line that describes the
- * thing in different words was invisible, which is why searching for "fact retrieval" never found
- * FactRetrieval. SemanticRanker, HybridSearch and Reranker were all built and tested and nothing
- * called them.
+ * 54: a question that names a language ("kotlin", "gradle") should not return Python files. The
+ * filter is derived from the question, so the caller passes nothing extra.
  *
- * The order of the chain matters and is deliberate: literal matches first, then meaning, fused so a
- * line found both ways wins outright, then a bounded rerank, then one line per file.
+ * 55: a file is one result. Three matching lines in one file used to be three separate results,
+ * crowding out other files; they are now one block, header first, its best lines under it.
+ *
+ * 48: every match records path -> line in the entity graph, so a later step can ask what a symbol
+ * touched without re-running the search.
  */
 object SearchRank {
 
     data class Line(val id: String, val path: String, val text: String)
+
+    private const val LINES_PER_FILE = 3
+    private const val EDGES_RECORDED = 20
 
     fun rank(
         query: String,
@@ -23,37 +26,50 @@ object SearchRank {
         limit: Int = 60,
         maxChars: Int = 12000,
     ): String {
-        if (query.isBlank()) return ""
-        val byId = LinkedHashMap<String, Line>()
+        val all = LinkedHashMap<String, Line>()
         for (s in literal + widened) {
-            if (s.isBlank()) continue
-            byId[s] = Line(s, s.substringBefore(":"), s)
+            all[s] = Line(s, s.substringBefore(":"), s)
         }
-        if (byId.isEmpty()) return ""
+        if (all.isEmpty()) return ""
 
-        val semantic = SemanticRanker.rank(
-            query = query,
-            docs = byId.values.map { SemanticRanker.Doc(it.id, it.text) },
-            k = limit,
-        )
-        val fused = HybridSearch.combine(literal, semantic)
+        val candidates = all.values.toList()
+        val spec = MetadataFilter.specFromQuery(query)
+        val allowed = MetadataFilter
+            .apply(candidates.map { MetadataFilter.Doc(it.id, it.path, null) }, spec)
+            .map { it.id }
+            .toSet()
+        // An empty allow-list means the filter found nothing to say, not that nothing matched.
+        val kept = if (allowed.isEmpty()) candidates else candidates.filter { allowed.contains(it.id) }
+        if (kept.isEmpty()) return ""
+
+        val semantic = SemanticRanker.rank(query, kept.map { SemanticRanker.Doc(it.id, it.text) }, limit)
+        val keptIds = kept.map { it.id }.toSet()
+        val lexical = literal.filter { keptIds.contains(it) }
+
+        val byId = kept.associateBy { it.id }
         val terms = QueryRewriter.rewrite(query, 8)
-        val candidates = fused.mapNotNull { f ->
-            byId[f.id]?.let { Reranker.Candidate(it.id, it.text, f.score) }
-        }
-        val ordered = Reranker.rerank(candidates, terms).mapNotNull { byId[it.id] }
-        if (ordered.isEmpty()) return ""
+        val ordered = Reranker
+            .rerank(
+                HybridSearch.combine(lexical, semantic)
+                    .mapNotNull { f -> byId[f.id]?.let { Reranker.Candidate(it.id, it.text, f.score) } },
+                terms,
+            )
+            .mapNotNull { byId[it.id] }
 
-        // One line per file: three matches in the same file crowd out the other files the model
-        // needs to see. The strongest line per file survives, in relevance order.
-        val deduped = ResultDedupe.byPath(
-            ordered.mapIndexed { i, l -> ResultDedupe.Hit(l.path, (ordered.size - i).toDouble(), l.id) },
-        )
-        val lineById = ordered.associateBy { it.id }
-        val finalLines = deduped.mapNotNull { lineById[it.id] }
-        return SearchBudget.fit(
-            finalLines.map { SearchBudget.Item(it.path, it.text) },
-            maxChars,
-        ).joinToString("\n") { it.text }
+        val byPath = LinkedHashMap<String, MutableList<Line>>()
+        for (line in ordered) {
+            byPath.getOrPut(line.path) { ArrayList() }.add(line)
+        }
+        val blocks = byPath.entries.map { entry ->
+            entry.key + "\n" + entry.value.take(LINES_PER_FILE).joinToString("\n") { "  " + it.text }
+        }
+
+        for (line in ordered.take(EDGES_RECORDED)) {
+            EntityGraph.add(line.path, "matched", line.id)
+        }
+
+        return SearchBudget
+            .fit(blocks.mapIndexed { i, b -> SearchBudget.Item(i.toString(), b) }, maxChars)
+            .joinToString("\n\n") { it.text }
     }
 }
