@@ -14,6 +14,18 @@ object EntityGraph {
 
     data class Triple(val subject: String, val predicate: String, val target: String)
 
+    /**
+     * One graph for the process, so a search can record what it found without threading a new
+     * argument through every call site. Tests keep their own instance.
+     */
+    private val shared = Graph()
+
+    fun add(subject: String, predicate: String, target: String): Boolean = shared.add(subject, predicate, target)
+
+    fun objects(subject: String, predicate: String? = null): List<String> = shared.objects(subject, predicate)
+
+    fun size(): Int = shared.size()
+
     class Graph(private val maxTriples: Int = 5000) {
 
         private val triples = LinkedHashSet<Triple>()
