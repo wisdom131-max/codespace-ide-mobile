@@ -1409,12 +1409,11 @@ You can use multiple tools in sequence. When done, give a final summary.
             }
             requests.add(
                 com.codespace.ide.agent.subagents.DelegationScheduler.Request(
-                    roleId = row.optString("role").ifBlank {
-                        // PROJECT NINE 9.90 (catalog 9): a step with no role used to reach the scheduler
-                        // unassigned. The mesh hands it to a peer instead, round-robin, so no delegated step is
-                        // ownerless and the load spreads across the peers that exist.
-                        com.codespace.ide.engine.AgentMesh.nextRoundRobin(meshPeers, index)?.id ?: ""
-                    }
+                                            roleId = row.optString("role").ifBlank {
+                            // catalog 9: the mesh assigns a step that names no role, instead of the scheduler
+                            // receiving an ownerless task.
+                            com.codespace.ide.engine.AgentMesh.nextRoundRobin(meshPeers, index)?.id ?: ""
+                        }
                         com.codespace.ide.engine.AgentMesh.nextRoundRobin(meshPeers, index)?.id ?: ""
                     },
                     title = row.optString("title"),
