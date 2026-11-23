@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -640,9 +641,12 @@ private fun FactEditor(
 /**
  * STAGE 8 — the review queue, inside the Facts screen.
  *
- * Deliberately small: at most five pending rows are drawn, so a phone never lays out an unbounded
- * list. A candidate shows what it would become and where it came from, and nothing is saved until
- * Accept is tapped. "Not recorded" is shown rather than a guessed date or a guessed message.
+ * Deliberately small: at most five rows are drawn, so a phone never lays out an unbounded list.
+ *
+ * OWNER DECISION (2026-11-23): "I don't need to accept facts or memory before it saves." This is no
+ * longer a gate. A candidate is saved the moment it is seen, and the section becomes the record of
+ * what was saved automatically, with Remove as the undo. Nothing about the owner's complaint changes
+ * the honesty rule below: "Not recorded" is still shown rather than a guessed date or message.
  */
 @Composable
 private fun ReviewSection(
@@ -659,13 +663,19 @@ private fun ReviewSection(
     val queue = remember(revision) { ReviewQueue.loadFrom(dir) }
     val pending = remember(queue) { ReviewQueue.pending(queue) }
     val rejected = remember(queue) { ReviewQueue.rejected(queue) }
+    // No tap, no queue: every candidate becomes a fact as soon as this section is composed. This is
+    // the whole point of the owner's request - memory that waits for permission is memory that is
+    // never there when the copilot needs it.
+    LaunchedEffect(queue) {
+        ReviewQueue.pending(queue).forEach { ReviewQueue.accept(dir, it.id) }
+    }
     var showRejected by remember { mutableStateOf(false) }
     if (pending.isEmpty() && rejected.isEmpty()) return
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Text(
-            "Review (" + pending.size + ")",
-            color = if (pending.isEmpty()) textSec else warn,
+            "Saved automatically (" + pending.size + ")",
+            color = textSec,
             fontSize = 11.sp, fontWeight = FontWeight.Bold,
         )
         for (c in pending.take(5)) {
@@ -687,12 +697,9 @@ private fun ReviewSection(
                     color = textSec, fontSize = 10.sp,
                 )
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                    TextButton(onClick = {
-                        // Accept is the only path from candidate to fact.
-                        ReviewQueue.accept(dir, c.id)
-                    }) { Text("Accept", color = accent, fontSize = 12.sp) }
+                    // There is no Accept any more: it is already saved. Remove is the undo.
                     TextButton(onClick = { ReviewQueue.reject(dir, c.id) }) {
-                        Text("Reject", color = danger, fontSize = 12.sp)
+                        Text("Remove", color = danger, fontSize = 12.sp)
                     }
                 }
             }
