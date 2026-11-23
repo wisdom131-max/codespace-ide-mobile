@@ -675,8 +675,12 @@ private fun ReviewSection(
     // TOKEN-PANEL STYLE (owner request 2026-11-23): the same small curved-edge panel the Context
     // Window uses, so a section reads as a PANEL instead of a loose heading floating between lists.
     // This is the pattern the rest of the sections are being converted to.
+    // OWNER CORRECTION (2026-11-23): "I didn't want it resized, I wanted the full size but with the
+    // UI and styling of the token panel." The panel keeps the token-panel chrome but spans the FULL
+    // width - no outer inset - so the section is not shrunk into a floating box. Inner padding stays
+    // so the text does not touch the edge.
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+        Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(12.dp)).background(surface)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
