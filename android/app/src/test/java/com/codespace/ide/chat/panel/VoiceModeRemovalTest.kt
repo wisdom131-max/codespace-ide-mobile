@@ -22,8 +22,11 @@ class VoiceModeRemovalTest {
         val header = read("chat/panel/ChatPanelHeader.kt")
         assertFalse(header.contains("HeaderChip(\"Voice\""))
         assertFalse(header.contains("onVoice"))
-        // The dictation trigger must survive the removal.
-        assertTrue(header.contains("HeaderChip(\"Mic\""))
+        // The dictation trigger must survive the removal. It is no longer a text chip: since
+        // 2026-11-23 it is the meter (VoiceMicChip), which is the same control with a waveform in it,
+        // so the guard asserts the control the owner actually taps rather than its old wording.
+        assertTrue(header.contains("VoiceMicChip("))
+        assertTrue(header.contains("onMic"))
     }
 
     @Test
@@ -51,6 +54,9 @@ class VoiceModeRemovalTest {
     fun `read-aloud no longer waits for a voice mode that cannot open`() {
         val screen = read("chat/panel/ChatPanelScreen.kt")
         assertFalse(screen.contains("showVoice"))
-        assertTrue(screen.contains("if (readAloud) speech.speak(row.text)"))
+        // The intent is unchanged - read-aloud speaks the reply directly, with no voice-mode gate in
+        // front of it. The speaker is reached through the loop's own handle now, so the guard names
+        // that call instead of the pre-loop one.
+        assertTrue(screen.contains("if (readAloud) voice.speak(row.text)"))
     }
 }

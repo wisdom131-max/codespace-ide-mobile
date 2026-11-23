@@ -264,7 +264,11 @@ class SherpaAsr(context: Context, model: SherpaModel = SherpaModels.DEFAULT) {
         val s = stream ?: return
         if (samples.isEmpty()) return
         runCatching {
-            r.acceptWaveform(s, samples)
+            // BUILD 4080: "Unresolved reference: acceptWaveform" for a ShortArray. sherpa-onnx 2.x
+            // takes FloatArray in [-1, 1], so the 16-bit samples our recorder keeps are converted
+            // here. Dividing by 32768 is the exact inverse of the recorder's scale.
+            val floats = FloatArray(samples.size) { i -> samples[i] / 32768f }
+            r.acceptWaveform(s, floats)
             while (r.isReady(s)) r.decode(s)
         }
     }

@@ -41,6 +41,13 @@ android {
         applicationId = "com.codespace.ide"
         minSdk = 26
         targetSdk = 28
+        // BUILD 4080: mergeProdDebugNativeLibs failed with "2 files found with path
+        // 'lib/x86/libonnxruntime.so'". The vendored sherpa AAR carries a shared onnxruntime for x86
+        // and onnxruntime-android carries its own, so the merge cannot choose. x86 is an emulator
+        // architecture, not a phone: the arm ABIs have no such clash and are the ones a device runs.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
         // Auto-increments on every commit so Android always accepts the APK as a
         // newer version — no "downgrade blocked" or "version already installed" errors.
         // FLOOR (owner report 2026-11-08): his installed build reports Build 3679 while this
