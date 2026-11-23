@@ -47,6 +47,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
@@ -628,10 +632,9 @@ private fun PssTopBar(
                     color = menuText.copy(alpha = 0.6f),
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 )
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("Full Screen", fontSize = 12.sp, color = menuText) },
-                    onClick = { onMenuAction("Toggle Full Screen"); showCustomizeLayout = false },
-                )
+                // Full Screen preference removed permanently at the owner's request (2026-11-23): the
+                // app already fills the phone screen, so the entry only hid the status bar and left a
+                // floating exit button over the editor.
                 androidx.compose.material3.DropdownMenuItem(
                     text = { Text("Zen Mode", fontSize = 12.sp, color = menuText) },
                     onClick = { onToggleZenMode(); showCustomizeLayout = false },
@@ -1242,15 +1245,10 @@ fun ProjectShellScreen(
                 showNotification(if (zenMode) "Zen Mode — tap floating button to exit" else "Zen Mode off", "info")
             }
             "About Visual Node Code"-> showNotification("Visual Node Code — VS Code for mobile", "info")
-            "Toggle Full Screen" -> {
-                fullScreen = !fullScreen
-                if (fullScreen) {
-                    activePanel = null
-                    showBottomPanel = false
-                    showChatPanel = false
-                }
-                showNotification(if (fullScreen) "Full Screen — tap floating button to exit" else "Full Screen off", "info")
-            }
+            // "Toggle Full Screen" is gone for good (owner, 2026-11-23). The handler went with the
+            // menu entry so the preference cannot come back through the command palette, a shortcut
+            // or a later wiring pass. On a phone the app already owns the screen; the mode only hid
+            // the status bar and stranded a floating exit button over the editor.
             "Toggle Centered Layout" -> {
                 centeredLayout = !centeredLayout
                 showNotification(if (centeredLayout) "Centered Layout on" else "Centered Layout off", "info")
@@ -2809,9 +2807,25 @@ private fun PssOverlays(
                     elevation = CardDefaults.cardElevation(8.dp),
                     shape = RoundedCornerShape(12.dp),
                 ) {
-                    LazyColumn(Modifier.padding(4.dp)) {
+                    // OWNER REQUEST (2026-11-23): "the main menu looks too flat and I need a full UI
+                    // redesign with animations". The card already grows out of the gear corner; the
+                    // rows now also rise into place inside it, so the menu reads as one motion rather
+                    // than a slab appearing. Short and one-shot - it never re-runs while open.
+                    val menuAppear = remember { androidx.compose.animation.core.Animatable(0f) }
+                    LaunchedEffect(Unit) {
+                        menuAppear.animateTo(1f, androidx.compose.animation.core.tween(200))
+                    }
+                    LazyColumn(
+                        Modifier
+                            .padding(4.dp)
+                            .graphicsLayer {
+                                alpha = menuAppear.value
+                                translationY = (1f - menuAppear.value) * 14.dp.toPx()
+                            },
+                    ) {
                         item {
-                            Text("Settings", fontSize = 11.sp, color = MenuText.copy(alpha = 0.5f),
+                            Text("Settings", fontSize = 10.sp, color = MenuText.copy(alpha = 0.45f),
+                                fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 4.dp))
                         }
                         // Themes row — has chevron (>) for submenu.
@@ -2878,24 +2892,40 @@ private fun PssOverlays(
                             }
                         }
                         item { HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item {
+                            // Rows were a flat run of text with no grouping, which is most of why the
+                            // menu read as a slab. They are now one titled section with a glyph each,
+                            // so the eye can find a row by shape instead of re-reading every line.
+                            Text("VIEW", fontSize = 10.sp, color = MenuText.copy(alpha = 0.45f),
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(start = 12.dp, top = 6.dp, bottom = 2.dp))
+                        }
                         val gearItems = listOf(
-                            "Toggle Sidebar" to { onActivePanelChange(if (activePanel == null) SidePanel.EXPLORER else null); onShowGearMenuChange(false) },
-                            "Toggle Terminal" to { onShowBottomPanelChange(!showBottomPanel); onShowGearMenuChange(false) },
-                            "Toggle Copilot Chat" to { onShowChatPanelChange(!showChatPanel); onShowGearMenuChange(false) },
-                            "Toggle Zen Mode" to { handleMenuAction("Toggle Zen Mode"); onShowGearMenuChange(false) },
+                            Triple("Toggle Sidebar", Icons.Default.Menu) { onActivePanelChange(if (activePanel == null) SidePanel.EXPLORER else null); onShowGearMenuChange(false) },
+                            Triple("Toggle Terminal", Icons.Default.PlayArrow) { onShowBottomPanelChange(!showBottomPanel); onShowGearMenuChange(false) },
+                            Triple("Toggle Copilot Chat", Icons.Default.Send) { onShowChatPanelChange(!showChatPanel); onShowGearMenuChange(false) },
+                            Triple("Toggle Zen Mode", Icons.Default.Star) { handleMenuAction("Toggle Zen Mode"); onShowGearMenuChange(false) },
                         )
-                        items(gearItems) { (label, action) ->
+                        items(gearItems) { (label, icon, action) ->
                             Row(
                                 Modifier.fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable { action() }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    .padding(horizontal = 10.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
+                                Icon(icon, null, tint = MenuText.copy(alpha = 0.7f), modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(10.dp))
                                 Text(label, fontSize = 13.sp, color = MenuText)
                             }
                         }
                         item { HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 4.dp)) }
                         // Font controls
+                        item {
+                            Text("APPEARANCE", fontSize = 10.sp, color = MenuText.copy(alpha = 0.45f),
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(start = 12.dp, top = 6.dp, bottom = 2.dp))
+                        }
                         item {
                             Row(
                                 Modifier.fillMaxWidth()
@@ -5253,11 +5283,19 @@ private fun PssEditorColumn(
                         // #0D1117, both of which read as grey-on-black. The welcome screen is not an
                         // inactive tab, so it uses the theme's real text colour, with the second line
                         // at 75% so there is still a hierarchy without either line going dim.
+                        // OWNER REPORT (2026-11-23): "I meant I want the grey welcome screen fix as
+                        // it is in black background (default)". On the DEFAULT dark theme the palette
+                        // text colour is a mid grey (#D4D4D4-class), which over a near-black page still
+                        // reads as grey-on-black. The welcome screen now picks its own contrast from
+                        // the page it sits on: near-white on a dark page, near-black on a light one.
+                        // No palette value can make this unreadable again.
+                        val welcomeOnDark = (BgColor.red + BgColor.green + BgColor.blue) / 3f < 0.5f
+                        val welcomeInk = if (welcomeOnDark) Color(0xFFF7F7F7) else Color(0xFF1B1B1B)
                         Text("Visual Node Code", fontSize = if (welcomeLandscape) 18.sp else 22.sp,
-                            color = tabText, fontWeight = FontWeight.Light, maxLines = 1)
+                            color = welcomeInk, fontWeight = FontWeight.Light, maxLines = 1)
                         Spacer(Modifier.height(8.dp))
                         Text("Open Explorer → tap a file to start", fontSize = 13.sp,
-                            color = tabText.copy(alpha = 0.75f),
+                            color = welcomeInk.copy(alpha = 0.78f),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
