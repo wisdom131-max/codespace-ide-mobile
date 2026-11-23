@@ -612,7 +612,17 @@ class ChatSession internal constructor(
 
     /** WP8: chips for the pending row (name + size; the data itself never leaves memory). */
     fun pendingChips(): List<com.codespace.ide.chat.ui.AttachmentChipModel> =
-        pendingAttachments.value.mapIndexed { i, it ->
+        chipsFor(pendingAttachments.value)
+
+    /**
+     * BUG (owner 2026-11-23): "it doesn't work instantly, I'd have to scroll the screen for it to
+     * work". The chips were built from `pendingAttachments.value` INSIDE the composable, which is a
+     * plain read: Compose had no reason to recompose when the list changed, so the chip survived
+     * until something unrelated (a scroll) forced a frame. The screen now collects the StateFlow and
+     * hands the CURRENT list here, so a removal redraws on the next frame, immediately.
+     */
+    fun chipsFor(list: List<PanelAttachment>): List<com.codespace.ide.chat.ui.AttachmentChipModel> =
+        list.mapIndexed { i, it ->
             com.codespace.ide.chat.ui.AttachmentChipModel(it.name, formatSizeBytes(it.sizeBytes), i)
         }
 

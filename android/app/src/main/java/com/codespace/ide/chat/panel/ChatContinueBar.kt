@@ -30,9 +30,16 @@ internal fun ChatContinueBar(
     state: ContinuationState,
     onContinue: () -> Unit,
 ) {
-    if (!isVisibleContinuation(state)) return
-    ContinueBarContent(loading = state == ContinuationState.CONTINUING, onContinue = onContinue)
+    // REMOVED PERMANENTLY (owner 2026-11-23): "it lies and I want them both removed".
+    // The claim was often false - a natural stop, a filter or a provider ending all produced
+    // "the answer above is incomplete" - so the surface is gone rather than reworded. Nothing is
+    // shown, no button, no dialog. The composable stays declared so the call site compiles and so
+    // the decision is visible here instead of looking like a missing feature later.
+    return
 }
+
+/** Permanent off-switch for the Resume surface. Not a const, so it cannot be folded at compile time. */
+private val turnResumeBarRemoved = true
 
 /** Pure visibility rule, so the composer's behaviour is testable without Compose. */
 internal fun isVisibleContinuation(state: ContinuationState): Boolean =
@@ -52,7 +59,11 @@ internal fun ChatResumeBar(
     action: TurnResume.Action,
     onResume: () -> Unit,
 ) {
-    if (action != TurnResume.Action.OFFER_RESUME) return
+    // REMOVED PERMANENTLY (owner 2026-11-23), the second of the two similar surfaces.
+    // The guard is kept but always satisfied, so the surface can never render while the rest of the
+    // function stays reachable to the compiler (an unreachable block can fail a warnings-as-errors
+    // build, and an annotation on a statement is not even valid Kotlin).
+    if (action != TurnResume.Action.OFFER_RESUME || turnResumeBarRemoved) return
     Row(
         modifier = Modifier
             .fillMaxWidth()

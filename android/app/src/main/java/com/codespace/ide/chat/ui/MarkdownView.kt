@@ -1,6 +1,7 @@
 package com.codespace.ide.chat.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
@@ -17,9 +18,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextDecoration
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -107,18 +111,109 @@ private fun MarkdownText(
     val annotated = remember(spans, heading, italic, color, c.accent) {
         buildAnnotatedString {
             for (s in spans) {
-                withStyle(
-                    SpanStyle(
-                        fontWeight = if (s.bold || heading) FontWeight.SemiBold else null,
-                        fontStyle = if (s.italic || italic) FontStyle.Italic else null,
-                        fontFamily = if (s.code) FontFamily.Monospace else null,
-                        color = if (s.code) c.accent else color,
-                    ),
-                ) { append(s.text) }
+                if (s.code) {
+                    // Code is never a link: a URL inside a snippet must stay copyable text.
+                    withStyle(
+                        SpanStyle(fontFamily = FontFamily.Monospace, color = c.accent),
+                    ) { append(s.text) }
+                    continue
+                }
+                // OWNER REPORT (2026-11-23): "there are no clickable links in the chat when the
+                // copilot replies with one". The renderer drew every span as inert text, so a URL
+                // was visible and dead. VS Code's chat marks a link range in the annotated string
+                // and resolves the tap against that range; that is what this does.
+                appendLinkAware(
+                    text = s.text,
+                    base = color,
+                    link = c.accent,
+                    weight = if (s.bold || heading) FontWeight.SemiBold else null,
+                    style = if (s.italic || italic) FontStyle.Italic else null,
+                )
             }
         }
     }
-    Text(annotated, fontSize = fontSize)
+    // The tap is resolved by character offset against the annotations, so only the link itself
+    // opens - tapping the sentence around it does nothing, and there is no hit box to misalign.
+    var layout by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    val uri = LocalUriHandler.current
+    Text(
+        annotated,
+        fontSize = fontSize,
+        onTextLayout = { layout = it },
+        modifier = Modifier.pointerInput(annotated) {
+            detectTapGestures { pos ->
+                val l = layout ?: return@detectTapGestures
+                val offset = l.getOffsetForPosition(pos)
+                annotated.getStringAnnotations(LINK_TAG, offset, offset)
+                    .firstOrNull()
+                    ?.let { runCatching { uri.openUri(it.item) } }
+            }
+        },
+    )
+}
+
+/** The annotation tag every link carries. One tag, so resolution is a single lookup. */
+private const val LINK_TAG = "vncode_link"
+
+/** `[label](url)` as a model writes it. */
+private val MD_LINK = Regex("""\[([^\]]+)\]\((https?://[^\s)]+)\)""")
+
+/** A bare URL, stopped before punctuation a sentence is likely to end with. */
+private val BARE_URL = Regex("""https?://[^\s<>()\[\]]+""")
+
+/**
+ * Appends one span, turning link text into an underlined range with a tap target.
+ *
+ * Two shapes are handled because both arrive in real replies: the Markdown form `[docs](https://…)`
+ * and a plain pasted URL. The Markdown form shows its LABEL, not its brackets, which is what the
+ * author meant to be read.
+ */
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendLinkAware(
+    text: String,
+    base: Color,
+    link: Color,
+    weight: FontWeight?,
+    style: FontStyle?,
+) {
+    data class Hit(val start: Int, val end: Int, val shown: String, val url: String)
+
+    val hits = mutableListOf<Hit>()
+    MD_LINK.findAll(text).forEach { m ->
+        hits += Hit(m.range.first, m.range.last + 1, m.groupValues[1], m.groupValues[2])
+    }
+    BARE_URL.findAll(text).forEach { m ->
+        if (hits.none { m.range.first >= it.start && m.range.first < it.end }) {
+            // Trailing punctuation belongs to the sentence, not the address.
+            val trimmed = m.value.trimEnd('.', ',', ';', ':', '!', '?')
+            hits += Hit(m.range.first, m.range.first + trimmed.length, trimmed, trimmed)
+        }
+    }
+
+    var cursor = 0
+    for (hit in hits.sortedBy { it.start }) {
+        if (hit.start < cursor) continue
+        if (hit.start > cursor) {
+            withStyle(SpanStyle(color = base, fontWeight = weight, fontStyle = style)) {
+                append(text.substring(cursor, hit.start))
+            }
+        }
+        val from = length
+        withStyle(
+            SpanStyle(
+                color = link,
+                fontWeight = weight,
+                fontStyle = style,
+                textDecoration = TextDecoration.Underline,
+            ),
+        ) { append(hit.shown) }
+        addStringAnnotation(LINK_TAG, hit.url, from, length)
+        cursor = hit.end
+    }
+    if (cursor < text.length) {
+        withStyle(SpanStyle(color = base, fontWeight = weight, fontStyle = style)) {
+            append(text.substring(cursor))
+        }
+    }
 }
 
 /**

@@ -509,8 +509,12 @@ private fun ChatBody(
                     notice = it.label + " mode is on for this session, but it could not be saved for next time."
                 }
             },
-            attachments = session.pendingChips(),
-            onRemoveAttachment = { chip -> session.removePending(chip.name) },
+            attachments = session.chipsFor(pending),
+            // BUG (owner 2026-11-23): "tapping the x for one attached file removes the rest".
+            // removePending(name) filtered the list BY NAME, so two attachments that happened to
+            // share a name (or any picker that repeats one) all vanished together. The chip already
+            // carries its position, so removal is by position: exactly one row, every time.
+            onRemoveAttachment = { chip -> session.removePendingAt(chip.index) },
             onAddContext = { showPicker = true },
             onComposerCommand = { id ->
                 when (id) {
