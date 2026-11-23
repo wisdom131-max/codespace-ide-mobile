@@ -98,7 +98,14 @@ class OpenAIAdapter : ProviderAdapter {
         attachments: List<ChatAttachment>,
         config: EngineConfig,
     ): String {
-        if (attachments.isEmpty()) return payload(window, userText, config)
+        // OWNER REPORT (2026-11-23), Cloudflare HTTP 400 "Type mismatch of '/messages/0/content',
+        // 'array' not in 'string'". The switch that marks Cloudflare text-only was already set
+        // correctly (ChatSession sets supportsContentParts=false for api.cloudflare.com). The bug was
+        // HERE: with no attachments this returned early to the other overload, which has no idea about
+        // that switch and wrote every message's content as an array - hence messages 0..6 all
+        // rejected. The flattening path below handles an empty attachment list perfectly well, so a
+        // text-only provider now always takes it.
+        if (attachments.isEmpty() && config.supportsContentParts) return payload(window, userText, config)
         val msgs = StringBuilder()
         for (m in window) {
             if (msgs.isNotEmpty()) msgs.append(',')
