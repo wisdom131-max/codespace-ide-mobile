@@ -147,16 +147,20 @@ internal object SubagentRoles {
         val withheld = LinkedHashSet<String>()
         permitted.forEach { name ->
             val meta = metaOf(name)
+            // PROJECT NINE 10.04 (catalog 84 WIRED): the engine's role policy is now the judge of a
+            // role's explicit tool list, so the two systems cannot drift apart. An empty list means
+            // the same thing it did before - no restriction from this route.
+            val policy = com.codespace.ide.engine.RolePolicy.Role(role.id, role.explicit)
             // PROJECT EIGHT 8.8: an explicit entry used to short-circuit the read-only rule entirely,
             // so one line of catalogue editing could hand a read-only role a destructive tool. The
             // read-only check now runs first, whatever route the name arrived by.
             if (!mayInclude(role, meta)) {
-                if (name in role.explicit || (meta != null && meta.category in role.categories)) {
+                if (com.codespace.ide.engine.RolePolicy.permits(policy, name) || (meta != null && meta.category in role.categories)) {
                     withheld.add(name)
                 }
                 return@forEach
             }
-            if (name !in role.explicit) {
+            if (!com.codespace.ide.engine.RolePolicy.permits(policy, name)) {
                 if (meta == null || meta.category !in role.categories) return@forEach
             }
             wanted.add(name)
