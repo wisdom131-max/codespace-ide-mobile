@@ -2993,11 +2993,15 @@ You can use multiple tools in sequence. When done, give a final summary.
             // everything after it with no note. A half line is worse than no line: the model reads
             // a truncated match as if that were the whole content. Whole results are kept, and the
             // cap still holds.
-            val kept = com.codespace.ide.engine.SearchBudget.fit(
-                indexedHits.map { com.codespace.ide.engine.SearchBudget.Item(it, it) },
-                12000,
+            // PROJECT NINE 9.71 (catalog 45 + 46 + 51 WIRED): the indexed hits used to come back in
+            // whatever order SQLite ranked them. They are now re-ranked by meaning and fused with
+            // the literal list, so a file that describes the thing in different words can surface.
+            return com.codespace.ide.engine.SearchRank.rank(
+                query = pattern,
+                literal = indexedHits,
+                widened = emptyList(),
+                maxChars = 12000,
             )
-            return kept.joinToString("\n") { it.text }
         }
         // What the walk reads is indexed on the way past, so the next search for a different
         // pattern is answered by SQLite instead of re-reading the whole tree.
