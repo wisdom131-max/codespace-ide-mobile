@@ -365,7 +365,12 @@ private fun ChatBody(
                 )
             } else {
                 var rows = if (state.streaming && state.firstDeltaMs == 0L)
-                    state.rows + listOf(ChatRowModel.Thinking(((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt()))
+                    state.rows + listOf(
+                        ChatRowModel.Thinking(
+                            ((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt(),
+                            steps = liveThinkingSteps(state.rows),
+                        ),
+                    )
                 else state.rows
                 rows = withResearchLine(rows, researchLine)
                 // Batch 3: follow the newest content while the user is at the bottom, and
@@ -1156,4 +1161,15 @@ private fun stageLocalFile(session: ChatSession, file: java.io.File): String? {
         text = if (textKind) String(bytes, Charsets.UTF_8) else null,
     )
     return null
+}
+
+/**
+ * OWNER REPORT (2026-11-23): "did you add the VS Code UI for the thinking tree" - the header named
+ * the step, but the body was empty because the Thinking row is appended at the END of the
+ * transcript and the renderer only looked for notes after it. The steps of the current turn are the
+ * notes written since the last user message, which is exactly what the tree should show.
+ */
+private fun liveThinkingSteps(rows: List<ChatRowModel>): List<String> {
+    val since = rows.indexOfLast { it is ChatRowModel.User }
+    return rows.drop(since + 1).filterIsInstance<ChatRowModel.InfoNote>().map { it.text }
 }

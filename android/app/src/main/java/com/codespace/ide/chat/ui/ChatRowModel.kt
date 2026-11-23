@@ -22,7 +22,13 @@ sealed interface ChatRowModel {
         val cursorOn: Boolean,
         val kind: StreamKind = StreamKind.ANSWER,
     ) : ChatRowModel
-    data class Thinking(val seconds: Int) : ChatRowModel
+    /**
+     * OWNER REPORT (2026-11-23): the thinking tree's body was ALWAYS empty. The row was built with
+     * a duration and no steps, and the renderer looked for notes AFTER the row - but this row is
+     * appended at the END of the transcript, so there was never anything after it. The steps are
+     * now carried on the row itself.
+     */
+    data class Thinking(val seconds: Int, val steps: List<String> = emptyList()) : ChatRowModel
     data class Failed(val verdict: String, val detail: String, val canRetry: Boolean) : ChatRowModel
     object NoCredits : ChatRowModel
     object Offline : ChatRowModel

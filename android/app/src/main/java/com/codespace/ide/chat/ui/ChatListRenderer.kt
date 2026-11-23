@@ -97,7 +97,8 @@ object NativeChatListRenderer : ChatListRenderer {
                     if (!row.cursorOn) CopyIconRow(row.text)
                 }
             }
-            is ChatRowModel.Thinking -> ThinkingCard(row.seconds, steps)
+            is ChatRowModel.Thinking ->
+                ThinkingCard(row.seconds, if (row.steps.isNotEmpty()) row.steps else steps)
             is ChatRowModel.Failed -> ErrorCard(row.verdict, row.detail, row.canRetry, state.onRetry)
             ChatRowModel.NoCredits -> NoCreditsCard()
             ChatRowModel.Offline -> OfflineCard(state.onRetry)

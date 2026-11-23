@@ -58,6 +58,13 @@ internal fun startHandoffSession(
     }
     val created = manager.createSession(projectId)
     if (created !is com.codespace.ide.chat.session.SessionCreate.Created) return null
+    // A successor that inherits nothing inherits the DEFAULT mode, which is Ask - so it could read
+    // the handoff and then be unable to act on it. It now starts in the mode the parent was in.
+    runCatching {
+        active?.mode?.let { m ->
+            manager.setSessionMode(projectId, created.meta.id, ChatModePersistence.toStored(m))
+        }
+    }
     val successor = lineage.record(created.meta.id, activeId, parentLink.origin)
     manager.renameSession(
         projectId, created.meta.id,
@@ -81,7 +88,10 @@ internal fun startHandoffSession(
         handoff.progress.isNotEmpty() || handoff.open.isNotEmpty() ||
         handoff.files.isNotEmpty() || handoff.evidence.isNotEmpty() ||
         handoff.limitations.isNotEmpty()
-    val payload = if (substantive) handoff.render() else fallbackHandoff(source)
+    // OWNER REPORT (2026-11-23): "the continue in another session doesn't work". A substantive
+    // digest rendered WITHOUT the conversation, so a summary that mentioned constraints but not the
+    // actual exchange read as remembering nothing. The recent turns now always travel with it.
+    val payload = if (substantive) handoff.render() + recentTurnsBlock(source) else fallbackHandoff(source)
     if (payload.isBlank()) {
         manager.session(projectId, created.meta.id)?.appendNotice(
             "Continuation started WITHOUT a usable summary: the parent session had nothing worth " +
@@ -142,5 +152,29 @@ private fun fallbackHandoff(rows: List<ChatRowModel>): String {
         append("for decisions or open questions, so these are the most recent turns VERBATIM rather ")
         append("than a summary. They are context to build on, not work to redo.\n\n")
         kept.forEach { append("- ").append(it.take(MAX_FALLBACK_CHARS)).append("\n") }
+    }
+}
+
+/**
+ * The last few turns, verbatim and clearly labelled as an excerpt. Deliberately second best: a
+ * labelled excerpt is honest, and a summary that omits the exchange itself is what the owner
+ * experienced as "remembers nothing".
+ */
+private fun recentTurnsBlock(rows: List<ChatRowModel>, maxTurns: Int = 10, perTurn: Int = 700): String {
+    val turns = rows.mapNotNull { row ->
+        when (row) {
+            is ChatRowModel.User -> "User: " + row.text
+            is ChatRowModel.AssistantStream -> "Assistant: " + row.text
+            else -> null
+        }
+    }.takeLast(maxTurns)
+    if (turns.isEmpty()) return ""
+    return buildString {
+        append("\n\n## Recent turns, carried verbatim\n")
+        append("These are the last exchanges, not a summary. Continue from them.\n\n")
+        turns.forEach { turn ->
+            append(if (turn.length > perTurn) turn.take(perTurn) + " [...]" else turn)
+            append("\n\n")
+        }
     }
 }
