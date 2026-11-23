@@ -761,6 +761,14 @@ private fun TimelineSection(
         MemoryTimeline.loadFrom(FactsStore.memoryDir(context)).take(8)
     }
     if (events.isEmpty()) return
+    // OWNER REPORT (2026-11-23): "the panel headers aren't well organized". The review section named
+    // itself and the timeline did not, so the screen read as unrelated blocks stacked on each other.
+    // Every section now names itself in the same place, at the same weight, before its rows.
+    Text(
+        "History",
+        color = textSec, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+    )
     Spacer(Modifier.height(8.dp))
     Text(
         "Timeline (" + events.size + ")",
