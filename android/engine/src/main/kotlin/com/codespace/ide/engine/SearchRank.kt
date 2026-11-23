@@ -71,8 +71,8 @@ object SearchRank {
         // PROJECT NINE 9.83 (catalog 34): the blackboard is read now, not only written. A file
         // written moments ago is marked in the results, so a step stops re-reading a file to
         // discover its own edit.
-        val lastWrite = Blackboard.read("last.write")?.value?.substringBefore(" (")?.trim()
-        val marked = if (lastWrite.isNullOrBlank()) blocks
+        val lastWrite: String = Blackboard.read("last.write")?.value?.substringBefore(" (")?.trim() ?: ""
+        val marked = if (lastWrite.isEmpty()) blocks
             else blocks.map { if (it.startsWith(lastWrite)) "[you wrote this file recently]\n" + it else it }
         return SearchBudget
             .fit(marked.mapIndexed { i, b -> SearchBudget.Item(i.toString(), b) }, maxChars)

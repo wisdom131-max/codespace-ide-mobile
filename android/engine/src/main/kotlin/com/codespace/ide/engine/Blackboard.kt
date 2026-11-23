@@ -20,6 +20,9 @@ object Blackboard {
      */
     private val shared = Board()
 
+    /** What the last writer put under this key, or null when nobody has. */
+    fun read(key: String): Note? = shared.read(key)
+
     fun post(key: String, value: String, writer: String, atMs: Long): Note =
         shared.write(key, value, writer, atMs)
 
