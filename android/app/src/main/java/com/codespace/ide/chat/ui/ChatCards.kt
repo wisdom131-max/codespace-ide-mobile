@@ -161,8 +161,12 @@ fun ThinkingCard(seconds: Int, steps: List<String> = emptyList(), modifier: Modi
                 fontSize = ChatTokens.FONT_MICRO.sp,
             )
             Spacer(Modifier.width(6.dp))
+            // VS Code parity (owner request, 2026-11-23): their collapsed header NAMES what is
+            // happening right now ("Editing files") instead of counting seconds at the user. The
+            // elapsed time and the step count stay, because those are the honest part.
             Text(
-                "Thought for " + seconds + "s" + (if (steps.isEmpty()) "" else "  \u00b7  " + steps.size + " steps"),
+                com.codespace.ide.engine.ThinkingTitles.runningTitle(steps) + "  \u00b7  " + seconds + "s" +
+                    (if (steps.isEmpty()) "" else "  \u00b7  " + steps.size + " steps"),
                 color = c.textSecondary,
                 fontSize = ChatTokens.FONT_MICRO.sp,
             )
@@ -175,8 +179,12 @@ fun ThinkingCard(seconds: Int, steps: List<String> = emptyList(), modifier: Modi
                     fontSize = ChatTokens.FONT_MICRO.sp,
                 )
             } else {
+                // VS Code parity: the expanded section reads as a tree, one indented line per
+                // step, not as a wall of identical text. TreeChild is this file's own row helper.
                 steps.forEach { step ->
-                    Text(step, color = c.textSecondary, fontSize = ChatTokens.FONT_MICRO.sp)
+                    val label = step.substringBefore(": ").trim()
+                    val detail = if (step.contains(": ")) step.substringAfter(": ").trim() else ""
+                    TreeChild(label, detail, c, true)
                 }
             }
         }
