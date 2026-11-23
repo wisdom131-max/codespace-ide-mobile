@@ -5283,19 +5283,22 @@ private fun PssEditorColumn(
                         // #0D1117, both of which read as grey-on-black. The welcome screen is not an
                         // inactive tab, so it uses the theme's real text colour, with the second line
                         // at 75% so there is still a hierarchy without either line going dim.
-                        // OWNER REPORT (2026-11-23): "I meant I want the grey welcome screen fix as
-                        // it is in black background (default)". On the DEFAULT dark theme the palette
-                        // text colour is a mid grey (#D4D4D4-class), which over a near-black page still
-                        // reads as grey-on-black. The welcome screen now picks its own contrast from
-                        // the page it sits on: near-white on a dark page, near-black on a light one.
-                        // No palette value can make this unreadable again.
+                        // OWNER DECISION (2026-11-23): "I wanted the grey theme permanent for the
+                        // default dark theme because they go together like VS Code's own". Grey on
+                        // dark is the intended look here, not a defect - VS Code's own welcome surface
+                        // is grey text on a dark page. So the welcome screen keeps grey PERMANENTLY on
+                        // dark themes, set to VS Code's own values rather than a brightened white:
+                        // #CCCCCC for the title, #9D9D9D for the line under it. On a light page the
+                        // same pairing inverts to #333333 / #6E6E6E so Light mode is not grey-on-white.
+                        // The pair is chosen here, so no palette edit can wash it out later.
                         val welcomeOnDark = (BgColor.red + BgColor.green + BgColor.blue) / 3f < 0.5f
-                        val welcomeInk = if (welcomeOnDark) Color(0xFFF7F7F7) else Color(0xFF1B1B1B)
+                        val welcomeTitleInk = if (welcomeOnDark) Color(0xFFCCCCCC) else Color(0xFF333333)
+                        val welcomeSubInk = if (welcomeOnDark) Color(0xFF9D9D9D) else Color(0xFF6E6E6E)
                         Text("Visual Node Code", fontSize = if (welcomeLandscape) 18.sp else 22.sp,
-                            color = welcomeInk, fontWeight = FontWeight.Light, maxLines = 1)
+                            color = welcomeTitleInk, fontWeight = FontWeight.Light, maxLines = 1)
                         Spacer(Modifier.height(8.dp))
                         Text("Open Explorer → tap a file to start", fontSize = 13.sp,
-                            color = welcomeInk.copy(alpha = 0.78f),
+                            color = welcomeSubInk,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
