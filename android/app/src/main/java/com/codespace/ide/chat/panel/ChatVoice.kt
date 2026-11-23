@@ -15,7 +15,9 @@ import androidx.core.content.ContextCompat
 import com.codespace.ide.agent.voice.RecognitionPlan
 import com.codespace.ide.agent.voice.VadPolicy
 import com.codespace.ide.agent.voice.VoiceRecognizer
+import com.codespace.ide.chat.panel.voice.AmbientFloor
 import com.codespace.ide.chat.panel.voice.BargeInDetector
+import com.codespace.ide.chat.panel.voice.SpokenStop
 import com.codespace.ide.chat.panel.voice.VoiceEvent
 import com.codespace.ide.chat.panel.voice.VoiceLoopPolicy
 import com.codespace.ide.chat.panel.voice.VoiceLoopState
@@ -66,6 +68,7 @@ internal fun rememberVoiceLoop(
     val level = remember { mutableStateOf(0f) }
     val partial = remember { mutableStateOf("") }
     val detector = remember { BargeInDetector() }
+    val floor = remember { AmbientFloor() }
     val micRef = remember { arrayOfNulls<VoiceRecognizer>(1) }
     val problem = rememberUpdatedState(onProblem)
     val transcript = rememberUpdatedState(onTranscript)
@@ -79,15 +82,34 @@ internal fun rememberVoiceLoop(
     val recognizer = remember {
         VoiceRecognizer(
             context = context.applicationContext,
-            onPartial = { text -> partial.value = text },
-            onRms = { db ->
-                level.value = levelFrom(db)
-                if (state.value == VoiceLoopState.SPEAKING && detector.onFrame(db, FRAME_MS, true)) {
-                    // Talking over the reply: stop the voice mid-word and take the microphone back.
+            onPartial = { text ->
+                partial.value = text
+                // A spoken stop works even where the room never gets loud enough for the energy
+                // detector: ChatGPT takes "stop", VS Code ships a keyword-recognition session for
+                // exactly this. Word-boundary matched, so "stopwatch" is not an instruction.
+                if (state.value == VoiceLoopState.SPEAKING && SpokenStop.isStop(text)) {
                     speaker.stop()
                     detector.reset()
+                    floor.reset()
                     partial.value = ""
                     move(VoiceEvent.BargeIn)
+                }
+            },
+            onRms = { db ->
+                level.value = levelFrom(db)
+                if (state.value == VoiceLoopState.SPEAKING) {
+                    // Learn the room while only the app is audible, then judge speech against THAT
+                    // floor. A fixed threshold is wrong in a quiet room (a page turning trips it)
+                    // and wrong in a noisy one (speech never reaches it).
+                    if (detector.inGuard) floor.track(db) else detector.thresholdDb = floor.threshold()
+                    if (detector.onFrame(db, FRAME_MS, true)) {
+                        // Talking over the reply: stop the voice mid-word and take the microphone back.
+                        speaker.stop()
+                        detector.reset()
+                        floor.reset()
+                        partial.value = ""
+                        move(VoiceEvent.BargeIn)
+                    }
                 }
             },
             onFinal = { text ->
@@ -185,7 +207,11 @@ internal fun rememberVoiceLoop(
 
     val speak: (String) -> Unit = { text ->
         if (text.isNotBlank()) {
+            // VS Code keeps two speech sessions from ever being in progress at once; the same
+            // invariant here. The microphone is closed BEFORE the reply starts, then re-opened.
+            micRef[0]?.cancel()
             detector.reset()
+            floor.reset()
             speaker.speak(text)
             state.value = VoiceLoopState.SPEAKING
             // Re-open the microphone so the owner can talk over the reply. Without permission the
@@ -200,6 +226,7 @@ internal fun rememberVoiceLoop(
         speaker.onFinished = {
             if (state.value == VoiceLoopState.SPEAKING) {
                 detector.reset()
+                floor.reset()
                 micRef[0]?.cancel()
                 level.value = 0f
                 partial.value = ""

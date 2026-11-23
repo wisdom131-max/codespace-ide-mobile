@@ -121,3 +121,66 @@ class VoiceLoopPolicyTest {
         assertTrue(d.onFrame(6f, 50, speaking = true))
     }
 }
+
+/** Spoken stop words and the learned room floor (research pass, 2026-11-23). */
+class VoiceStopWordTest {
+
+    @Test
+    fun aSpokenStopIsRecognised() {
+        assertTrue(SpokenStop.isStop("stop"))
+        assertTrue(SpokenStop.isStop("Stop."))
+        assertTrue(SpokenStop.isStop("stop now please"))
+        assertTrue(SpokenStop.isStop("wait a second"))
+        assertTrue(SpokenStop.isStop("cancel that"))
+        assertTrue(SpokenStop.isStop("quiet"))
+    }
+
+    @Test
+    fun conversationAboutStoppingIsNotAStop() {
+        assertFalse("negation is not an instruction", SpokenStop.isStop("don't stop the build"))
+        assertFalse("a word that contains it", SpokenStop.isStop("open the stopwatch file"))
+        assertFalse("plain speech", SpokenStop.isStop("the reply was useful"))
+        assertFalse(SpokenStop.isStop(""))
+    }
+
+    @Test
+    fun theFloorIsLearnedFromTheRoom() {
+        val quiet = AmbientFloor()
+        repeat(6) { quiet.track(0f) }
+        assertEquals(0f, quiet.floorDb, 0.01f)
+        assertEquals(3f, quiet.threshold(), 0.01f)
+    }
+
+    @Test
+    fun aNoisyRoomRaisesTheBarSoSpeechMustBeLouder() {
+        val noisy = AmbientFloor()
+        repeat(6) { noisy.track(5f) }
+        assertTrue("floor follows the room", noisy.floorDb > 4.5f)
+        assertTrue("and the bar rises with it", noisy.threshold() > 7.5f)
+    }
+
+    @Test
+    fun theThresholdNeverDropsBelowTheOldFixedValue() {
+        val veryQuiet = AmbientFloor()
+        repeat(10) { veryQuiet.track(-2f) }
+        assertTrue(veryQuiet.threshold() >= 2.5f)
+    }
+
+    @Test
+    fun resettingForgetsTheOldRoom() {
+        val f = AmbientFloor()
+        repeat(6) { f.track(9f) }
+        f.reset()
+        assertEquals(-2f, f.floorDb, 0.01f)
+    }
+
+    @Test
+    fun theDetectorUsesTheLearnedThreshold() {
+        val d = BargeInDetector(guardMs = 0, thresholdDb = 8f, requiredMs = 100)
+        // 6 dB is speech in a quiet room but under the bar in a noisy one
+        assertFalse(d.onFrame(6f, 50, speaking = true))
+        assertFalse(d.onFrame(6f, 50, speaking = true))
+        assertFalse("50ms above the bar is not yet 100ms", d.onFrame(9f, 50, speaking = true))
+        assertTrue(d.onFrame(9f, 50, speaking = true))
+    }
+}

@@ -107,9 +107,13 @@ internal object VoiceLoopPolicy {
  */
 internal class BargeInDetector(
     private val guardMs: Int = 450,
-    private val thresholdDb: Float = 2.5f,
+    /** Adjustable, because the room's floor is learned at runtime (see [AmbientFloor]). */
+    var thresholdDb: Float = 2.5f,
     private val requiredMs: Int = 260,
 ) {
+    /** True while the guard window is still swallowing the app's own voice and the room's echo. */
+    val inGuard: Boolean get() = sinceSpeechStartMs < guardMs
+
     private var sinceSpeechStartMs = 0
     private var loudMs = 0
     private var fired = false
@@ -139,4 +143,58 @@ internal class BargeInDetector(
         }
         return false
     }
+}
+
+/**
+ * A spoken stop, the way ChatGPT and VS Code's keyword-recognition session both offer one.
+ *
+ * Saying "stop" while the reply is being read must work even in a room where the microphone never
+ * gets loud enough to trip the energy detector. Word boundaries matter: "stopwatch" and "the stop
+ * button" are conversation, "stop" alone is an instruction. A negation is not an instruction.
+ */
+internal object SpokenStop {
+    private val words = setOf("stop", "wait", "cancel", "quiet", "pause", "enough")
+    private val negations = listOf("don't stop", "do not stop", "never stop", "not stop")
+
+    fun isStop(text: String): Boolean {
+        val s = text.lowercase().trim()
+        if (s.isEmpty()) return false
+        if (negations.any { s.contains(it) }) return false
+        return s.split(Regex("[^a-z']+")).any { it in words }
+    }
+}
+
+/**
+ * The ambient floor of the room, learned while the reply is playing.
+ *
+ * Ours used to compare against a fixed 2.5 dB, which is wrong twice: in a quiet room a page turning
+ * trips it, and in a noisy one speech never reaches it. Open WebUI's realtime voice learns its floor
+ * on the server (server VAD); we cannot see their model, so we learn ours here from the same frames
+ * the recogniser already gives us. The interruption threshold is then the floor plus a margin.
+ */
+internal class AmbientFloor(
+    private val marginDb: Float = 3f,
+    private val minDb: Float = -2f,
+    private val maxDb: Float = 10f,
+) {
+    private var sum = 0f
+    private var frames = 0
+
+    var floorDb: Float = minDb
+        private set
+
+    fun reset() {
+        sum = 0f
+        frames = 0
+        floorDb = minDb
+    }
+
+    fun track(db: Float) {
+        sum += db.coerceIn(minDb, maxDb)
+        frames++
+        if (frames >= 4) floorDb = (sum / frames).coerceIn(minDb, maxDb)
+    }
+
+    /** The level a sound must reach to count as the owner speaking over the reply. */
+    fun threshold(): Float = (floorDb + marginDb).coerceIn(2.5f, maxDb)
 }

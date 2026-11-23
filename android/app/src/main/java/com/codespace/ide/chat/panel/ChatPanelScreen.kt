@@ -683,6 +683,9 @@ private fun ChatBody(
                         // P7.D: off by default, remembered, and honest when the device cannot speak.
                         readAloud = !readAloud
                         com.codespace.ide.chat.panel.ChatSettingsPrefs.setReadAloud(readAloud)
+                        // Turning it off silences the reply being read RIGHT NOW, not just the next
+                        // one. Turning it on changes nothing about the reply already on screen.
+                        if (!readAloud) voice.stop()
                         notice = when {
                             !readAloud -> "Replies will stay silent."
                             speech.state is SpeechState.Unavailable ->
