@@ -334,7 +334,7 @@ class ChatEngineImpl(
         // request, so it measures the context once here and the panel reads the result. Measured,
         // never estimated: instructions, tool definitions, the conversation window, and the space
         // held back for the reply.
-        ContextMeter.record(
+        ContextMeter.record(sessionId, 
             segments = ContextMeter.Segments(
                 systemChars = config.systemInstruction.length,
                 toolChars = config.toolDeclarations.sumOf { it.toString().length },

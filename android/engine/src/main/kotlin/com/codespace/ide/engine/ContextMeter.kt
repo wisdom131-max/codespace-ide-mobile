@@ -45,11 +45,32 @@ object ContextMeter {
     var latest: Report? = null
         private set
 
+    /**
+     * DEVICE REPORT T10 (2026-11-23): the panel showed the PREVIOUS session's numbers after a
+     * switch, because there was one global "latest" and the UI read it regardless of which
+     * session was on screen. A measurement belongs to the session it was taken in, so it is kept
+     * per session now: switching sessions shows that session's own last measurement, or nothing,
+     * never another conversation's tokens.
+     */
+    private val bySession = java.util.concurrent.ConcurrentHashMap<String, Report>()
+
     fun record(segments: Segments, windowTokens: Int, charsPerToken: Int = 4): Report {
         val r = measure(segments, windowTokens, charsPerToken)
         latest = r
         return r
     }
+
+    /** Record a measurement against the session that produced it. */
+    fun record(sessionId: String, segments: Segments, windowTokens: Int, charsPerToken: Int = 4): Report {
+        val r = measure(segments, windowTokens, charsPerToken)
+        latest = r
+        if (sessionId.isNotBlank()) bySession[sessionId] = r
+        return r
+    }
+
+    /** This session's last measurement, or null when it has not sent anything yet. */
+    fun latestFor(sessionId: String?): Report? =
+        sessionId?.takeIf { it.isNotBlank() }?.let { bySession[it] }
 
     fun measure(segments: Segments, windowTokens: Int, charsPerToken: Int = 4): Report {
         val per = charsPerToken.coerceAtLeast(1)

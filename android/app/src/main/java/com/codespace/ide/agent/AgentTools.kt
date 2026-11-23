@@ -567,7 +567,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                 // shared guest->host choke point below — the model was systematically
                 // exposed to GUEST paths (terminal output, run_command results) while
                 // these tools read the raw string as a HOST File.
-                "read_file" -> readFile(args.getString("path"), context)
+                "read_file" -> readFile(args.getString("path"), context, args.optInt("offset", 0))
                 "write_file" -> writeFile(args.getString("path"), args.getString("content"), context)
                 // PROJECT 2.4: a real Word document, with heading styles that survive a re-read.
                 "docx_create" -> docxCreate(
@@ -1009,7 +1009,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     private fun workspaceRoot(context: Context): String? =
         com.codespace.ide.security.TrustState.activeProjectRoot(context)
 
-    private fun readFile(path: String, context: android.content.Context): String {
+    private fun readFile(path: String, context: android.content.Context, offset: Int = 0): String {
         // CH02: resolve either dialect first, then look up the staged overlay under
         // BOTH spellings (staging keys may predate this fix in either dialect).
         val resolvedPath = resolveToolPath(context, path)
@@ -1056,7 +1056,30 @@ You can use multiple tools in sequence. When done, give a final summary.
         if (full.length <= 16000) return cutWithNote
         val outline = com.codespace.ide.engine.CodeChunker.chunk(full)
             .joinToString("\n") { "  " + it.header + " (lines " + it.startLine + "-" + it.endLine + ")" }
-        return cutWithNote + "\n\n[truncated: " + full.length + " characters total. Sections not shown:]\n" + outline
+        // DEVICE REPORT (2026-11-23), owner's rule: a model does not need a whole large file, it
+        // needs enough to JUDGE it - the opening, the middle and the ending. Head only was a guess:
+        // the middle is where the function usually is, and the end is where the return lives. So a
+        // large file now arrives as a three-part sample, and "I need more" is one deliberate call
+        // with offset=<character position> rather than a blind re-read of the same first 16000.
+        if (offset > 0 && offset < full.length) {
+            val end = minOf(full.length, offset + 14000)
+            val slice = full.substring(offset, end)
+            return "[characters " + offset + " to " + end + " of " + full.length + "]\n" + slice +
+                "\n\n[call read_file with offset=" + end + " to continue.]"
+        }
+        val headLen = 7000
+        val midLen = 3000
+        val tailLen = 6000
+        val midStart = (full.length - midLen) / 2
+        val omitted1 = midStart - headLen
+        val omitted2 = full.length - tailLen - (midStart + midLen)
+        return cutWithNote +
+            "\n\n[this file is " + full.length + " characters: showing the start, the middle and the end]" +
+            "\n\n" + full.substring(0, headLen) +
+            "\n\n[... " + omitted1 + " characters omitted ...]\n\n" + full.substring(midStart, midStart + midLen) +
+            "\n\n[... " + omitted2 + " characters omitted ...]\n\n" + full.substring(full.length - tailLen) +
+            "\n\n[sections not shown:]\n" + outline +
+            "\n[to read a specific stretch, call read_file again with offset=<character position>.]"
     }
 
     /**
@@ -2845,7 +2868,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         val files = ArrayList<Pair<String, String>>()
         var skipped = 0
         val base = root.absolutePath
-        val walked = root.walkTopDown().take(RepoSearch.MAX_FILES + 1).toList()
+        val walked = root.walkTopDown().onEnter { !isSkippedName(it.name) }.take(RepoSearch.MAX_FILES + 1).toList()
         for (f in walked) {
             if (!f.isFile) continue
             if (files.size >= RepoSearch.MAX_FILES) break
@@ -2948,7 +2971,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         val root = File(resolveToolPath(context, path ?: "."))
         if (!root.exists()) return "Path not found: " + (path ?: ".")
         val paths = ArrayList<String>()
-        for (f in root.walkTopDown().maxDepth(depth.coerceIn(1, 6)).take(600)) {
+        for (f in root.walkTopDown().onEnter { !isSkippedName(it.name) }.maxDepth(depth.coerceIn(1, 6)).take(600)) {
             if (f.absolutePath == root.absolutePath) continue
             val rel = f.absolutePath.removePrefix(root.absolutePath).trimStart('/')
             if (rel.isEmpty()) continue
@@ -2957,11 +2980,32 @@ You can use multiple tools in sequence. When done, give a final summary.
         return RepoSearch.structure(paths, depth)
     }
 
+    /**
+     * Folders the copilot must never walk, mirroring VS Code's own defaults for files.exclude
+     * and search.exclude, plus this app's internal folders.
+     *
+     * WHY (device report T1/T14, 2026-11-23): the agent listed .git and .ide-trash and read them
+     * as if they were project content. A git object store is not source code, and the trash is
+     * deleted work. VS Code never searches these: ripgrep skips hidden paths, and .git,
+     * node_modules and bower_components are excluded by default settings. One list, used by every
+     * walk in this file, so the agent cannot see what the explorer already hides.
+     */
+    private val SKIP_WALK_NAMES = setOf(
+        ".git", ".hg", ".svn", ".DS_Store", ".ide-trash", ".versionhistory", ".autosave",
+        "node_modules", "bower_components", "build", ".gradle", ".idea", ".vscode", ".cxx",
+        ".kotlin", "__pycache__", ".venv", "venv", "dist", ".next", ".nuxt", "target",
+        ".cache", ".expo", ".dart_tool", ".terraform", "coverage", ".nyc_output",
+        "rootfs", ".codespace",
+    )
+
+    /** True when this path component is internal, generated or deleted work. */
+    private fun isSkippedName(name: String): Boolean = name in SKIP_WALK_NAMES
+
     private fun listFiles(path: String, context: android.content.Context): String {
         val dir = File(resolveToolPath(context, path))
         if (!dir.exists()) return "Directory not found: $path"
         if (!dir.isDirectory) return "Not a directory: $path"
-        val files = dir.listFiles()?.sortedBy { it.name } ?: return "Empty directory"
+        val files = dir.listFiles()?.filterNot { isSkippedName(it.name) }?.sortedBy { it.name } ?: return "Empty directory"
         return truncMark(files.joinToString("\n") { f ->
             val type = if (f.isDirectory) "[DIR] " else "      "
             "$type${f.name} (${f.length()} bytes)"
@@ -3029,7 +3073,7 @@ You can use multiple tools in sequence. When done, give a final summary.
         // CH06 (P4h): the walk caps are now HONEST — the old take(500) stopped
         // silently (matches looked complete) and large files were skipped with
         // no note. Cap hit + skipped-file count now ride the result.
-        val walked = dir.walkTopDown().take(501).toList()
+        val walked = dir.walkTopDown().onEnter { !isSkippedName(it.name) }.take(501).toList()
         val fileCapHit = walked.size > 500
         var skippedLarge = 0
         walked.take(500).forEach { f ->

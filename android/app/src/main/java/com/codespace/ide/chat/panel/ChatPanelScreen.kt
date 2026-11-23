@@ -634,7 +634,7 @@ private fun ChatBody(
     if (showContextWindow) {
         ContextWindowPanel(
             colors = c,
-            report = com.codespace.ide.engine.ContextMeter.latest,
+            report = com.codespace.ide.engine.ContextMeter.latestFor(activeId),
             onCompact = {
                 showContextWindow = false
                 notice = "Older turns are summarised automatically once the window fills."
