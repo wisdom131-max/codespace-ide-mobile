@@ -928,10 +928,28 @@ You can use multiple tools in sequence. When done, give a final summary.
                 // through McpClientManager — SAME dispatch path, so the SAME
                 // AgentFlowGate AUTO/MANUAL approval already gated this call.
                 else -> if (name.startsWith("mcp_")) {
+                    // OWED SINCE 7b73dcd (owner report: a connector call went to the wrong place /
+                    // the model never asked which connector it meant). A tool name carries the
+                    // connector, so when it names none of the configured ones and there is more than
+                    // one to choose from, the honest answer is the LIST and the question - not a
+                    // silent attempt against whichever server happened to be first.
+                    val configured = runCatching {
+                        McpClientManager.loadConfig().map { it.name }
+                    }.getOrDefault(emptyList())
+                    val named = configured.firstOrNull { n ->
+                        name == "mcp_" + n || name.startsWith("mcp_" + n + "_")
+                    }
+                    if (named == null && configured.size > 1) {
+                        "Which connector? More than one is set up: " + configured.joinToString(", ") +
+                            ". Nothing was sent. Call again as mcp_<connector>_<tool> naming the one " +
+                            "meant, or ask the user which connector to use."
+                    } else {
+
                     // CH11 (P4h): cancellable + hard-bounded; runBlocking is GONE.
                     kotlinx.coroutines.withTimeoutOrNull(90_000L) {
                         McpClientManager.callTool(name, args, context)
                     } ?: "MCP tool '$name' timed out after 90s — the call was abandoned (Stop now cancels it too). Check the server or retry."
+                    }
                 } else "Unknown tool: $name"
             }
         } catch (e: Exception) {

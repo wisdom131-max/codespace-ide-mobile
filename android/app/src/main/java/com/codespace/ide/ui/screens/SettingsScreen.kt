@@ -289,7 +289,7 @@ fun SettingsScreen(
 
             if (searchQuery.isBlank()) {
             // ── Appearance ───────────────────────────────────────────────────
-            Text("Appearance", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            SectionTitle("Appearance")
             ListItem(
                 headlineContent = { Text("Dark mode") },
                 trailingContent = {
@@ -312,7 +312,7 @@ fun SettingsScreen(
             // SK12 (2026-09-26): exportJson/importJson (schema-validating, typed) had
             // NO callers since they were written — there was no settings backup/restore
             // path in any UI, and container backup does not cover settings.json.
-            Text("Security", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            SectionTitle("Security")
 
             ListItem(
                 headlineContent = { Text("App lock") },
@@ -386,7 +386,7 @@ fun SettingsScreen(
 
 
             // ── Accounts ────────────────────────────────────────────────────
-            Text("Accounts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            SectionTitle("Accounts")
             if (githubUsername != null) {
                 ListItem(
                     headlineContent = { Text("GitHub") },
@@ -425,7 +425,7 @@ fun SettingsScreen(
             // now one small tile that opens its own panel, so Settings reads as a list of places to
             // go instead of a document to scroll.
             var openPanel by remember { mutableStateOf<String?>(null) }
-            Text("Panels", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            SectionTitle("Panels")
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -475,7 +475,7 @@ fun SettingsScreen(
             // sections too". There were no privacy controls at all, so this section states plainly
             // what stays on the device and what leaves it, which is the honest version rather than a
             // toggle that does nothing.
-            Text("Privacy", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            SectionTitle("Privacy")
             ListItem(
                 headlineContent = { Text("Stays on this device") },
                 supportingContent = {
@@ -496,7 +496,7 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── Container Backup ─────────────────────────────────────────────
-            Text("Ubuntu Container", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            SectionTitle("Ubuntu Container")
 
             var showResetConfirm by remember { mutableStateOf(false) }
             var resetStatus by remember { mutableStateOf("") }
@@ -578,7 +578,7 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── Workspace Memory ─────────────────────────────────────────────
-            Text("Container Backup", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            SectionTitle("Container Backup")
             var backupInfo by remember { mutableStateOf(BackupManager.backupInfo()) }
             var backupStatus by remember { mutableStateOf("") }
             // Advisor item 3 (2026-10-11): armed when createBackup reports
@@ -1261,7 +1261,7 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── Reset Ubuntu Container ────────────────────────────────────────
-            Text("Workspace Memory", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            SectionTitle("Workspace Memory")
 
             var workspaceRestoreEnabled by remember {
                 mutableStateOf(sessionStateStore?.workspaceRestoreEnabled ?: true)
@@ -1294,7 +1294,7 @@ fun SettingsScreen(
 
             // ── P41-R: Formatter Selection ──────────────────────────────────
             // Feature Toggles moved to In-Project Settings (gear menu → In-Project Settings)
-            Text("Settings Backup", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            SectionTitle("Settings Backup")
             Text(
                 "Back up app settings (incl. keybindings) as JSON, or restore from a backup file.",
                 style = MaterialTheme.typography.bodySmall,
@@ -1313,7 +1313,7 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── Clear Data ───────────────────────────────────────────────────
-            Text("Clear Data", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            SectionTitle("Clear Data")
 
             listOf("Terminal History", "AI Chat History", "Projects").forEach { item ->
                 ListItem(
@@ -1774,4 +1774,20 @@ private fun PanelGlyphTile(
         Spacer(Modifier.height(4.dp))
         Text(label, style = MaterialTheme.typography.labelMedium)
     }
+}
+
+/**
+ * ONE section header for the whole settings page. Every block used to open with its own hand-written
+ * Text(..., titleMedium, padding(16.dp)) line: same style, ten copies, and nothing that could be
+ * restyled in one place. This is that one place - the same look, plus the hairline that makes the
+ * sections read as sections instead of a long scroll.
+ */
+@Composable
+private fun SectionTitle(text: String) {
+    androidx.compose.material3.HorizontalDivider()
+    Text(
+        text,
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),
+    )
 }
