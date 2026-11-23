@@ -80,4 +80,5 @@ class ChatLogTest {
         assertEquals("newest first", (ChatLog.MAX_ENTRIES + 24).toLong(), ChatLog.recent(1).first().at)
         ChatLog.clear()
     }
+
 }

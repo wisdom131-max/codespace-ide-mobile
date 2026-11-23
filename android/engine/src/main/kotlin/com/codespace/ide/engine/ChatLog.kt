@@ -70,11 +70,23 @@ data class ChatLogEntry(
         appendLine("mode: " + mode + "  provider: " + providerId + "  model: " + modelId)
         appendLine("path: " + endpointPath)
         appendLine("request: " + requestChars + " chars (~" + estTokens + " tokens), tools offered: " + toolsOffered)
+        // OWNER REPORT (2026-11-23): "tools offered: 0" said nothing about WHY, so the owner had to
+        // infer it from a contradiction. A bare zero has two very different causes and they need
+        // opposite fixes, so the report now states which one applies instead of leaving it to guesswork.
+        if (toolsOffered == 0) {
+            appendLine("tools: none advertised this turn - the mode withholds tools (Ask), or the plan offered none for this message")
+        }
         if (historyDropped > 0) appendLine("history: " + historyDropped + " older messages not sent (fitted to a learned limit)")
         if (learnedLimitChars > 0) appendLine("learned limit: " + learnedLimitChars + " chars")
         if (retriedCeilingField) appendLine("retry: resent once with the other answer-ceiling field")
         appendLine("result: " + outcome + (httpStatus?.let { " (HTTP " + it + ")" } ?: ""))
         if (endReason.isNotBlank()) appendLine("end reason: " + endReason + " (reply ended early)")
+        // The contradiction the owner's log showed: the provider announcing tool calls while zero
+        // tools were advertised. Named explicitly, because it is a model improvising a format, not a
+        // tool that failed.
+        if (toolsOffered == 0 && endReason.contains("tool", ignoreCase = true)) {
+            appendLine("note: tool calls announced with NO tools advertised - the model improvised the format, so nothing could run")
+        }
         if (providerMessage.isNotBlank()) {
             appendLine("provider says:")
             appendLine(ChatLogSanitizer.redact(providerMessage).trim().take(1200))
