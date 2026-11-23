@@ -1040,15 +1040,23 @@ You can use multiple tools in sequence. When done, give a final summary.
             return "Could not read " + path + ": " + (t.message ?: "read failed")
         }
         val cut = truncMark(full, 16000)  // CH06 (P4h)
+        // PROJECT NINE 9.97 (catalog 34 read-back): a file this session wrote moments ago is
+        // labelled when it is read back, so a step stops re-reading to work out whether its own
+        // edit landed. One line; the content below it is untouched.
+        val lastWritePath = com.codespace.ide.engine.Blackboard.read("last.write")
+            ?.value?.substringBefore(" (")?.trim()
+        val cutWithNote = if (lastWritePath != null && lastWritePath == resolvedPath)
+            "[blackboard: you wrote this file moments ago]\n" + cut
+        else cut
         // PROJECT EIGHT 8.55 (catalog 44 wiring): CodeChunker existed and nothing used it. A large
         // file used to arrive as its first 16000 characters with no sign that anything followed,
         // so the model believed it had read the whole file and answered from a fragment. The
         // outline names the sections that were cut, with line ranges, so the rest can be asked for
         // deliberately instead of guessed at.
-        if (full.length <= 16000) return cut
+        if (full.length <= 16000) return cutWithNote
         val outline = com.codespace.ide.engine.CodeChunker.chunk(full)
             .joinToString("\n") { "  " + it.header + " (lines " + it.startLine + "-" + it.endLine + ")" }
-        return cut + "\n\n[truncated: " + full.length + " characters total. Sections not shown:]\n" + outline
+        return cutWithNote + "\n\n[truncated: " + full.length + " characters total. Sections not shown:]\n" + outline
     }
 
     /**
