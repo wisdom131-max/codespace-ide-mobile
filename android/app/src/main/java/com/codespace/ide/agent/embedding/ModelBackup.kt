@@ -39,7 +39,11 @@ object ModelBackup {
     ): Result<String> = runCatching {
         require(backendUrl.isNotBlank()) { "No backend configured" }
         require(authToken.isNotBlank()) { "Not signed in" }
-        val dir = File(context.filesDir, "models")
+        // The model's home is shared storage so it survives an uninstall; back up whichever
+        // folder actually holds the files, not a hardcoded one that may be empty.
+        val dir = ModelHome.searchOrder(context)
+            .firstOrNull { d -> d.isDirectory && !d.listFiles().isNullOrEmpty() }
+            ?: File(context.filesDir, "models")
         if (!dir.isDirectory || dir.listFiles().isNullOrEmpty()) error("No model files to back up")
         val archive = File(context.cacheDir, "model_" + System.currentTimeMillis() + ".tar.gz")
         try {
@@ -64,7 +68,8 @@ object ModelBackup {
         val archive = File(context.cacheDir, "model_restore_" + System.currentTimeMillis() + ".tar.gz")
         try {
             download(backendUrl, authToken, id, archive)
-            val dest = File(context.filesDir, "models")
+            // Restore into the writable home, which is the shared folder when it is usable.
+            val dest = ModelHome.writableHome(context)
             dest.mkdirs()
             untarGz(archive, dest)
             true
