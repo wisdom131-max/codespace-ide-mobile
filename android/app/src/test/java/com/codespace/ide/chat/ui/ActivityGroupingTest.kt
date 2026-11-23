@@ -76,4 +76,35 @@ class ActivityGroupingTest {
     fun anEmptyListDoesNotCrashTheHeader() {
         assertEquals("No steps", ActivityGrouping.summary(emptyList()))
     }
+
+    @Test
+    fun aRestoredRunOfNotesBecomesAGroupNotRawRows() {
+        // OWNER REPORT (2026-11-23): leave the app mid-turn, come back, and the notes were raw rows
+        // with no tree. Only a ToolActivity could start a group, and a restored transcript is notes.
+        val display = ActivityGrouping.group(
+            listOf(
+                ChatRowModel.InfoNote("read_file: 42 lines"),
+                ChatRowModel.InfoNote("write_file: 12 lines"),
+            ),
+        )
+        assertEquals(1, display.size)
+        assertTrue(display[0] is ChatDisplayRow.ActivityGroup)
+    }
+
+    @Test
+    fun aLoneNoteStaysAVisibleRow() {
+        val display = ActivityGrouping.group(listOf(ChatRowModel.InfoNote("key switched")))
+        assertTrue(display[0] is ChatDisplayRow.Single)
+    }
+
+    @Test
+    fun aRestoredRunNamesTheActivityInsteadOfSayingNoSteps() {
+        val header = ActivityGrouping.summary(
+            listOf(
+                ChatRowModel.InfoNote("read_file: 42 lines"),
+                ChatRowModel.InfoNote("grep_search: 3 matches"),
+            ),
+        )
+        assertTrue(header, header.contains("Reading the project"))
+    }
 }

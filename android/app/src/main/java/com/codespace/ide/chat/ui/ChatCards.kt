@@ -151,7 +151,7 @@ fun ThinkingCard(seconds: Int, steps: List<String> = emptyList(), modifier: Modi
             .clip(RoundedCornerShape(ChatTokens.RADIUS_CARD.dp))
             .background(c.surface)
             .clickable { expanded = !expanded }
-            .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = ChatTokens.PAD_VERTICAL.dp),
+            .padding(horizontal = ChatTokens.PAD_HORIZONTAL.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -388,7 +388,9 @@ fun ActivityGroupRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(ChatTokens.RADIUS_CARD.dp))
             .background(c.surface)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            // OWNER REQUEST (2026-11-23): the collapsed tree was too tall. The touch target stays
+            // 48dp (accessibility unchanged); the card's own padding around it is what shrinks.
+            .padding(horizontal = 12.dp, vertical = 2.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

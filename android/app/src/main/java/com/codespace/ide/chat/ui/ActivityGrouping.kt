@@ -63,7 +63,12 @@ object ActivityGrouping {
         var i = 0
         while (i < rows.size) {
             val row = rows[i]
-            if (row !is ChatRowModel.ToolActivity) {
+            // OWNER REPORT (2026-11-23): leave the app mid-turn, come back, and the tool calls and
+            // done-work notes were sitting RAW in the chat with the tree nowhere to be seen. Cause:
+            // only a ToolActivity could START a group, and the restored transcript is mostly
+            // InfoNote - so the notes had no housing and each one rendered as its own chat row. A
+            // note starts a run now, which is what makes the tree survive a restart.
+            if (row !is ChatRowModel.ToolActivity && row !is ChatRowModel.InfoNote) {
                 out.add(ChatDisplayRow.Single(row))
                 i++
                 continue
@@ -85,11 +90,15 @@ object ActivityGrouping {
             while (j > i + 1 && endsRun(rows[j - 1])) j--
             val run = rows.subList(start, j).toList()
             val steps = run.count { it is ChatRowModel.ToolActivity }
-            if (steps == 1 && run.size == 1) {
+            // A LONE note stays visible: hiding one line inside a tree is worse than showing it.
+            if (steps == 1 && run.size == 1 || (steps == 0 && run.size == 1)) {
                 out.add(ChatDisplayRow.Single(row))
             } else {
-                val firstStep = run.filterIsInstance<ChatRowModel.ToolActivity>().first()
-                out.add(ChatDisplayRow.ActivityGroup(firstStep.id.ifBlank { "run@" + i }, run))
+                // A run of notes carries no ToolActivity, so its id comes from the first row. The
+                // old code called first() on a filtered list and would have thrown on such a run.
+                val first = run.first()
+                val id = if (first is ChatRowModel.ToolActivity && first.id.isNotBlank()) first.id else "run@" + i
+                out.add(ChatDisplayRow.ActivityGroup(id, run))
             }
             i = j
         }
@@ -100,7 +109,14 @@ object ActivityGrouping {
     fun summary(items: List<ChatRowModel>): String {
         val all = items.filterIsInstance<ChatRowModel.ToolActivity>()
             .map { it.label.substringBefore(':').trim() }
-        if (all.isEmpty()) return "No steps"
+        val noteTexts = items.filterIsInstance<ChatRowModel.InfoNote>().map { it.text }
+        // A restored run has notes but no tool rows. It used to say "No steps" - a header that tells
+        // the user nothing about the work it is hiding. It now names the activity instead.
+        if (all.isEmpty()) {
+            if (noteTexts.isEmpty()) return "No steps"
+            val title = com.codespace.ide.engine.ThinkingTitles.runningTitle(noteTexts)
+            return title + " \u00b7 " + noteTexts.size + (if (noteTexts.size == 1) " step" else " steps")
+        }
         val count = all.size
         val names = all.distinct()          // "read_file, read_file" is noise, not information
         val head = names.take(LABEL_LIMIT).joinToString(", ")
