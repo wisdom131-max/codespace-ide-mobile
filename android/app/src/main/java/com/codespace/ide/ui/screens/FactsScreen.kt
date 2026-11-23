@@ -207,7 +207,12 @@ fun FactsScreen(
             )
         } else {
             LazyColumn(
-                Modifier.fillMaxSize(),
+                // OWNER REPORT (2026-11-23): the facts list would not scroll. fillMaxSize() inside
+                // a Column that already has the review and timeline sections above it asked for the
+                // WHOLE screen, so the list was laid out against a height it could not have and the
+                // content past the fold was unreachable. weight(1f) takes exactly the space that is
+                // left and scrolls inside it.
+                Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     start = 12.dp, end = 12.dp, top = 4.dp, bottom = 24.dp),
