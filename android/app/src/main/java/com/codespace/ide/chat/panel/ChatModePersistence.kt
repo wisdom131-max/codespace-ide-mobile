@@ -23,7 +23,10 @@ internal object ChatModePersistence {
         projectId: String,
         sessionId: String,
         mode: ChatMode,
-    ): Boolean = manager.setSessionMode(projectId, sessionId, toStored(mode)) == null
+    ): Boolean = runCatching { manager.setSessionMode(projectId, sessionId, toStored(mode)) }
+        // A store that throws (no index yet) is a FAILED save, not a silent success - and never a
+        // crash in the composer's tap handler.
+        .fold(onSuccess = { it == null }, onFailure = { false })
 
     fun toUi(mode: SessionMode): ChatMode = when (mode) {
         SessionMode.ASK -> ChatMode.ASK

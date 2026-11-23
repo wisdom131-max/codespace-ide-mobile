@@ -483,12 +483,14 @@ private fun ChatBody(
                 // Item 18: remembered per session. A failed write is reported, never swallowed:
                 // the user chose a mode and must not be told nothing.
                 if (!ChatModePersistence.save(manager, projectId, activeId, it)) {
-                    // P0.2: a failed save must not leave the chip claiming a mode the store does
-                    // not hold, or the next turn would enforce the old one. Revert both.
-                    val kept = ChatModePersistence.load(manager, projectId, activeId)
-                    chatMode = kept
-                    session.mode = kept
-                    notice = "Could not remember the " + it.label + " mode for this session."
+                    // DEVICE REPORT (2026-11-23): this used to revert the chip to the stored value,
+                    // which on a failed read was ASK - so the user picked Agent, the app quietly put
+                    // it back, and every turn after that was enforced as Ask. The session keeps the
+                    // mode the user chose and SAYS that it will not survive a restart, instead of
+                    // pretending the choice never happened.
+                    chatMode = it
+                    session.mode = it
+                    notice = it.label + " mode is on for this session, but it could not be saved for next time."
                 }
             },
             attachments = session.pendingChips(),
@@ -632,11 +634,22 @@ private fun ChatBody(
             onDismiss = { showApprovals = false },
         )
     }
+    // Live percentage: while the panel is open, re-read the embedding model every 700ms so a
+    // download counts up instead of freezing at whatever it said when the panel was opened.
+    var embeddingStatus by remember { mutableStateOf("") }
+    LaunchedEffect(showContextWindow, embeddingRowHidden) {
+        if (showContextWindow && !embeddingRowHidden) {
+            while (true) {
+                embeddingStatus = com.codespace.ide.agent.embedding.TrainedEmbeddings.describe(localCtx)
+                kotlinx.coroutines.delay(700L)
+            }
+        }
+    }
     if (showContextWindow) {
         ContextWindowPanel(
             colors = c,
             report = com.codespace.ide.engine.ContextMeter.latestFor(activeId),
-            modelStatus = com.codespace.ide.agent.embedding.TrainedEmbeddings.describe(localCtx),
+            modelStatus = embeddingStatus,
             modelHidden = embeddingRowHidden,
             onToggleModel = {
                 embeddingRowHidden = !embeddingRowHidden

@@ -134,7 +134,7 @@ class ChatSession internal constructor(
      * stored row). Last parameter on purpose: existing positional callers are untouched. Null
      * keeps the in-memory value, so JVM tests behave exactly as before.
      */
-    private val modeSource: (() -> ChatMode)? = null,
+    private val modeSource: (() -> ChatMode?)? = null,
 ) {
     private val streamBuf = StringBuilder()
     /** STAGE 2: text the protocol filter has released for display, and the filter itself. */
@@ -1215,6 +1215,9 @@ class ChatSession internal constructor(
      * the store has no row for this session (a brand-new session that has never been saved).
      */
     internal fun authoritativeMode(): ChatMode =
+        // Null from the source means the store could not answer; the live field wins, because the
+        // user's last explicit choice is better evidence than a failed read. Only a real stored
+        // row may override it.
         runCatching { modeSource?.invoke() }.getOrNull() ?: mode
 
     fun cancel() {
@@ -2430,7 +2433,12 @@ class ChatSessionManager internal constructor(
             // HTTP agent already builds its own from the same providers.
             workspaceBlock = { WorkspaceContextSource.block(appContext, projectId) },
             // P0.2: the persisted mode is the single source of truth; the manager owns the store.
-            modeSource = { ChatModePersistence.load(this, projectId, conversationId) },
+            // DEVICE REPORT (2026-11-23): a stored row wins, but an UNKNOWN read falls back to the
+            // mode this session is actually in rather than to ASK. Persistence failing must not
+            // change what the user asked for mid-session.
+            modeSource = {
+                sessionModeOrNull(projectId, conversationId)?.let { ChatModePersistence.toUi(it) }
+            },
             conversationId = conversationId,
             transcripts = transcripts,
             initialMode = sessionMode(projectId, conversationId),
@@ -2519,6 +2527,25 @@ class ChatSessionManager internal constructor(
      * session operation uses, so the mode cannot drift into a second source of truth. Any
      * unreadable state answers ASK, the mode that cannot write a file.
      */
+    /**
+     * The stored mode, or NULL when the store cannot answer - no index yet, an unreadable file,
+     * or no row for this session. Null means "unknown", never "ask".
+     *
+     * DEVICE REPORT (2026-11-23): the send path asked for the stored mode on every turn and this
+     * function answered ASK whenever it could not read, so a session the user had switched to
+     * Agent was silently enforced as Ask and the copilot refused with "blocked" - in Agent and in
+     * Edit alike, for the rest of the session. A failed read is not a preference.
+     */
+    internal fun sessionModeOrNull(
+        projectId: String,
+        conversationId: String,
+    ): com.codespace.ide.chat.session.SessionMode? {
+        val store = index ?: return null
+        val read = store.read(projectId)
+        if (read !is com.codespace.ide.chat.session.SessionIndexRead.Ok) return null
+        return read.index.find(conversationId)?.mode
+    }
+
     internal fun sessionMode(projectId: String, conversationId: String): com.codespace.ide.chat.session.SessionMode {
         val store = index ?: return com.codespace.ide.chat.session.SessionMode.ASK
         val read = store.read(projectId)
