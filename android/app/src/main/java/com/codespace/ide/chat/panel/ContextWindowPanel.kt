@@ -40,6 +40,10 @@ import com.codespace.ide.engine.ContextMeter
 internal fun ContextWindowPanel(
     colors: ChatColors,
     report: ContextMeter.Report?,
+    /** One line about the EMBEDDING model (downloading, ready, or why it fell back). */
+    modelStatus: String? = null,
+    modelHidden: Boolean = false,
+    onToggleModel: () -> Unit = {},
     onCompact: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -91,6 +95,53 @@ internal fun ContextWindowPanel(
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
+            }
+
+            // DEVICE REPORT T6: the embedding model gets its own row, built from the same pieces as
+            // the rest of this panel. It says what the model is doing right now - downloading with a
+            // percentage, ready and where it lives, or why it fell back to built-in matching. It can
+            // be hidden, and when hidden a single quiet line brings it back.
+            if (modelStatus != null && !modelHidden) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Embedding model",
+                            color = colors.text,
+                            fontSize = ChatTokens.FONT_SMALL.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            modelStatus,
+                            color = colors.textSecondary,
+                            fontSize = ChatTokens.FONT_SMALL.sp,
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
+                            .border(1.dp, colors.border, RoundedCornerShape(ChatTokens.RADIUS_CHIP.dp))
+                            .clickable { onToggleModel() }
+                            .padding(
+                                horizontal = ChatTokens.CHIP_PAD_HORIZONTAL.dp,
+                                vertical = ChatTokens.CHIP_PAD_VERTICAL.dp,
+                            ),
+                    ) {
+                        Text("Hide", color = colors.textSecondary, fontSize = ChatTokens.FONT_SMALL.sp)
+                    }
+                }
+                Spacer(Modifier.height(ChatTokens.GAP_TIGHT.dp))
+            } else if (modelStatus != null && modelHidden) {
+                Text(
+                    "Show embedding model status",
+                    color = colors.textSecondary,
+                    fontSize = ChatTokens.FONT_SMALL.sp,
+                    modifier = Modifier.clickable { onToggleModel() },
+                )
+                Spacer(Modifier.height(ChatTokens.GAP_TIGHT.dp))
             }
 
             Spacer(Modifier.height(ChatTokens.GAP.dp))

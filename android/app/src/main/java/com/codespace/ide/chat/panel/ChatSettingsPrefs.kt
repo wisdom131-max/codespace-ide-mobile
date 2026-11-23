@@ -74,6 +74,7 @@ object ChatSettingsPrefs {
     private const val KEY_READ_ALOUD = "read_replies_aloud"
     private const val KEY_SELECTION = "last_selection"
     private const val KEY_OVERRIDES = "context_overrides"
+    private const val KEY_EMBEDDING_HIDDEN = "embedding_status_hidden"
 
     /**
      * M3 "Show View by Default": whether the chat panel is open when a project is opened.
@@ -121,6 +122,17 @@ object ChatSettingsPrefs {
 
     fun setShowChatByDefault(enabled: Boolean) {
         prefs?.edit()?.putBoolean(KEY_SHOW_BY_DEFAULT, enabled)?.apply()
+    }
+
+    /**
+     * DEVICE REPORT T6 (2026-11-23): the owner asked to see what the EMBEDDING model is doing, and
+     * asked that the row can be hidden. Hidden is remembered, because a row that comes back on every
+     * launch is not a choice the owner made - it is a row they keep dismissing.
+     */
+    fun embeddingStatusHidden(): Boolean = prefs?.getBoolean(KEY_EMBEDDING_HIDDEN, false) ?: false
+
+    fun setEmbeddingStatusHidden(hidden: Boolean) {
+        prefs?.edit()?.putBoolean(KEY_EMBEDDING_HIDDEN, hidden)?.apply()
     }
 
     fun setFailoverOptIn(enabled: Boolean) {

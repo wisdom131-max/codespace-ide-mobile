@@ -146,6 +146,7 @@ private fun ChatBody(
         mutableStateOf(com.codespace.ide.agent.ChatPermissionStore.level(ctx))
     }
     var showContextWindow by remember(projectId) { mutableStateOf(false) }
+    var embeddingRowHidden by remember(projectId) { mutableStateOf(ChatSettingsPrefs.embeddingStatusHidden()) }
     var showTranscripts by remember(projectId) { mutableStateOf(false) }
     var transcriptRead by remember(projectId) { mutableStateOf(com.codespace.ide.chat.voice.VoiceTranscriptRead(emptyList())) }
     var viewByDefault by remember { mutableStateOf(ChatSettingsPrefs.showChatByDefault()) }
@@ -635,6 +636,12 @@ private fun ChatBody(
         ContextWindowPanel(
             colors = c,
             report = com.codespace.ide.engine.ContextMeter.latestFor(activeId),
+            modelStatus = com.codespace.ide.agent.embedding.TrainedEmbeddings.describe(localCtx),
+            modelHidden = embeddingRowHidden,
+            onToggleModel = {
+                embeddingRowHidden = !embeddingRowHidden
+                ChatSettingsPrefs.setEmbeddingStatusHidden(embeddingRowHidden)
+            },
             onCompact = {
                 showContextWindow = false
                 notice = "Older turns are summarised automatically once the window fills."
