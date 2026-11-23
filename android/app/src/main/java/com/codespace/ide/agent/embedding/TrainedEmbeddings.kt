@@ -98,7 +98,13 @@ object TrainedEmbeddings {
                     }
                 }
 
-                val (model, vocab) = found
+                // A nullable pair cannot be destructured; make the non-null case explicit so
+                // the compiler can prove it rather than being asked to trust it.
+                val pair = found ?: run {
+                    lastError = "The model could not be prepared."
+                    return@Thread
+                }
+                val (model, vocab) = pair
                 // Keep the good copy in the home that survives an uninstall. Best effort: a
                 // failure here costs a future download, never the working model.
                 if (model.parentFile?.absolutePath != home.absolutePath) {
