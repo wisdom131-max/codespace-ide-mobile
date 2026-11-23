@@ -281,7 +281,21 @@ class ChatEngineImpl(
         val head = ArrayList<ChatMessage>()
         if (summaryText.isNotEmpty()) head.add(ChatMessage(id = SUMMARY_ID, role = ChatRole.SYSTEM, text = summaryText))
         if (retrievedText.isNotEmpty()) head.add(ChatMessage(id = RETRIEVED_ID, role = ChatRole.SYSTEM, text = retrievedText))
-        val window = if (head.isEmpty()) refit.messages else head + refit.messages
+        val rawWindow = if (head.isEmpty()) refit.messages else head + refit.messages
+        // PROJECT NINE 9.60 (catalog 22): the trimmer now ACTS. Age-based trimming drops the oldest
+        // turn first, and the oldest turn is usually the instruction that defines the whole task.
+        // The opening instruction is swapped in for the next-oldest kept turn, so the window keeps
+        // the same number of turns and the same budget. A swap, not a grow.
+        val openingTurn = eligible.firstOrNull { it.role == ChatRole.USER }
+        val swapOut = rawWindow.firstOrNull()
+        // The swap is only allowed when it cannot grow the window: a long opening instruction
+        // replacing a short turn would push the send over budget, which is the exact failure this
+        // change must not cause. Two of the 594 tests caught that on the first attempt.
+        val canSwap = openingTurn != null && swapOut != null && rawWindow.size > 1 &&
+            rawWindow.none { it.id == openingTurn.id } &&
+            openingTurn.text.length <= swapOut.text.length
+        val window = if (canSwap && openingTurn != null) listOf(openingTurn) + rawWindow.drop(1)
+                     else rawWindow
         val effectiveFit = refit
         // Deliberately NOT an event: HistoryTrimmed was removed on 2026-11-02 because a transcript
         // row narrating an engine decision gives the owner nothing to act on (see EngineModels).
@@ -428,6 +442,15 @@ class ChatEngineImpl(
             // carries only a tool call has no text, so "empty" was not evidence of a bad answer and
             // asking again re-ran the tools. The picker stays wired for the case that does produce
             // two candidates (a partial answer followed by a fallback answer).
+            // PROJECT NINE 9.61 (catalog 11): ask once more when the answer carried no text AND no
+            // tool ran. A tool-only reply also has no text, and re-asking would run the tools twice:
+            // duplicate writes, duplicate cost. The guard is on the exchanges, not the text alone.
+            if (builder.isBlank() && !askedTwice && exchanges().isEmpty()) {
+                askedTwice = true
+                parser = SseParser()
+                done = false
+                continue
+            }
             candidates.add(builder.toString())
             if (candidates.size > 1) {
                 val chosen = DebateConsensus.decide(candidates)?.answer
