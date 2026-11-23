@@ -53,8 +53,34 @@ internal fun startHandoffSession(
             )
         },
     )
+
+    val substantive = handoff.generatedSummary.isNotBlank() ||
+        handoff.decisions.isNotEmpty() || handoff.constraints.isNotEmpty() ||
+        handoff.progress.isNotEmpty() || handoff.open.isNotEmpty() ||
+        handoff.files.isNotEmpty() || handoff.evidence.isNotEmpty() ||
+        handoff.limitations.isNotEmpty()
+    // OWNER REPORT (2026-11-23): "the continue in another session doesn't work". A substantive
+    // digest rendered WITHOUT the conversation, so a summary that mentioned constraints but not the
+    // actual exchange read as remembering nothing. The recent turns now always travel with it.
+    val payload = if (substantive) handoff.render() + recentTurnsBlock(source) else fallbackHandoff(source)
+
+    // OWNER REPORT (2026-11-23): "fix the continue in another session". This is the branch that was
+    // broken, and it was broken silently. The guard only reuses a successor with ZERO turns, and the
+    // old code answered that by returning a notice saying it "already carries this conversation's
+    // context" - while sending NOTHING into it. A second tap therefore dropped the user into an empty
+    // session that remembered nothing, having just been told it remembered everything. The reused
+    // session now receives the same payload a new one would, and says so on screen.
     if (reuse is com.codespace.ide.chat.session.HandoffGuard.Decision.Reuse) {
-        return "Continuing in " + reuse.label + " - it already carries this conversation's context."
+        val reused = manager.session(projectId, reuse.sessionId)
+        if (payload.isNotBlank()) {
+            reused?.send(payload)
+            reused?.appendNotice("Carried from the previous session: its summary and last exchanges.")
+        } else {
+            reused?.appendNotice(
+                "Continuing WITHOUT a summary: the previous session had nothing worth carrying.",
+            )
+        }
+        return "Continuing in " + reuse.label + " - this conversation's context has been carried in."
     }
     val created = manager.createSession(projectId)
     if (created !is com.codespace.ide.chat.session.SessionCreate.Created) return null
@@ -83,15 +109,6 @@ internal fun startHandoffSession(
     // Substance is now checked field by field, and when there is none the most recent turns are
     // carried verbatim instead of an empty frame. Verbatim is deliberately second best and says so
     // in its own header: a labelled excerpt is honest, a summary-shaped void is not.
-    val substantive = handoff.generatedSummary.isNotBlank() ||
-        handoff.decisions.isNotEmpty() || handoff.constraints.isNotEmpty() ||
-        handoff.progress.isNotEmpty() || handoff.open.isNotEmpty() ||
-        handoff.files.isNotEmpty() || handoff.evidence.isNotEmpty() ||
-        handoff.limitations.isNotEmpty()
-    // OWNER REPORT (2026-11-23): "the continue in another session doesn't work". A substantive
-    // digest rendered WITHOUT the conversation, so a summary that mentioned constraints but not the
-    // actual exchange read as remembering nothing. The recent turns now always travel with it.
-    val payload = if (substantive) handoff.render() + recentTurnsBlock(source) else fallbackHandoff(source)
     if (payload.isBlank()) {
         manager.session(projectId, created.meta.id)?.appendNotice(
             "Continuation started WITHOUT a usable summary: the parent session had nothing worth " +

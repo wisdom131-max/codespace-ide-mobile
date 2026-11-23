@@ -3,6 +3,7 @@
 package com.codespace.ide.chat.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -387,9 +388,11 @@ fun ActivityGroupRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(ChatTokens.RADIUS_CARD.dp))
-            .background(c.surface)
-            // OWNER REQUEST (2026-11-23): the collapsed tree was too tall. The touch target stays
-            // 48dp (accessibility unchanged); the card's own padding around it is what shrinks.
+            // OWNER REQUEST (2026-11-23): a VS Code type card. Theirs is a bordered surface rather
+            // than a filled block, so the tree reads as an object in the transcript instead of a
+            // slab of colour that competes with the answer around it.
+            .background(c.surfaceAlt)
+            .border(1.dp, c.border, RoundedCornerShape(ChatTokens.RADIUS_CARD.dp))
             .padding(horizontal = 12.dp, vertical = 2.dp),
     ) {
         Row(
@@ -422,22 +425,33 @@ fun ActivityGroupRow(
                 com.codespace.ide.chat.panel.CopilotBindings.groupHeader(ActivityGrouping.summary(items), items),
                 color = c.textSecondary,
                 fontSize = ChatTokens.FONT_MICRO.sp,
+                // One line, always: a header that wraps to three lines defeats the point of
+                // collapsing the work in the first place.
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
         }
         if (expanded) {
-            // The tree proper: steps and the notes they produced are children of the task, with
-            // one indent and no extra containers.
-            items.forEach { item ->
-                when (item) {
-                    is ChatRowModel.ToolActivity -> TreeChild(
-                        // The state word is spelled out, so status never depends on colour alone.
-                        com.codespace.ide.chat.panel.CopilotBindings.childLine(item),
-                        item.detail, c, false,
-                    )
-                    is ChatRowModel.InfoNote -> TreeChild("", item.text, c, true)
-                    is ChatRowModel.AssistantStream -> TreeChild("", item.text, c, true)
-                    else -> Unit
+            // VS Code type body: the children hang inside one inset rule, so the group reads as a
+            // single task with children rather than a stack of loose lines.
+            Column(
+                Modifier
+                    .padding(start = 4.dp, top = 4.dp)
+                    .border(1.dp, c.border, RoundedCornerShape(2.dp))
+                    .padding(start = 8.dp, top = 2.dp, bottom = 2.dp),
+            ) {
+                items.forEach { item ->
+                    when (item) {
+                        is ChatRowModel.ToolActivity -> TreeChild(
+                            // The state word is spelled out, so status never depends on colour alone.
+                            com.codespace.ide.chat.panel.CopilotBindings.childLine(item),
+                            item.detail, c, false,
+                        )
+                        is ChatRowModel.InfoNote -> TreeChild("", item.text, c, true)
+                        is ChatRowModel.AssistantStream -> TreeChild("", item.text, c, true)
+                        else -> Unit
+                    }
                 }
             }
         }
