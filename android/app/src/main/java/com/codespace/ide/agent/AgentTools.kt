@@ -544,6 +544,18 @@ You can use multiple tools in sequence. When done, give a final summary.
                 }
             }
         }
+        // PROJECT NINE 9.96 (catalog 60 WIRED): a call missing a required argument used to reach
+        // the tool and fail deep inside it, and the model retried blind. It is refused up front
+        // now, naming the argument, and nothing runs.
+        run {
+            val supplied = HashMap<String, String>()
+            val keys = args.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                supplied[k] = args.optString(k)
+            }
+            com.codespace.ide.engine.ToolArgCheck.problem(name, supplied)?.let { return it }
+        }
         val produced: String = try {
             when (name) {
                 "run_command" -> runCommand(args.getString("command"), args.optString("workdir").ifBlank { null }, context)
