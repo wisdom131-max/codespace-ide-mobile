@@ -51,4 +51,10 @@ object AnswerCache {
 
         fun size(): Int = entries.size
     }
+
+    /**
+     * One cache for the process, so the engine can consult it without a new constructor argument.
+     * Tests keep their own instance.
+     */
+    val shared = Cache()
 }
