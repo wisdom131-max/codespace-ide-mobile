@@ -82,4 +82,21 @@ class TrainedEmbeddingTest {
         assertEquals(1.0f, out[0], 0.0f)
         VectorIndex.backend = null
     }
+
+    @Test
+    fun aQueryGetsItsOwnPathAndDocumentsDoNot() {
+        val oldDoc = VectorIndex.backend
+        val oldQuery = VectorIndex.queryBackend
+        try {
+            VectorIndex.backend = { _ -> floatArrayOf(1f, 0f) }
+            VectorIndex.queryBackend = { t -> if (t.startsWith(TrainedEmbedding.QUERY_PREFIX)) floatArrayOf(0f, 1f) else floatArrayOf(1f, 0f) }
+            val q = VectorIndex.embedQuery(TrainedEmbedding.QUERY_PREFIX + "login")
+            val d = VectorIndex.embed("authentication service")
+            assertEquals(1f, q[1], 0f)
+            assertEquals(1f, d[0], 0f)
+        } finally {
+            VectorIndex.backend = oldDoc
+            VectorIndex.queryBackend = oldQuery
+        }
+    }
 }

@@ -22,9 +22,9 @@ object TrainedEmbedding {
     /** all-MiniLM-L6-v2, quantised. 384 dimensions, trained for sentence similarity. */
     val MODEL = Asset(
         name = "model_quantized.onnx",
-        url = "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model_quantized.onnx",
-        bytes = 22_972_370L,
-        sha256 = "afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1",
+        url = "https://huggingface.co/Xenova/bge-base-en-v1.5/resolve/main/onnx/model_quantized.onnx",
+        bytes = 110_083_337L,
+        sha256 = "c9729cc84cbd0e9fecc759505d2be65916c9fe05222d7ea26c65fcb3382af38d",
     )
 
     val VOCAB = Asset(
@@ -35,7 +35,16 @@ object TrainedEmbedding {
     )
 
     /** Output width of this model. The vector store indexes on it, so it is stated once. */
-    const val DIM = 384
+    const val DIM = 768
+
+    /** Stable name, used to label the backup archive so a restore can find it again. */
+    const val ID = "bge-base-en-v1.5"
+
+    /**
+     * This model was trained to be told that a passage is a QUESTION. The instruction goes on
+     * queries only; putting it on documents as well measurably hurts the ranking.
+     */
+    const val QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
     enum class State {
         /** Nothing on disk, or an empty file. */

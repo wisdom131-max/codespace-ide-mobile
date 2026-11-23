@@ -43,6 +43,12 @@ object VectorIndex {
     @Volatile
     var backend: ((String) -> FloatArray)? = null
 
+    /** Queries may need an instruction prefix; documents must not get one. */
+    @Volatile var queryBackend: ((String) -> FloatArray)? = null
+
+    fun embedQuery(text: String, dim: Int = DEFAULT_DIM): FloatArray =
+        queryBackend?.invoke(text) ?: embed(text, dim)
+
     fun embed(text: String, dim: Int = DEFAULT_DIM): FloatArray {
         backend?.let { return it(text) }
         val width = dim.coerceAtLeast(8)

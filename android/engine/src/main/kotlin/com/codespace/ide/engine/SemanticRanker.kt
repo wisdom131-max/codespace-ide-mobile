@@ -16,7 +16,7 @@ object SemanticRanker {
 
     fun rank(query: String, docs: List<Doc>, k: Int = 20): List<String> {
         if (docs.isEmpty() || k <= 0 || query.isBlank()) return emptyList()
-        val q = VectorIndex.embed(query)
+        val q = VectorIndex.embedQuery(query)
         return docs
             .map { it.id to VectorIndex.cosine(q, VectorIndex.embed(it.text)) }
             .sortedByDescending { it.second }
