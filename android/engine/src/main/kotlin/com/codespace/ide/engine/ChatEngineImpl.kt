@@ -313,6 +313,19 @@ class ChatEngineImpl(
         // PROJECT EIGHT 8.2: tools are spliced into the FINISHED body, before the budget guard, so
         // the size the guard measures is the size actually sent. Splicing after the check would let
         // a large tool list push a request over a provider limit the guard had already approved.
+        // PROJECT NINE 9.80 (catalog 88): a question already answered in this exact conversation is
+        // replayed rather than paid for again. Guarded by the flag, and by a stamp that includes the
+        // conversation length, so a changed history can never hit a stale answer.
+        val cacheStamp = config.modelId + "|" + state.snapshot().size
+        if (config.answerCacheEnabled) {
+            val cached = AnswerCache.shared.get(userText, config.modelId, cacheStamp)
+            if (cached != null) {
+                state.append(ChatRole.ASSISTANT, cached, MessageState.DONE)
+                emit(EngineEvent.Delta(cached))
+                emit(EngineEvent.Completed(cached.length, finishOf("stop", config)))
+                return@flow
+            }
+        }
         val payload = adapter.withTools(
             adapter.payloadWithHistory(window, userText, attachments, config, exchanges()),
             config,
@@ -458,6 +471,11 @@ class ChatEngineImpl(
                     kind = "turn.quality",
                     payload = if (verdict.clean) "clean" else verdict.reasons.joinToString("; "),
                     atMs = System.currentTimeMillis(),
+                )
+            }
+            if (config.answerCacheEnabled) {
+                AnswerCache.shared.put(
+                    userText, config.modelId, cacheStamp, builder.toString(), System.currentTimeMillis(),
                 )
             }
             candidates.add(builder.toString())
