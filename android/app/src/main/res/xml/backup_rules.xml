@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The trained model is ~23MB. Android's auto-backup quota is 25MB for the WHOLE app, so
-     including it would crowd out the user's projects. It is re-fetched instead. -->
+<!-- The trained model is 110MB. Android's auto-backup quota is 25MB for the WHOLE app, so the
+     platform backup can never carry it and including it would crowd out the user's projects.
+     A copy IS kept in the owner's own cloud backup instead (same endpoint the projects use),
+     so a reinstall restores the model rather than downloading it again. -->
 <full-backup-content>
     <exclude domain="file" path="models/" />
 </full-backup-content>

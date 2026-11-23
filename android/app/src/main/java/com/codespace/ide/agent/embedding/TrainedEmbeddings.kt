@@ -4,13 +4,17 @@ import android.content.Context
 import com.codespace.ide.engine.TrainedEmbedding
 import com.codespace.ide.engine.VectorIndex
 import java.io.File
+import kotlinx.coroutines.runBlocking
 
 /**
- * PROJECT NINE 10.25 - fetch the trained model once, then hand search over to it.
+ * PROJECT NINE 10.26 - fetch the trained model once, then hand search over to it.
  *
  * Nothing here blocks the app. Until the model is verified and loaded, search keeps using the
  * built-in hashing embedder, so a fresh install works immediately and a failed download is a
  * downgrade rather than a break.
+ *
+ * The model is 110MB, which no platform backup will carry, so a copy is kept in the owner's own
+ * backup: a reinstall restores it instead of spending the download again.
  */
 object TrainedEmbeddings {
 
@@ -24,33 +28,55 @@ object TrainedEmbeddings {
     fun isReady(): Boolean = embedder != null
 
     /** Called at startup. Safe to call repeatedly: it works at most once per process. */
-    fun ensure(context: Context) {
+    fun ensure(context: Context, backendUrl: String = "", authToken: String = "") {
         if (embedder != null) return
         synchronized(this) {
             if (embedder != null || attempted) return
             attempted = true
         }
         val app = context.applicationContext
+        val canBackup = backendUrl.isNotBlank() && authToken.isNotBlank()
         Thread {
             try {
                 val dir = modelDir(app)
-                val model = EmbeddingDownloader.fetch(TrainedEmbedding.MODEL, dir) { progress = it }
-                if (model == null) {
-                    lastError = "Could not download the model."
-                    return@Thread
+                dir.mkdirs()
+                var model = File(dir, TrainedEmbedding.MODEL.name)
+                var vocab = File(dir, TrainedEmbedding.VOCAB.name)
+
+                if (!TrainedEmbedding.ready(model, vocab) && canBackup) {
+                    val restored = runBlocking {
+                        ModelBackup.restore(app, backendUrl, authToken, TrainedEmbedding.ID).getOrNull()
+                    } == true
+                    if (restored) progress = 100
                 }
-                val vocab = EmbeddingDownloader.fetch(TrainedEmbedding.VOCAB, dir) { }
-                if (vocab == null) {
-                    lastError = "Could not download the vocabulary."
-                    return@Thread
-                }
+
                 if (!TrainedEmbedding.ready(model, vocab)) {
-                    lastError = "The downloaded files did not match their checksums."
-                    return@Thread
+                    val gotModel = EmbeddingDownloader.fetch(TrainedEmbedding.MODEL, dir) { progress = it }
+                    if (gotModel == null) {
+                        lastError = "Could not download the model."
+                        return@Thread
+                    }
+                    model = gotModel
+                    val gotVocab = EmbeddingDownloader.fetch(TrainedEmbedding.VOCAB, dir) { }
+                    if (gotVocab == null) {
+                        lastError = "Could not download the vocabulary."
+                        return@Thread
+                    }
+                    vocab = gotVocab
+                    if (!TrainedEmbedding.ready(model, vocab)) {
+                        lastError = "The downloaded files did not match their checksums."
+                        return@Thread
+                    }
+                    if (canBackup) {
+                        runBlocking { ModelBackup.upload(app, backendUrl, authToken, TrainedEmbedding.ID) }
+                    }
                 }
+
                 val made = OnnxEmbedder(model, vocab)
                 embedder = made
                 VectorIndex.backend = { text -> made.embed(text) }
+                // This model was trained to be told a passage is a question; documents get no prefix.
+                VectorIndex.queryBackend = { text -> made.embed(TrainedEmbedding.QUERY_PREFIX + text) }
                 progress = 100
             } catch (t: Throwable) {
                 lastError = t.message ?: t::class.java.simpleName

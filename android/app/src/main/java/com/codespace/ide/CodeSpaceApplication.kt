@@ -116,7 +116,16 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         super.onCreate()
         // PROJECT NINE 10.27: fetch the trained embedding model in the background. Search works
         // on the built-in matcher until it is verified, so this can never block a cold start.
-        com.codespace.ide.agent.embedding.TrainedEmbeddings.ensure(this)
+        // The trained search model is fetched once, and a copy is kept in the owner's own backup
+        // so a reinstall restores it instead of downloading 110MB again. Both are best effort:
+        // a missing token or backend only means the download path is used.
+        val embedBackend = runCatching {
+            com.codespace.ide.BuildConfig.API_BASE_URL.removeSuffix("/api/v1")
+        }.getOrDefault("")
+        val embedToken = runCatching {
+            com.codespace.ide.data.SecureTokenStore(this).lastAccessToken ?: ""
+        }.getOrDefault("")
+        com.codespace.ide.agent.embedding.TrainedEmbeddings.ensure(this, embedBackend, embedToken)
         // MK-RESTRUCTURE v2: endpoint registry must be initialized (prefs +
         // legacy migration + provider sync) BEFORE anything enumerates providers.
         try { com.codespace.ide.chat.CustomEndpointStore.init(this) } catch (_: Exception) { }
