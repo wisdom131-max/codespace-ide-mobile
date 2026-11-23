@@ -231,6 +231,44 @@ object FactRetrieval {
             .take(MAX_PINNED_RULES)
             .toList()
 
+    /**
+     * OWNER REPORT (2026-11-23): "I asked him what my name was mid chat, he did know my name though
+     * but it was saved in his memory so he could have been able to automatically retrieve it
+     * instead of telling me he didn't know my name."
+     *
+     * The cause was not a lost fact, it was the retrieval RULE. Every fact had to share a meaningful
+     * token with the request before it could enter the prompt. Ask "what is my name" and the tokens
+     * are {what, my, name}; a fact stored as "The user is Ijezie Wisdom" shares NONE of them, so the
+     * name was filtered out by design and the copilot truthfully reported knowing nothing. The fact
+     * was there the whole time, unreadable by the one question that needed it most.
+     *
+     * Every other assistant solves this by separating IDENTITY from RETRIEVAL. OpenAI's memory, Cursor
+     * memories, Letta/MemGPT core memory and Claude's CLAUDE.md all keep a small "who is this person"
+     * block in context on EVERY turn, and only rank the rest. Identity is not a search result; it is
+     * context. This is that block: a tiny, tightly capped set of facts about the person, injected
+     * without needing overlap, ahead of everything else.
+     *
+     * Deliberately two, not six: identity that grows becomes a second memory dump and starts
+     * crowding out facts that ARE relevant to the question.
+     */
+    const val MAX_IDENTITY_FACTS = 2
+
+    /**
+     * Wording that identifies a PERSON rather than describing a task. Kept narrow on purpose: a bare
+     * "I am" would match "I am using Kotlin today" and quietly promote a passing remark to identity.
+     */
+    private val IDENTITY = Regex(
+        "(?i)\\b(my name is|user'?s? name is|name is|call me|the user is|i live in|lives in|" +
+            "based in|my role is|i work as|i work at)\\b",
+    )
+
+    /** The facts that say who the person is. Never depends on what was asked. */
+    fun identityFacts(facts: List<Fact>, projectId: String?): List<Fact> =
+        facts
+            .filter { it.isRetrievable() && it.belongsTo(projectId) && IDENTITY.containsMatchIn(it.content) }
+            .sortedByDescending { it.updatedAt }
+            .take(MAX_IDENTITY_FACTS)
+
     fun forRequest(
         facts: List<Fact>,
         request: String,
@@ -239,7 +277,11 @@ object FactRetrieval {
         now: Long = System.currentTimeMillis(),
     ): List<Fact> {
         val requestTokens = FactText.tokenSet(request)
-        if (requestTokens.isEmpty()) return emptyList()
+        if (requestTokens.isEmpty()) {
+            // "hi" has no meaningful tokens, but it is still a question from a person the copilot is
+            // supposed to know. Identity survives an empty request; nothing else does.
+            return identityFacts(facts, projectId)
+        }
         // Overlap is REQUIRED, not merely scored. The standing score alone (scope + provenance +
         // confidence) would otherwise inject every fact with no relation to the question, which is
         // the exact failure this filter exists to prevent.
@@ -268,6 +310,8 @@ object FactRetrieval {
         // Pinned rules first, then whatever earned its place by relevance. A fact that is BOTH is
         // not repeated: the map keeps one copy, in the pinned position.
         val merged = LinkedHashMap<String, Fact>()
+        // Identity first, unconditionally. Then standing rules, then what earned its place.
+        identityFacts(facts, projectId).forEach { merged[it.id] = it }
         pinnedRules(facts, projectId).forEach { merged[it.id] = it }
         relevant.forEach { merged.putIfAbsent(it.fact.id, it.fact) }
         return merged.values.take(limit.coerceIn(0, MAX_PROMPT_FACTS)).toList()

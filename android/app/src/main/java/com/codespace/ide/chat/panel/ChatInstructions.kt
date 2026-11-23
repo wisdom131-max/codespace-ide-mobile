@@ -77,6 +77,18 @@ internal object ChatInstructions {
                  else AgentToolWire.protocol(mode, visible)) +
                 "\n\n" + AgentToolWire.doneInstruction()) +
             toolsetLine(sendTools, visible.size, total) +
+            // OWNER REPORT (2026-11-23): "the copilot might think he doesn't have it and don't ever
+            // use it without me asking". Recovery is not a tool and never was - it is an automatic
+            // wrapper around EVERY tool call (AgentTools.withRecovery), so it cannot be missing from
+            // the loadout. What the model did not know is that a failure is already being handled, so
+            // it apologised and stopped instead of pressing on. One line of context fixes that.
+            (if (!sendTools) "" else
+                "\n\n## WHEN A TOOL FAILS\n" +
+                    "A failed tool call is repaired and retried ONCE automatically: the failure is " +
+                    "classified and the call re-issued where the repair is safe. So a single error is " +
+                    "not the end of the task, and it never means the capability is missing. Keep " +
+                    "going, and if the same call fails twice, change approach or say plainly what " +
+                    "blocked it.\n") +
             (if (mcpDocs.isBlank()) "" else "\n\n## EXTERNAL MCP TOOLS (loaded for this task)\n" + mcpDocs) +
             (if (wsBlock.isEmpty()) "" else "\n\n" + wsBlock)
         // P3-B: a long prompt repeats the SAME constraint line at the tail. The reminder is
