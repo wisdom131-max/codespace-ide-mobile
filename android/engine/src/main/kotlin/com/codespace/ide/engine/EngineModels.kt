@@ -106,6 +106,12 @@ data class EngineConfig(
     /** One reasoning control, mapped per provider (Gemini: thinkingBudget; bounded, never -1/dynamic). */
     val reasoningBudget: Int = 1024,
     /**
+     * PROJECT NINE 9.80 (catalog 88 WIRED): replay an identical question instead of paying for it
+     * twice. Off by default: a cached answer is only safe once the stamp matches, and the stamp is
+     * the model plus the conversation length, so a changed conversation never replays.
+     */
+    val answerCacheEnabled: Boolean = false,
+    /**
      * U4-d: the conversation-mode instruction (Ask / Edit / Agent). Carried on the wire
      * in the provider's OWN system slot - OpenAI as a leading system message, Anthropic
      * as the top-level "system" field, Gemini as "systemInstruction" - because Gemini and
