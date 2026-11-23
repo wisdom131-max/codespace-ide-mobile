@@ -1413,8 +1413,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                             // catalog 9: the mesh assigns a step that names no role, instead of the scheduler
                             // receiving an ownerless task.
                             com.codespace.ide.engine.AgentMesh.nextRoundRobin(meshPeers, index)?.id ?: ""
-                        }
-                        com.codespace.ide.engine.AgentMesh.nextRoundRobin(meshPeers, index)?.id ?: ""
+                        },
                     },
                     title = row.optString("title"),
                     planStepId = step,
