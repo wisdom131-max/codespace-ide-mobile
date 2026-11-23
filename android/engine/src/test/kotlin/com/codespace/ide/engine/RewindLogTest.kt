@@ -36,3 +36,12 @@ class RewindLogTest {
         assertNull(RewindLog.Log().at(99L))
     }
 }
+
+class RewindLogSharedTest {
+
+    @Test
+    fun aSnapshotTakenThroughTheSharedLogIsTheLatest() {
+        RewindLog.save("turn:test", "3 messages", 1L)
+        assertEquals("3 messages", RewindLog.latestSnapshot()?.state)
+    }
+}

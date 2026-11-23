@@ -39,3 +39,14 @@ class AgentEventBusTest {
         assertTrue(AgentEventBus.Bus().since(0L).isEmpty())
     }
 }
+
+class AgentEventBusSharedTest {
+
+    @Test
+    fun publishingThroughTheSharedBusIsReadable() {
+        val before = AgentEventBus.recent().size
+        AgentEventBus.publish("turn.start", "session=test", 1L)
+        assertTrue(AgentEventBus.recent().size >= before)
+        assertEquals("turn.start", AgentEventBus.recent().last().kind)
+    }
+}
