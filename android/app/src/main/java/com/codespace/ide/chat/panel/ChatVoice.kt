@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.codespace.ide.agent.voice.RecognitionPlan
 import com.codespace.ide.agent.voice.VadPolicy
+import com.codespace.ide.agent.voice.VoiceCapture
 import com.codespace.ide.agent.voice.VoiceRecognizer
 import com.codespace.ide.chat.panel.voice.AmbientFloor
 import com.codespace.ide.chat.panel.voice.BargeInDetector
@@ -70,6 +71,11 @@ internal fun rememberVoiceLoop(
     val detector = remember { BargeInDetector() }
     val floor = remember { AmbientFloor() }
     val micRef = remember { arrayOfNulls<VoiceRecognizer>(1) }
+    val captureRef = remember { arrayOfNulls<VoiceCapture>(1) }
+    val beginMicRef = remember { arrayOfNulls<() -> Unit>(1) }
+    // When the reply started, so the guard can ignore the app's own attack.
+    val speakingSince = remember { longArrayOf(0L) }
+
     val problem = rememberUpdatedState(onProblem)
     val transcript = rememberUpdatedState(onTranscript)
 
@@ -78,6 +84,45 @@ internal fun rememberVoiceLoop(
     }
     // onRmsChanged reports dB above the noise floor: about -2 in silence, 10 for close speech.
     val levelFrom: (Float) -> Float = { db -> ((db + 2f) / 12f).coerceIn(0f, 1f) }
+
+    /**
+     * OWN OUR AUDIO (owner request, 2026-11-23): while the reply is being read, the microphone is
+     * OURS - our own AudioRecord with Android's echo canceller attached - not the recogniser
+     * service's. That is what makes interruption possible on the device's own terms: the echo
+     * canceller removes the app's voice from what we hear, and our own VAD (VadPolicy, already
+     * tested) decides that a person is speaking rather than a loud room.
+     *
+     * The recogniser is still borrowed for one thing only: turning speech into words. It is opened
+     * after the interruption, never during playback, so the two never fight over the microphone.
+     */
+    val capture = remember {
+        VoiceCapture(
+            context = context.applicationContext,
+            onLevel = { energy -> if (state.value == VoiceLoopState.SPEAKING) level.value = energy },
+            onSpeechStarted = {
+                val guardMs = if (captureRef[0]?.echoCancelled == true) 150L else 450L
+                val elapsed = System.currentTimeMillis() - speakingSince[0]
+                if (state.value == VoiceLoopState.SPEAKING && elapsed >= guardMs) {
+                    // The owner is talking over the reply: stop it mid-word and take the turn.
+                    speaker.stop()
+                    captureRef[0]?.stop()
+                    detector.reset()
+                    floor.reset()
+                    partial.value = ""
+                    level.value = 0f
+                    state.value = VoiceLoopState.LISTENING
+                    beginMicRef[0]?.invoke()
+                }
+            },
+            onSpeechEnded = { },
+            onError = { reason ->
+                // Our own microphone failing must not kill a reply that is already playing; it only
+                // means this reply cannot be interrupted by voice.
+                if (state.value != VoiceLoopState.SPEAKING) problem.value(reason)
+            },
+        )
+    }
+    captureRef[0] = capture
 
     val recognizer = remember {
         VoiceRecognizer(
@@ -166,8 +211,11 @@ internal fun rememberVoiceLoop(
         }
     }
 
+    beginMicRef[0] = beginMic
+
     val stopAll: () -> Unit = {
         speaker.stop()
+        captureRef[0]?.stop()
         micRef[0]?.cancel()
         detector.reset()
         level.value = 0f
@@ -214,11 +262,12 @@ internal fun rememberVoiceLoop(
             floor.reset()
             speaker.speak(text)
             state.value = VoiceLoopState.SPEAKING
-            // Re-open the microphone so the owner can talk over the reply. Without permission the
-            // reply still reads; it just cannot be interrupted.
+            speakingSince[0] = System.currentTimeMillis()
+            // Our own recorder listens for the interruption. Without permission the reply still
+            // reads; it just cannot be talked over.
             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
-            if (granted) beginMic()
+            if (granted) captureRef[0]?.start()
         }
     }
 
@@ -227,6 +276,7 @@ internal fun rememberVoiceLoop(
             if (state.value == VoiceLoopState.SPEAKING) {
                 detector.reset()
                 floor.reset()
+                captureRef[0]?.stop()
                 micRef[0]?.cancel()
                 level.value = 0f
                 partial.value = ""
@@ -236,6 +286,7 @@ internal fun rememberVoiceLoop(
         onDispose {
             speaker.onFinished = null
             micRef[0]?.release()
+            captureRef[0]?.close()
         }
     }
 

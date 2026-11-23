@@ -1,8 +1,11 @@
 package com.codespace.ide.chat.panel
 
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.compose.runtime.Composable
+import com.codespace.ide.chat.panel.voice.EmotionProsody
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
@@ -192,12 +195,9 @@ internal fun rememberSpeaker(onState: (SpeechState) -> Unit = {}): Speaker {
             if (status == TextToSpeech.SUCCESS) {
                 val ok = engine?.setLanguage(Locale.getDefault())
                 val usable = ok != TextToSpeech.LANG_MISSING_DATA && ok != TextToSpeech.LANG_NOT_SUPPORTED
-                engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) = Unit
-                    override fun onDone(utteranceId: String?) = speaker.onDone()
-                    @Deprecated("Required override")
-                    override fun onError(utteranceId: String?) = speaker.onDone()
-                })
+                // The progress listener lives in Speaker.attach() now: it is what advances one
+                // sentence at a time with its own pitch and rate. Installing a second one here
+                // would silently replace that chain.
                 speaker.attach(engine, usable, if (usable) null else "This device has no voice for your language.")
             } else {
                 speaker.attach(null, false, "This device has no speech engine installed.")
