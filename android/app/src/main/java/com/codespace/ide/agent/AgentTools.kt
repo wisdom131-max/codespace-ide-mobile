@@ -934,7 +934,7 @@ You can use multiple tools in sequence. When done, give a final summary.
                     // one to choose from, the honest answer is the LIST and the question - not a
                     // silent attempt against whichever server happened to be first.
                     val configured = runCatching {
-                        McpClientManager.loadConfig().map { it.name }
+                        McpClientManager.loadConfig(context).map { it.name }
                     }.getOrDefault(emptyList())
                     val named = configured.firstOrNull { n ->
                         name == "mcp_" + n || name.startsWith("mcp_" + n + "_")
