@@ -110,6 +110,10 @@ internal class BargeInDetector(
     /** Adjustable, because the room's floor is learned at runtime (see [AmbientFloor]). */
     var thresholdDb: Float = 2.5f,
     private val requiredMs: Int = 260,
+    /** How far below the threshold the level must fall before speech counts as stopped. */
+    private val releaseDb: Float = 1.5f,
+    /** Hard cap on a single turn, so a talker who never pauses cannot hold it open. 0 disables. */
+    private val maxSpeechMs: Int = 30_000,
 ) {
     /** True while the guard window is still swallowing the app's own voice and the room's echo. */
     val inGuard: Boolean get() = sinceSpeechStartMs < guardMs
@@ -117,11 +121,13 @@ internal class BargeInDetector(
     private var sinceSpeechStartMs = 0
     private var loudMs = 0
     private var fired = false
+    private var above = false
 
     fun reset() {
         sinceSpeechStartMs = 0
         loudMs = 0
         fired = false
+        above = false
     }
 
     /**
@@ -134,9 +140,23 @@ internal class BargeInDetector(
             return false
         }
         if (fired) return false
-        sinceSpeechStartMs += frameMs.coerceAtLeast(0)
+        val step = frameMs.coerceAtLeast(0)
+        sinceSpeechStartMs += step
+        // A talker who never pauses must still be interrupted eventually: sherpa-onnx caps an
+        // utterance with max_speech_duration for exactly this reason.
+        if (maxSpeechMs > 0 && sinceSpeechStartMs >= maxSpeechMs) {
+            fired = true
+            return true
+        }
         if (sinceSpeechStartMs < guardMs) return false
-        if (db >= thresholdDb) loudMs += frameMs.coerceAtLeast(0) else loudMs = (loudMs - frameMs).coerceAtLeast(0)
+        // Hysteresis, the way Silero does it: cross the threshold to be counted as speech, then stay
+        // counted until the level falls well below it. One threshold both ways flickers on the line.
+        if (above) {
+            if (db < thresholdDb - releaseDb) above = false
+        } else if (db >= thresholdDb) {
+            above = true
+        }
+        if (above) loudMs += step else loudMs = (loudMs - step).coerceAtLeast(0)
         if (loudMs >= requiredMs) {
             fired = true
             return true

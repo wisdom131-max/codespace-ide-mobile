@@ -47,6 +47,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import com.codespace.ide.lsp.LspManager
 import com.codespace.ide.lsp.LspState
+import com.codespace.ide.agent.image.ImageModels
 
 /**
  * In-Project Settings — VS Code-style settings dialog with search bar,
@@ -1512,22 +1513,25 @@ private fun PyrightVersionRow(textPri: Color, textSec: Color, surface: Color, di
 // IM03 (2026-09-27): model-override input — same shape as PyrightVersionRow.
 @Composable
 private fun GeminiImageModelRow(textPri: Color, textSec: Color, surface: Color, divider: Color) {
-    var text by remember { mutableStateOf(ProjectSettingsStore.geminiImageModel.value) }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // OWNER REPORT (2026-11-23): this was a free-text model id, on the wrong page. It is now a
+        // read-only pointer: the choice lives in Settings > Providers and Models, where it is picked
+        // from models that can actually generate, and there is nothing left to mistype here.
         Column(Modifier.weight(1f)) {
-            Text("Gemini Image Model", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text("Model id for Generate Image with AI (empty = default)", color = textSec, fontSize = 11.sp)
+            Text("Image generation model", color = textPri, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(
+                "Set in Settings \u203a Providers and Models",
+                color = textSec,
+                fontSize = 11.sp,
+            )
         }
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it; ProjectSettingsStore.setGeminiImageModel(it) },
-            modifier = Modifier.width(180.dp),
-            singleLine = true,
-            textStyle = TextStyle(color = textPri, fontSize = 12.sp),
-            placeholder = { Text(DEFAULT_IMAGE_MODEL, color = textSec, fontSize = 12.sp) },
+        Text(
+            ImageModels.labelFor(ProjectSettingsStore.geminiImageModel.value),
+            color = textPri,
+            fontSize = 12.sp,
         )
     }
     HorizontalDivider(color = divider)

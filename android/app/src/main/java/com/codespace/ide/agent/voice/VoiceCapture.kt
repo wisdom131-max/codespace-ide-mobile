@@ -29,6 +29,12 @@ class VoiceCapture(
     private val onSpeechEnded: (truncated: Boolean) -> Unit,
     private val onError: (String) -> Unit,
     private val config: VadPolicy.Config = VadPolicy.Config(),
+    /**
+     * Keep the raw samples, not just the levels. Any on-device recogniser needs the audio itself, and
+     * this recorder is the only place that has it: the borrowed service never hands its buffer over.
+     * Bounded to [MAX_KEPT_SAMPLES] so a wedged capture cannot grow without limit.
+     */
+    private val keepAudio: Boolean = false,
 ) {
 
     /**
@@ -49,6 +55,9 @@ class VoiceCapture(
     /** True when the platform echo canceller is actually running on this capture. */
     var echoCancelled: Boolean = false
         private set
+
+    private val kept = if (keepAudio) ShortArray(MAX_KEPT_SAMPLES) else null
+    private var keptLen = 0
 
     private val running = AtomicBoolean(false)
     private var record: AudioRecord? = null
@@ -126,6 +135,14 @@ class VoiceCapture(
                 break
             }
             if (read <= 0) continue
+            kept?.let { buf ->
+                val room = buf.size - keptLen
+                if (room > 0) {
+                    val n = minOf(room, read)
+                    System.arraycopy(frame, 0, buf, keptLen, n)
+                    keptLen += n
+                }
+            }
             val db = VadPolicy.rmsDb(frame, read)
             onLevel(maxOf(detector.energy01(db), VadPolicy.peak01(frame, read) * 0.6f).coerceIn(0f, 1f))
             when (detector.onFrame(db, frameMs)) {
@@ -135,6 +152,19 @@ class VoiceCapture(
                 VadPolicy.Signal.None -> Unit
             }
         }
+    }
+
+    /**
+     * The audio captured since the last take, as 16-bit mono at [SAMPLE_RATE]. Empty when the
+     * recorder was not asked to keep audio. Taking it clears it, so a caller cannot transcribe the
+     * same utterance twice by accident.
+     */
+    fun takeAudio(): ShortArray {
+        val buf = kept ?: return ShortArray(0)
+        val out = ShortArray(keptLen)
+        System.arraycopy(buf, 0, out, 0, keptLen)
+        keptLen = 0
+        return out
     }
 
     /** Stops and releases the microphone. Safe to call repeatedly, and from any thread. */
@@ -154,6 +184,7 @@ class VoiceCapture(
 
     fun stop() {
         running.set(false)
+        keptLen = 0
         releaseEffects()
         val recorder = record ?: return
         record = null
@@ -180,6 +211,8 @@ class VoiceCapture(
         const val FRAME_MS = 20
         private const val FRAME_SAMPLES = SAMPLE_RATE * FRAME_MS / 1000
         private const val CHANNEL = AudioFormat.CHANNEL_IN_MONO
+        /** 60 seconds at 16 kHz, mono 16-bit: enough for the longest utterance worth transcribing. */
+        private const val MAX_KEPT_SAMPLES = 16_000 * 60
         private const val ENCODING = AudioFormat.ENCODING_PCM_16BIT
     }
 }

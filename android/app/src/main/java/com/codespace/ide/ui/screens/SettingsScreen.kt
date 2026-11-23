@@ -1740,7 +1740,7 @@ private val SETTINGS_SEARCH_INDEX = listOf(
     SettingsIndexEntry("Deleted projects (recycle bin)", "Clear Data", "Settings"),
     SettingsIndexEntry("Keybindings editor", "Keybindings", "In-Project Settings (gear menu)"),
     SettingsIndexEntry("AI Agent Flow", "AI Agent", "In-Project Settings (gear menu)"),
-    SettingsIndexEntry("Gemini image model", "AI Agent", "In-Project Settings (gear menu)"),
+    SettingsIndexEntry("Image generation model", "AI Agent", "Settings > Providers and Models"),
     SettingsIndexEntry("Format on Save", "Text Editor", "In-Project Settings (gear menu)"),
     SettingsIndexEntry("TypeScript version", "Text Editor", "In-Project Settings (gear menu)"),
     SettingsIndexEntry("Cursor blinking", "Text Editor", "In-Project Settings (gear menu)"),

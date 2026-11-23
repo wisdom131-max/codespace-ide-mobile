@@ -25,6 +25,16 @@ import com.codespace.ide.chat.keys.StoredCredentialsReader
 import com.codespace.ide.chat.panel.CustomEndpointEditor
 import com.codespace.ide.chat.panel.KeysManagerDialog
 import com.codespace.ide.data.SecureTokenStore
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.codespace.ide.agent.image.ImageModels
+import com.codespace.ide.editor.ProjectSettingsStore
 
 /**
  * Settings → Providers and Models. This is the surface the owner asked the keys to
@@ -65,6 +75,7 @@ fun ProvidersAndModelsSection(tokenStore: SecureTokenStore) {
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+        ImageGenerationSection()
         // Slot NAMES only, never values: this is the readout the device sheet asks for.
         for (slot in snapshot.keySlots.filter { it.hasKey }.sortedBy { it.slotName }) {
             Text(
@@ -93,5 +104,66 @@ fun ProvidersAndModelsSection(tokenStore: SecureTokenStore) {
             tokenStore = tokenStore,
             onClose = { showEndpoints = false; bump++ },
         )
+    }
+}
+
+/**
+ * OWNER REPORT (2026-11-23): the image model lived as a free-text box on the settings page. It lives
+ * here now, beside the keys it depends on, and it offers only models that can actually generate.
+ * VS Code's rule is the same one: the picker shows what declares the capability, and nothing is typed
+ * in by hand.
+ */
+@Composable
+private fun ImageGenerationSection() {
+    val stored = ProjectSettingsStore.geminiImageModel.value
+    val chosen = ImageModels.resolve(stored)
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxWidth().padding(top = 20.dp),
+    ) {
+        Text("Image generation", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Used by Generate Image with AI. Only models that can return an image are offered.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        for (model in ImageModels.usable) {
+            val selected = model.id == chosen
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (selected) Color(0xFF2A3A2E) else Color.Transparent)
+                    .clickable { ProjectSettingsStore.setGeminiImageModel(model.id) }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (selected) "\u2713" else "\u25CB",
+                    color = if (selected) Color(0xFF7BD88F) else Color(0xFF888888),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+                androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth()) {
+                    Text(model.label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        model.provider + " \u00b7 " + model.id,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+        Text(
+            "Cannot generate images",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(top = 14.dp),
+        )
+        for (model in ImageModels.unusable) {
+            androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                Text(model.label + "  (" + model.provider + ")", fontSize = 12.sp, color = Color(0xFF9A9A9A))
+                Text(model.reason, style = MaterialTheme.typography.bodySmall, color = Color(0xFF8A8A8A))
+            }
+        }
     }
 }

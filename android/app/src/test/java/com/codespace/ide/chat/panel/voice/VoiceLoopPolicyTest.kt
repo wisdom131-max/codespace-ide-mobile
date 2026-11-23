@@ -184,3 +184,42 @@ class VoiceStopWordTest {
         assertTrue(d.onFrame(9f, 50, speaking = true))
     }
 }
+
+/** Hysteresis and the maximum-utterance cap (research pass, 2026-11-23). */
+class VoiceDetectorHysteresisTest {
+
+    @Test
+    fun aLevelOnTheLineDoesNotFlicker() {
+        // threshold 2.5, release 1.5: speech holds until it drops below 1.0
+        val d = BargeInDetector(guardMs = 0, thresholdDb = 2.5f, requiredMs = 200, releaseDb = 1.5f)
+        assertFalse(d.onFrame(2.6f, 50, speaking = true))
+        // hovering just under the threshold is still the same speech, so it keeps accumulating
+        assertFalse(d.onFrame(2.4f, 50, speaking = true))
+        assertFalse(d.onFrame(2.3f, 50, speaking = true))
+        assertTrue("three frames of the same voice must count", d.onFrame(2.4f, 50, speaking = true))
+    }
+
+    @Test
+    fun aRealDropStillEndsTheCount() {
+        val d = BargeInDetector(guardMs = 0, thresholdDb = 2.5f, requiredMs = 200, releaseDb = 1.5f)
+        assertFalse(d.onFrame(3f, 50, speaking = true))
+        // below release (1.0): the count drains instead of accumulating
+        repeat(4) { assertFalse(d.onFrame(0.2f, 50, speaking = true)) }
+        assertFalse(d.onFrame(3f, 50, speaking = true))
+        assertFalse("drained, so one frame is not enough", d.onFrame(3f, 50, speaking = true))
+    }
+
+    @Test
+    fun aTalkerWhoNeverPausesIsStillCutOff() {
+        val d = BargeInDetector(guardMs = 0, thresholdDb = 2.5f, requiredMs = 999_999, maxSpeechMs = 500)
+        // loud the whole time: requiredMs can never be reached, the cap is what fires
+        repeat(9) { assertFalse(d.onFrame(9f, 50, speaking = true)) }
+        assertTrue("the cap must end the turn", d.onFrame(9f, 50, speaking = true))
+    }
+
+    @Test
+    fun theCapIsOptional() {
+        val d = BargeInDetector(guardMs = 0, thresholdDb = 2.5f, requiredMs = 999_999, maxSpeechMs = 0)
+        repeat(40) { assertFalse(d.onFrame(9f, 50, speaking = true)) }
+    }
+}
