@@ -1009,6 +1009,29 @@ You can use multiple tools in sequence. When done, give a final summary.
     private fun workspaceRoot(context: Context): String? =
         com.codespace.ide.security.TrustState.activeProjectRoot(context)
 
+    /**
+     * OWNER REPORT (2026-11-23): "he didn't ask me which project to put it in, he just put it in one
+     * of the projects because he said the other was empty."
+     *
+     * A model must never pick a project on the user's behalf. When more than one project is open and
+     * the requested path does not start with one of their folder names, the write is refused with a
+     * question instead of being filed somewhere plausible. Reads stay permissive: guessing wrong on a
+     * read costs a retry, guessing wrong on a write files the user's work in the wrong place.
+     */
+    private fun ambiguousProjectRefusal(context: Context, path: String): String? {
+        val roots = runCatching {
+            com.codespace.ide.resolver.PathResolver.workspaceRoots(context, null)
+        }.getOrDefault(emptyList())
+        if (roots.size < 2) return null
+        if (java.io.File(path).isAbsolute) return null
+        val first = path.trim().trimStart('/').substringBefore('/')
+        if (roots.any { java.io.File(it).name == first }) return null
+        val names = roots.joinToString(", ") { java.io.File(it).name }
+        return "Two projects are open: " + names + ". Ask the user which project \"" + path +
+            "\" belongs in, then call again with the project folder first, for example " +
+            names.substringBefore(",") + "/" + path + "."
+    }
+
     private fun readFile(path: String, context: android.content.Context, offset: Int = 0): String {
         // CH02: resolve either dialect first, then look up the staged overlay under
         // BOTH spellings (staging keys may predate this fix in either dialect).
@@ -1717,6 +1740,7 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     private fun writeFile(path: String, content: String, context: android.content.Context): String {
+        ambiguousProjectRefusal(context, path)?.let { return it }
         // P0.3: verify the destination folder before claiming a write happened.
         com.codespace.ide.chat.panel.WorkspaceContext.verifyUsable(java.io.File(path).parentFile)
             ?.let { return "Not written: " + it }
@@ -2762,6 +2786,7 @@ You can use multiple tools in sequence. When done, give a final summary.
 
     /** VS Code's create_file: refuses to clobber, because "create" that overwrites is a trap. */
     private fun createFile(path: String, content: String, context: android.content.Context): String {
+        ambiguousProjectRefusal(context, path)?.let { return it }
         val target = File(resolveToolPath(context, path))
         if (target.exists()) return "File already exists: $path. Use write_file to replace it."
         return writeFile(path, content, context)

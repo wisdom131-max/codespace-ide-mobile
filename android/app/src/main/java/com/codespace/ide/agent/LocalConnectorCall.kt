@@ -32,8 +32,15 @@ object LocalConnectorCall {
     // host the redirect names, which is the same leak as posting an absolute URL - just decided by the
     // server instead of the model.
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
+        // OWNER REPORT (2026-11-23): a connector call came back "timed out" on a device with a live
+        // mobile network. A one-shot client opens a fresh TLS connection for every call, so every
+        // radio handoff (wifi to mobile, a tower change, a doze wake) is paid again at connect time.
+        // This client now keeps its sockets OPEN and pings them, so a connector stays on standby and
+        // the next call reuses a connection that is already up instead of racing a 15s handshake.
+        .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .pingInterval(20, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .followRedirects(false)
         .followSslRedirects(false)
         .build()
