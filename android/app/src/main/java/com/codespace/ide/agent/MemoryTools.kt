@@ -34,7 +34,60 @@ object MemoryTools {
         sessionId: String,
         projectId: String?,
         provenance: FactProvenance = FactSourceContext.current(),
-    ): String = saveIn(FactsStore.memoryDir(context), args, memoryScope, sessionId, projectId, provenance)
+    ): String {
+        // OWNER REQUEST (2026-11-23). LangMem's one genuinely good idea: the model names the fact it
+        // is replacing, so a contradicting fact UPDATES instead of sitting beside the old one. Without
+        // an id, a near-duplicate is refused and the existing fact is handed back so the model can
+        // name it - a refusal with the way out, never a dead end.
+        val dir = FactsStore.memoryDir(context)
+        val value = args.optString("value").trim()
+        val wantedId = args.optString("id").trim()
+        val facts = FactsStore.loadFrom(dir)
+
+        if (wantedId.isNotEmpty()) {
+            val target = facts.firstOrNull { it.id == wantedId }
+                ?: return "There is no fact with id " + wantedId +
+                    ". Save without an id to create a new one."
+            if (value.isEmpty()) return "Give the new wording in 'value'."
+            val vec = com.codespace.ide.agent.embedding.TrainedEmbeddings.embed(value)
+            FactsStore.writeTo(
+                dir,
+                facts.map {
+                    if (it.id == wantedId) it.copy(content = value, updatedAt = System.currentTimeMillis()) else it
+                },
+            )
+            if (vec != null) FactVectors.put(context, wantedId, vec)
+            return "Updated the existing fact (" + wantedId + ") to: " + value
+        }
+
+        val newVec = if (value.isEmpty()) null
+        else com.codespace.ide.agent.embedding.TrainedEmbeddings.embed(value)
+        if (newVec != null) {
+            val stored = runCatching { FactVectors.load(context) }.getOrDefault(emptyMap())
+            val clash = facts.firstOrNull { f ->
+                f.isRetrievable() && stored[f.id]?.let { v ->
+                    v.size == newVec.size && FactVectors.cosine(newVec, v) > DUPLICATE_SIMILARITY
+                } ?: false
+            }
+            if (clash != null) {
+                return "That says the same thing as an existing fact (id " + clash.id + "): \"" +
+                    clash.content + "\". Call save_memory again with that id to update it instead of " +
+                    "adding a second version."
+            }
+        }
+
+        val result = saveIn(dir, args, memoryScope, sessionId, projectId, provenance)
+        // Straight away, so the new fact is findable by meaning on the very next turn.
+        if (newVec != null) {
+            val after = FactsStore.loadFrom(dir)
+            val newest = after.filter { f -> facts.none { it.id == f.id } }.maxByOrNull { it.updatedAt }
+            if (newest != null) FactVectors.put(context, newest.id, newVec)
+        }
+        return result
+    }
+
+    /** Two facts this close in meaning are the same fact said twice. */
+    private const val DUPLICATE_SIMILARITY = 0.92
 
     /** Directory form: the shipped implementation, testable without an Android Context. */
     fun saveIn(

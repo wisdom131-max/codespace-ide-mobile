@@ -31,6 +31,23 @@ object TrainedEmbeddings {
 
     fun isReady(): Boolean = embedder != null
 
+    /**
+     * A document vector, or null when the model is not installed. Null is the whole contract: every
+     * caller falls back to what it did before rather than failing.
+     */
+    fun embed(text: String): FloatArray? {
+        val e = embedder ?: return null
+        if (text.isBlank()) return null
+        return runCatching { e.embed(text) }.getOrNull()
+    }
+
+    /** A QUESTION vector. bge wants questions announced as questions; documents must not be. */
+    fun embedQuery(text: String): FloatArray? {
+        val e = embedder ?: return null
+        if (text.isBlank()) return null
+        return runCatching { e.embed(TrainedEmbedding.QUERY_PREFIX + text) }.getOrNull()
+    }
+
     /** A verified pair in the given folder, or null. */
     private fun verifiedIn(dir: File): Pair<File, File>? {
         val m = File(dir, TrainedEmbedding.MODEL.name)

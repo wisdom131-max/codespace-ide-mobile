@@ -19,6 +19,11 @@ object FactRetrieval {
     const val MAX_FACT_CHARS_IN_PROMPT = 180
     const val MAX_PROMPT_CHARS = 900
 
+    /** Below this, two texts are not the same idea; adding it would only add noise. */
+    const val SEMANTIC_FLOOR = 0.45
+    /** A perfect meaning match is worth about two shared words, never more than three. */
+    const val SEMANTIC_WEIGHT = 18.0
+
     /**
      * PROJECT EIGHT 8.12 (catalog 37): how many standing rules may be pinned per prompt.
      *
@@ -142,7 +147,14 @@ object FactRetrieval {
             compareByDescending<Fact> { it.factTime() }.thenByDescending { it.updatedAt },
         )
 
-    fun rank(facts: List<Fact>, request: String, projectId: String?, now: Long = System.currentTimeMillis()): List<Ranked> {
+    fun rank(
+        facts: List<Fact>,
+        request: String,
+        projectId: String?,
+        now: Long = System.currentTimeMillis(),
+        queryVector: FloatArray? = null,
+        vectors: Map<String, FloatArray> = emptyMap(),
+    ): List<Ranked> {
         val requestTokens = FactText.tokenSet(request)
         val out = ArrayList<Ranked>(facts.size)
         for (f in facts) {
@@ -153,6 +165,16 @@ object FactRetrieval {
             if (requestTokens.isNotEmpty() && ft.isNotEmpty()) {
                 val shared = ft.count { it in requestTokens }
                 if (shared > 0) score += 20.0 + 10.0 * (shared.toDouble() / ft.size)
+            }
+            // MEANING, beside words. A fact that says the same thing in different words scores here
+            // even when it shares no token with the question - the gap that made "what is my name"
+            // miss a stored name until identity pinning was added. Weighted below a two-word match
+            // (30 points) so an exact word hit still wins, and floored so a weak similarity adds
+            // nothing at all.
+            val vec = vectors[f.id]
+            if (queryVector != null && vec != null && vec.size == queryVector.size) {
+                val sim = FactVectors.cosine(queryVector, vec)
+                if (sim > SEMANTIC_FLOOR) score += SEMANTIC_WEIGHT * sim
             }
             // A project fact is only ever competing inside its own project, so it is the more
             // specific statement and outranks a general user preference at equal relevance.
@@ -275,6 +297,8 @@ object FactRetrieval {
         projectId: String?,
         limit: Int = MAX_PROMPT_FACTS,
         now: Long = System.currentTimeMillis(),
+        queryVector: FloatArray? = null,
+        vectors: Map<String, FloatArray> = emptyMap(),
     ): List<Fact> {
         val requestTokens = FactText.tokenSet(request)
         if (requestTokens.isEmpty()) {
@@ -285,7 +309,31 @@ object FactRetrieval {
         // Overlap is REQUIRED, not merely scored. The standing score alone (scope + provenance +
         // confidence) would otherwise inject every fact with no relation to the question, which is
         // the exact failure this filter exists to prevent.
-        val related = rankedFactsWithOverlap(facts, requestTokens, projectId, now)
+        val relatedByWords = rankedFactsWithOverlap(facts, requestTokens, projectId, now)
+        // The word filter is REQUIRED for precision, but it cannot see a synonym. Meaning adds the
+        // candidates it would have dropped, and the ranking below decides the order for both.
+        val relatedByMeaning = if (queryVector != null) {
+            facts.filter { f ->
+                f.isRetrievable() && f.belongsTo(projectId) &&
+                    vectors[f.id]?.let { v ->
+                        v.size == queryVector.size && FactVectors.cosine(queryVector, v) > SEMANTIC_FLOOR
+                    } ?: false
+            }
+        } else {
+            emptyList()
+        }
+        val related = if (relatedByMeaning.isEmpty()) {
+            relatedByWords
+        } else {
+            rank(
+                facts = (relatedByWords + relatedByMeaning).distinctBy { it.id },
+                request = request,
+                projectId = projectId,
+                now = now,
+                queryVector = queryVector,
+                vectors = vectors,
+            ).map { it.fact }
+        }
         // PROJECT EIGHT 8.30 (catalog 41 wiring): age softens a fact instead of being ignored.
         // Applied to the SCORE, never as a filter, so an old fact still appears when nothing
         // better exists. Preferences and constraints are exempt - a rule does not become less
@@ -351,7 +399,23 @@ object FactRetrieval {
     /** Prompt block for a whole store, with the character budget applied. */
     fun blockFor(context: android.content.Context, projectId: String?, request: String, maxChars: Int): String {
         val facts = FactsStore.load(context)
-        val picked = forRequest(facts, request, projectId)
+        // One question vector per prompt, never one per fact. Null when the model is not installed,
+        // which leaves retrieval exactly as it was.
+        val queryVector = runCatching {
+            com.codespace.ide.agent.embedding.TrainedEmbeddings.embedQuery(request)
+        }.getOrNull()
+        val vectors = if (queryVector == null) emptyMap() else runCatching {
+            FactVectors.load(context)
+        }.getOrDefault(emptyMap())
+        // A fact saved before the model was installed still becomes findable by meaning.
+        runCatching { FactVectors.backfill(context, facts) }
+        val picked = forRequest(
+            facts = facts,
+            request = request,
+            projectId = projectId,
+            queryVector = queryVector,
+            vectors = vectors,
+        )
         if (picked.isEmpty()) return ""
         FactsStore.markUsed(context, picked.map { it.id })
         return block(picked, maxChars)
