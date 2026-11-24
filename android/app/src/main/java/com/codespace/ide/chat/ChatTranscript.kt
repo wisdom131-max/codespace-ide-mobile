@@ -209,7 +209,6 @@ internal object ChatTranscript {
                         val src = com.codespace.ide.agent.research.ResearchSources.parse(m.text)
                         if (src.isNotEmpty()) rows.add(ChatRowModel.Sources(src))
                     }
-                    if (!m.complete) rows.add(ChatRowModel.InfoNote(INTERRUPTED_NOTE))
                 }
                 "note" -> if (m.text.isNotBlank()) rows.add(ChatRowModel.InfoNote(m.text))
                 // Unknown role (a newer build wrote it): skip, do not lose the rest.

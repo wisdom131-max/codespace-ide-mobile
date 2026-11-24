@@ -83,6 +83,14 @@ internal object ChatInstructions {
             // the loadout. What the model did not know is that a failure is already being handled, so
             // it apologised and stopped instead of pressing on. One line of context fixes that.
             (if (!sendTools) "" else
+                "\n\n## CONNECTORS\n" +
+                "A connector is reached with its connector tool, never by reading files. When the owner " +
+                "asks you to use, check or set up a connector (Gmail, Drive, Slack, GitHub, Notion, a " +
+                "database), call that connector's tool. The call opens the connector card in the app so " +
+                "the owner can connect or pick the account. Do not search the project for it, do not " +
+                "read files to find it, and do not report a backend timeout before you have called the " +
+                "tool at least once. If a connector tool is not in your list, say which connector you " +
+                "would use and that it needs connecting, and offer to open the Connectors Hub.\n" +
                 "\n\n## WHEN A TOOL FAILS\n" +
                     "A failed tool call is repaired and retried ONCE automatically: the failure is " +
                     "classified and the call re-issued where the repair is safe. So a single error is " +

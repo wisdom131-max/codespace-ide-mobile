@@ -112,6 +112,14 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             }
         }
         SettingsUsageTracker.init(this)
+        // OWNER DECISION (2026-11-24): the downloaded speech model is deleted permanently. This runs
+        // once; the asr folder is removed from both the shared and the private home and is never
+        // fetched again because nothing asks for it any more.
+        val speechWipe = getSharedPreferences("speech_model_wipe", MODE_PRIVATE)
+        if (!speechWipe.getBoolean("done_v1", false)) {
+            com.codespace.ide.agent.models.ModelDownloads.deleteSpeechModel(this)
+            speechWipe.edit().putBoolean("done_v1", true).apply()
+        }
         // OWNER REPORT (2026-11-24): counts recorded by scrolling were making "Commonly Used" list
         // settings nobody touched. Wiped once; from here on only real taps count.
         val usageReset = getSharedPreferences("settings_usage_reset", MODE_PRIVATE)

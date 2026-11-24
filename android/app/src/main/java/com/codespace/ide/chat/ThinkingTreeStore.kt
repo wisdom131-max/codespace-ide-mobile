@@ -154,12 +154,13 @@ object ThinkingTreeStore {
         if (steps.isEmpty()) return rows
         val toolRows = toRows(steps)
         val lastAssistant = rows.indexOfLast { it is ChatRowModel.AssistantStream }
+        // OWNER REPORT (2026-11-24): when there was no assistant row yet - a fresh chat, or the
+        // instant a provider is switched - every stored step was appended to the END of the rows and
+        // became visible chat text. That is both the ghost tree and the leak of hidden tool work.
+        // A step only belongs on screen when there is a user turn it belongs to and an assistant row
+        // to hide behind; otherwise it stays in the store, which is what persistence means here.
+        if (lastAssistant < 0 || rows.indexOfLast { it is ChatRowModel.User } < 0) return rows
         val out = ArrayList<ChatRowModel>(rows.size + toolRows.size)
-        if (lastAssistant < 0) {
-            out.addAll(rows)
-            out.addAll(toolRows)
-            return out
-        }
         out.addAll(rows.subList(0, lastAssistant))
         out.addAll(toolRows)
         out.addAll(rows.subList(lastAssistant, rows.size))

@@ -105,7 +105,13 @@ class OpenAIAdapter : ProviderAdapter {
         // that switch and wrote every message's content as an array - hence messages 0..6 all
         // rejected. The flattening path below handles an empty attachment list perfectly well, so a
         // text-only provider now always takes it.
-        if (attachments.isEmpty() && config.supportsContentParts) return payload(window, userText, config)
+        // OWNER REPORT (2026-11-24): the 400 came back again from a CUSTOM Cloudflare endpoint
+        // (provider id custom_cloud_flare) with every message's content sent as an array. The flag
+        // alone is not enough: a custom preset can point at Cloudflare without anyone setting it.
+        // The host decides the wire shape, because the host is what validates it.
+        val textOnly = !config.supportsContentParts ||
+            config.baseUrl.lowercase().contains("api.cloudflare.com")
+        if (attachments.isEmpty() && !textOnly) return payload(window, userText, config)
         val msgs = StringBuilder()
         for (m in window) {
             if (msgs.isNotEmpty()) msgs.append(',')
@@ -117,7 +123,7 @@ class OpenAIAdapter : ProviderAdapter {
         // P0.1: a provider that validates `content` as a STRING (Cloudflare /ai/v1) gets the
         // flattened text. The attachment text is already inside `combined`, so nothing is lost;
         // an image is named explicitly rather than dropped in silence.
-        if (!config.supportsContentParts) {
+        if (textOnly) {
             val binaries = binaryAttachments(attachments)
             val note = if (binaries.isEmpty()) "" else
                 "\n\n[Attachment not sent: this provider accepts text only (" +

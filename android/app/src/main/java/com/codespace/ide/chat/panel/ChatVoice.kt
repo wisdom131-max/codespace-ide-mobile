@@ -85,10 +85,11 @@ internal fun rememberVoiceLoop(
     // OWN OUR AUDIO (owner decision 2026-11-23): when the vendored sherpa-onnx model is installed,
     // words come from the device itself - nothing leaves the phone, and the cloud disclosure line has
     // nothing to disclose. Otherwise the platform recogniser stays the fallback.
-    val localAsr = remember {
-        if (SherpaModelStore.isInstalled(context)) SherpaAsr(context) else null
-    }
-    val localReady = localAsr?.isReady == true
+    // OWNER DECISION (2026-11-24): the downloaded speech model is deleted and the phone's own
+    // recogniser is what runs. The on-device engine is not constructed at all, so nothing can fall
+    // back to it, resume it or load its native library.
+    val localAsr: com.codespace.ide.agent.voice.SherpaAsr? = null
+    val localReady = false
 
 
     val move: (VoiceEvent) -> Unit = { event ->
@@ -301,7 +302,6 @@ internal fun rememberVoiceLoop(
                     } else {
                         // Not ready: keep listening with the platform recogniser now, and heal the
                         // model in the background so the next turn can be fully offline.
-                        com.codespace.ide.agent.models.ModelDownloads.ensureSpeech(context)
                         beginMic()
                     }
                 } else {
@@ -323,11 +323,8 @@ internal fun rememberVoiceLoop(
             speaker.speak(text)
             state.value = VoiceLoopState.SPEAKING
             speakingSince[0] = System.currentTimeMillis()
-            // Our own recorder listens for the interruption. Without permission the reply still
-            // reads; it just cannot be talked over.
-            val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED
-            if (granted) captureRef[0]?.start()
+            // OWNER DECISION (2026-11-24): read-aloud no longer opens the microphone. Talking over a
+            // reply does nothing now, which is how it worked before the downloaded model existed.
         }
     }
 

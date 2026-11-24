@@ -58,17 +58,25 @@ object ModelDownloads {
      * screen, and each line says exactly what is happening: downloading with a percentage, ready, or
      * stopped with the reason.
      */
-    fun statusLine(context: Context): String {
-        val embedding = runCatching { TrainedEmbeddings.describe(context) }.getOrDefault("Embedding model unavailable.")
-        val speech = when {
-            speechStatus.value.isNotBlank() -> speechStatus.value
-            isSpeechReady(context) -> "Ready (offline)"
-            else -> "Not downloaded yet. Tap the microphone or Download now to fetch it."
+    /**
+     * OWNER DECISION (2026-11-24): the downloaded speech model is gone for good. The phone's own
+     * recogniser is what runs now, so there is nothing to download, nothing to resume and nothing
+     * to show. Only the embedding model has a line, and it lives in the app-wide settings page.
+     */
+    fun statusLine(context: Context): String = "Embedding: " + TrainedEmbeddings.describe(context)
+
+    /** Deletes the speech model from every place it was ever stored. One way back: download again. */
+    fun deleteSpeechModel(context: Context): Boolean {
+        val dirs = listOf(File(ModelHome.writableHome(context), "asr"), File(ModelHome.publicDir(), "asr"))
+        var gone = false
+        for (d in dirs) {
+            if (d.exists()) { d.deleteRecursively(); gone = true }
         }
-        return "Embedding: " + embedding + "\nSpeech: " + speech
+        speechStatus.value = "Removed. The phone's own recogniser is used."
+        speechPercent.value = 0
+        return gone
     }
 
-    /** Both models, started once per process when the status screen is first read. */
     fun autoStart(context: Context) {
         if (autoStarted) return
         autoStarted = true

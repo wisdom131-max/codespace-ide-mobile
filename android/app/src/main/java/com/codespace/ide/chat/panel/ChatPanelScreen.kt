@@ -725,19 +725,6 @@ private fun ChatBody(
     }
     // Live percentage: while the panel is open, re-read the embedding model every 700ms so a
     // download counts up instead of freezing at whatever it said when the panel was opened.
-    var embeddingStatus by remember { mutableStateOf("") }
-    LaunchedEffect(showContextWindow, embeddingRowHidden) {
-        if (showContextWindow && !embeddingRowHidden) {
-            while (true) {
-                // One status line for BOTH models, and reading it is what starts them: the owner
-                // should never have to press download for a model the app already knows it needs.
-                embeddingStatus = com.codespace.ide.agent.models.ModelDownloads.autoStart(localCtx).let {
-                    com.codespace.ide.agent.models.ModelDownloads.statusLine(localCtx)
-                }
-                kotlinx.coroutines.delay(700L)
-            }
-        }
-    }
     // The words go in a strip under the header; the animation stays in the chip, which is where the
     // owner's screenshot puts it.
     VoiceStrip(
@@ -757,12 +744,6 @@ private fun ChatBody(
             modelWindowTokens = com.codespace.ide.engine.ModelCatalog
                 .capabilityFor(session.selection.value.providerId, session.selection.value.modelId)
                 ?.contextTokens,
-            modelStatus = embeddingStatus,
-            modelHidden = embeddingRowHidden,
-            onToggleModel = {
-                embeddingRowHidden = !embeddingRowHidden
-                ChatSettingsPrefs.setEmbeddingStatusHidden(embeddingRowHidden)
-            },
             onCompact = {
                 showContextWindow = false
                 notice = "Older turns are summarised automatically once the window fills."
@@ -1293,7 +1274,16 @@ private fun stageLocalFile(session: ChatSession, file: java.io.File): String? {
  */
 private fun liveThinkingSteps(rows: List<ChatRowModel>): List<String> {
     val since = rows.indexOfLast { it is ChatRowModel.User }
-    return rows.drop(since + 1).filterIsInstance<ChatRowModel.InfoNote>().map { it.text }
+    // OWNER REPORT (2026-11-24): a fresh chat, and the moment a provider is switched, showed a
+    // thinking tree before anything had been asked. With no user turn, `since` is -1 and drop(0)
+    // turned every notice on screen into a "step". No question, no tree.
+    if (since < 0) return emptyList()
+    return rows.drop(since + 1)
+        .filterIsInstance<ChatRowModel.InfoNote>()
+        .map { it.text }
+        // These are notices about the app, not work the copilot did, and they were showing up
+        // INSIDE the tree as if they were steps.
+        .filterNot { it.startsWith("That reply was cut off") || it.contains("not in the catalog") }
 }
 
 

@@ -84,6 +84,11 @@ internal fun VoiceMicChip(
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.width(24.dp).height(15.dp)) {
+            // CRASH 2026-11-24 (build 4238): "Cannot coerce value to an empty range: maximum 0.0 is
+            // less than minimum 2.5" at VoiceWave.kt:96. The chip can be measured at zero height for
+            // one frame (opening a settings page, a sheet taking focus), and coerceIn(2.5f, 0f) throws.
+            // Nothing can be drawn in a zero-size canvas, so leave before touching the range.
+            if (size.width <= 0f || size.height <= 0f) return@Canvas
             val bars = 5
             val slot = size.width / bars
             val barWidth = slot * 0.46f
@@ -93,7 +98,7 @@ internal fun VoiceMicChip(
                 // Symmetric, short at the ends: the reference shape, at header scale.
                 val envelope = 1f - abs(t - 0.5f) * 1.35f
                 val h = (size.height * (0.18f + 0.82f * smoothed) * (0.45f + 0.55f * envelope))
-                    .coerceIn(2.5f, size.height)
+                    .coerceIn(2.5f, maxOf(2.5f, size.height))
                 drawRoundRect(
                     color = tint,
                     topLeft = Offset(i * slot + (slot - barWidth) / 2f, mid - h / 2f),

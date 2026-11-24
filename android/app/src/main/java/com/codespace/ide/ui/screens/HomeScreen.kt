@@ -262,7 +262,10 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            Box {
+            // OWNER REPORT (2026-11-24): the action sat off-centre. The FAB slot sizes to its
+            // content, so a fillMaxWidth button inside it started at the left edge. The box centres
+            // what it holds and the button takes the same width from the middle.
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 // OWNER REQUEST (2026-11-24): the vision screenshot has one full-width action at the foot of
                 // the screen, not a floating pill in the corner. Same action, same handler.
                 Button(
@@ -355,7 +358,7 @@ fun HomeScreen(
                                 Modifier.padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Icon(Icons.Default.Description, contentDescription = null)
+                                Icon(Icons.Default.Folder, contentDescription = null)
                                 Column(Modifier.weight(1f).padding(start = 8.dp)) {
                                     Text(project.name, style = MaterialTheme.typography.titleMedium)
                                     Text(
