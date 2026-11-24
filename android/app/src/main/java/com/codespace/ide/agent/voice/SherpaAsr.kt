@@ -138,7 +138,6 @@ object SherpaModelStore {
  */
 class SherpaAsr(context: Context, model: SherpaModel = SherpaModels.DEFAULT) {
 
-    private val assets: AssetManager = context.applicationContext.assets
     private var recognizer: OnlineRecognizer? = null
     private var stream: OnlineStream? = null
     private var failed: String? = null
