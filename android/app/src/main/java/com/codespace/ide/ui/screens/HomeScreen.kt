@@ -264,7 +264,7 @@ fun HomeScreen(
                 // OWNER REQUEST (2026-11-24): the vision screenshot has one full-width action at the foot of
                 // the screen, not a floating pill in the corner. Same action, same handler.
                 Button(
-                    onClick  = onCreateProject,
+                    onClick  = { fabMenuExpanded = true },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 10.dp)
