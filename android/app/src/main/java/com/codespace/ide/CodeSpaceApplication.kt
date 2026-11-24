@@ -112,6 +112,13 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
             }
         }
         SettingsUsageTracker.init(this)
+        // OWNER DIRECTIVE (2026-11-24): one full wipe of the thinking tree before the rebuild.
+        val treePrefs = getSharedPreferences("thinking_tree_wipe", MODE_PRIVATE)
+        if (!treePrefs.getBoolean("thinking_tree_wiped_v1", false)) {
+            val n = com.codespace.ide.chat.ThinkingTreeStore.wipeAll(this)
+            treePrefs.edit().putBoolean("thinking_tree_wiped_v1", true).apply()
+            android.util.Log.i("ThinkingTree", "wiped " + n + " stored trees before the rebuild")
+        }
         // OWNER DECISION (2026-11-24): the downloaded speech model is deleted permanently. This runs
         // once; the asr folder is removed from both the shared and the private home and is never
         // fetched again because nothing asks for it any more.

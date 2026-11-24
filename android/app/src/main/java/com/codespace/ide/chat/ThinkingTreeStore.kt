@@ -51,6 +51,23 @@ object ThinkingTreeStore {
         val interrupted: Boolean = false,
     )
 
+    /**
+     * OWNER DIRECTIVE (2026-11-24): "I want a full wipe of the thinking tree". Every stored tree is
+     * deleted, once, on the next start. The store keeps working afterwards - this is a clean slate,
+     * not a removal of the feature.
+     */
+    fun wipeAll(context: Context): Int {
+        val root = rootOf(context)
+        if (!root.isDirectory) return 0
+        var removed = 0
+        root.walkTopDown().forEach { f ->
+            if (f.isFile && f.name.endsWith(FILE_SUFFIX)) {
+                if (f.delete()) removed++
+            }
+        }
+        return removed
+    }
+
     fun load(context: Context, projectId: String, conversationId: String): List<Step> =
         loadFrom(rootOf(context), projectId, conversationId)
 
