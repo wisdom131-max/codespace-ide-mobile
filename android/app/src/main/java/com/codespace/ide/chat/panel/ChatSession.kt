@@ -2151,7 +2151,8 @@ class ChatSession internal constructor(
                 }
                 // OWNER DECISION (2026-11-24): the step is persisted to the store above and drawn
                 // inside the turn's collapsed section. It is deliberately NOT appended to the transcript,
-                // which is how tool work used to leak into the chat.val already = repeats[idx]?.takeIf { answered.containsKey(it) }
+                // which is how tool work used to leak into the chat.
+                val already = repeats[idx]?.takeIf { answered.containsKey(it) }
                 if (already != null) {
                     val reused = answered.getValue(already)
                     appendRow(ChatRowModel.InfoNote(

@@ -133,7 +133,15 @@ object AgentConnectorManager {
                 !s.configured -> "[not set up by owner yet]"
                 else -> "[available]"
             }
-            sb.append("  ").append(status).append(' ').append(s.name).append(" (").append(s.id).append(")\n")
+            sb.append("  ").append(status).append(' ').append(s.name).append(" (").append(s.id).append(")")
+            // OWNER REPORT (2026-11-24): asked for a Slack connector, the copilot answered that it
+            // "wasn't set up yet" and sent them to Settings. The listing named the state and no next
+            // step, so the model invented one. Every not-connected service now carries its own route.
+            if (!s.connected) {
+                sb.append(" — call request_connector(service \"").append(s.id)
+                    .append("\") to show its setup card in the chat")
+            }
+            sb.append('\n')
             if (s.connected) {
                 connected++
                 // Only for a connected service: showing recipes for something not signed in
@@ -151,9 +159,13 @@ object AgentConnectorManager {
                 .append(") — on this device\n")
             if (ready) sb.append(ConnectorRecipes.usageLines(service))
         }
-        if (connected == 0) {
-            sb.append("  Use request_connector to show the user a connect card for anything not connected.\n")
-        }
+        // Printed ALWAYS, not only when nothing is connected: the owner hit this exact gap while
+        // one connector was already connected, which is why the old conditional never fired.
+        sb.append("\nA connector that is not connected is NEVER set up by sending the owner to Settings.")
+        sb.append("\nrequest_connector(service) brings its setup card straight into the chat, and that")
+        sb.append("\ncard is the only route for every kind: OAuth sign-in, personal API token, MCP server")
+        sb.append("\nand on-device connector. If the owner names a service that is not connected, call")
+        sb.append("\nrequest_connector first, then answer.")
         sb.append("\nAct on a CONNECTED service with use_connector(service, method, endpoint, body).")
         sb.append("\nThe endpoint is relative to that provider's API base. There are no per-provider")
         sb.append("\ntools: creating a GitLab repository is use_connector(service \"gitlab\", method \"POST\",")
