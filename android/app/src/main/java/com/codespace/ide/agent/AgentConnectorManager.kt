@@ -33,6 +33,9 @@ import org.json.JSONArray
 object AgentConnectorManager {
 
     /** Services the backend actually supports (see backend/src/connectors/connector-registry.ts). */
+    const val PURPOSE_CONNECT = "connect"
+    const val PURPOSE_PERMISSIONS = "permissions"
+
     private val OAUTH_SERVICES = listOf(
         "gmail", "gcalendar", "gdrive", "slack",
         // Phase 2 (Group A) — rows appear in the Hub; usable once server env vars are set.
@@ -82,6 +85,14 @@ object AgentConnectorManager {
      * right after the agent loop returns. */
     @Volatile private var pendingConnectCard: String? = null
 
+    /**
+     * OWNER REQUEST (2026-11-24): a connector that is ALREADY connected can still need its card,
+     * because permissions change - read-only to full access is the case they named. The card is the
+     * same one; this says which mode it opens in, so a connected service does not just say
+     * "already connected" and stop.
+     */
+    @Volatile private var pendingConnectPurpose: String? = null
+
     /** The label the chat card shows. Falls back to the raw id, capitalised, never to blank. */
     fun displayNameFor(service: String): String =
         DISPLAY_NAMES[service] ?: service.replaceFirstChar { it.uppercase() }
@@ -90,6 +101,13 @@ object AgentConnectorManager {
         val s = pendingConnectCard
         pendingConnectCard = null
         return s
+    }
+
+    /** "permissions" when the card was asked for to change access, otherwise null. */
+    fun consumePendingConnectPurpose(): String? {
+        val p = pendingConnectPurpose
+        pendingConnectPurpose = null
+        return p
     }
 
     private fun requireAccessToken(context: Context): String? =
@@ -140,6 +158,12 @@ object AgentConnectorManager {
             if (!s.connected) {
                 sb.append(" — call request_connector(service \"").append(s.id)
                     .append("\") to show its setup card in the chat")
+            } else {
+                // OWNER REQUEST (2026-11-24): connected is not finished - permissions change. The
+                // model can only know that route if the listing says it.
+                sb.append(" — to change its permissions (e.g. read-only to full access) call ")
+                    .append("request_connector(service \"").append(s.id)
+                    .append("\", purpose \"permissions\")")
             }
             sb.append('\n')
             if (s.connected) {
@@ -166,6 +190,10 @@ object AgentConnectorManager {
         sb.append("\ncard is the only route for every kind: OAuth sign-in, personal API token, MCP server")
         sb.append("\nand on-device connector. If the owner names a service that is not connected, call")
         sb.append("\nrequest_connector first, then answer.")
+        sb.append("\nA CONNECTED service still has a card: when the owner wants different permissions -")
+        sb.append("\nread-only to full access, or more scopes - call request_connector with")
+        sb.append("\npurpose \"permissions\" so the card opens ready to change them. Never tell them to")
+        sb.append("\nreconnect from Settings to widen access.")
         sb.append("\nAct on a CONNECTED service with use_connector(service, method, endpoint, body).")
         sb.append("\nThe endpoint is relative to that provider's API base. There are no per-provider")
         sb.append("\ntools: creating a GitLab repository is use_connector(service \"gitlab\", method \"POST\",")
@@ -217,15 +245,28 @@ object AgentConnectorManager {
      * the chat. Generic across OAuth + PAT connector types — the card just opens
      * the Connectors Hub, where each service runs its own flow.
      */
-    fun requestConnectorCard(service: String, @Suppress("UNUSED_PARAMETER") context: Context): String {
+    fun requestConnectorCard(
+        service: String,
+        @Suppress("UNUSED_PARAMETER") context: Context,
+        purpose: String = PURPOSE_CONNECT,
+    ): String {
         if (service !in SERVICES) {
             return "Unknown service: $service. Available: ${SERVICES.joinToString(", ")}."
         }
         if (service == "github") return "GitHub connects from Settings > Accounts > Sign in with GitHub."
+        val changing = purpose.trim().lowercase() == PURPOSE_PERMISSIONS
         pendingConnectCard = service
-        return "The user is being shown a 'Connect ${DISPLAY_NAMES[service]}' card in the chat. " +
-            "Tell them to tap Connect on it and finish in the Connectors Hub, then continue your answer. " +
-            "Do not call this tool again for ${DISPLAY_NAMES[service]} in this conversation."
+        pendingConnectPurpose = if (changing) PURPOSE_PERMISSIONS else null
+        return if (changing) {
+            "The user is being shown the permissions card for ${DISPLAY_NAMES[service]} in the chat, " +
+                "opened in change mode. Tell them to tap Change permissions and re-consent with the " +
+                "access they want (for example read-only to full access). Do not call this tool again " +
+                "for ${DISPLAY_NAMES[service]} in this conversation."
+        } else {
+            "The user is being shown a 'Connect ${DISPLAY_NAMES[service]}' card in the chat. " +
+                "Tell them to tap Connect on it and finish in the Connectors Hub, then continue your answer. " +
+                "Do not call this tool again for ${DISPLAY_NAMES[service]} in this conversation."
+        }
     }
 
     fun useConnector(

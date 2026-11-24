@@ -50,6 +50,8 @@ internal fun ConnectorSetupInline(
     colors: ChatColors,
     onDone: (String) -> Unit,
     onCancel: () -> Unit,
+    /** Open straight into change mode: the owner asked to alter permissions. */
+    startReauthorising: Boolean = false,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -60,6 +62,10 @@ internal fun ConnectorSetupInline(
     var loadError by remember { mutableStateOf<String?>(null) }
     var pat by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    // OWNER REQUEST (2026-11-24): a connected service can still need its card, to change what it is
+    // allowed to do. Change mode drops the card back to its setup flow, which re-consents with the
+    // access the owner picks, instead of stopping at "already connected".
+    var reauthorising by remember(service) { mutableStateOf(startReauthorising) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(service) {
@@ -84,7 +90,10 @@ internal fun ConnectorSetupInline(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("Connect " + displayName, color = colors.text, fontSize = 13.sp)
+        Text(
+            if (reauthorising) "Change permissions for " + displayName else "Connect " + displayName,
+            color = colors.text, fontSize = 13.sp,
+        )
         when {
             loading -> Text("Reading connector settings...", color = colors.textSecondary, fontSize = 11.sp)
             loadError != null -> {
@@ -93,9 +102,16 @@ internal fun ConnectorSetupInline(
                     TextButton(onClick = onCancel) { Text("Close", fontSize = 12.sp) }
                 }
             }
-            ConnectorSetupPlan.isSettled(status?.connected == true) -> {
+            ConnectorSetupPlan.isSettled(status?.connected == true) && !reauthorising -> {
                 Text(displayName + " is already connected.", color = colors.success, fontSize = 11.sp)
+                Text(
+                    "Need it to do more, or less? Change permissions re-consents with the access you pick.",
+                    color = colors.textSecondary, fontSize = 11.sp,
+                )
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { reauthorising = true }, enabled = !busy) {
+                        Text("Change permissions", fontSize = 12.sp)
+                    }
                     TextButton(onClick = { onDone(displayName + " is already connected.") }) {
                         Text("Done", fontSize = 12.sp)
                     }

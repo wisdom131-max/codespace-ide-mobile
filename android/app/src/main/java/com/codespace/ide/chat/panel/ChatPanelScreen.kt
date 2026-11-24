@@ -460,8 +460,12 @@ private fun ChatBody(
         // authorization) sits ABOVE the Files Changed row (work already done). They are never
         // the same operation shown twice, so the eye reads "pending" then "completed".
         // A tool asked to show a Connect card: this is the surface it promised.
+        // OWNER REQUEST (2026-11-24): set when the card was asked for to change permissions.
+        var connectorManageMode by remember { mutableStateOf(false) }
         LaunchedEffect(state.streaming) {
             if (!state.streaming) {
+                // Read the purpose BEFORE the card id: the manager hands both back once.
+                val cardPurpose = com.codespace.ide.agent.AgentConnectorManager.consumePendingConnectPurpose()
                 com.codespace.ide.agent.AgentConnectorManager.consumePendingConnectCard()?.let { svc ->
                     // OWNER REPORT (2026-11-23): "he doesn't bring up the panel until I ask him to".
                     // The card was shown but the setup panel waited for a tap. The panel IS the
@@ -469,6 +473,8 @@ private fun ChatBody(
                     // underneath for context.
                     connectCard = svc
                     setupService = svc
+                    connectorManageMode =
+                        cardPurpose == com.codespace.ide.agent.AgentConnectorManager.PURPOSE_PERMISSIONS
                 }
             }
         }
@@ -491,6 +497,7 @@ private fun ChatBody(
         setupService?.let { svc ->
             ConnectorSetupInline(
                 service = svc,
+                startReauthorising = connectorManageMode,
                 displayName = com.codespace.ide.agent.AgentConnectorManager.displayNameFor(svc),
                 colors = c,
                 onDone = { message ->

@@ -157,8 +157,16 @@ P1. plan           — Stage a structured plan / todo list for user review and
     to see which services are connected and which endpoints each one answers.
     <tool>{"name":"use_connector","arguments":{"service":"gmail","method":"GET","endpoint":"/messages"}}</tool>
     <tool>{"name":"use_connector","arguments":{"service":"gitlab","method":"POST","endpoint":"/projects","body":"{\"name\":\"my-repo\",\"visibility\":\"private\"}"}}</tool>
-23. request_connector — Show the user an inline "Connect <Service>" card in the chat when they need a service that isn't connected yet (works for all connector types) When the user names a service that is not connected, CALL THIS FIRST. Never answer that you "can find" a connector: the card is the only way they connect, so saying you can find it strands them.
+23. request_connector — Show the user the connector card in the chat. TWO uses, both call THIS
+    tool: (a) a service that is NOT connected — the card sets it up (all connector types: sign-in,
+    personal token, MCP server, on-device); (b) a service that IS connected but the owner wants
+    DIFFERENT PERMISSIONS — pass purpose "permissions" and the card opens ready to re-consent (for
+    example read-only to full access). When the owner names a service that is not connected, CALL
+    THIS FIRST; never answer that you "can find" a connector. When they want wider or narrower access
+    on a connected one, CALL THIS with purpose "permissions"; never tell them to reconnect from
+    Settings.
     <tool>{"name":"request_connector","arguments":{"service":"sentry"}}</tool>
+    <tool>{"name":"request_connector","arguments":{"service":"gmail","purpose":"permissions"}}</tool>
 24. service_read  — Read GitHub, GitLab, or the project's own REST API with the credential the user
     stored for it. You name a NAMED OPERATION, never a URL: that is what keeps the credential on the
     host it belongs to. Values fill the operation's placeholders.
@@ -908,7 +916,11 @@ You can use multiple tools in sequence. When done, give a final summary.
                 "list_connectors" -> AgentConnectorManager.listConnectors(context)
                 "connect_service" -> AgentConnectorManager.connectService(args.getString("service"), args.optJSONArray("scopes"), context)
                 "use_connector" -> AgentConnectorManager.useConnector(args.getString("service"), args.getString("method"), args.getString("endpoint"), args.optString("body", "{}"), context)
-                "request_connector" -> AgentConnectorManager.requestConnectorCard(args.getString("service"), context)
+                "request_connector" -> AgentConnectorManager.requestConnectorCard(
+                    args.getString("service"),
+                    context,
+                    args.optString("purpose", AgentConnectorManager.PURPOSE_CONNECT),
+                )
                 "service_read" -> serviceApiCall(args, context, write = false)
                 "service_write" -> serviceApiCall(args, context, write = true)
                 "create_entity" -> AgentEntityManager.create(args.getString("entity"), args.getString("data"), context)
