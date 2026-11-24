@@ -399,14 +399,23 @@ private fun ChatBody(
                 }
                 val liveSteps = liveThinkingSteps(state.rows)
                 val liveLabel = liveSteps.lastOrNull()?.takeIf { it.isNotBlank() } ?: ""
-                var rows = if (state.streaming && state.firstDeltaMs == 0L)
+                // VS CODE'S VISIBILITY RULES, from chatListRenderer.ts and chatThinkingContentPart.ts:
+                // isEmptyThinkingPart() makes a thinking part with no value a TERMINATOR that renders
+                // nothing, and shouldCreateGroupedThinkingPart() decides whether a part exists at all.
+                // Ours was created for EVERY streaming turn, empty or not - which is why it showed
+                // whenever it liked. No steps, no section.
+                // The active part is also marked inactive rather than removed when the response
+                // finishes, so the work stays readable. Ours vanished the moment streaming stopped,
+                // the opposite of the persistence the owner asked for.
+                val hasThinkingContent = storedSteps.isNotEmpty() || liveSteps.isNotEmpty()
+                var rows = if (hasThinkingContent)
                     state.rows + listOf(
                         ChatRowModel.Thinking(
                             ((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt(),
                             steps = liveSteps,
                             tree = storedSteps,
                             liveLabel = liveLabel,
-                            running = true,
+                            running = state.streaming && state.firstDeltaMs == 0L,
                         ),
                     )
                 else state.rows
