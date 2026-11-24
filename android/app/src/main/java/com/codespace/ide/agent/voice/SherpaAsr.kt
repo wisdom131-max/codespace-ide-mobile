@@ -174,7 +174,17 @@ class SherpaAsr(context: Context, model: SherpaModel = SherpaModels.DEFAULT) {
                     enableEndpoint = true,
                     decodingMethod = "greedy_search",
                 )
-                val r = OnlineRecognizer(assets, config)
+                // CRASH 2026-11-24 04:05:02, pid 25722: sherpa-onnx aborted the whole process with
+                //   W sherpa-onnx: You are using an absolute path '/storage/emulated/0/CodespaceIDE/
+                //                  models/asr/decoder-epoch-99-avg-1.onnx', but ...
+                //   W sherpa-onnx: Please set assetManager to null when you load model files from the SD card
+                //   F sherpa-onnx: Read binary file: Load '...decoder-epoch-99-avg-1.onnx' failed
+                // Passing an AssetManager makes the native reader look inside the APK's assets instead of
+                // the absolute path, the read fails, and the library calls abort() - a native death with
+                // no Java stack, which is why Android logged "has died: fg TOP" and "no saved state".
+                // Our models live in shared storage, so the asset manager must be left at its default (null).
+                // https://github.com/k2-fsa/sherpa-onnx/issues/2562
+                val r = OnlineRecognizer(config = config)
                 recognizer = r
                 stream = r.createStream()
             }
