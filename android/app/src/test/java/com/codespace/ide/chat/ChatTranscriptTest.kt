@@ -50,7 +50,7 @@ class ChatTranscriptTest {
     }
 
     @Test
-    fun anInterruptedReplyIsKeptAndExplained() {
+    fun anInterruptedReplyIsKeptWithoutANote() {
         val interrupted = ChatTranscript.rowsToMessages(
             listOf(ChatRowModel.User("q"), ChatRowModel.AssistantStream("half an ans", cursorOn = true)),
             streaming = true,
@@ -59,7 +59,10 @@ class ChatTranscriptTest {
 
         val back = ChatTranscript.messagesToRows(interrupted)
         assertEquals("half an ans", (back[1] as ChatRowModel.AssistantStream).text)
-        assertTrue("the user must be told it was cut off", back[2] is ChatRowModel.InfoNote)
+        // OWNER DECISION (2026-11-24): the cut-off note is no longer written; it was appearing inside
+        // the thinking tree. The reply itself is still kept, which is the part that matters.
+        assertEquals("the interrupted reply is kept", 2, back.size)
+        assertTrue("no note is appended", back.none { it is ChatRowModel.InfoNote })
     }
 
     @Test

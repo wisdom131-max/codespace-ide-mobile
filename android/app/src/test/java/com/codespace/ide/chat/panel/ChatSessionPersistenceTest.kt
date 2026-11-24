@@ -77,16 +77,18 @@ class ChatSessionPersistenceTest {
     }
 
     @Test
-    fun anInterruptedStoredReplyIsRestoredWithAnExplanation() {
+    fun anInterruptedStoredReplyIsRestoredWithoutANote() {
         val sink = RecordingSink(TranscriptLoad(listOf(
             StoredMessage("user", "q", true, 1L),
             StoredMessage("assistant", "half", false, 2L),
         )))
         val s = session(sink)
         val rows = s.ui.value.rows
-        assertEquals(3, rows.size)
+        // OWNER DECISION (2026-11-24): the reply is still restored; the explanation row is not,
+        // because that text was showing up inside the thinking tree.
+        assertEquals(2, rows.size)
         assertEquals("half", (rows[1] as ChatRowModel.AssistantStream).text)
-        assertTrue(rows[2] is ChatRowModel.InfoNote)
+        assertTrue("no explanation row", rows.none { it is ChatRowModel.InfoNote })
     }
 
     @Test

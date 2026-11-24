@@ -166,11 +166,14 @@ class ThinkingTreeStoreTest {
     }
 
     @Test
-    fun `a conversation with no reply yet keeps its steps at the end`() {
+    fun `a conversation with no reply yet hides its steps`() {
+        // OWNER REPORT (2026-11-24): a fresh chat and a provider switch both showed a thinking tree
+        // before anything was asked. Steps are still STORED - that is the persistence - they are just
+        // not rendered until there is an assistant row for them to belong to.
         val rows = listOf<ChatRowModel>(ChatRowModel.User("do it"))
         val merged = ThinkingTreeStore.mergeRows(rows, listOf(step("r1c1")))
-        assertEquals(2, merged.size)
-        assertTrue(merged[1] is ChatRowModel.ToolActivity)
+        assertEquals(1, merged.size)
+        assertTrue(merged.none { it is ChatRowModel.ToolActivity })
     }
 
     @Test
