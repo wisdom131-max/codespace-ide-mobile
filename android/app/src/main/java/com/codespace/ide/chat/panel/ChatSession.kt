@@ -2149,13 +2149,9 @@ class ChatSession internal constructor(
                         )
                     }
                 }
-                appendRow(ChatRowModel.ToolActivity(
-                    AgentToolWire.stepLabel(call),
-                    CopilotPresentation.toolRow(
-                        AgentToolWire.stepLabel(call), com.codespace.ide.chat.provider.ToolOutcome.SUCCESS, summary,
-                    ).body,
-                    id = "r" + toolRound + "c" + (idx + 1)))
-                val already = repeats[idx]?.takeIf { answered.containsKey(it) }
+                // OWNER DECISION (2026-11-24): the step is persisted to the store above and drawn
+                // inside the turn's collapsed section. It is deliberately NOT appended to the transcript,
+                // which is how tool work used to leak into the chat.val already = repeats[idx]?.takeIf { answered.containsKey(it) }
                 if (already != null) {
                     val reused = answered.getValue(already)
                     appendRow(ChatRowModel.InfoNote(

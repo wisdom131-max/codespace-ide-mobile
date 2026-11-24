@@ -28,7 +28,22 @@ sealed interface ChatRowModel {
      * appended at the END of the transcript, so there was never anything after it. The steps are
      * now carried on the row itself.
      */
-    data class Thinking(val seconds: Int, val steps: List<String> = emptyList()) : ChatRowModel
+    /**
+     * VS CODE'S CONVERSATION PROGRESS (owner decision 2026-11-24: "use exactly vs codes rendering
+     * for the tree leave nothing out").
+     *
+     * Reasoning and tool calls are ONE collapsed section per turn, not a separate tree beside the
+     * transcript. [tree] is the whole turn's work; [liveLabel] is the activity happening right now,
+     * which the collapsed header names while running; [running] keeps the header live until the
+     * turn settles. Nothing is rendered until the section is opened.
+     */
+    data class Thinking(
+        val seconds: Int,
+        val steps: List<String> = emptyList(),
+        val tree: List<TreeStep> = emptyList(),
+        val liveLabel: String = "",
+        val running: Boolean = false,
+    ) : ChatRowModel
     data class Failed(val verdict: String, val detail: String, val canRetry: Boolean) : ChatRowModel
     object NoCredits : ChatRowModel
     object Offline : ChatRowModel
@@ -64,3 +79,15 @@ sealed interface ChatRowModel {
 
     data class Attachments(val chips: List<AttachmentChipModel>) : ChatRowModel
 }
+
+/**
+ * One step inside a turn's progress section. [turnId] groups steps into turns, [id] is stable so a
+ * step can expand and collapse by identity, and [detail] is what the step actually did.
+ */
+data class TreeStep(
+    val id: String,
+    val turnId: String,
+    val label: String,
+    val detail: String = "",
+    val ok: Boolean = true,
+)

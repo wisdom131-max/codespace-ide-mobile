@@ -380,11 +380,33 @@ private fun ChatBody(
                     onRetry = { settingsRetry++ },
                 )
             } else {
+                // VS CODE'S CONVERSATION PROGRESS (owner decision 2026-11-24): the section is fed by
+                // the steps the engine persisted for THIS conversation, grouped into turns, plus the
+                // activity happening right now, which the collapsed header names while running.
+                val storedSteps = remember(state.rows.size, activeId) {
+                    runCatching {
+                        com.codespace.ide.chat.ThinkingTreeStore.load(localCtx, projectId, activeId)
+                            .map {
+                                com.codespace.ide.chat.ui.TreeStep(
+                                    id = it.nodeId,
+                                    turnId = it.turnId ?: "",
+                                    label = it.label,
+                                    detail = it.detail,
+                                    ok = it.ok,
+                                )
+                            }
+                    }.getOrDefault(emptyList())
+                }
+                val liveSteps = liveThinkingSteps(state.rows)
+                val liveLabel = liveSteps.lastOrNull()?.takeIf { it.isNotBlank() } ?: ""
                 var rows = if (state.streaming && state.firstDeltaMs == 0L)
                     state.rows + listOf(
                         ChatRowModel.Thinking(
                             ((thinkTickMs - state.streamStartedMs) / 1000L).coerceAtLeast(0L).toInt(),
-                            steps = liveThinkingSteps(state.rows),
+                            steps = liveSteps,
+                            tree = storedSteps,
+                            liveLabel = liveLabel,
+                            running = true,
                         ),
                     )
                 else state.rows
@@ -395,6 +417,7 @@ private fun ChatBody(
                 NativeChatListRenderer.MessageList(
                     ChatRenderState(
                         rows = rows,
+                        conversationKey = activeId,
                         onRetry = { session.retry() },
                         onSendAnyway = { session.sendAnyway() },
                         onCancel = { session.dismissOverBudget() },

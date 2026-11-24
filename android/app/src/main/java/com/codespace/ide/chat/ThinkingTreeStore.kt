@@ -168,20 +168,12 @@ object ThinkingTreeStore {
      * the end. Nothing else about the restored rows is touched.
      */
     fun mergeRows(rows: List<ChatRowModel>, steps: List<Step>): List<ChatRowModel> {
-        if (steps.isEmpty()) return rows
-        val toolRows = toRows(steps)
-        val lastAssistant = rows.indexOfLast { it is ChatRowModel.AssistantStream }
-        // OWNER REPORT (2026-11-24): when there was no assistant row yet - a fresh chat, or the
-        // instant a provider is switched - every stored step was appended to the END of the rows and
-        // became visible chat text. That is both the ghost tree and the leak of hidden tool work.
-        // A step only belongs on screen when there is a user turn it belongs to and an assistant row
-        // to hide behind; otherwise it stays in the store, which is what persistence means here.
-        if (lastAssistant < 0 || rows.indexOfLast { it is ChatRowModel.User } < 0) return rows
-        val out = ArrayList<ChatRowModel>(rows.size + toolRows.size)
-        out.addAll(rows.subList(0, lastAssistant))
-        out.addAll(toolRows)
-        out.addAll(rows.subList(lastAssistant, rows.size))
-        return out
+        // OWNER DECISION (2026-11-24): "use exactly vs codes rendering for the tree". In VS Code the
+        // turn's work lives inside ONE collapsed section and never becomes a transcript row, which is
+        // why hidden work cannot leak into the chat there. This function used to splice ToolActivity
+        // rows into the transcript; it now returns the rows untouched. The steps are still stored and
+        // still rendered - inside the section, which is the only place they belong.
+        return rows
     }
 
     /** Stated in the row itself so a restored step never looks like it finished. */

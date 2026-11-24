@@ -9,6 +9,11 @@ import androidx.compose.ui.unit.dp
 /** Interaction callbacks handed to the renderer together with the rows. */
 data class ChatRenderState(
     val rows: List<ChatRowModel>,
+    /**
+     * Which conversation these rows belong to. The thinking tree remembers open/closed state per
+     * conversation, so the section needs the key it should remember under.
+     */
+    val conversationKey: String = "",
     val onRetry: () -> Unit = {},
     val onSendAnyway: () -> Unit = {},
     val onCancel: () -> Unit = {},
@@ -51,6 +56,10 @@ object NativeChatListRenderer : ChatListRenderer {
                 when (display) {
                     is ChatDisplayRow.Single -> {
                         val row = display.row
+                        // OWNER DECISION (2026-11-24): tool work belongs inside the turn's section.
+                        // Any legacy ToolActivity row still stored in an old transcript is skipped
+                        // rather than drawn as chat content.
+                        if (row is ChatRowModel.ToolActivity) { consumed++; return@forEach }
                         if (row is ChatRowModel.Sources) {
                             if (row.items.isNotEmpty()) SourcesRow(row.items)
                         } else {
@@ -98,7 +107,15 @@ object NativeChatListRenderer : ChatListRenderer {
                 }
             }
             is ChatRowModel.Thinking ->
-                ThinkingCard(row.seconds, if (row.steps.isNotEmpty()) row.steps else steps)
+                // VS CODE'S CONVERSATION PROGRESS: one collapsed section, lazy body, live header,
+                // persisted open state, nested turns and steps. Never a row of loose tool lines.
+                ThinkingTreeSection(
+                    seconds = row.seconds,
+                    tree = row.tree,
+                    liveLabel = row.liveLabel,
+                    running = row.running,
+                    conversationKey = state.conversationKey,
+                )
             is ChatRowModel.Failed -> ErrorCard(row.verdict, row.detail, row.canRetry, state.onRetry)
             ChatRowModel.NoCredits -> NoCreditsCard()
             ChatRowModel.Offline -> OfflineCard(state.onRetry)
