@@ -1,7 +1,6 @@
 package com.codespace.ide.agent.voice
 
 import android.content.Context
-import android.content.res.AssetManager
 import com.k2fsa.sherpa.onnx.EndpointConfig
 import com.k2fsa.sherpa.onnx.EndpointRule
 import com.k2fsa.sherpa.onnx.FeatureConfig
@@ -20,7 +19,9 @@ import java.security.MessageDigest
  *
  * The API here was read out of the vendored AAR's own bytecode, not from a demo, after builds 4080 and
  * 4082 failed on my guesses. What the class file actually says:
- *  - OnlineRecognizer has ONE constructor: (AssetManager, OnlineRecognizerConfig). There is no
+ *  - OnlineRecognizer has ONE constructor: (AssetManager, OnlineRecognizerConfig), and the asset
+ *    manager must stay null for models on shared storage or the native reader aborts (see below).
+ *    There is no
  *    config-only constructor, so the asset manager is passed even though the model is read from an
  *    absolute path.
  *  - acceptWaveform is NOT on the recogniser. It is on the STREAM: acceptWaveform(float[], int).
@@ -102,7 +103,10 @@ object SherpaModelStore {
         val d = dir(context)
         return model.files.all { f ->
             val file = File(d, f.name)
-            file.isFile && file.length() == f.bytes
+            // canRead, not just exists and size: sherpa-onnx ABORTS the process on a file it cannot
+            // open (log 2026-11-24 04:05:02 "Read binary file ... failed"), it does not throw. A model
+            // we cannot read must therefore fall back to the platform recogniser before we build it.
+            file.isFile && file.canRead() && file.length() == f.bytes
         }
     }
 
