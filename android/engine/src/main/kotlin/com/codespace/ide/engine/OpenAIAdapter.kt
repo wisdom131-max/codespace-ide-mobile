@@ -53,6 +53,19 @@ class OpenAIAdapter : ProviderAdapter {
             "Authorization" to "Bearer " + config.apiKey,
         )
 
+    /**
+     * Joins the system slot and the turns into one messages array. systemMsg() returns "" when a
+     * provider needs no system message, and interpolating that directly produced `"messages":[,{...}]`
+     * - invalid JSON that a strict validator reports as a missing role/content. Non-blank parts only.
+     */
+    private fun messagesJson(config: EngineConfig, msgs: CharSequence): String {
+        val parts = ArrayList<String>(2)
+        val sys = systemMsg(config)
+        if (sys.isNotBlank()) parts.add(sys)
+        if (msgs.isNotEmpty()) parts.add(msgs.toString())
+        return "\"messages\":[" + parts.joinToString(",") + "]"
+    }
+
     override fun payload(window: List<ChatMessage>, userText: String, config: EngineConfig): String {
         val msgs = StringBuilder()
         for (m in window) {
@@ -62,7 +75,7 @@ class OpenAIAdapter : ProviderAdapter {
         }
         val effort = reasoningEffort(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
-            "\"" + config.maxTokensField + "\":" + config.maxResponseTokens + ",\"messages\":[" + systemMsg(config) + msgs + "]" +
+            "\"" + config.maxTokensField + "\":" + config.maxResponseTokens + "," + messagesJson(config, msgs) +
             reasoningJson(config) + cacheKeyJson(config) + "}"
     }
 
@@ -114,6 +127,10 @@ class OpenAIAdapter : ProviderAdapter {
         if (attachments.isEmpty() && !textOnly) return payload(window, userText, config)
         val msgs = StringBuilder()
         for (m in window) {
+            // OWNER REPORT (2026-11-24): Cloudflare's /ai/v1/chat/completions rejects a turn whose
+            // content is empty or null ("required properties at '/messages/N' are 'role,content'").
+            // A blank turn carries no information, so it is dropped rather than sent as a husk.
+            if (m.text.isBlank()) continue
             if (msgs.isNotEmpty()) msgs.append(',')
             msgs.append("{\"role\":\"").append(roleJson(m.role)).append("\",\"content\":\"")
                 .append(escapeJson(m.text)).append("\"}")
@@ -134,7 +151,7 @@ class OpenAIAdapter : ProviderAdapter {
             val effortFlat = reasoningEffort(config)
             return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
                 "\"" + config.maxTokensField + "\":" + config.maxResponseTokens +
-                ",\"messages\":[" + systemMsg(config) + msgs + "]" + reasoningJson(config) + "}"
+                "," + messagesJson(config, msgs) + reasoningJson(config) + "}"
         }
         if (combined.isNotEmpty()) parts.append("{\"type\":\"text\",\"text\":\"")
             .append(escapeJson(combined)).append("\"}")
