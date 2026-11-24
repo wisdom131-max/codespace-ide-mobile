@@ -168,7 +168,7 @@ class OpenAIAdapter : ProviderAdapter {
         msgs.append("{\"role\":\"user\",\"content\":[").append(parts).append("]}")
         val effort = reasoningEffort(config)
         return "{\"model\":\"" + escapeJson(config.modelId) + "\",\"stream\":true," +
-            "\"" + config.maxTokensField + "\":" + config.maxResponseTokens + ",\"messages\":[" + systemMsg(config) + msgs + "]" +
+            "\"" + config.maxTokensField + "\":" + config.maxResponseTokens + "," + messagesJson(config, msgs) +
             reasoningJson(config) + "}"
     }
 
