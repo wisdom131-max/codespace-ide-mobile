@@ -1787,6 +1787,15 @@ private fun PanelGlyphTile(
  * sections read as sections instead of a long scroll.
  */
 @Composable
+private fun SectionTitle(text: String) {
+    androidx.compose.material3.HorizontalDivider()
+    Text(
+        text,
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),
+    )
+}
+
 /** A heading INSIDE a section: smaller, quieter, no top divider. */
 @Composable
 private fun SubSectionTitle(text: String) {
@@ -1796,14 +1805,5 @@ private fun SubSectionTitle(text: String) {
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 2.dp),
-    )
-}
-
-private fun SectionTitle(text: String) {
-    androidx.compose.material3.HorizontalDivider()
-    Text(
-        text,
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),
     )
 }
