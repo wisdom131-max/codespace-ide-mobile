@@ -540,6 +540,9 @@ You can use multiple tools in sequence. When done, give a final summary.
     }
 
     private suspend fun executeToolBody(name: String, args: JSONObject, context: Context): String {
+        // OWNER REPORT (2026-11-24): keep a short list of what this turn has done, so the model
+        // knows what is next instead of re-deriving it from a long transcript.
+        RequestAnchor.note(name, args)
         // PHASE 5b: one containment gate for every file write, before the dispatch below can
         // reach a tool that would honour an outside path. No project open means there is no
         // boundary to enforce, and the trust gate already governs the run.
@@ -2147,6 +2150,12 @@ You can use multiple tools in sequence. When done, give a final summary.
             emptyList()
         }
         val sb = StringBuilder()
+        // OWNER REPORT (2026-11-24): asked for a Slack connector, the copilot searched for Notion -
+        // one step back. A search whose target is absent from the owner's ask is flagged here, in the
+        // tool result, which is the only place the model is certain to read.
+        if (q.isNotEmpty() && RequestAnchor.driftsFrom(q)) {
+            sb.append(RequestAnchor.driftWarning(q)).append('\n')
+        }
         if (q.isNotEmpty()) {
             val hits = com.codespace.ide.chat.panel.ToolMetaIndex.search(q, mode, 8, mcpNames)
             if (hits.isEmpty()) {
