@@ -360,7 +360,13 @@ class ChatEngineImpl(
         // once it is COMPLETE: a half-received argument object is never made executable.
         val normaliser = adapter.streamKind?.let { ProviderStreamNormaliser(it) }
         var nativeCallsRendered = 0
+        var improvisedCalls = 0
         var done = false
+        // A call the model invented when no tools were offered cannot run, and it must not make the
+        // turn look truncated either: the reason is normalised to a plain stop before anything reads it.
+        fun effectiveReason(r: String): String =
+            if (improvisedCalls > 0 && config.toolsOffered <= 0 &&
+                r.lowercase() in setOf("tool_calls", "tool_use", "function_call")) "stop" else r
         // Resolved ONCE: the same URL is requested and, on failure, named in the verdict.
         val requestUrl = adapter.endpoint(config)
         var attemptCfg = config
@@ -396,10 +402,21 @@ class ChatEngineImpl(
                                 emit(EngineEvent.Usage(ev.inputTokens, ev.outputTokens))
                             }
                             if (ev is StreamEvent.ToolCallCompleted && ev.call.complete) {
-                                val block = nativeCallMarkup(ev.call)
-                                builder.append(block)
-                                nativeCallsRendered++
-                                emit(EngineEvent.Delta(block))
+                                // OWNER REPORT (2026-11-24): "tool calls announced with NO tools
+                                // advertised - the model improvised the format, so nothing could
+                                // run". With toolsOffered == 0 (Ask mode) a native call cannot
+                                // execute, so rendering its markup put a dead call into the reply
+                                // AND made the turn look like it ended early. A call nobody offered
+                                // is not rendered at all; the prose the model wrote stands on its
+                                // own, which is how VS Code treats a call it did not advertise.
+                                if (config.toolsOffered > 0) {
+                                    val block = nativeCallMarkup(ev.call)
+                                    builder.append(block)
+                                    nativeCallsRendered++
+                                    emit(EngineEvent.Delta(block))
+                                } else {
+                                    improvisedCalls++
+                                }
                             }
                         }
                     }
@@ -414,7 +431,7 @@ class ChatEngineImpl(
                         state.update(responseMsg.id) {
                             it.copy(text = builder.toString(), state = MessageState.DONE)
                         }
-                emit(EngineEvent.Completed(builder.length, finishOf(endReason, attemptCfg)))
+                emit(EngineEvent.Completed(builder.length, finishOf(effectiveReason(endReason), attemptCfg)))
                         break
                     }
                 }
@@ -440,7 +457,7 @@ class ChatEngineImpl(
                 state.update(responseMsg.id) {
                     it.copy(text = builder.toString(), state = MessageState.DONE)
                 }
-                emit(EngineEvent.Completed(builder.length, finishOf(endReason, attemptCfg)))
+                emit(EngineEvent.Completed(builder.length, finishOf(effectiveReason(endReason), attemptCfg)))
             }
             val cut = isCutOff(endReason)
             ChatLog.record(
