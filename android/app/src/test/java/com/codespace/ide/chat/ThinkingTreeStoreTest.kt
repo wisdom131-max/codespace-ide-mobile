@@ -154,15 +154,20 @@ class ThinkingTreeStoreTest {
     }
 
     @Test
-    fun `restored steps are merged before the reply they served`() {
+    fun `restored steps never enter the transcript`() {
+        // OWNER DECISION (2026-11-24): hidden tool work must never leak into the chat. This test used
+        // to require the opposite - a ToolActivity row spliced in before the reply - which is the
+        // leak itself. The steps are still restored, they are just carried by the thinking tree
+        // instead of the transcript, so the rows come back exactly as they were written.
         val rows = listOf<ChatRowModel>(
             ChatRowModel.User("do it"),
             ChatRowModel.AssistantStream("done", cursorOn = false),
         )
         val merged = ThinkingTreeStore.mergeRows(rows, listOf(step("r1c1")))
-        assertEquals(3, merged.size)
-        assertTrue(merged[1] is ChatRowModel.ToolActivity)
-        assertTrue(merged[2] is ChatRowModel.AssistantStream)
+        assertEquals("the transcript is untouched", 2, merged.size)
+        assertTrue(merged[0] is ChatRowModel.User)
+        assertTrue(merged[1] is ChatRowModel.AssistantStream)
+        assertTrue("no tool row is spliced in", merged.none { it is ChatRowModel.ToolActivity })
     }
 
     @Test

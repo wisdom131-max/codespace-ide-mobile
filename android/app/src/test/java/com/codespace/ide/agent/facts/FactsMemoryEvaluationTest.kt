@@ -251,7 +251,11 @@ class FactsMemoryEvaluationTest {
             listOf(ChatRowModel.User("hi"), ChatRowModel.AssistantStream("done", cursorOn = false)),
             restored,
         )
-        assertTrue("the tree row comes back", rows.any { it is ChatRowModel.ToolActivity })
+        // OWNER DECISION (2026-11-24): the steps come back through the tree, never as a transcript
+        // row. The store still restores them (asserted above), so nothing is lost by the change.
+        assertTrue("the steps are restored", restored.isNotEmpty())
+        assertEquals("the transcript stays as written", 2, rows.size)
+        assertTrue("no tool row is spliced in", rows.none { it is ChatRowModel.ToolActivity })
     }
 
     @Test
