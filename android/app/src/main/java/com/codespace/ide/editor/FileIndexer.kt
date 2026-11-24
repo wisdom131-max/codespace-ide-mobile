@@ -269,6 +269,25 @@ object FileIndexer {
     private const val MAX_OBSERVED_DIRS = 256
     private const val WATCH_BUDGET_MS = 1_500L
     private const val SWEEP_INTERVAL_MS = 30_000L
+    /**
+     * CRASH 2026-11-16 (bugreport-KL4, com.codespace.ide, PID 5463): OutOfMemoryError at
+     * FileIndexer.drainDirtyDirs, "1% of heap free after GC" on a 256MB heap. The sweep reindexed
+     * every flagged file and every known file in ONE pass with no ceiling, so a large tree or a
+     * watcher flood walked the process straight into the heap limit. Every pass is now bounded and
+     * stops early when the heap is tight; the leftovers are picked up by the next tick, so nothing
+     * is skipped, only deferred.
+     */
+    private const val MAX_DIRS_PER_SWEEP = 16
+    private const val MAX_FILES_PER_SWEEP = 200
+    private const val DIRTY_QUEUE_CAP = 512
+    private const val MIN_FREE_HEAP_BYTES = 24L * 1024 * 1024
+    private var sweepCursor = 0
+
+    /** Bytes the process could still allocate before it hits the heap limit. */
+    private fun heapFree(): Long {
+        val rt = Runtime.getRuntime()
+        return rt.maxMemory() - (rt.totalMemory() - rt.freeMemory())
+    }
     private const val TAG = "FileIndexer"
     private val observers = mutableListOf<android.os.FileObserver>()
     private val dirtyDirs = java.util.concurrent.ConcurrentLinkedQueue<String>()
@@ -364,7 +383,13 @@ object FileIndexer {
                 object : android.os.FileObserver(dir.absolutePath) {
                     override fun onEvent(event: Int, name: String?) {
                         // Structural change only; content edits are the sweep's job.
-                        dirtyDirs.add(dir.absolutePath)
+                        if (dirtyDirs.size < DIRTY_QUEUE_CAP) {
+                            dirtyDirs.add(dir.absolutePath)
+                        } else {
+                            Log.w(TAG, "[watch] change queue full, dropping the oldest entry")
+                            dirtyDirs.poll()
+                            dirtyDirs.add(dir.absolutePath)
+                        }
                     }
                 }.also { it.startWatching() }
             } catch (_: Throwable) {
@@ -401,24 +426,49 @@ object FileIndexer {
 
     /** Re-scan only the directories an observer flagged: one directory listing each, no recursion. */
     private fun drainDirtyDirs() {
+        var dirs = 0
+        var files = 0
         while (true) {
+            if (dirs >= MAX_DIRS_PER_SWEEP || files >= MAX_FILES_PER_SWEEP) return
+            if (heapFree() < MIN_FREE_HEAP_BYTES) {
+                Log.w(TAG, "[watch] stopping this sweep early: heap under the floor, the rest waits")
+                return
+            }
             val path = dirtyDirs.poll() ?: return
+            dirs++
             val dir = File(path)
             val children = dir.listFiles() ?: continue
+            var putBack = false
             for (child in children) {
+                if (files >= MAX_FILES_PER_SWEEP) { putBack = true; break }
                 if (child.isFile && child.extension.lowercase() in sourceExtensions) {
                     val known = synchronized(lock) { fileTimestamps[child.absolutePath] }
                     val mtime = child.lastModified()
-                    if (known != mtime) reindexFile(child, mtime)
+                    if (known != mtime) {
+                        reindexFile(child, mtime)
+                        files++
+                    }
                 }
             }
+            // Budget spent mid-directory: queue it again rather than losing it. Files already
+            // reindexed have fresh timestamps, so the next pass skips them.
+            if (putBack && dirtyDirs.size < DIRTY_QUEUE_CAP) dirtyDirs.add(path)
         }
     }
 
     /** Stat only the files already in the index. Never walks the tree, so cost is bounded by the cap. */
     private fun sweepKnownFiles() {
         val known = synchronized(lock) { fileTimestamps.keys.toList() }
-        for (path in known) {
+        if (known.isEmpty()) { sweepCursor = 0; return }
+        if (sweepCursor >= known.size) sweepCursor = 0
+        var budget = MAX_FILES_PER_SWEEP
+        var i = sweepCursor
+        while (i < known.size && budget > 0) {
+            if (heapFree() < MIN_FREE_HEAP_BYTES) break
+            val path = known[i]
+            i++
+            budget--
+            sweepCursor = i
             val file = File(path)
             if (!file.exists()) {
                 synchronized(lock) {
