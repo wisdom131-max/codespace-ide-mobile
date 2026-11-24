@@ -1,5 +1,10 @@
 package com.codespace.ide.agent
 
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CoroutineScope
 import android.content.Context
 import com.codespace.ide.data.SecureTokenStore
 import com.codespace.ide.diagnostics.AppOutputLog
@@ -304,6 +309,40 @@ object McpClientManager {
     }
 
     /** First-chat lazy discovery: spawn each enabled server once, tools/list, cache docs. */
+    @Volatile private var warmStarted = false
+    private val warmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * OWNER REPORT (2026-11-24): "you told me you were going to add pinging to the connectors
+     * backend you didn't so the server times out". A connector server is started on first use, and
+     * that cold start costs more than the tool call's own timeout allows on a mobile network. This
+     * keeps every enabled server warm: opened once at app start and re-pinged on a timer, so a tool
+     * call never pays for a process start.
+     */
+    fun startKeepWarm(context: Context) {
+        if (warmStarted) return
+        warmStarted = true
+        val app = context.applicationContext
+        warmScope.launch {
+            while (isActive) {
+                runCatching { keepWarmOnce(app) }
+                delay(KEEP_WARM_INTERVAL_MS)
+            }
+        }
+    }
+
+    /** Opens the session if it is closed, then makes one cheap request so the process stays alive. */
+    private suspend fun keepWarmOnce(context: Context) {
+        val enabled = loadConfig(context).filter { it.enabled }
+        if (enabled.isEmpty()) return
+        for (cfg in enabled) {
+            runCatching {
+                session(context, cfg)
+                refreshTools(context)
+            }
+        }
+    }
+
     suspend fun ensureDiscovered(context: Context) {
         // LIFECYCLE (2026-11-12): the latch alone made a fresh session depend on the cache being
         // warm. Discovery is skipped only when EVERY enabled server already has tools (or has a
@@ -879,3 +918,6 @@ class McpServerSession(
         AppOutputLog.log("mcp server '$name' stopped", "mcp")
     }
 }
+
+/** How often a warm connector server is pinged. Short enough to beat a 30s idle kill. */
+private const val KEEP_WARM_INTERVAL_MS = 180_000L

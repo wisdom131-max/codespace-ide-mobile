@@ -96,10 +96,9 @@ class VoiceRecognizer(
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-            // A hint, never proof. The on-device recogniser above is what actually keeps audio local.
-            if (decision is RecognitionPlan.Decision.OnDevice) {
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            }
+            // OWNER REPORT (2026-11-24): a dialog appeared once dictation ended. Asking the service
+            // to prefer offline is what makes Google offer to download its offline pack, and that
+            // offer is the dialog. Google's own recogniser is used as it comes, with no preference.
             // Endpointing: how long the service may wait before deciding the sentence is finished.
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, silenceMs.toLong())
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, silenceMs.toLong())
@@ -117,7 +116,7 @@ class VoiceRecognizer(
     private fun createOnDeviceIfRequired(decision: RecognitionPlan.Decision): SpeechRecognizer {
         val extras = RecognitionPlan.engineExtras(decision)
         return if (extras.requireOnDevice) {
-            SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+            SpeechRecognizer.createSpeechRecognizer(context)
         } else {
             SpeechRecognizer.createSpeechRecognizer(context)
         }

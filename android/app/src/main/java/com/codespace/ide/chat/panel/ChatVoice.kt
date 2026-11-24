@@ -321,7 +321,9 @@ internal fun rememberVoiceLoop(
             detector.reset()
             floor.reset()
             speaker.speak(text)
-            state.value = VoiceLoopState.SPEAKING
+            // OWNER REQUEST (2026-11-24): the mic still opened with read-aloud. Reading a reply now
+            // touches the loop state NOT AT ALL, so nothing can open the microphone, animate the chip
+            // or claim the mic is listening. The loop only ever moves when the owner taps the mic.
             speakingSince[0] = System.currentTimeMillis()
             // OWNER DECISION (2026-11-24): read-aloud no longer opens the microphone. Talking over a
             // reply does nothing now, which is how it worked before the downloaded model existed.

@@ -759,12 +759,8 @@ private fun ChatBody(
     // download counts up instead of freezing at whatever it said when the panel was opened.
     // The words go in a strip under the header; the animation stays in the chip, which is where the
     // owner's screenshot puts it.
-    VoiceStrip(
-        state = voice.state,
-        partial = voice.partial,
-        colors = c,
-        onStop = voice.stop,
-    )
+    // OWNER REQUEST (2026-11-24): the dictation placeholder is gone. Words go straight into the
+    // composer and nothing is written above it first.
     if (showContextWindow) {
         ContextWindowPanel(
             colors = c,

@@ -106,8 +106,12 @@ internal object EmotionProsody {
     /** One sentence plus how it should be spoken. */
     data class Line(val text: String, val emotion: SpeechEmotion, val prosody: Prosody)
 
-    fun plan(text: String): List<Line> = sentences(text).map { s ->
-        val e = classify(s)
-        Line(s, e, prosodyFor(e))
-    }
+    /**
+     * OWNER REQUEST (2026-11-24): the emotion pass is reverted. Read-aloud speaks the reply
+     * plainly, at the engine's own pitch and rate, exactly as it did before this existed.
+     * The text is kept as ONE line, so nothing is chopped into sentences either.
+     */
+    fun plan(text: String): List<Line> = listOf(
+        Line(text, classify(text), Prosody(pitch = 1f, rate = 1f)),
+    )
 }

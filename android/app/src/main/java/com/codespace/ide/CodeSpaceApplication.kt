@@ -136,6 +136,9 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
         } // P-SETTINGS-RESTRUCTURE: track setting usage for "Commonly Used" ranking
         KeyBindingRegistry.init(this) // Load persisted keybinding overrides
         super.onCreate()
+        // OWNER REPORT (2026-11-24): connectors timed out because nothing kept the server
+        // warm. Started here, once, before any chat can ask for a tool.
+        com.codespace.ide.agent.McpClientManager.startKeepWarm(this)
         // PROJECT NINE 10.27: fetch the trained embedding model in the background. Search works
         // on the built-in matcher until it is verified, so this can never block a cold start.
         // The trained search model is fetched once, and a copy is kept in the owner's own backup
