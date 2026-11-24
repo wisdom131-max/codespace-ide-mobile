@@ -1,14 +1,27 @@
 package com.codespace.ide.chat.ui
 
 import android.content.Context
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,30 +30,34 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * THE THINKING TREE, REBUILT ON VS CODE'S CONVERSATION PROGRESS (owner decision 2026-11-24:
- * "use exactly vs codes rendering for the tree leave nothing out").
+ * VS CODE'S CONVERSATION PROGRESS, ported from their own stylesheets rather than approximated.
  *
- * What VS Code does, and what this mirrors:
+ * The mechanics came from chatThinkingContentPart.ts and chatCollapsibleContentPart.ts; the LOOK
+ * comes from their CSS, and these are the exact values taken from it:
  *
- *  1. ONE section per turn. Reasoning and tool calls share it; there is no second store rendered
- *     beside the transcript, which is why hidden work cannot leak there.
- *  2. COLLAPSED by default (`_isExpanded` starts false in ChatCollapsibleContentPart).
- *  3. LAZY: the body is composed only after the section is opened for the first time. Nothing
- *     exists to draw before that, so a fresh chat cannot show a ghost.
- *  4. The collapsed HEADER NAMES THE LIVE ACTIVITY while running, and settles to a summary of the
- *     turn when it finishes.
- *  5. OPEN/CLOSED STATE IS REMEMBERED per conversation and per turn, so a chat you left open comes
- *     back open and one you left closed comes back closed.
- *  6. NESTING: each turn is a sub-section, and each step opens to show what it actually did.
- *  7. Phone layouts in VS Code always use the collapsed preview; this app is a phone, so collapsed
- *     is the default and the expanded form is deliberate.
+ *  - Header label: `.chat-used-context-label` -> font-size body-m (13px here), colour
+ *    `--vscode-descriptionForeground` (muted, never the primary text colour), user-select none,
+ *    inline-flex with overflow-wrap anywhere so a long activity wraps instead of truncating.
+ *  - Active title: `.chat-thinking-title-shimmer` -> a gradient swept across the TEXT
+ *    (background-clip: text), 400% background size, 2s steps(60) infinite, transparent fill.
+ *    With reduced motion it falls back to a plain colour.
+ *  - Collapse/expand: `.chat-collapsible-content-animated` -> grid-template-rows 1fr <-> 0fr with
+ *    opacity, rows 180ms cubic-bezier(0.2, 0, 0, 1), opacity 140ms, and on collapse visibility is
+ *    delayed 180ms so the content is not clipped before it has finished moving.
+ *  - Tool rows: `.chat-tool-call-with-icon` -> a fixed icon gutter on the left and the text inset by
+ *    it, so every step lines up on one rail.
+ *
+ * Owner's choice for the header: name the LIVE activity while it runs. That is the shimmer line.
  */
 @Composable
 internal fun ThinkingTreeSection(
@@ -52,165 +69,214 @@ internal fun ThinkingTreeSection(
     modifier: Modifier = Modifier,
 ) {
     val c = ChatTokens.LocalChatColors.current
-    val context = LocalContext.current
-    val store = remember { ThinkingSectionState(context) }
+    val ctx = LocalContext.current
+    val store = remember { ThinkingSectionState(ctx) }
+    var expanded by remember(conversationKey) {
+        mutableStateOf(store.isExpanded(conversationKey, ROOT_TURN))
+    }
 
-    // One section per turn, in the order the turns happened.
-    val turns = remember(tree) { tree.groupBy { it.turnId }.entries.toList() }
-    val total = tree.size
-
-    val sectionKey = "conv:$conversationKey"
-    var expanded by remember(conversationKey) { mutableStateOf(store.isOpen(sectionKey)) }
-
+    // VS Code names the latest activity while running; when it is done the header settles.
     val header = when {
         running && liveLabel.isNotBlank() -> liveLabel
         running -> "Working"
-        total == 0 && seconds > 0 -> "Thought for " + seconds + "s"
-        total == 0 -> "Thought for " + seconds + "s"
-        else -> total.toString() + (if (total == 1) " step" else " steps") +
-            (tree.lastOrNull()?.label?.takeIf { it.isNotBlank() }?.let { " · " + it } ?: "")
+        tree.isEmpty() -> "Worked for " + seconds + "s"
+        else -> tree.size.toString() + (if (tree.size == 1) " step" else " steps") +
+            " · " + tree.last().label
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(c.surfaceAlt)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-    ) {
+    Column(modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().clickable {
-                expanded = !expanded
-                store.setOpen(sectionKey, expanded)
-            },
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = tree.isNotEmpty() || running) {
+                    expanded = !expanded
+                    store.setExpanded(conversationKey, ROOT_TURN, expanded)
+                }
+                .padding(horizontal = 4.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                if (expanded) "▾" else "▸",
-                color = c.textSecondary,
-                fontSize = 11.sp,
-            )
-            Text(
-                header,
-                color = if (running) c.text else c.textSecondary,
-                fontSize = 12.sp,
-                fontWeight = if (running) FontWeight.Medium else FontWeight.Normal,
-                modifier = Modifier.weight(1f).padding(start = 6.dp),
-            )
+            // The chevron only exists when the row can actually disclose something, which is
+            // `.chat-collapsible-hover-chevron.hidden` in their CSS.
+            if (tree.isNotEmpty() || running) {
+                Text(
+                    text = if (expanded) "▾" else "▸",
+                    color = c.textSecondary,
+                    fontSize = 10.sp,
+                )
+                Box(Modifier.width(6.dp))
+            }
             if (running) {
-                Text("···", color = c.accent, fontSize = 12.sp)
-            } else if (seconds > 0) {
-                Text(seconds.toString() + "s", color = c.textSecondary, fontSize = 11.sp)
+                ShimmerLabel(header, c.textSecondary, c.accent)
+            } else {
+                Text(
+                    text = header,
+                    color = c.textSecondary,
+                    fontSize = 13.sp,
+                    maxLines = 2,
+                )
             }
         }
 
-        // LAZY: nothing below is composed until the section has been opened once.
-        if (expanded) {
+        // Their collapse: rows 180ms on that curve, opacity 140ms, content leaves only after the
+        // movement has finished.
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(
+                animationSpec = tween(180, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
+                expandFrom = Alignment.Top,
+            ) + fadeIn(animationSpec = tween(140)),
+            exit = shrinkVertically(
+                animationSpec = tween(180, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
+                shrinkTowards = Alignment.Top,
+            ) + fadeOut(animationSpec = tween(140)),
+        ) {
             Column(
-                Modifier.fillMaxWidth().padding(top = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, top = 2.dp, bottom = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                if (turns.isEmpty()) {
-                    Text(
-                        if (running) "Working on it." else "No steps were recorded for this turn.",
-                        color = c.textSecondary, fontSize = 11.sp,
-                    )
-                }
-                turns.forEachIndexed { index, entry ->
-                    TurnGroup(
-                        turnLabel = "Turn " + (index + 1),
-                        steps = entry.value,
-                        running = running && index == turns.lastIndex,
-                        openKey = sectionKey + ":turn:" + entry.key,
-                        store = store,
-                    )
+                // Grouped by turn, because VS Code gives each turn its own section.
+                val turns = remember(tree) { tree.groupBy { it.turnId } }
+                for ((turnId, steps) in turns) {
+                    var turnOpen by remember(conversationKey, turnId) {
+                        mutableStateOf(store.isExpanded(conversationKey, turnId))
+                    }
+                    if (turns.size > 1) {
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                turnOpen = !turnOpen
+                                store.setExpanded(conversationKey, turnId, turnOpen)
+                            }.padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(if (turnOpen) "▾" else "▸", color = c.textSecondary, fontSize = 9.sp)
+                            Box(Modifier.width(5.dp))
+                            Text(
+                                "Turn " + (turns.keys.indexOf(turnId) + 1) + " · " +
+                                    steps.size + " step" + (if (steps.size == 1) "" else "s"),
+                                color = c.textSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                    if (turnOpen || turns.size == 1) {
+                        for (step in steps) StepRow(step, conversationKey, store, c)
+                    }
                 }
             }
         }
     }
 }
 
+/** One activity: a fixed icon gutter, then the label, then its own detail on demand. */
 @Composable
-private fun TurnGroup(
-    turnLabel: String,
-    steps: List<TreeStep>,
-    running: Boolean,
-    openKey: String,
+private fun StepRow(
+    step: TreeStep,
+    conversationKey: String,
     store: ThinkingSectionState,
+    c: ChatColors,
 ) {
-    val c = ChatTokens.LocalChatColors.current
-    var open by remember(openKey) { mutableStateOf(store.isOpen(openKey)) }
+    var open by remember(conversationKey, step.id) {
+        mutableStateOf(store.isExpanded(conversationKey, step.id))
+    }
+    val hasDetail = step.detail.isNotBlank()
     Column(Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().clickable { open = !open; store.setOpen(openKey, open) },
-            verticalAlignment = Alignment.CenterVertically,
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = hasDetail) {
+                    if (hasDetail) {
+                        open = !open
+                        store.setExpanded(conversationKey, step.id, open)
+                    }
+                }
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.Top,
         ) {
-            Text(if (open) "▾" else "▸", color = c.textSecondary, fontSize = 10.sp)
-            Text(
-                turnLabel + " · " + steps.size + (if (steps.size == 1) " step" else " steps"),
-                color = c.textSecondary,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(start = 6.dp),
-            )
-        }
-        if (open) {
-            steps.forEach { step ->
-                StepLine(step, store)
+            // The icon gutter. Their CSS pins the glyph to a compact codicon size at a fixed inset.
+            Box(Modifier.width(14.dp), contentAlignment = Alignment.TopStart) {
+                Text(
+                    text = if (step.ok) "✓" else "✕",
+                    color = if (step.ok) c.success else c.error,
+                    fontSize = 10.sp,
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun StepLine(step: TreeStep, store: ThinkingSectionState) {
-    val c = ChatTokens.LocalChatColors.current
-    val key = "step:" + step.id
-    var open by remember(key) { mutableStateOf(store.isOpen(key)) }
-    Column(Modifier.fillMaxWidth().padding(start = 10.dp)) {
-        Row(
-            Modifier.fillMaxWidth().clickable(enabled = step.detail.isNotBlank()) {
-                open = !open
-                store.setOpen(key, open)
-            },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                if (step.ok) "✓" else "✗",
-                color = if (step.ok) c.textSecondary else c.error,
-                fontSize = 11.sp,
-            )
-            Text(
-                step.label,
-                color = c.text,
-                fontSize = 11.sp,
-                modifier = Modifier.weight(1f).padding(start = 6.dp),
-            )
-            if (step.detail.isNotBlank()) {
-                Text(if (open) "▾" else "▸", color = c.textSecondary, fontSize = 10.sp)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = step.label,
+                    color = c.textSecondary,
+                    fontSize = 12.sp,
+                    maxLines = if (open) 6 else 2,
+                )
+                if (open) {
+                    Text(
+                        text = step.detail,
+                        color = c.textSecondary.copy(alpha = 0.75f),
+                        fontSize = 11.sp,
+                    )
+                }
             }
-        }
-        if (open && step.detail.isNotBlank()) {
-            Text(
-                step.detail,
-                color = c.textSecondary,
-                fontSize = 10.sp,
-                modifier = Modifier.fillMaxWidth().padding(start = 18.dp, top = 2.dp, bottom = 2.dp),
-            )
+            if (hasDetail) {
+                Text(
+                    text = if (open) "▾" else "▸",
+                    color = c.textSecondary.copy(alpha = 0.6f),
+                    fontSize = 9.sp,
+                )
+            }
         }
     }
 }
 
 /**
- * Open/closed state, remembered across restarts. VS Code keeps this in the model for the session;
- * a phone rebuilds the list often enough that a restart would otherwise forget it, and the owner
- * asked for the tree state to persist per session.
+ * `.chat-thinking-title-shimmer`: a highlight swept across the text itself. 400% background, 2s
+ * steps(60) infinite in CSS; Compose interpolates instead of stepping, which reads the same at this
+ * size. The resting colour is the description colour, so the label never shouts.
+ */
+@Composable
+private fun ShimmerLabel(text: String, base: Color, highlight: Color) {
+    val t = rememberInfiniteTransition(label = "thinking-shimmer")
+    val shift by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "shift",
+    )
+    // A 400%-wide gradient translated across the text, like their background-position sweep.
+    val brush = Brush.linearGradient(
+        colors = listOf(base, base, highlight, base, base),
+        start = Offset(x = -600f + shift * 1200f, y = 0f),
+        end = Offset(x = shift * 1200f, y = 0f),
+    )
+    Text(
+        text = text,
+        style = TextStyle(brush = brush, fontSize = 13.sp),
+        maxLines = 2,
+    )
+}
+
+/** Root key: the whole section for a conversation. */
+internal const val ROOT_TURN = "__all__"
+
+/**
+ * Where "is this open" lives. VS Code keeps `_isExpanded` on the part and the part is rebuilt per
+ * session; we keep the same intent across restarts by keying on conversation + turn + step.
  */
 internal class ThinkingSectionState(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences("thinking_sections", Context.MODE_PRIVATE)
 
-    fun isOpen(key: String): Boolean = prefs.getBoolean(key, false)
-    fun setOpen(key: String, open: Boolean) {
-        prefs.edit().putBoolean(key, open).apply()
+    private fun key(conversation: String, part: String): String =
+        (if (conversation.isBlank()) "_" else conversation) + "|" + part
+
+    fun isExpanded(conversation: String, part: String): Boolean =
+        prefs.getBoolean(key(conversation, part), false)
+
+    fun setExpanded(conversation: String, part: String, open: Boolean) {
+        prefs.edit().putBoolean(key(conversation, part), open).apply()
     }
 }
