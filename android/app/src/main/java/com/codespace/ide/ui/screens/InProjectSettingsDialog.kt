@@ -528,6 +528,16 @@ internal object SettingsUsageTracker {
 
     fun count(rowId: String): Int = cache[rowId] ?: 0
 
+    /**
+     * OWNER REPORT (2026-11-24): rows used to record themselves when they were COMPOSED, so the
+     * tab listed settings nobody had touched. The counts written that way are worthless, so they
+     * are wiped once on upgrade and rebuilt from real taps only.
+     */
+    fun reset() {
+        cache.clear()
+        prefs?.edit()?.clear()?.apply()
+    }
+
     /** Returns row IDs sorted by usage count descending (most-used first). */
     fun rankedIds(): List<String> =
         cache.entries.sortedByDescending { it.value }.map { it.key }
@@ -777,10 +787,10 @@ private fun SettingsRowRenderer(
     onOpenSkills: (() -> Unit)? = null,
     onOpenCatalogue: (() -> Unit)? = null,
 ) {
-    // P-SETTINGS-RESTRUCTURE (Item 1): record usage so "Commonly Used" ranking updates.
-    // We record on *composition* — the user had to at least see/change the setting for
-    // the row to appear. This is a reasonable proxy for "interacted with."
-    LaunchedEffect(row.id) { SettingsUsageTracker.record(row.id) }
+    // OWNER REPORT (2026-11-24): "the fixed row still shows up in commonly used even though I
+    // didn't use it". Recording on COMPOSITION meant every row that merely scrolled past counted
+    // as used, so the tab filled with settings nobody touched. Usage is now recorded only where a
+    // setting is actually opened or changed.
     when (row.type) {
         RowType.FLOW_MODE_DROPDOWN -> FlowModeRow(accent, textPri, textSec, divider)
         RowType.VERBOSE_TOOL_CHECKBOX -> VerboseToolOutputRow(textPri, textSec, divider)
@@ -789,7 +799,11 @@ private fun SettingsRowRenderer(
             val toggle = FeatureToggleStore.toggles[idx]
             val state = remember(toggle.key) { FeatureToggleStore.state(toggle.key) }
             ToggleRow(toggle.label, toggle.description, state.value,
-                { state.value = it; FeatureToggleStore.set(toggle.key, it) },
+                {
+                    state.value = it
+                    FeatureToggleStore.set(toggle.key, it)
+                    SettingsUsageTracker.record(row.id)
+                },
                 textPri, textSec, divider)
         }
         RowType.TASK_NOTIFY_THRESHOLD -> TaskNotifyThresholdRow(textPri, textSec, divider)
@@ -884,9 +898,24 @@ private fun SettingsRowRenderer(
             ProjectSettingsStore.taskNotifyWindowOnCompletion, { ProjectSettingsStore.setTaskNotifyWindowOnCompletion(it) },
             textPri, textSec, divider)
         // ── P54-CONNECTORS renderers ──
-        RowType.CONNECTORS_HUB -> ConnectorsHubRow(onOpenConnectors, accent, textPri, textSec)
-        RowType.SKILLS_MANAGER -> ConnectorsHubRow(onOpenSkills, accent, textPri, textSec)
-        RowType.MODEL_CATALOGUE -> ConnectorsHubRow(onOpenCatalogue, accent, textPri, textSec)
+        // OWNER REPORT (2026-11-24): "3 placeholders share one name (connectors hub) only one is
+        // the real one". The title and detail had defaults, so all three rows inherited the
+        // Connectors Hub wording. They are now required, so a fourth row cannot repeat the mistake.
+        RowType.CONNECTORS_HUB -> ConnectorsHubRow(
+            onOpenConnectors, accent, textPri, textSec, row.id,
+            "Connectors Hub",
+            "Manage GitHub, GitLab, Notion, Jira, Discord, Canva and other service connections",
+        )
+        RowType.SKILLS_MANAGER -> ConnectorsHubRow(
+            onOpenSkills, accent, textPri, textSec, row.id,
+            "Local Skills",
+            "Create, import, enable or delete a skill. Stored with the project.",
+        )
+        RowType.MODEL_CATALOGUE -> ConnectorsHubRow(
+            onOpenCatalogue, accent, textPri, textSec, row.id,
+            "Model Catalogue",
+            "Context window, images, pdf, tools and reasoning for each known model",
+        )
         RowType.MCP_TOOLS_SECTION -> McpToolsSectionRow()
         RowType.FACTS_MANAGER -> FactsManagerRow(accent, textPri, textSec, divider)
     }
@@ -899,17 +928,21 @@ private fun ConnectorsHubRow(
     accent: Color,
     textPri: Color,
     textSec: Color,
+    rowId: String,
     // OWNER REPORT (2026-11-23): "in ai agent flow row it shows a connectors hub tappable button and
     // when I tapped it it was the model catalog ... there are 2 connectors buttons, the other one is
     // the real road to the connectors panel". The label and detail were HARDCODED, so three different
     // rows (Connectors Hub, Local Skills, Model Catalogue) all introduced themselves as the Connectors
     // Hub while opening their own panel. One row is now told what it is.
-    title: String = "Connectors Hub",
-    detail: String = "Manage GitHub, GitLab, Notion, Jira, Discord, Canva and other service connections",
+    title: String,
+    detail: String,
 ) {
     Row(
         Modifier.fillMaxWidth()
-            .clickable { onOpenConnectors?.invoke() }
+            .clickable {
+                SettingsUsageTracker.record(rowId)
+                onOpenConnectors?.invoke()
+            }
             .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

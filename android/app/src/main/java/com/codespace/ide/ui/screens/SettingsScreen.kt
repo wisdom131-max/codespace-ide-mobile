@@ -496,7 +496,11 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── Container Backup ─────────────────────────────────────────────
-            SectionTitle("Ubuntu Container")
+            // OWNER REPORT (2026-11-24): "you only placed the recycle bin in the backup grouping
+            // instead of the backup related stuffs". Everything that backs up or restores lives
+            // under this one heading now: the container, its backups, the safety copies and the
+            // app settings backup. Clear Data stays separate because it destroys, not restores.
+            SectionTitle("Backup and restore")
 
             var showResetConfirm by remember { mutableStateOf(false) }
             var resetStatus by remember { mutableStateOf("") }
@@ -578,7 +582,7 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // ── Workspace Memory ─────────────────────────────────────────────
-            SectionTitle("Container Backup")
+            SubSectionTitle("Ubuntu container")
             var backupInfo by remember { mutableStateOf(BackupManager.backupInfo()) }
             var backupStatus by remember { mutableStateOf("") }
             // Advisor item 3 (2026-10-11): armed when createBackup reports
@@ -1294,7 +1298,7 @@ fun SettingsScreen(
 
             // ── P41-R: Formatter Selection ──────────────────────────────────
             // Feature Toggles moved to In-Project Settings (gear menu → In-Project Settings)
-            SectionTitle("Settings Backup")
+            SubSectionTitle("App settings backup")
             Text(
                 "Back up app settings (incl. keybindings) as JSON, or restore from a backup file.",
                 style = MaterialTheme.typography.bodySmall,
@@ -1783,6 +1787,18 @@ private fun PanelGlyphTile(
  * sections read as sections instead of a long scroll.
  */
 @Composable
+/** A heading INSIDE a section: smaller, quieter, no top divider. */
+@Composable
+private fun SubSectionTitle(text: String) {
+    Text(
+        text,
+        color = Color(0xFF9D9D9D),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 2.dp),
+    )
+}
+
 private fun SectionTitle(text: String) {
     androidx.compose.material3.HorizontalDivider()
     Text(

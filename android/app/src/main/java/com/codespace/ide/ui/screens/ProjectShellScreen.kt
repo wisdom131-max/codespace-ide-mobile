@@ -2527,16 +2527,21 @@ private fun PssOverlays(
                             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MenuText, fontFamily = FontFamily.Default),
                             modifier = Modifier
                                 .fillMaxWidth()
+                                // OWNER REQUEST (2026-11-24): the white highlight should be more
+                                // pronounced. The caret is now pure white and the field carries a
+                                // soft white wash, so the active line reads at a glance instead of
+                                // blending into the card.
+                                .background(Color.White.copy(alpha = 0.06f))
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                                 .focusRequester(cmdFocusRequester),
                             decorationBox = { inner ->
                                 Box {
-                                    if (commandQuery.isEmpty()) Text("> Type a command, @ for symbols, or search files…", fontSize = 13.sp, color = MenuText.copy(alpha = 0.4f))
+                                    if (commandQuery.isEmpty()) Text("> Type a command, @ for symbols, or search files…", fontSize = 13.sp, color = MenuText.copy(alpha = 0.55f))
                                     inner()
                                 }
                             },
                             singleLine = true,
-                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MenuText),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
                         )
                         HorizontalDivider(color = DividerColor)
                         // vscode.dev Test #18: @ prefix shows file-scoped symbol outline

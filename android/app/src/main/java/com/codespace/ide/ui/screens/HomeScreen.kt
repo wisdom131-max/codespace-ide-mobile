@@ -261,11 +261,21 @@ fun HomeScreen(
         },
         floatingActionButton = {
             Box {
-                ExtendedFloatingActionButton(
-                    onClick = { fabMenuExpanded = true },
-                    icon    = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text    = { Text("New project") },
-                )
+                // OWNER REQUEST (2026-11-24): the vision screenshot has one full-width action at the foot of
+                // the screen, not a floating pill in the corner. Same action, same handler.
+                Button(
+                    onClick  = onCreateProject,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .height(50.dp),
+                    shape  = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                    ),
+                ) {
+                    Text("Add New", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
                 DropdownMenu(
                     expanded         = fabMenuExpanded,
                     onDismissRequest = { fabMenuExpanded = false },

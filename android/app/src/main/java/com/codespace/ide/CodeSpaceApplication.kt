@@ -111,7 +111,14 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
                 AppOutputLog.log("[Notification] Restart action triggered (no LSP language in dedup key: $key)", "system")
             }
         }
-        SettingsUsageTracker.init(this) // P-SETTINGS-RESTRUCTURE: track setting usage for "Commonly Used" ranking
+        SettingsUsageTracker.init(this)
+        // OWNER REPORT (2026-11-24): counts recorded by scrolling were making "Commonly Used" list
+        // settings nobody touched. Wiped once; from here on only real taps count.
+        val usageReset = getSharedPreferences("settings_usage_reset", MODE_PRIVATE)
+        if (!usageReset.getBoolean("wiped_v2", false)) {
+            SettingsUsageTracker.reset()
+            usageReset.edit().putBoolean("wiped_v2", true).apply()
+        } // P-SETTINGS-RESTRUCTURE: track setting usage for "Commonly Used" ranking
         KeyBindingRegistry.init(this) // Load persisted keybinding overrides
         super.onCreate()
         // PROJECT NINE 10.27: fetch the trained embedding model in the background. Search works

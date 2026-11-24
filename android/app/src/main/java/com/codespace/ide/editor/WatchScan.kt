@@ -33,7 +33,25 @@ internal object WatchScan {
 
     fun isIgnored(dir: File): Boolean {
         val name = dir.name
-        return name.startsWith(".") || name in IGNORED_NAMES
+        if (name.startsWith(".") || name in IGNORED_NAMES) return true
+        return isInternal(dir.absolutePath)
+    }
+
+    /**
+     * OWNER REPORT (2026-11-24): the app's own private storage was showing up in file lists -
+     * shared_prefs XMLs, databases, caches - as if they were project files. They are the app's
+     * business, not the project's, so they are never listed, indexed or opened as source.
+     * Matched by DIRECTORY, never by extension: a project's own .xml layouts are still project
+     * files.
+     */
+    private val INTERNAL_DIRS = setOf(
+        "shared_prefs", "databases", "no_backup", "code_cache", "app_webview",
+        "app_textures", "app_flutter", "app_webview_shell",
+    )
+
+    fun isInternal(path: String): Boolean {
+        val p = path.replace('\\', '/')
+        return INTERNAL_DIRS.any { p.contains("/" + it + "/") || p.endsWith("/" + it) }
     }
 
     data class Result(

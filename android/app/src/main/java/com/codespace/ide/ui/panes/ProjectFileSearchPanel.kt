@@ -154,12 +154,19 @@ fun ProjectFileSearchPanel(
                 scanCapped = false
                 return@withContext emptyList()
             }
+            // OWNER REPORT (2026-11-24): shared_prefs XMLs were appearing in the file list. A root
+            // inside the app's own storage has nothing of the user's in it, so it lists nothing.
+            if (com.codespace.ide.editor.WatchScan.isInternal(root.absolutePath)) {
+                scanCapped = false
+                return@withContext emptyList()
+            }
             val scan = com.codespace.ide.editor.WatchScan.scan(
                 root = root,
                 maxFiles = FILE_SCAN_CAP,
                 budgetMs = FILE_SCAN_BUDGET_MS,
                 accept = { f ->
                     val rel = f.relativeTo(root).path
+                    if (com.codespace.ide.editor.WatchScan.isInternal(f.absolutePath)) return@scan false
                     val incOk = matchesGlob(includePattern, rel)
                     val excOk = excludePattern.isBlank() || !matchesGlob(excludePattern, rel)
                     incOk && excOk
