@@ -25,8 +25,21 @@ class Stage52RuntimeStreamTest {
             flow { chunks.forEach { emit(it) } }
     }
 
-    private fun cfg(provider: String, baseUrl: String, model: String) = EngineConfig(
+    /**
+     * OWNER DECISION (2026-11-24): a call the model invents when NO tools were offered cannot run, so
+     * the engine does not render it as executable text. These tests therefore have to say how many
+     * tools they offered: 1 when a call is meant to reach the reply, 0 when the point is that it must
+     * not. Before this the helper left it at the default 0, so the three call tests were asserting
+     * the opposite of the shipped rule.
+     */
+    private fun cfg(
+        provider: String,
+        baseUrl: String,
+        model: String,
+        toolsOffered: Int = 0,
+    ) = EngineConfig(
         modelId = model, providerId = provider, baseUrl = baseUrl, apiKey = "fake-key-for-tests-only",
+        toolsOffered = toolsOffered,
     )
 
     private suspend fun drive(
@@ -52,7 +65,7 @@ class Stage52RuntimeStreamTest {
                 """data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"read_file","args":{"path":"a.kt"}}}]}}]}""" + "\n\n",
                 """data: {"candidates":[{"finishReason":"STOP"}]}""" + "\n\n",
             ),
-            GeminiAdapter(), cfg("gemini", "https://generativelanguage.googleapis.com", "gemini-3.8-flash"),
+            GeminiAdapter(), cfg("gemini", "https://generativelanguage.googleapis.com", "gemini-3.8-flash", toolsOffered = 1),
         )
         assertTrue("visible text still streams", text.contains("checking"))
         val bodies = callBodies(text)
@@ -69,7 +82,7 @@ class Stage52RuntimeStreamTest {
                 """data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_9","name":"write_file","input":{}}}""" + "\n\n",
                 """data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"a"}}""" + "\n\n",
             ),
-            AnthropicAdapter(), cfg("anthropic", "https://api.anthropic.com", "claude-opus-5-5"),
+            AnthropicAdapter(), cfg("anthropic", "https://api.anthropic.com", "claude-opus-5-5", toolsOffered = 1),
         )
         assertTrue("a half-received call must not become executable text", callBodies(text).isEmpty())
         assertTrue("and the user is told it was dropped", text.isEmpty() || text.isNotBlank())
@@ -84,12 +97,29 @@ class Stage52RuntimeStreamTest {
                 """data: {"type":"content_block_stop","index":0}""" + "\n\n",
                 """data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}""" + "\n\n",
             ),
-            AnthropicAdapter(), cfg("anthropic", "https://api.anthropic.com", "claude-opus-5-5"),
+            AnthropicAdapter(), cfg("anthropic", "https://api.anthropic.com", "claude-opus-5-5", toolsOffered = 1),
         )
         val bodies = callBodies(text)
         assertEquals(1, bodies.size)
         assertEquals("read_file", JsonLite.str(bodies[0]["name"]))
         assertEquals("x.kt", JsonLite.str(JsonLite.obj(bodies[0]["arguments"])?.get("path")))
+    }
+
+    @Test
+    fun `a call is not rendered when no tools were offered`() = runTest {
+        // OWNER DECISION (2026-11-24): in Ask mode no tools are offered, so a functionCall the model
+        // invents cannot run. It is dropped instead of being written into the reply as executable
+        // text, which is what used to leave a call in the transcript that could never be answered.
+        val (text, events) = drive(
+            listOf(
+                """data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"read_file","args":{"path":"a.kt"}}}]}}]}""" + "\n\n",
+                """data: {"candidates":[{"finishReason":"STOP"}]}""" + "\n\n",
+            ),
+            GeminiAdapter(),
+            cfg("gemini", "https://generativelanguage.googleapis.com", "gemini-3.8-flash", toolsOffered = 0),
+        )
+        assertTrue("an unanswerable call never becomes executable text", callBodies(text).isEmpty())
+        assertTrue("and the stream still completes", events.any { it is EngineEvent.Completed })
     }
 
     @Test
@@ -109,7 +139,7 @@ class Stage52RuntimeStreamTest {
         val payload = """data: {"candidates":[{"content":{"parts":[{"functionCall":{"id":"fc1","name":"read_file","args":{"path":"a"}}}]}}]}""" + "\n\n"
         val (text, _) = drive(
             listOf(payload, payload, """data: {"candidates":[{"finishReason":"STOP"}]}""" + "\n\n"),
-            GeminiAdapter(), cfg("gemini", "https://generativelanguage.googleapis.com", "gemini-3.8-flash"),
+            GeminiAdapter(), cfg("gemini", "https://generativelanguage.googleapis.com", "gemini-3.8-flash", toolsOffered = 1),
         )
         assertEquals("one call, not two", 1, callBodies(text).size)
     }
