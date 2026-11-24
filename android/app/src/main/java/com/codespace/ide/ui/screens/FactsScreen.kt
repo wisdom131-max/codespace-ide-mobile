@@ -112,9 +112,10 @@ fun FactsScreen(
     }
     val mine = facts.count { it.scope == FactScope.PROJECT && it.projectId == projectId }
     val userCount = facts.count { it.scope == FactScope.USER }
+    val conflicts = facts.count { it.status == FactStatus.CONFLICT }
 
     Column(Modifier.fillMaxSize().background(bg)) {
-        // ── title bar ──
+        // ── title bar: fixed, so Close is always reachable ──
         Row(
             Modifier.fillMaxWidth().background(surface)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -123,8 +124,8 @@ fun FactsScreen(
             Column(Modifier.weight(1f)) {
                 Text("Facts", color = textPri, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 Text(
-                    userCount.toString() + " user, " + mine + " project, " +
-                        facts.count { it.status == FactStatus.CONFLICT } + " conflicted",
+                    userCount.toString() + " about you  \u00b7  " + mine.toString() +
+                        " about this project  \u00b7  " + conflicts.toString() + " to resolve",
                     color = textSec, fontSize = 11.sp,
                 )
             }
@@ -134,103 +135,102 @@ fun FactsScreen(
             TextButton(onClick = onDismiss) { Text("Close", color = textSec, fontSize = 13.sp) }
         }
 
-        // ── search ──
-        Box(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)
-                .clip(RoundedCornerShape(10.dp)).background(panel)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+        // OWNER REPORT (2026-11-24): "it's not scrollable so I can't access facts or memories".
+        // The screen stacked a search field, three filter rows, the review queue and the timeline
+        // ABOVE a list that asked for the height that was left - which was nothing, so everything
+        // past the fold was unreachable. There is now ONE scrolling column: the chrome scrolls
+        // away with the content and the facts are always reachable, which is the whole point.
+        LazyColumn(
+            Modifier.fillMaxWidth().weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 12.dp, end = 12.dp, top = 10.dp, bottom = 28.dp),
         ) {
-            BasicTextField(
-                value = query,
-                onValueChange = { query = it },
-                singleLine = true,
-                textStyle = TextStyle(color = textPri, fontSize = 13.sp),
-                cursorBrush = SolidColor(accent),
-                modifier = Modifier.fillMaxWidth(),
-                decorationBox = { inner ->
-                    if (query.isEmpty()) Text("Search facts...", color = textSec, fontSize = 13.sp)
-                    inner()
-                },
-            )
-        }
+            item(key = "search") {
+                Box(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp)).background(panel)
+                        .padding(horizontal = 12.dp, vertical = 11.dp),
+                ) {
+                    BasicTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        textStyle = TextStyle(color = textPri, fontSize = 13.sp),
+                        cursorBrush = SolidColor(accent),
+                        modifier = Modifier.fillMaxWidth(),
+                        decorationBox = { inner ->
+                            if (query.isEmpty()) Text("Search facts...", color = textSec, fontSize = 13.sp)
+                            inner()
+                        },
+                    )
+                }
+            }
 
-        // ── filters: scope, then category ──
-        // TOKEN-PANEL STYLE: the filters are a section like any other, so they sit in the same
-        // full-width panel as the rest instead of floating as bare rows at the top of the screen.
-        Column(
-            Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp)).background(panel)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-        Text(
-            "Filters",
-            color = textSec, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 2.dp),
-        )
-        FilterRow(
-            labels = listOf("All scopes", "User", "Project"),
-            selected = when (scopeFilter) {
-                null -> 0
-                FactScope.USER -> 1
-                FactScope.PROJECT -> 2
-            },
-            accent = accent, surface = panel, textPri = textPri, textSec = textSec,
-            onSelect = { idx ->
-                scopeFilter = when (idx) { 1 -> FactScope.USER; 2 -> FactScope.PROJECT; else -> null }
-            },
-        )
-        FilterRow(
-            labels = listOf("All categories") + FactCategory.entries.map { it.label },
-            selected = if (categoryFilter == null) 0 else categoryFilter!!.ordinal + 1,
-            accent = accent, surface = panel, textPri = textPri, textSec = textSec,
-            onSelect = { idx ->
-                categoryFilter = if (idx == 0) null else FactCategory.entries[idx - 1]
-            },
-        )
-        FilterRow(
-            labels = listOf("Current only", "With history"),
-            selected = if (showHistory) 1 else 0,
-            accent = accent, surface = panel, textPri = textPri, textSec = textSec,
-            onSelect = { idx -> showHistory = idx == 1 },
-        )
-        }
+            item(key = "filters") {
+                var open by remember { mutableStateOf(false) }
+                val summary = buildString {
+                    append(if (scopeFilter == null) "All scopes" else scopeFilter!!.label)
+                    append(" \u00b7 ")
+                    append(if (categoryFilter == null) "All categories" else categoryFilter!!.label)
+                    if (showHistory) append(" \u00b7 With history")
+                }
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(panel)
+                        .padding(vertical = 6.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { open = !open }
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Filters", color = textPri, fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        Text(if (open) "Hide" else summary, color = textSec, fontSize = 11.sp)
+                    }
+                    if (open) {
+                        FilterRow(
+                            labels = listOf("All scopes", "User", "Project"),
+                            selected = when (scopeFilter) {
+                                null -> 0
+                                FactScope.USER -> 1
+                                FactScope.PROJECT -> 2
+                            },
+                            accent = accent, surface = surface, textPri = textPri, textSec = textSec,
+                            onSelect = { idx ->
+                                scopeFilter = when (idx) {
+                                    1 -> FactScope.USER; 2 -> FactScope.PROJECT; else -> null
+                                }
+                            },
+                        )
+                        FilterRow(
+                            labels = listOf("All categories") + FactCategory.entries.map { it.label },
+                            selected = if (categoryFilter == null) 0 else categoryFilter!!.ordinal + 1,
+                            accent = accent, surface = surface, textPri = textPri, textSec = textSec,
+                            onSelect = { idx ->
+                                categoryFilter = if (idx == 0) null else FactCategory.entries[idx - 1]
+                            },
+                        )
+                        FilterRow(
+                            labels = listOf("Current only", "With history"),
+                            selected = if (showHistory) 1 else 0,
+                            accent = accent, surface = surface, textPri = textPri, textSec = textSec,
+                            onSelect = { idx -> showHistory = idx == 1 },
+                        )
+                    }
+                }
+            }
 
-        // STAGE 8: candidates waiting for a decision, above the saved facts so they cannot be
-        // mistaken for memories the app already trusts.
-        ReviewSection(
-            context = context,
-            revision = revision,
-            accent = accent, surface = panel, textPri = textPri, textSec = textSec,
-            danger = danger, warn = warn,
-        )
-    TimelineSection(context, revision, accent, textPri, textSec, panel)
-
-        if (message.isNotBlank()) {
-            Text(
-                message, color = warn, fontSize = 11.sp,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-        }
-
-        if (visible.isEmpty()) {
-            EmptyFacts(
-                hasAny = facts.isNotEmpty(),
-                hasProject = projectId != null,
-                textPri = textPri, textSec = textSec, accent = accent,
-                onAdd = { adding = true },
-            )
-        } else {
-            LazyColumn(
-                // OWNER REPORT (2026-11-23): the facts list would not scroll. fillMaxSize() inside
-                // a Column that already has the review and timeline sections above it asked for the
-                // WHOLE screen, so the list was laid out against a height it could not have and the
-                // content past the fold was unreachable. weight(1f) takes exactly the space that is
-                // left and scrolls inside it.
-                Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    start = 12.dp, end = 12.dp, top = 4.dp, bottom = 24.dp),
-            ) {
+            if (visible.isEmpty()) {
+                item(key = "empty") {
+                    EmptyFacts(
+                        hasAny = facts.isNotEmpty(),
+                        hasProject = projectId != null,
+                        textPri = textPri, textSec = textSec, accent = accent,
+                        onAdd = { adding = true },
+                    )
+                }
+            } else {
                 items(visible, key = { it.id }) { fact ->
                     FactCard(
                         fact = fact,
@@ -240,7 +240,6 @@ fun FactsScreen(
                         onEdit = { editing = fact },
                         onDelete = { confirmDelete = fact },
                         onResolve = {
-                            // Resolution is an EDIT, not a silent pick: the user decides the wording.
                             message = FactsStore.update(
                                 context, fact.id,
                                 content = fact.content,
@@ -251,6 +250,13 @@ fun FactsScreen(
                         },
                     )
                 }
+            }
+
+            item(key = "review") {
+                ReviewSection(context, revision, accent, panel, textPri, textSec, danger, warn)
+            }
+            item(key = "timeline") {
+                TimelineSection(context, revision, accent, textPri, textSec, panel)
             }
         }
     }

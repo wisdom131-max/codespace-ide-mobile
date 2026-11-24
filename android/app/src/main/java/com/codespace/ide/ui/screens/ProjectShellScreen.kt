@@ -2527,21 +2527,26 @@ private fun PssOverlays(
                             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MenuText, fontFamily = FontFamily.Default),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                // OWNER REQUEST (2026-11-24): the white highlight should be more
-                                // pronounced. The caret is now pure white and the field carries a
-                                // soft white wash, so the active line reads at a glance instead of
-                                // blending into the card.
-                                .background(Color.White.copy(alpha = 0.06f))
+                                // OWNER CLARIFICATION (2026-11-24): "I didn't want the colour
+                                // changed... I just wanted highlighted edges". The white wash is
+                                // gone and the caret is back to the card's own text colour; what
+                                // marks the field is a 1dp outline on its edge, which is the
+                                // highlight that was actually asked for.
+                                .border(
+                                    1.dp,
+                                    MenuText.copy(alpha = 0.22f),
+                                    androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                )
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                                 .focusRequester(cmdFocusRequester),
                             decorationBox = { inner ->
                                 Box {
-                                    if (commandQuery.isEmpty()) Text("> Type a command, @ for symbols, or search files…", fontSize = 13.sp, color = MenuText.copy(alpha = 0.55f))
+                                    if (commandQuery.isEmpty()) Text("> Type a command, @ for symbols, or search files…", fontSize = 13.sp, color = MenuText.copy(alpha = 0.4f))
                                     inner()
                                 }
                             },
                             singleLine = true,
-                            cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MenuText),
                         )
                         HorizontalDivider(color = DividerColor)
                         // vscode.dev Test #18: @ prefix shows file-scoped symbol outline
