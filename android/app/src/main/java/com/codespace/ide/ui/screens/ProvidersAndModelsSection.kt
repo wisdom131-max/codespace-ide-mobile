@@ -79,7 +79,9 @@ fun ProvidersAndModelsSection(tokenStore: SecureTokenStore) {
             )
         }
         ImageGenerationSection()
-        OnDeviceSpeechSection()
+        // OWNER REQUEST (2026-11-24): the on-device speech row is gone. The downloaded model is
+        // deleted for good and Google's own recogniser is what runs, so the row had nothing left to
+        // report and only existed as a way to pull 45MB down again without meaning to.
         LocalModelsSection()
         // Slot NAMES only, never values: this is the readout the device sheet asks for.
         for (slot in snapshot.keySlots.filter { it.hasKey }.sortedBy { it.slotName }) {
@@ -179,7 +181,8 @@ private fun ImageGenerationSection() {
  * pinned checksum, and stored beside the embedding model so it survives an uninstall.
  */
 @Composable
-private fun OnDeviceSpeechSection() {
+@Suppress("unused")
+private fun OnDeviceSpeechSectionLegacy() {
     val context = LocalContext.current
     var status by remember { mutableStateOf(ModelDownloads.statusLine(context)) }
     var busy by remember { mutableStateOf(false) }
