@@ -75,16 +75,11 @@ object StuckDetector {
         if (errors.size >= ERROR_LIMIT && same == ERROR_LIMIT) {
             errors.clear()
             return "STOP - " + tool + " has now failed " + ERROR_LIMIT +
-                " times with the same error. The wording changed; the cause did not.
-" +
-                "Do not retry it. Read the error text above and change the CAUSE:
-" +
-                "- a missing path or file: find where it actually lives, then act on that;
-" +
-                "- a permission or approval refusal: tell the owner what is needed and stop;
-" +
-                "- bad arguments: fix the argument, not the call;
-" +
+                " times with the same error. The wording changed; the cause did not. " +
+                "Do not retry it. Read the error text above and change the CAUSE: " +
+                "- a missing path or file: find where it actually lives, then act on that; " +
+                "- a permission or approval refusal: tell the owner what is needed and stop; " +
+                "- bad arguments: fix the argument, not the call; " +
                 "- if it cannot be done, say what blocked it in one line and stop.\n"
         }
         return null
