@@ -1610,6 +1610,7 @@ class ChatSession internal constructor(
         // OWNER REPORT (2026-11-24): pin the owner's current message so a detour cannot become
         // the next step. Idempotent: the same ask does not reset the action list.
         com.codespace.ide.agent.RequestAnchor.anchor(request)
+        com.codespace.ide.agent.StuckDetector.reset()
         val composed = ChatInstructions.build(
             mode, sendTools, offered, wsBlock,
             if (mcpHint.isBlank()) mcpDocs else mcpDocs + "\n\n" + mcpHint,

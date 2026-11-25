@@ -543,6 +543,9 @@ You can use multiple tools in sequence. When done, give a final summary.
         // OWNER REPORT (2026-11-24): keep a short list of what this turn has done, so the model
         // knows what is next instead of re-deriving it from a long transcript.
         RequestAnchor.note(name, args)
+        // OWNER REQUEST (2026-11-25): the repeated action detector. Third identical call in a
+        // row is refused with advice instead of being run again.
+        StuckDetector.check(name, RequestAnchor.target(args))?.let { return it }
         // PHASE 5b: one containment gate for every file write, before the dispatch below can
         // reach a tool that would honour an outside path. No project open means there is no
         // boundary to enforce, and the trust gate already governs the run.

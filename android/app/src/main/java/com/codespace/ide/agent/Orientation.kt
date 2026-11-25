@@ -37,6 +37,13 @@ object RequestAnchor {
 
     fun current(): String = ask
 
+    /** The thing a call acts on, so two calls can be compared without comparing whole argument blobs. */
+    fun target(args: JSONObject?): String =
+        listOf("service", "query", "path", "name", "command", "url", "pattern")
+            .mapNotNull { k -> args?.optString(k)?.takeIf { it.isNotBlank() } }
+            .firstOrNull() ?: ""
+
+
     /** What this turn has actually done, so the model does not repeat or lose its place. */
     @Synchronized
     fun note(tool: String, args: JSONObject?) {
