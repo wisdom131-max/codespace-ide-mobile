@@ -162,6 +162,20 @@ class ChatSession internal constructor(
      */
     private var retryPrefixText = ""
     private var sendJob: Job? = null
+    /**
+     * STAGE 4 (Checkpoint 0.5): when the growing answer was last painted, and how long it was.
+     *
+     * Every delta used to rebuild the whole answer string and repaint the whole row list, so the
+     * work grew with the length of the reply on every token. Painting is now due only every
+     * publishIntervalMs or publishChars new characters, whichever comes first. Nothing is
+     * dropped: the buffer keeps every character, and the final row is built from the buffer, so a
+     * throttled frame only means the screen catches up slightly later.
+     */
+    private var lastPublishMs = 0L
+    private var lastPublishLen = 0
+    /** Provisional, as agreed: evaluate on device before treating either number as settled. */
+    private val publishIntervalMs = 50L
+    private val publishChars = 512
     private var failoverAttempts = 0
     /** Completed tool exchanges in THIS request; capped by AgentToolWire.MAX_ROUNDS. */
     private var toolRound = 0
@@ -974,6 +988,10 @@ class ChatSession internal constructor(
         // could swallow the first words of this one.
         streamFilter = com.codespace.ide.agent.ProtocolStreamFilter()
         streamBufVisible = ""
+        // STAGE 4: a new attempt starts with a clean publication clock, or its first frame could be
+        // suppressed by the previous attempt's timing.
+        lastPublishMs = 0L
+        lastPublishLen = 0
         if (continuationPrefix != null) {
             // STAGE 0 (Checkpoint 0.5): the prefix is SHOWN as well as buffered. Keeping only the
             // buffer left the reader looking at a retry that had lost its opening, and made the
@@ -1740,13 +1758,21 @@ class ChatSession internal constructor(
                     if (fresh.isEmpty()) streamBufVisible else RetryPrefix.merge(streamBufVisible, fresh)
                 }
                 streamBufVisible = text
-                val st = ui.value
-                val rowsNow = st.rows
-                val rows = if (rowsNow.lastOrNull() is ChatRowModel.AssistantStream)
-                    rowsNow.dropLast(1) + listOf(ChatRowModel.AssistantStream(text, true, replyId = replyId))
-                else rowsNow + listOf(ChatRowModel.AssistantStream(text, true, replyId = replyId))
-                ui.value = st.copy(rows = rows,
-                    firstDeltaMs = if (st.firstDeltaMs == 0L) System.currentTimeMillis() else st.firstDeltaMs)
+                // STAGE 4: paint only when it is worth painting. See the field comment above.
+                val nowMs = System.currentTimeMillis()
+                val due = nowMs - lastPublishMs >= publishIntervalMs ||
+                    text.length - lastPublishLen >= publishChars
+                if (due) {
+                    lastPublishMs = nowMs
+                    lastPublishLen = text.length
+                    val st = ui.value
+                    val rowsNow = st.rows
+                    val rows = if (rowsNow.lastOrNull() is ChatRowModel.AssistantStream)
+                        rowsNow.dropLast(1) + listOf(ChatRowModel.AssistantStream(text, true, replyId = replyId))
+                    else rowsNow + listOf(ChatRowModel.AssistantStream(text, true, replyId = replyId))
+                    ui.value = st.copy(rows = rows,
+                        firstDeltaMs = if (st.firstDeltaMs == 0L) nowMs else st.firstDeltaMs)
+                }
             }
             is EngineEvent.Truncated -> {
                 tokens.endTurn()
@@ -2101,12 +2127,17 @@ class ChatSession internal constructor(
                     com.codespace.ide.agent.AgentTools.toolNames(),
                     claimedCalls,
                 ) { name, argsJson, _ ->
-                    com.codespace.ide.agent.AgentTools.executeTool(
-                        name, org.json.JSONObject(argsJson), ctx,
-                        // GATE 2: a write carries an id derived from what it asks for, so the
-                        // persisted ledger can answer a repeat instead of applying it twice.
-                        callId = com.codespace.ide.chat.panel.WriteCallIdentity.idFor(
-                            name, argsJson))
+                    // GATE 2: a write carries an id derived from what it asks for, so the
+                    // persisted ledger can answer a repeat instead of applying it twice.
+                    val callId = com.codespace.ide.chat.panel.WriteCallIdentity.idFor(name, argsJson)
+                    // STAGE 6 (Checkpoint 0.5): claim the call BEFORE it runs. Refusing a duplicate
+                    // result is too late - by then the tool has already acted.
+                    if (!DispatchReservations.reserve(activeExecId, callId)) {
+                        "Skipped: this exact call already ran in this turn, so it was not run again."
+                    } else {
+                        com.codespace.ide.agent.AgentTools.executeTool(
+                            name, org.json.JSONObject(argsJson), ctx, callId = callId)
+                    }
                 }
                 // P2: an oversized result is offloaded before it can reach the next request.
                 // Small results pass through untouched.
