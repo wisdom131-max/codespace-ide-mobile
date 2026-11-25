@@ -159,7 +159,7 @@ class ChatSession internal constructor(
      * shows the partial answer followed by a second copy of it, which is what "the response
      * gets cut off" looks like from the outside.
      */
-    private var retryKeepLen = 0
+    private var retryPrefixText = ""
     private var sendJob: Job? = null
     private var failoverAttempts = 0
     /** Completed tool exchanges in THIS request; capped by AgentToolWire.MAX_ROUNDS. */
@@ -973,7 +973,16 @@ class ChatSession internal constructor(
         // could swallow the first words of this one.
         streamFilter = com.codespace.ide.agent.ProtocolStreamFilter()
         streamBufVisible = ""
-        if (continuationPrefix != null) streamBuf.append(continuationPrefix)
+        if (continuationPrefix != null) {
+            // STAGE 0 (Checkpoint 0.5): the prefix is SHOWN as well as buffered. Keeping only the
+            // buffer left the reader looking at a retry that had lost its opening, and made the
+            // duplicate-row check below unable to recognise the row it should replace.
+            streamBuf.append(continuationPrefix)
+            streamBufVisible = continuationPrefix
+        } else {
+            // A fresh question must never inherit a prefix captured for an earlier failure.
+            retryPrefixText = ""
+        }
         turnContext.clear()
         wsBlock.takeIf { it.isNotBlank() }?.let { turnContext.add(it) }
         failoverAttempts = 0
@@ -1333,7 +1342,14 @@ class ChatSession internal constructor(
                 com.codespace.ide.agent.CopilotDiag.Kind.RETRY_STARTED,
                 selection.value.providerId, true, "user retry",
             )
-            sendCore(t, confirmOverBudget = false, reuseStaged = true, replaceTurn = true)
+            // STAGE 0: a retry continues from the text the reader already has, so the captured
+            // prefix is handed over as the turn's prefix and consumed exactly once.
+            val prefix = retryPrefixText
+            retryPrefixText = ""
+            sendCore(
+                t, confirmOverBudget = false, reuseStaged = true, replaceTurn = true,
+                continuationPrefix = prefix.takeIf { it.isNotBlank() },
+            )
         }
     }
 
@@ -1691,15 +1707,11 @@ class ChatSession internal constructor(
                 tokens.onUsage(ev.inputTokens, ev.outputTokens)
             }
             is EngineEvent.Delta -> {
-                if (retryKeepLen > 0) {
-                    streamBuf.setLength(retryKeepLen)
-                    retryKeepLen = 0
-                }
                 streamBuf.append(ev.text)
                 // STAGE 2: the row shows only what the filter has released, so a protocol
                 // fragment that is still arriving can never be painted as assistant prose.
                 val text = streamFilter.accept(ev.text).let { fresh ->
-                    if (fresh.isEmpty()) streamBufVisible else streamBufVisible + fresh
+                    if (fresh.isEmpty()) streamBufVisible else RetryPrefix.merge(streamBufVisible, fresh)
                 }
                 streamBufVisible = text
                 val st = ui.value
@@ -1862,7 +1874,7 @@ class ChatSession internal constructor(
                 // button and resends only when that button is pressed
                 // (chatErrorConfirmationPart.ts:79). The wait is whatever the provider said.
                 // The already-streamed prefix is kept, so a pressed Retry continues from it.
-                retryKeepLen = streamBuf.length
+                retryPrefixText = streamBufVisible
                 // Item 36: the retry verdict is folded INTO the failure card rather than appended
                 // as a second row - one error, one card, and the card stays the last row so the
                 // failure is still visibly the last thing that happened.
