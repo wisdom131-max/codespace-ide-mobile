@@ -101,6 +101,16 @@ object NativeChatListRenderer : ChatListRenderer {
             is ChatRowModel.AssistantStream -> {
                 Column {
                     MarkdownView(row.text, row.cursorOn, state.onInsertCode)
+                    // STAGE 8 (Checkpoint 0.5): a reply that did not end on its own terms says so
+                    // under its own text. It is part of the reply, never a separate notice, so it
+                    // cannot reach the Thinking Tree or be read as tool work.
+                    if (row.interrupted) {
+                        androidx.compose.material3.Text(
+                            text = "This reply was cut off.",
+                            color = ChatColors.textSecondary,
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     // Only once the reply has settled: a glyph under a growing message would
                     // move on every chunk and copy a half-finished answer.
                     if (!row.cursorOn) CopyIconRow(row.text)

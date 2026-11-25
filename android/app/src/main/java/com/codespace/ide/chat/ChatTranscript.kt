@@ -32,6 +32,27 @@ import com.codespace.ide.chat.ui.ChatRowModel
  * One persisted message. PUBLIC because the public [com.codespace.ide.chat.TranscriptSink]
  * contract passes lists of it; the mapping and the store stay internal.
  */
+/** STAGE 8 (Checkpoint 0.5): the four reply states a record may carry. */
+internal const val STATE_STREAMING = "STREAMING"
+internal const val STATE_DONE = "DONE"
+internal const val STATE_INTERRUPTED = "INTERRUPTED"
+internal const val STATE_FAILED = "FAILED"
+
+/**
+ * STAGE 8: what a stored reply really was.
+ *
+ * [state] outranks [complete], because "finished" and "ended well" are different questions. Every
+ * disagreement resolves to the SAFER answer: a reply is never upgraded to complete on the strength
+ * of a flag that a crash, a cancellation or a cut-off could also have written.
+ */
+internal fun restoredState(state: String, complete: Boolean): String = when (state) {
+    STATE_DONE -> if (complete) STATE_DONE else STATE_INTERRUPTED
+    STATE_FAILED, STATE_INTERRUPTED, STATE_STREAMING -> state
+    "" -> if (complete) STATE_DONE else STATE_INTERRUPTED
+    // A value this build does not know: treat as interrupted, never as success.
+    else -> STATE_INTERRUPTED
+}
+
 data class StoredMessage(
     /** "user" | "assistant" | "note". Unknown roles are skipped on read, never crashed on. */
     val role: String,
@@ -48,6 +69,18 @@ data class StoredMessage(
      * that has not been saved); the store mints one on the first write.
      */
     val id: String = "",
+    /**
+     * STAGE 8 (Checkpoint 0.5): how this reply ended, as its own column.
+     *
+     * One of DONE, INTERRUPTED, FAILED, STREAMING, or empty on a record written before the column
+     * existed. It outranks [complete], because a flag that only says "finished" cannot tell a
+     * finished answer from one that was cut off, cancelled or failed.
+     */
+    val state: String = "",
+    /** STAGE 8: which logical reply this message belongs to. Empty on older records. */
+    val replyId: String = "",
+    /** STAGE 8: which user ask this message answers. Empty on older records, never invented. */
+    val turnId: String = "",
     /**
      * STAGE 3: when persistence FIRST observed this message - an app event, not an edit time.
      * It is never later than the true send time and is never rewritten by a later save.
@@ -154,7 +187,15 @@ internal object ChatTranscript {
         for (row in rows) {
             when (row) {
                 is ChatRowModel.User -> mapped.add(StoredMessage("user", row.text, true, nowMs))
-                is ChatRowModel.AssistantStream -> mapped.add(StoredMessage("assistant", row.text, true, nowMs))
+                is ChatRowModel.AssistantStream -> mapped.add(
+                    StoredMessage(
+                        role = "assistant", text = row.text, complete = true, atMs = nowMs,
+                        replyId = row.replyId,
+                        // STAGE 8: the row knows only that it is streaming. A finished row's
+                        // verdict is filled in below from the turn's authoritative finish reason.
+                        state = if (row.cursorOn) STATE_STREAMING else STATE_DONE,
+                    )
+                )
                 is ChatRowModel.InfoNote -> mapped.add(StoredMessage("note", row.text, true, nowMs))
                 // Sources are rebuilt from the answer's own "Sources:" block on restore; writing
                 // them as messages as well would show every source twice after a reopen.
@@ -174,6 +215,14 @@ internal object ChatTranscript {
             var row = mapped[lastAssistant]
             if (lastFinish != null) row = row.copy(finish = lastFinish)
             if (streaming) row = row.copy(complete = false)
+            // STAGE 8: state, complete and finish are derived HERE, in one place, so a saved line
+            // can never claim DONE and unfinished at the same time.
+            row = when {
+                !row.complete -> row.copy(state = STATE_STREAMING)
+                lastFinish == null -> row.copy(state = STATE_DONE)
+                lastFinish.complete -> row.copy(state = STATE_DONE)
+                else -> row.copy(state = STATE_INTERRUPTED, complete = false)
+            }
             mapped[lastAssistant] = row
         }
         return cap(mapped)
@@ -203,7 +252,16 @@ internal object ChatTranscript {
                     if (m.text.isNotBlank()) {
                         // cursorOn=false: nothing is streaming on a restored row, and a
                         // blinking cursor on old text would be a lie.
-                        rows.add(ChatRowModel.AssistantStream(m.text, cursorOn = false))
+                        // STAGE 8: the row keeps its identity, so a restored continuation still
+                        // extends the same answer instead of appending a second one.
+                        rows.add(
+                            ChatRowModel.AssistantStream(
+                                m.text, cursorOn = false, replyId = m.replyId,
+                                // STAGE 8: the stored verdict decides, not the fact that text
+                                // exists. A reply saved mid-stream comes back marked as cut off.
+                                interrupted = restoredState(m.state, m.complete) != STATE_DONE,
+                            )
+                        )
                         // Sources survive a reopen by being read back out of the answer text, so a
                         // conversation written before this row existed restores them too.
                         val src = com.codespace.ide.agent.research.ResearchSources.parse(m.text)
@@ -251,7 +309,12 @@ internal object ChatTranscript {
                 .append(m.sentAtMs).append('\t')
                 .append(m.atMs).append('\t')
                 .append(m.finish ?: "-").append('\t')
-                .append(escape(m.text)).append('\n')
+                .append(escape(m.text)).append('\t')
+                // STAGE 8: trailing columns. A reader that predates them stops at the text, which
+                // is why they are appended and not inserted: no version bump, no migration.
+                .append(m.state.ifBlank { "-" }).append('\t')
+                .append(escape(m.replyId)).append('\t')
+                .append(escape(m.turnId)).append('\n')
         }
         for (st in steps) {
             sb.append("s\t")
@@ -318,6 +381,10 @@ internal object ChatTranscript {
                             id = id,
                             sentAtMs = fields[4].toLongOrNull() ?: 0L,
                             finish = fields[6].takeIf { it != "-" },
+                            // STAGE 8: absent on older records; the reader never guesses.
+                            state = if (fields.size >= 11) fields[8].takeIf { it != "-" } ?: "" else "",
+                            replyId = if (fields.size >= 11) unescape(fields[9]) else "",
+                            turnId = if (fields.size >= 11) unescape(fields[10]) else "",
                             // The prefix IS the flag: a legacy id is recognisable from the id
                             // itself, so a round trip through disk cannot launder it into a
                             // transcript-verified identity.

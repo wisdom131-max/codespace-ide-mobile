@@ -29,6 +29,14 @@ sealed interface ChatRowModel {
          * same answer being extended, a different id means a different answer.
          */
         val replyId: String = "",
+        /**
+         * STAGE 8 (Checkpoint 0.5): this reply did not end on its own terms.
+         *
+         * Set on a restored reply whose stored state says it was cut off, cancelled, failed or
+         * still streaming when the app closed. The text is kept and the reader is told, instead of
+         * a half answer being shown as if it had finished.
+         */
+        val interrupted: Boolean = false,
     ) : ChatRowModel
     /**
      * OWNER REPORT (2026-11-23): the thinking tree's body was ALWAYS empty. The row was built with
