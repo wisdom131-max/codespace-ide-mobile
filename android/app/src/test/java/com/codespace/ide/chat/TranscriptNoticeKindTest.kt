@@ -14,7 +14,7 @@ import org.junit.Test
 class TranscriptNoticeKindTest {
 
     private fun roundTrip(messages: List<StoredMessage>) =
-        ChatTranscript.messagesToRows(ChatTranscript.decode(ChatTranscript.encode(messages)))
+        ChatTranscript.messagesToRows(ChatTranscript.decode(ChatTranscript.encode(messages)).messages)
 
     @Test
     fun `every category survives a save and reload`() {
@@ -56,7 +56,7 @@ class TranscriptNoticeKindTest {
     @Test
     fun `a v3 line written before categories existed still reads`() {
         val elevenColumns = "m\tid1\tnote\t1\t0\t0\t-\told note\t-\t\t"
-        val rows = ChatTranscript.messagesToRows(ChatTranscript.decode("v3\n" + elevenColumns))
+        val rows = ChatTranscript.messagesToRows(ChatTranscript.decode("v3\n" + elevenColumns).messages)
         assertEquals(ChatRowModel.NoticeKind.APP_NOTICE, rows.filterIsInstance<ChatRowModel.InfoNote>().single().kind)
     }
 }
