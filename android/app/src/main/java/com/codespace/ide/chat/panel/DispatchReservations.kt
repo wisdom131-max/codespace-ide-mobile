@@ -30,8 +30,9 @@ internal object DispatchReservations {
      * Claims the pair. True means this caller owns the dispatch and must run it; false means the
      * pair is already claimed (or has already run) and must not run again.
      */
-    fun reserve(execId: String, callId: String): Boolean = synchronized(lock) {
-        if (execId.isBlank() || callId.isBlank()) return true // nothing to identify: do not block
+    fun reserve(execId: String?, callId: String?): Boolean = synchronized(lock) {
+        // Nothing to identify: do not block. idFor returns null when a call has no identity.
+        if (execId.isNullOrBlank() || callId.isNullOrBlank()) return true
         val k = key(execId, callId)
         if (!claimed.add(k)) return false
         while (claimed.size > MAX) {
@@ -42,10 +43,13 @@ internal object DispatchReservations {
     }
 
     /** Releases a claim whose dispatch never happened, so an honest retry is not refused for ever. */
-    fun release(execId: String, callId: String) {
+    fun release(execId: String?, callId: String?) {
+        if (execId.isNullOrBlank() || callId.isNullOrBlank()) return
         synchronized(lock) { claimed.remove(key(execId, callId)) }
     }
 
-    fun isClaimed(execId: String, callId: String): Boolean =
-        synchronized(lock) { key(execId, callId) in claimed }
+    fun isClaimed(execId: String?, callId: String?): Boolean {
+        if (execId.isNullOrBlank() || callId.isNullOrBlank()) return false
+        return synchronized(lock) { key(execId, callId) in claimed }
+    }
 }

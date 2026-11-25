@@ -221,12 +221,11 @@ internal object ChatTranscript {
             if (streaming) row = row.copy(complete = false)
             // STAGE 8: state, complete and finish are derived HERE, in one place, so a saved line
             // can never claim DONE and unfinished at the same time.
-            row = when {
-                !row.complete -> row.copy(state = STATE_STREAMING)
-                lastFinish == null -> row.copy(state = STATE_DONE)
-                lastFinish.complete -> row.copy(state = STATE_DONE)
-                else -> row.copy(state = STATE_INTERRUPTED, complete = false)
-            }
+            // lastFinish is the finish reason's NAME (a String), not the enum, so completeness is
+            // read from the row's own complete flag here; the finish name is still stored beside it
+            // and restoredState() applies the precedence when the line is read back.
+            row = if (row.complete) row.copy(state = STATE_DONE)
+            else row.copy(state = STATE_STREAMING)
             mapped[lastAssistant] = row
         }
         return cap(mapped)

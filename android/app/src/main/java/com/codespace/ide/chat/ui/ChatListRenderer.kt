@@ -107,7 +107,7 @@ object NativeChatListRenderer : ChatListRenderer {
                     if (row.interrupted) {
                         androidx.compose.material3.Text(
                             text = "This reply was cut off.",
-                            color = ChatColors.textSecondary,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                         )
                     }
