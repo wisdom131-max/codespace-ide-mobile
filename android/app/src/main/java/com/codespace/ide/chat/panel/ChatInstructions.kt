@@ -71,9 +71,9 @@ internal object ChatInstructions {
         val total = ToolRegistry.exposedNames(mode).size
         val base = ChatModePrompts.instruction(mode) +
             // OWNER REPORT (2026-11-24): where everything is, so orientation costs no search.
-            com.codespace.ide.agent.Orientation.block() +
+            (if (mode == ChatMode.ASK) "" else com.codespace.ide.agent.Orientation.block()) +
             // ...and what is actually being asked, pinned last in the block below.
-            com.codespace.ide.agent.RequestAnchor.block() +
+            (if (mode == ChatMode.ASK) "" else com.codespace.ide.agent.RequestAnchor.block()) +
             // catalog 13: the completion signal is only meaningful when tools are on, because it is
             // a tool call. In Ask mode there is nothing to finish.
             (if (!sendTools) "" else

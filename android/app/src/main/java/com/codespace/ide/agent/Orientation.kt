@@ -85,20 +85,14 @@ object RequestAnchor {
             "Stop and serve the ask. If you meant something else, say so in one line and do the ask."
 
     /** The pinned block. Empty when there is no ask, so the instruction is unchanged before a turn. */
-    fun block(): String {
-        if (ask.isBlank()) return ""
-        val sb = StringBuilder()
-        sb.append("\n\nCURRENT ASK (the owner's latest message, verbatim):\n\"")
-        sb.append(ask).append("\"\n")
-        sb.append("This is the only thing being asked right now. A name that appeared earlier in the\n")
-        sb.append("transcript is NOT the ask - do not carry it forward. If your next step does not serve\n")
-        sb.append("this line, stop and re-read it.\n")
-        val done = doneSoFar()
-        if (done.isNotEmpty()) sb.append("Already done this turn: ").append(done.joinToString(", ")).append('\n')
-        sb.append("When the ask is satisfied, say what you did in one line. If it cannot be done, say\n")
-        sb.append("what blocked it and what you need - never answer a different question.\n")
-        return sb.toString()
-    }
+    fun block(): String = "\n\nWHERE THINGS ARE (read this, do not search to find out): " +
+        "project root is the open workspace (app/ and engine/ are its modules); " +
+        "read_file/write_file/search_files/grep_search see project files only; " +
+        "connectors (Gmail, Drive, Slack, Notion, GitHub, databases) are SERVICES - " +
+        "request_connector shows the card and list_connectors lists them, no filesystem " +
+        "search will find one; tool_search loads by EXACT name; the app own settings " +
+        "are screens, not project files.\n"
+
 }
 
 /**
