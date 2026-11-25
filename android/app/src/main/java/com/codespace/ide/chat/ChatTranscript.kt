@@ -86,6 +86,12 @@ data class StoredMessage(
     /** STAGE 8: which user ask this message answers. Empty on older records, never invented. */
     val turnId: String = "",
     /**
+     * STAGE 9: which kind of notice this was, by name, so a reopened conversation keeps its
+     * categories. Empty on older records, which read back as APP_NOTICE - the same meaning
+     * those records had when they were written.
+     */
+    val noteKind: String = "",
+    /**
      * STAGE 3: when persistence FIRST observed this message - an app event, not an edit time.
      * It is never later than the true send time and is never rewritten by a later save.
      * 0 means unknown (a legacy line): callers must say "not recorded" rather than guess.
@@ -200,7 +206,9 @@ internal object ChatTranscript {
                         state = if (row.cursorOn) STATE_STREAMING else STATE_DONE,
                     )
                 )
-                is ChatRowModel.InfoNote -> mapped.add(StoredMessage("note", row.text, true, nowMs))
+                is ChatRowModel.InfoNote -> mapped.add(
+                    StoredMessage("note", row.text, true, nowMs, noteKind = row.kind.name),
+                )
                 // Sources are rebuilt from the answer's own "Sources:" block on restore; writing
                 // them as messages as well would show every source twice after a reopen.
                 is ChatRowModel.Sources -> Unit
@@ -271,7 +279,13 @@ internal object ChatTranscript {
                         if (src.isNotEmpty()) rows.add(ChatRowModel.Sources(src))
                     }
                 }
-                "note" -> if (m.text.isNotBlank()) rows.add(ChatRowModel.InfoNote(m.text))
+                "note" -> if (m.text.isNotBlank()) {
+                    // STAGE 9: an unknown or absent category is an APP_NOTICE, never a work
+                    // step, so a legacy line cannot smuggle anything into the tree.
+                    val kind = ChatRowModel.NoticeKind.entries.firstOrNull { it.name == m.noteKind }
+                        ?: ChatRowModel.NoticeKind.APP_NOTICE
+                    rows.add(ChatRowModel.InfoNote(m.text, kind))
+                }
                 // Unknown role (a newer build wrote it): skip, do not lose the rest.
                 else -> Unit
             }
@@ -317,7 +331,10 @@ internal object ChatTranscript {
                 // is why they are appended and not inserted: no version bump, no migration.
                 .append(m.state.ifBlank { "-" }).append('\t')
                 .append(escape(m.replyId)).append('\t')
-                .append(escape(m.turnId)).append('\n')
+                .append(escape(m.turnId)).append('\t')
+                // STAGE 9: appended, never inserted, so a reader that predates it still reads
+                // the line and old files need no migration.
+                .append(escape(m.noteKind)).append('\n')
         }
         for (st in steps) {
             sb.append("s\t")
@@ -388,6 +405,7 @@ internal object ChatTranscript {
                             state = if (fields.size >= 11) fields[8].takeIf { it != "-" } ?: "" else "",
                             replyId = if (fields.size >= 11) unescape(fields[9]) else "",
                             turnId = if (fields.size >= 11) unescape(fields[10]) else "",
+                            noteKind = if (fields.size >= 12) unescape(fields[11]) else "",
                             // The prefix IS the flag: a legacy id is recognisable from the id
                             // itself, so a round trip through disk cannot launder it into a
                             // transcript-verified identity.
