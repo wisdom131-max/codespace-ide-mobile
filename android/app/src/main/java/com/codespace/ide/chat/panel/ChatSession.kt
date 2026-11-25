@@ -908,7 +908,7 @@ class ChatSession internal constructor(
         val toolPlan = ToolOffering.plan(mode, resolveCapability(sel)?.supportsTools)
         if (toolPlan.note != null && !toolPlanNoted) {
             toolPlanNoted = true
-            appendRow(ChatRowModel.InfoNote(toolPlan.note))
+            appendRow(ChatRowModel.InfoNote(toolPlan.note, ChatRowModel.NoticeKind.WORK_STEP))
         }
         // L2/L4 (owner approval 2026-11-11): a fresh task starts with a lean offer. The loadout is
         // per TASK, so tools discovered for the previous message are not silently still there.
@@ -1127,6 +1127,18 @@ class ChatSession internal constructor(
                     ),
                 )
                 ui.value = ui.value.copy(streaming = false)
+            } finally {
+                // STAGE 5 (Checkpoint 0.5): a stream that ends WITHOUT a terminal event - a
+                // collector that dies, a throw inside the loop, a socket the provider closes -
+                // used to leave the streaming indicator on for ever, because only the Completed and
+                // Failed handlers and the two catches above ever cleared it. There was no finally.
+                //
+                // Cleared only if this attempt is still the one the session points at, so a stale
+                // attempt can never switch off a newer attempt's indicator.
+                val self = kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]
+                if (sendJob == null || sendJob === self) {
+                    if (ui.value.streaming) ui.value = ui.value.copy(streaming = false)
+                }
             }
         }
     }
@@ -1741,7 +1753,11 @@ class ChatSession internal constructor(
                 // One line, after the reply, saying what the reader has is partial. The streamed
                 // text is untouched: a cut answer is still evidence, and deleting it helps nobody.
                 val st = ui.value
-                ui.value = st.copy(rows = st.rows + listOf(ChatRowModel.InfoNote(ev.visibleText)))
+                ui.value = st.copy(
+                    rows = st.rows + listOf(
+                        ChatRowModel.InfoNote(ev.visibleText, ChatRowModel.NoticeKind.ENGINE_NOTICE),
+                    ),
+                )
             }
             is EngineEvent.Completed -> {
                 tokens.endTurn()
@@ -1849,7 +1865,9 @@ class ChatSession internal constructor(
                     // takes the answer back. Only a real ANSWER qualifies - a tool round is not a
                     // reply to anyone, and delivering mid-loop would hand over half a turn.
                     is ToolDecision.Answer -> ChatHandoff.deliverAnswer(decision.text)
-                    is ToolDecision.Refused -> appendRow(ChatRowModel.InfoNote(decision.reason))
+                    is ToolDecision.Refused -> appendRow(
+                        ChatRowModel.InfoNote(decision.reason, ChatRowModel.NoticeKind.WORK_STEP),
+                    )
                     is ToolDecision.Run -> runTools(decision.calls, cfg, slotName, confirmOverBudget, gen)
                 }
             }

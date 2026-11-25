@@ -65,7 +65,26 @@ sealed interface ChatRowModel {
     object Offline : ChatRowModel
     data class OverBudget(val estimate: String) : ChatRowModel
     /** WP6: visible, honest system note (e.g. key switched on opt-in failover). */
-    data class InfoNote(val text: String) : ChatRowModel
+    /**
+     * STAGE 9 (Checkpoint 0.5): WHAT a note is, instead of guessing from its wording.
+     *
+     * The thinking tree used to take every note and then remove two literal sentences by string
+     * match, so any new notice whose wording was not on that list appeared inside the tree as if
+     * the copilot had done it. A note now says what it is.
+     */
+    enum class NoticeKind {
+        /** About the app or the conversation: saved, not sent twice, could not save. */
+        APP_NOTICE,
+        /** The provider or the engine speaking about the reply itself. */
+        ENGINE_NOTICE,
+        /** Real work: a tool plan, a tool verdict, a refusal, a skip. Only these become steps. */
+        WORK_STEP,
+    }
+
+    data class InfoNote(
+        val text: String,
+        val kind: NoticeKind = NoticeKind.APP_NOTICE,
+    ) : ChatRowModel
 
     /**
      * One step the assistant took: the tool and what it did. Rendered as a compact line with a

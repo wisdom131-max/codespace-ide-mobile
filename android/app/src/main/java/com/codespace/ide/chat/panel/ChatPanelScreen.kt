@@ -1328,10 +1328,11 @@ private fun liveThinkingSteps(rows: List<ChatRowModel>): List<String> {
     if (since < 0) return emptyList()
     return rows.drop(since + 1)
         .filterIsInstance<ChatRowModel.InfoNote>()
+        // STAGE 9 (Checkpoint 0.5): the tree shows WORK, and only work. It used to take every note
+        // and then subtract two literal sentences, so a notice about the app could sit inside the
+        // tree as though the copilot had done it. The note now declares its own kind.
+        .filter { it.kind == ChatRowModel.NoticeKind.WORK_STEP }
         .map { it.text }
-        // These are notices about the app, not work the copilot did, and they were showing up
-        // INSIDE the tree as if they were steps.
-        .filterNot { it.startsWith("That reply was cut off") || it.contains("not in the catalog") }
 }
 
 
