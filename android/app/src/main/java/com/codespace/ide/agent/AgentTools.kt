@@ -539,7 +539,18 @@ You can use multiple tools in sequence. When done, give a final summary.
         if (has("content")) put("content", optString("content"))
     }
 
+    /**
+     * OWNER REQUEST (2026-11-25): every dispatch passes through here so its RESULT can be watched.
+     * A repeated failure is the half of the detector that catches an agent rephrasing the same
+     * broken call; the body itself is unchanged and still lives in executeToolBodyRaw.
+     */
     private suspend fun executeToolBody(name: String, args: JSONObject, context: Context): String {
+        val out = executeToolBodyRaw(name, args, context)
+        StuckDetector.noteError(name, out)?.let { return it }
+        return out
+    }
+
+    private suspend fun executeToolBodyRaw(name: String, args: JSONObject, context: Context): String {
         // OWNER REPORT (2026-11-24): keep a short list of what this turn has done, so the model
         // knows what is next instead of re-deriving it from a long transcript.
         RequestAnchor.note(name, args)
