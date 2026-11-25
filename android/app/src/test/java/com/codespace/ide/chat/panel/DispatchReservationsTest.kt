@@ -15,10 +15,13 @@ class DispatchReservationsTest {
 
     @Test
     fun `the same call id in a different execution is a different call`() {
-        assertTrue(DispatchReservations.reserve("exec-1", "call-a"))
+        // Unique ids: the reservation set is process-wide and the earlier test leaves
+        // ("exec-1","call-a") claimed for the life of the JVM, so reusing it here tested the
+        // previous test's leftovers instead of execution identity.
+        assertTrue(DispatchReservations.reserve("exec-7", "call-z"))
         // A second turn may legitimately ask for the same edit; it must not be refused, and it
         // must not inherit the first turn's claim.
-        assertTrue(DispatchReservations.reserve("exec-2", "call-a"))
+        assertTrue(DispatchReservations.reserve("exec-8", "call-z"))
     }
 
     @Test

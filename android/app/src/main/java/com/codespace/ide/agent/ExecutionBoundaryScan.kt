@@ -122,7 +122,12 @@ object ExecutionBoundaryScan {
     internal fun bodyRegion(gate: String): String {
         val start = gate.indexOf("fun " + BODY + "(")
         if (start < 0) return ""
-        val next = Regex("""\n    (?:private|internal|public) """).find(gate, start + 10)
+        // Checkpoint 0.5 made the gate delegate to a private raw dispatcher, and the dispatch arms
+        // moved with it. The region must FOLLOW that delegation: ending at it reported zero arms and
+        // failed every advertised tool as "registered but no dispatch arm".
+        val raw = gate.indexOf("fun " + BODY + "Raw(")
+        val from = if (raw > start) raw else start
+        val next = Regex("""\n    (?:private|internal|public) """).find(gate, from + 10)
         return if (next == null) gate.substring(start) else gate.substring(start, next.range.first)
     }
 
