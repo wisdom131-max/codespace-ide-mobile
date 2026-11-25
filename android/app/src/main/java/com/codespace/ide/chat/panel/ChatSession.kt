@@ -1104,7 +1104,11 @@ class ChatSession internal constructor(
         confirmOverBudget: Boolean,
         gen: Int = 0,
     ) {
-        sendJob = scope.launch {
+        // STAGE 3 (Checkpoint 0.5): the job is created LAZY, so it cannot run before the session
+        // has a handle to it. It used to be `sendJob = scope.launch { ... }`, and the body could
+        // start on Dispatchers.Default while the assignment was still in flight - a cancel arriving
+        // in that window had nothing to cancel.
+        val attemptJob = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
             try {
                 engine.send(userText, attachments, cfg).collect { ev -> onEvent(ev, cfg, slotName, userText, attachments, confirmOverBudget, gen) }
                 // A turn that ran to completion has no position to resume, so the checkpoint is
@@ -1159,6 +1163,10 @@ class ChatSession internal constructor(
                 }
             }
         }
+        // STAGE 3: registered first, started second. Nothing can cancel a handle that does not exist
+        // yet, and nothing can run before the handle exists.
+        sendJob = attemptJob
+        attemptJob.start()
     }
 
     /**
