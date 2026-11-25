@@ -24,7 +24,8 @@ internal object ChatInstructions {
     const val ASK_CAP = 5000
     const val AGENT_CAP = 12500
 
-    fun capFor(mode: ChatMode): Int = if (mode == ChatMode.ASK) ASK_CAP else AGENT_CAP
+    fun capFor(mode: ChatMode): Int =
+        PromptBudget.capFor(mode, if (mode == ChatMode.ASK) ASK_CAP else AGENT_CAP)
 
     /**
      * P3-B: how long a prompt must be before the tail reminder is worth its tokens. Explicit and

@@ -258,6 +258,19 @@ private fun ChatBody(
     // Read-aloud runs through the loop, so a spoken reply can be talked over. Declared after the
     // loop because it uses it.
     val lastSpokenReply = session.ui.value.rows.lastOrNull { it is ChatRowModel.AssistantStream && !it.cursorOn }
+    // OUR CAPS SCALE WITH THE MODEL (owner request 2026-11-25): the window is reported here on every
+    // selection change, so PromptBudget can size the instruction whether or not the context panel is
+    // open. Without this the scaling would never switch on and the caps would stay fixed.
+    androidx.compose.runtime.LaunchedEffect(
+        session.selection.value.providerId, session.selection.value.modelId,
+    ) {
+        com.codespace.ide.chat.panel.PromptBudget.observeWindow(
+            com.codespace.ide.engine.ModelCatalog
+                .capabilityFor(session.selection.value.providerId, session.selection.value.modelId)
+                ?.contextTokens ?: 0,
+        )
+    }
+
     androidx.compose.runtime.LaunchedEffect(lastSpokenReply, readAloud) {
         val row = lastSpokenReply as? ChatRowModel.AssistantStream ?: return@LaunchedEffect
         if (readAloud) voice.speak(row.text)

@@ -1611,6 +1611,7 @@ class ChatSession internal constructor(
         // the next step. Idempotent: the same ask does not reset the action list.
         com.codespace.ide.agent.RequestAnchor.anchor(request)
         com.codespace.ide.agent.StuckDetector.reset()
+        com.codespace.ide.chat.panel.PromptBudget.beginTurn()
         val composed = ChatInstructions.build(
             mode, sendTools, offered, wsBlock,
             if (mcpHint.isBlank()) mcpDocs else mcpDocs + "\n\n" + mcpHint,

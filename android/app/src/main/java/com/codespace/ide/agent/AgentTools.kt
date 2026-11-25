@@ -545,6 +545,9 @@ You can use multiple tools in sequence. When done, give a final summary.
      * broken call; the body itself is unchanged and still lives in executeToolBodyRaw.
      */
     private suspend fun executeToolBody(name: String, args: JSONObject, context: Context): String {
+        if (!com.codespace.ide.chat.panel.PromptBudget.toolRequest()) {
+            return com.codespace.ide.chat.panel.PromptBudget.exhaustedMessage()
+        }
         val out = executeToolBodyRaw(name, args, context)
         StuckDetector.noteError(name, out)?.let { return it }
         return out
