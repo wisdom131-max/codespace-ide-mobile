@@ -153,11 +153,12 @@ class ChatSession internal constructor(
     private var toolPlanNoted = false
 
     /**
-     * Characters already shown to the user when the previous attempt failed and the user
-     * pressed Retry. The resent request streams its own text from the beginning, so the
-     * buffer is truncated back to this length on its first delta - otherwise the transcript
-     * shows the partial answer followed by a second copy of it, which is what "the response
-     * gets cut off" looks like from the outside.
+     * The text already shown when the previous attempt failed and the user pressed Retry.
+     *
+     * STAGE 0 (Checkpoint 0.5): this is the TEXT, not a length. It used to be a length that was
+     * restored with StringBuilder.setLength(oldLength) after the buffer had been cleared, which
+     * pads with '\u0000' - so a retry could begin with characters nobody sent. The text is now
+     * handed over as the retry's prefix and seeded exactly once.
      */
     private var retryPrefixText = ""
     private var sendJob: Job? = null
@@ -1026,7 +1027,9 @@ class ChatSession internal constructor(
             }
             ReplyOwnership.Start.FRESH -> Unit
         }
-        requestGate.bump()
+        // STAGE 2 (Checkpoint 0.5): ONE generation per send. This used to call bump() twice and
+        // discard the first result, so every send burned a generation and the value the first call
+        // published was never the one the attempt actually used.
         val gen = requestGate.bump()
         // STAGE 4.8: a submission event that arrives twice (a re-delivered click, a recreated view)
         // carries the identity it already used, so the second one starts no second execution.
@@ -1051,6 +1054,9 @@ class ChatSession internal constructor(
         }
         // A continuation is not a new question, so it adds no user bubble.
         if (!replaceTurn && continuationPrefix == null) {
+            // STAGE 7: a new ask is a new reply. Continuation and retry fall outside this branch,
+            // so they keep the id of the answer they are extending.
+            replyId = java.util.UUID.randomUUID().toString()
             newRows.add(ChatRowModel.User(userText))
             if (chips.isNotEmpty()) newRows.add(ChatRowModel.Attachments(chips))
             // STAGE 7: durable statements in what the user just said are captured in the
@@ -1433,6 +1439,14 @@ class ChatSession internal constructor(
     private var requestAtSend: String = ""
     /** DUPLICATE REPLIES: the last generation whose completion was already applied. */
     private var lastCompletedGen: Int = 0
+    /**
+     * STAGE 7 (Checkpoint 0.5): the identity of the logical reply being shown.
+     *
+     * One ask gets one id. A continuation and a retry keep it, because they extend the same
+     * answer; a new ask mints a new one. Assistant rows carry it, so the panel can tell "the same
+     * answer, more text" apart from "a second answer" without comparing wording.
+     */
+    private var replyId = ""
     private var loadoutVersionAtSend: Int = 0
 
     /**
@@ -1717,8 +1731,8 @@ class ChatSession internal constructor(
                 val st = ui.value
                 val rowsNow = st.rows
                 val rows = if (rowsNow.lastOrNull() is ChatRowModel.AssistantStream)
-                    rowsNow.dropLast(1) + listOf(ChatRowModel.AssistantStream(text, true))
-                else rowsNow + listOf(ChatRowModel.AssistantStream(text, true))
+                    rowsNow.dropLast(1) + listOf(ChatRowModel.AssistantStream(text, true, replyId = replyId))
+                else rowsNow + listOf(ChatRowModel.AssistantStream(text, true, replyId = replyId))
                 ui.value = st.copy(rows = rows,
                     firstDeltaMs = if (st.firstDeltaMs == 0L) System.currentTimeMillis() else st.firstDeltaMs)
             }
@@ -1783,18 +1797,28 @@ class ChatSession internal constructor(
                 // holds for this turn. Appending left the opening text on screen twice; dropping only
                 // the trailing row left the OLDER copy behind. Every answer row of this continuation
                 // turn whose text the final answer contains is absorbed into the single row below.
+                // STAGE 7 (Checkpoint 0.5): identity, not wording. A row belongs to THIS reply when
+                // its replyId matches. Text containment survives only as the fallback for rows
+                // written before ids existed, so a genuine earlier answer can no longer be swallowed
+                // merely because its wording happens to appear inside a later one.
                 val answerRowsOfTurn = st.rows.filterIsInstance<ChatRowModel.AssistantStream>()
                     .filter { it.kind == ChatRowModel.StreamKind.ANSWER && it.text.isNotBlank() }
-                val carried = continuationTurn && answerRowsOfTurn.any { shown.contains(it.text.trim()) }
+                val sameReply = answerRowsOfTurn.any { replyId.isNotBlank() && it.replyId == replyId }
+                val carried = if (replyId.isNotBlank())
+                    sameReply || (continuationTurn &&
+                        answerRowsOfTurn.any { it.replyId.isBlank() && shown.contains(it.text.trim()) })
+                else continuationTurn && answerRowsOfTurn.any { shown.contains(it.text.trim()) }
                 val baseRows = if (carried) {
                     st.rows.filterNot {
                         it is ChatRowModel.AssistantStream && it.kind == ChatRowModel.StreamKind.ANSWER &&
-                            it.text.isNotBlank() && shown.contains(it.text.trim())
+                            it.text.isNotBlank() &&
+                            if (replyId.isNotBlank() && it.replyId.isNotBlank()) it.replyId == replyId
+                            else shown.contains(it.text.trim())
                     }
                 } else st.rows
                 val rows = if (baseRows.lastOrNull() is ChatRowModel.AssistantStream)
-                    baseRows.dropLast(1) + listOf(ChatRowModel.AssistantStream(shown, false, kind))
-                else baseRows + listOf(ChatRowModel.AssistantStream(shown, false, kind))
+                    baseRows.dropLast(1) + listOf(ChatRowModel.AssistantStream(shown, false, kind, replyId))
+                else baseRows + listOf(ChatRowModel.AssistantStream(shown, false, kind, replyId))
                 val allSources = com.codespace.ide.agent.research.SourceLedger.all()
                 val turnSources = if (decision is ToolDecision.Answer && allSources.size > ledgerMark)
                     com.codespace.ide.agent.research.ResearchSources

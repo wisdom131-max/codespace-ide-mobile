@@ -21,6 +21,14 @@ sealed interface ChatRowModel {
         val text: String,
         val cursorOn: Boolean,
         val kind: StreamKind = StreamKind.ANSWER,
+        /**
+         * STAGE 7 (Checkpoint 0.5): which logical reply this row belongs to.
+         *
+         * Empty on a row restored from a transcript written before ids existed; the panel then
+         * falls back to the old text rule. A non-empty id is authoritative: the same id means the
+         * same answer being extended, a different id means a different answer.
+         */
+        val replyId: String = "",
     ) : ChatRowModel
     /**
      * OWNER REPORT (2026-11-23): the thinking tree's body was ALWAYS empty. The row was built with
