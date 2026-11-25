@@ -1891,7 +1891,14 @@ class ChatSession internal constructor(
                         ),
                     ).let { note -> if (note.isBlank()) emptyList() else listOf(ChatRowModel.InfoNote(note)) }
                 }
-                ui.value = st.copy(rows = rowsWithSources + claimNotice, streaming = false)
+                // STAGE 5 (Checkpoint 0.5): a tool handoff ENDS the request but NOT the logical
+                // reply, so the indicator must survive it. It used to be switched off here and
+                // switched back on inside runTools, and the gap between the two writes is what the
+                // reader saw as the spinner blinking off and on mid-turn.
+                ui.value = st.copy(
+                    rows = rowsWithSources + claimNotice,
+                    streaming = decision is ToolDecision.Run,
+                )
                 // PHASE 2: the turn is genuinely over, so the queue may advance. Only here.
                 drainQueueAfterTurn()
                 when (decision) {
