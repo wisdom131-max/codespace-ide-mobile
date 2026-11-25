@@ -47,7 +47,11 @@ internal const val STATE_FAILED = "FAILED"
  */
 internal fun restoredState(state: String, complete: Boolean): String = when (state) {
     STATE_DONE -> if (complete) STATE_DONE else STATE_INTERRUPTED
-    STATE_FAILED, STATE_INTERRUPTED, STATE_STREAMING -> state
+    STATE_FAILED, STATE_INTERRUPTED -> state
+    // STAGE 8 fix: a record that says STREAMING was written while the reply was still arriving,
+    // so the process ended mid-answer. Restoring it as STREAMING would put a live-looking reply
+    // back on screen with nothing driving it; the approved rule is INTERRUPTED.
+    STATE_STREAMING -> STATE_INTERRUPTED
     "" -> if (complete) STATE_DONE else STATE_INTERRUPTED
     // A value this build does not know: treat as interrupted, never as success.
     else -> STATE_INTERRUPTED
