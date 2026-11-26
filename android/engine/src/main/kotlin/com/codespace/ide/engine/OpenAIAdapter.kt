@@ -242,7 +242,15 @@ class OpenAIAdapter : ProviderAdapter {
         ChatRole.ASSISTANT -> "assistant"
     }
 
-    /** The mode instruction as a leading system message; blank adds nothing. */
+    /**
+     * The mode instruction as a leading system message; blank adds nothing.
+     *
+     * OWNER REPORT (2026-11-26), every OpenAI-compatible provider answering HTTP 400
+     * {"error":{"message":"failed to unmarshal JSON: invalid character ',' looking for beginning of
+     * value"}}. This returned a fragment ending in a comma, and [messagesJson] then joined the parts
+     * with another comma, so the array came out as `[{system},,{user}]`. The comma is the array's
+     * job now: [messagesJson] is the only caller, and it owns the separators.
+     */
     internal fun systemMsg(config: EngineConfig): String {
         // PROJECT EIGHT 8.10: the clock arrives as a separate volatile tail so Anthropic can cache
         // the static instruction. OpenAI-compatible endpoints have no equivalent breakpoint, so the
@@ -250,7 +258,7 @@ class OpenAIAdapter : ProviderAdapter {
         val text = if (config.volatileSystemTail.isBlank()) config.systemInstruction
         else config.systemInstruction + "\n\n" + config.volatileSystemTail
         return if (text.isBlank()) ""
-        else "{\"role\":\"system\",\"content\":\"" + escapeJson(text) + "\"},"
+        else "{\"role\":\"system\",\"content\":\"" + escapeJson(text) + "\"}"
     }
 
     internal fun escapeJson(s: String): String {
