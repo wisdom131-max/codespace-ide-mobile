@@ -20,7 +20,8 @@ import java.io.File
  * existing node instead of appending a second one.
  *
  * GROUPING IS NOT DUPLICATED. Nothing here groups anything: restored rows go back through the same
- * `ActivityGrouping` the live tree uses, so there is exactly one grouping rule in the app.
+ * the live tree uses, so there is exactly one grouping rule in the app. (The old
+ * `ActivityGrouping` model that this line used to name was deleted with the legacy tree UI.)
  */
 object ThinkingTreeStore {
 
