@@ -144,6 +144,13 @@ class ChatSession internal constructor(
      * which nobody reads.
      */
     private val attempts = RequestAttempts()
+
+    /**
+     * STAGE 1 (Checkpoint 0.5): the one writer for lifecycle changes that arrive from another
+     * thread. See SessionCoordinator - it owns cancellation, so Stop and a new send can no longer
+     * interleave on the session's state.
+     */
+    private val coordinator = SessionCoordinator(scope) { gen, why -> performCancel(gen, why) }
     private var idleVisible = ""
     private var idleFilter = com.codespace.ide.agent.ProtocolStreamFilter()
     private var idleJob: Job? = null
@@ -1364,8 +1371,24 @@ class ChatSession internal constructor(
         runCatching { modeSource?.invoke() }.getOrNull() ?: mode
 
     fun cancel() {
-        // STAGE 4.8: cancellation invalidates this execution's right to deliver anything further,
-        // including a callback that is already in flight when the user presses Stop.
+        // STAGE 1 (Checkpoint 0.5): Stop is a command now, not a burst of writes from the UI
+        // thread. The generation is read here and carried with it, so the cancel always names the
+        // attempt the user was looking at, even if a new send starts a moment later.
+        val gen = requestGate.current
+        if (!coordinator.offer(SessionCommand.Cancel(gen, "user"))) {
+            // Queue full: deliver anyway, from a non-cancellable coroutine. Stop is never lost.
+            scope.launch { coordinator.deliver(SessionCommand.Cancel(gen, "user")) }
+        }
+    }
+
+    /**
+     * The coordinator's only entry point for stopping an attempt - the single writer.
+     *
+     * Every write the old cancel() did now happens here, in queue order, and the indicator is
+     * cleared only when [gen] still owns the screen. A cancel that arrives after a newer attempt
+     * has started therefore stops the old attempt's work without touching the new one's state.
+     */
+    private fun performCancel(gen: Int, why: String) {
         if (activeExecId.isNotBlank()) {
             restoreDeliveryOnce()
             delivery.cancel(activeExecId)
@@ -1375,11 +1398,15 @@ class ChatSession internal constructor(
         // still let its queued subquestion searches go out. Bump the generation so the loop stops
         // before spending more of the owner's data.
         com.codespace.ide.agent.research.ResearchCancel.bump()
-        sendJob?.cancel()
-        // Stop means stopped. When a 429 retry is ARMED there is no active collect to notice
-        // the cancellation, so streaming would otherwise stay true and the composer would
-        // look busy forever - the user could never send again.
-        if (ui.value.streaming) ui.value = ui.value.copy(streaming = false)
+        val attempt = attempts.of(gen)
+        attempt?.cancelRequested = true
+        (attempt?.job ?: sendJob)?.cancel()
+        // Stop means stopped - but only for the attempt that still owns the screen. When a 429
+        // retry is ARMED there is no active collect to notice the cancellation, so streaming would
+        // otherwise stay true and the composer would look busy forever.
+        if (attempt == null || attempts.current() === attempt) {
+            if (ui.value.streaming) ui.value = ui.value.copy(streaming = false)
+        }
     }
 
     /**
@@ -1397,6 +1424,9 @@ class ChatSession internal constructor(
         if (!ui.value.streaming) return false
         interruptedReplyPending = true
         cancel()
+        // STAGE 1: the caller asks "is this session still streaming?" on the very next line, so the
+        // queued cancel is applied here rather than whenever the consumer next runs.
+        coordinator.drainNow()
         // Save now rather than waiting for the debounce: the user is leaving this session and
         // the partial reply must already be on disk when the next one is shown.
         persistTranscript()
@@ -1454,6 +1484,8 @@ class ChatSession internal constructor(
     fun dispose() {
         disposed = true
         sendJob?.cancel()
+        // STAGE 1: drain what is already queued, then let the consumer exit.
+        coordinator.shutdown()
     }
 
     /** WP7: settings "Clear conversation" - rows gone, keys and settings kept. */
