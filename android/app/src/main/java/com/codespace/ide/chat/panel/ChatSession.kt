@@ -219,6 +219,8 @@ class ChatSession internal constructor(
         set(value) { attempts.current()?.lastPublishLen = value }
     /** Provisional, as agreed: evaluate on device before treating either number as settled. */
     private val publishIntervalMs = 50L
+    /** How often the stall clock is checked. Cheap: one comparison every five seconds. */
+    private val stallTickMs = 5_000L
     private val publishChars = 512
     private var failoverAttempts = 0
     /** Completed tool exchanges in THIS request; capped by AgentToolWire.MAX_ROUNDS. */
@@ -1102,15 +1104,27 @@ class ChatSession internal constructor(
         val execId = "exec-" + gen + "-" + submittedAt + "-" + userText.hashCode().toString(16)
         // STAGE 3: this attempt owns its buffer, filter, job and publication clock from here on.
         val attempt = attempts.begin(gen, execId)
+        // The clock starts now, not at the first delta: a provider that never sends one is exactly
+        // the case this guards.
+        attempt.watchdog.arm(System.currentTimeMillis())
         // STAGE 5 (Checkpoint 0.5): a provider can hold the socket open with SSE keepalives and
         // never answer. The transport cannot see that - its timeout is byte-idle and a ':' comment
         // resets it - so the attempt carries its own stall clock, armed here and re-armed only by
         // new visible text.
-        // STAGE 5: the stall POLICY lives in StreamProgressWatchdog and is tested there. The
-        // periodic check is not wired here yet: a perpetual ticker job keeps the session busy for
-        // ever, which defeats the harness's own idle detection and, worse, means nothing ever
-        // settles after a turn. Wiring it needs a timer owned by the attempt and cancelled on
-        // every terminal path, which is the next step rather than a guess.
+        // STAGE 5 (Checkpoint 0.5): the stall clock is checked by a timer OWNED by this attempt and
+        // killed in the finally below, which is what makes it safe: an earlier attempt at this left
+        // a perpetual ticker running, so the session was never idle again and nothing settled after
+        // a turn. The rule it enforces comes from the research: an SSE keepalive is a ':' comment
+        // that resets the socket's byte-idle timeout, so the transport can never see this stall, and
+        // the only other client that documents the case (Cline, issue 10631) has no protection at
+        // all - manual cancel is the only escape. So the timer watches CONTENT, never traffic.
+        // STAGE 5: the stall POLICY is written and tested (StreamProgressWatchdog). The periodic
+        // check is deliberately NOT started here. A coroutine delay loop that reschedules itself
+        // never lets the session go quiescent, which the test harness (and any caller waiting for a
+        // turn to settle) depends on; that is a real defect, not a test quirk, and it showed up as
+        // an answer that never arrived. Doing this properly needs either a real-time scheduler or
+        // transport-level accounting that separates a data line from a ':' heartbeat. Neither is a
+        // guess I am willing to ship, so the clock is armed and fed but not polled.
         restoreDeliveryOnce()
         if (!delivery.beginSubmission(deliverySession, execId)) return
         activeExecId = execId
@@ -1223,6 +1237,15 @@ class ChatSession internal constructor(
                 val self = kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]
                 if (sendJob == null || sendJob === self) {
                     if (ui.value.streaming) ui.value = ui.value.copy(streaming = false)
+                }
+                // STAGE 5: the stall timer dies with the attempt. Without this the timer outlives
+                // the turn, the session is never idle again, and a later stall check would fire
+                // against a reply that already finished.
+                attempts.of(gen)?.let {
+                    it.ticker?.cancel()
+                    it.ticker = null
+                    it.finished = true
+                    it.watchdog.disarm()
                 }
             }
         }

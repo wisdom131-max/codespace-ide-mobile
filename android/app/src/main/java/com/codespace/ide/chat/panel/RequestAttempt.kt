@@ -46,6 +46,12 @@ internal class RequestAttempt(
     /** STAGE 5: this attempt's own stall clock. Traffic is not progress; new text is. */
     val watchdog = StreamProgressWatchdog()
 
+    /**
+     * STAGE 5: the timer that checks [watchdog]. Owned by the attempt and cancelled on every
+     * terminal path, so a finished turn leaves nothing running.
+     */
+    var ticker: Job? = null
+
     /** Set on every terminal path so a finished attempt can never be reported as stalled. */
     @Volatile var finished: Boolean = false
 
