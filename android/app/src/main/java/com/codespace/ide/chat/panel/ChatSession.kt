@@ -1375,10 +1375,9 @@ class ChatSession internal constructor(
         // thread. The generation is read here and carried with it, so the cancel always names the
         // attempt the user was looking at, even if a new send starts a moment later.
         val gen = requestGate.current
-        if (!coordinator.offer(SessionCommand.Cancel(gen, "user"))) {
-            // Queue full: deliver anyway, from a non-cancellable coroutine. Stop is never lost.
-            scope.launch { coordinator.deliver(SessionCommand.Cancel(gen, "user")) }
-        }
+        // Never lost: queued when there is room, delivered non-cancellably when the queue is full,
+        // and applied directly when the session is already disposed and has no consumer left.
+        coordinator.submit(SessionCommand.Cancel(gen, "user"))
     }
 
     /**

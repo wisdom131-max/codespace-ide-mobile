@@ -38,7 +38,7 @@ internal sealed interface SessionCommand {
 }
 
 internal class SessionCoordinator(
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
     capacity: Int = CAPACITY,
     private val onCancel: (gen: Int, why: String) -> Unit,
 ) {
@@ -75,10 +75,15 @@ internal class SessionCoordinator(
      * writer: [apply] is serialised, so a command is never applied twice or out of order.
      */
     fun drainNow() {
-        while (true) {
-            val next = commands.tryReceive().getOrNull() ?: return
-            if (next is SessionCommand.Shutdown) return
-            apply(next)
+        // Taking the lock FIRST is the whole point. A queued command may already have been picked up
+        // by the consumer, in which case the queue looks empty while its write is still in flight -
+        // and the caller would read the stale value. Waiting on the lock waits for that write.
+        synchronized(applying) {
+            while (true) {
+                val next = commands.tryReceive().getOrNull() ?: return
+                if (next is SessionCommand.Shutdown) return
+                apply(next)
+            }
         }
     }
 
@@ -95,6 +100,23 @@ internal class SessionCoordinator(
     suspend fun deliver(command: SessionCommand) {
         if (offer(command)) return
         withContext(NonCancellable) { commands.send(command) }
+    }
+
+    /**
+     * Non-suspending submission that cannot lose a command.
+     *
+     * Three cases, and the last one matters: a session that has already been disposed has a CLOSED
+     * queue, so offering fails, delivering throws, and a Stop would vanish - the indicator staying
+     * on for ever. With no consumer left there is nothing to order against, so the command is
+     * applied directly. That is still one writer: the consumer is gone.
+     */
+    fun submit(command: SessionCommand) {
+        if (offer(command)) return
+        if (!isActive() || commands.isClosedForSend) {
+            apply(command)
+            return
+        }
+        scope.launch { deliver(command) }
     }
 
     /** Closes the queue; the consumer drains what is already there and exits. */
