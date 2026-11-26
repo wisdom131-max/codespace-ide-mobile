@@ -150,7 +150,11 @@ class ChatSession internal constructor(
      * thread. See SessionCoordinator - it owns cancellation, so Stop and a new send can no longer
      * interleave on the session's state.
      */
-    private val coordinator = SessionCoordinator(scope) { gen, why -> performCancel(gen, why) }
+    private val coordinator = SessionCoordinator(
+        scope,
+        onCancel = { gen, why -> performCancel(gen, why) },
+        onFinalize = { gen -> performEndStream(gen) },
+    )
     private var idleVisible = ""
     private var idleFilter = com.codespace.ide.agent.ProtocolStreamFilter()
     private var idleJob: Job? = null
@@ -1196,7 +1200,9 @@ class ChatSession internal constructor(
                         com.codespace.ide.engine.ErrorAdvice.retryable(cls),
                     ),
                 )
-                ui.value = ui.value.copy(streaming = false)
+                // STAGE 5: the same finalizer the cancel path uses. Clearing the flag inline here
+                // made this a second writer with no ownership check.
+                endStream(gen)
             } finally {
                 // STAGE 5 (Checkpoint 0.5): a stream that ends WITHOUT a terminal event - a
                 // collector that dies, a throw inside the loop, a socket the provider closes -
@@ -1377,7 +1383,7 @@ class ChatSession internal constructor(
         val gen = requestGate.current
         // Never lost: queued when there is room, delivered non-cancellably when the queue is full,
         // and applied directly when the session is already disposed and has no consumer left.
-        coordinator.submit(SessionCommand.Cancel(gen, "user"))
+        coordinator.submitInline(SessionCommand.Cancel(gen, "user"))
     }
 
     /**
@@ -1423,9 +1429,6 @@ class ChatSession internal constructor(
         if (!ui.value.streaming) return false
         interruptedReplyPending = true
         cancel()
-        // STAGE 1: the caller asks "is this session still streaming?" on the very next line, so the
-        // queued cancel is applied here rather than whenever the consumer next runs.
-        coordinator.drainNow()
         // Save now rather than waiting for the debounce: the user is leaving this session and
         // the partial reply must already be on disk when the next one is shown.
         persistTranscript()
@@ -1805,6 +1808,22 @@ class ChatSession internal constructor(
      * own indicator - which is what makes Stop feel immediate.
      */
     private fun endStream(gen: Int = requestGate.current) {
+        // STAGE 1: finalising is a command on the one queue, applied by the one writer. The drain
+        // keeps it synchronous for the handlers that write rows on the very next line, so no window
+        // opens where the code has decided something the UI has not been told.
+        coordinator.submitInline(SessionCommand.Finalize(gen))
+    }
+
+    /**
+     * The finalisation itself, applied by the coordinator and by nothing else.
+     *
+     * A duplicate terminal event finds the claim already taken and returns, which is what makes
+     * "exactly once" true inside the process. The indicator is cleared only by the attempt that
+     * still owns it: a cancellation bumps the generation but starts no new attempt, so the
+     * cancelled attempt is still current and still clears its own indicator - which is what makes
+     * Stop feel immediate - while a stale attempt whose replacement has begun cannot touch it.
+     */
+    private fun performEndStream(gen: Int) {
         val attempt = attempts.of(gen)
         if (attempt != null && !attempt.claimFinalization()) return
         continuationInFlight = false
@@ -2053,7 +2072,8 @@ class ChatSession internal constructor(
                 // as a second row - one error, one card, and the card stays the last row so the
                 // failure is still visibly the last thing that happened.
                 appendRow(ChatStatusMapping.rowForError(err, ChatFailureAdvice.adviceFor(err)))
-                ui.value = ui.value.copy(streaming = false)
+                // STAGE 5: through the one finalizer, which also refuses a stale attempt.
+                endStream(gen)
             }
         }
     }
@@ -2238,7 +2258,9 @@ class ChatSession internal constructor(
                     val callId = com.codespace.ide.chat.panel.WriteCallIdentity.idFor(name, argsJson)
                     // STAGE 6 (Checkpoint 0.5): claim the call BEFORE it runs. Refusing a duplicate
                     // result is too late - by then the tool has already acted.
-                    if (!DispatchReservations.reserve(activeExecId, callId)) {
+                    // STAGE 6: claim under the execution that is asking, never under whatever happens
+                    // to be active by the time the call is made.
+                    if (!DispatchReservations.reserve(attempts.of(gen)?.execId ?: activeExecId, callId)) {
                         "Skipped: this exact call already ran in this turn, so it was not run again."
                     } else {
                         com.codespace.ide.agent.AgentTools.executeTool(

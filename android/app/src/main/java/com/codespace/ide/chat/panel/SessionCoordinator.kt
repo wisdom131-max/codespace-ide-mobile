@@ -33,6 +33,12 @@ internal sealed interface SessionCommand {
     /** Stop the attempt numbered [gen]. Ignored when a newer attempt already owns the session. */
     data class Cancel(val gen: Int, val why: String) : SessionCommand
 
+    /**
+     * Finish the attempt numbered [gen]: clear the indicator if it still owns it, and claim the
+     * finalisation so a duplicate terminal event cannot finish the same reply twice.
+     */
+    data class Finalize(val gen: Int) : SessionCommand
+
     /** The session is going away; stop the consumer after everything already queued is applied. */
     data object Shutdown : SessionCommand
 }
@@ -40,7 +46,8 @@ internal sealed interface SessionCommand {
 internal class SessionCoordinator(
     private val scope: CoroutineScope,
     capacity: Int = CAPACITY,
-    private val onCancel: (gen: Int, why: String) -> Unit,
+    private val onCancel: (gen: Int, why: String) -> Unit = { _, _ -> },
+    private val onFinalize: (gen: Int) -> Unit = {},
 ) {
     private val commands = Channel<SessionCommand>(capacity)
 
@@ -55,6 +62,7 @@ internal class SessionCoordinator(
     private fun apply(command: SessionCommand) = synchronized(applying) {
         when (command) {
             is SessionCommand.Cancel -> onCancel(command.gen, command.why)
+            is SessionCommand.Finalize -> onFinalize(command.gen)
             SessionCommand.Shutdown -> Unit
         }
     }
@@ -85,6 +93,19 @@ internal class SessionCoordinator(
                 apply(next)
             }
         }
+    }
+
+    /**
+     * Applies [command] before returning, without queueing it.
+     *
+     * For the callers that read the result on the very next line - Stop, and the handlers that write
+     * rows straight after finalising. Enqueue-then-drain could not be made to work: the consumer may
+     * have already taken the command and still be waiting for this very lock, so the queue looks
+     * empty while the write is in flight and the caller reads a stale value. Applying inline takes
+     * the same lock, so ordering is still the coordinator's, and nothing can observe it half-done.
+     */
+    fun submitInline(command: SessionCommand) {
+        synchronized(applying) { apply(command) }
     }
 
     /**
