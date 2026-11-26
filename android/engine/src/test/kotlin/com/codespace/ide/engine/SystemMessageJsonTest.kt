@@ -19,7 +19,7 @@ import org.junit.Test
  */
 class SystemMessageJsonTest {
 
-    private fun body(system: String, window: List<ChatMessage> = listOf(ChatMessage(ChatRole.USER, "hi"))): String =
+    private fun body(system: String, window: List<ChatMessage> = listOf(ChatMessage("m1", ChatRole.USER, "hi"))): String =
         OpenAIAdapter().payload(window, "hi", EngineConfig("m1").copy(systemInstruction = system))
 
     private fun messagesOf(json: String): String {
@@ -59,8 +59,8 @@ class SystemMessageJsonTest {
     @Test
     fun `the attachment path has the same shape`() {
         val json = OpenAIAdapter().payload(
-            listOf(ChatMessage(ChatRole.USER, "hi")), "hi",
-            listOf(ChatAttachment("a", "notes.txt", "text/plain", null, "hello")),
+            listOf(ChatMessage("m1", ChatRole.USER, "hi")), "hi",
+            listOf(ChatAttachment("a", "notes.txt", "text/plain", "", "hello")),
             EngineConfig("m1").copy(systemInstruction = "You are VN Code."),
         )
         val msgs = messagesOf(json)
@@ -74,11 +74,14 @@ class SystemMessageJsonTest {
             systemInstruction = "You are VN Code.",
             toolDeclarations = listOf(ToolDeclaration(name = "read_file", description = "Read a file")),
         )
-        val json = OpenAIAdapter().withTools(OpenAIAdapter().payload(listOf(ChatMessage(ChatRole.USER, "hi")), "hi", cfg), cfg)
+        val json = OpenAIAdapter().withTools(OpenAIAdapter().payload(listOf(ChatMessage("m1", ChatRole.USER, "hi")), "hi", cfg), cfg)
         assertTrue("tools missing", json.contains("\"tools\":["))
         assertTrue("body does not end with the object close", json.endsWith("}"))
         assertFalse("double comma before tools", json.contains(",,", ignoreCase = false))
-        val tail = json.substring(json.lastIndexOf("},") + 1)
-        assertTrue("a comma survived after the final brace", tail.startsWith("}"))
+        // The property is "inside the object", so assert exactly that. The old tail arithmetic
+        // assumed a "}," existed in the body; when none does, lastIndexOf returns -1 and the
+        // assertion failed on a correct payload.
+        val toolsAt = json.indexOf("\"tools\":[")
+        assertTrue("tools are spliced inside the object, not after it", toolsAt in 0 until json.lastIndexOf('}'))
     }
 }
