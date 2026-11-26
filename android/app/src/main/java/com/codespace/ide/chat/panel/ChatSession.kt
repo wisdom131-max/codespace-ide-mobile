@@ -2185,7 +2185,7 @@ class ChatSession internal constructor(
             val repeats = com.codespace.ide.agent.ToolBatchPlan.duplicates(
                 planNames, calls.map { it.argumentsJson })
             val answered = HashMap<Int, String>()
-            com.codespace.ide.agent.ToolBatchPlan.note(batchPlan, planNames)?.let { appendRow(ChatRowModel.InfoNote(it)) }
+            com.codespace.ide.agent.ToolBatchPlan.note(batchPlan, planNames)?.let { appendRow(ChatRowModel.InfoNote(it, ChatRowModel.NoticeKind.WORK_STEP)) }
             // P4.B: execution itself is coordinated. Independent read-only calls run together and
             // bounded; every write, command, connector and MCP call stays strictly sequential and in
             // plan order. Answers are collected by index, so the transcript order is the plan's.
@@ -2250,7 +2250,7 @@ class ChatSession internal constructor(
                     (if (out.startsWith(com.codespace.ide.chat.provider.ToolResultNormaliser.UNCERTAIN_PREFIX))
                         "Unsure - "
                     else if (out.startsWith("FAILED")) "Failed - " else "Done - ") +
-                        AgentToolWire.firstLine(out)
+                        AgentToolWire.firstLine(out), ChatRowModel.NoticeKind.WORK_STEP
                 ))
                 toolExchanges.record(
                     id = exchangeId(idx),
@@ -2264,7 +2264,7 @@ class ChatSession internal constructor(
                 results.append(AgentToolWire.resultMessage(call, out))
                 results.append("\n\n")
                 if (verifyLine != null) {
-                    appendRow(ChatRowModel.InfoNote(verifyLine))
+                    appendRow(ChatRowModel.InfoNote(verifyLine, ChatRowModel.NoticeKind.WORK_STEP))
                     results.append(verifyLine).append("\n\n")
                 }
                 // Pinned when the result carries a citation marker: evidence the answer must keep.
@@ -2321,7 +2321,7 @@ class ChatSession internal constructor(
                 if (already != null) {
                     val reused = answered.getValue(already)
                     appendRow(ChatRowModel.InfoNote(
-                        "Same call as step " + (already + 1) + " - reused that result instead of repeating it."))
+                        "Same call as step " + (already + 1) + " - reused that result instead of repeating it.", ChatRowModel.NoticeKind.WORK_STEP))
                     results.append(AgentToolWire.resultMessage(call, reused))
                     results.append("\n\n")
                     resultItems.add(com.codespace.ide.agent.ToolContextTrim.Item(
@@ -2346,7 +2346,7 @@ class ChatSession internal constructor(
                 when (writeDecision) {
                     WritePolicy.Decision.REFUSE -> {
                         val refused = WritePolicy.refusalMessage(call.name)
-                        appendRow(ChatRowModel.InfoNote(refused))
+                        appendRow(ChatRowModel.InfoNote(refused, ChatRowModel.NoticeKind.WORK_STEP))
                         // PART 3A: refused BEFORE the executor was reached. The model is told so, and
                         // the log keeps it distinct from a tool that ran and failed.
                         toolExchanges.recordRefused(exchangeId(idx), call.name, call.argumentsJson, refused)
@@ -2375,7 +2375,7 @@ class ChatSession internal constructor(
                     }
                     appendRow(ChatRowModel.InfoNote(
                         if (staged.startsWith("FAILED")) staged
-                        else AgentToolWire.firstLine(staged)
+                        else AgentToolWire.firstLine(staged), ChatRowModel.NoticeKind.WORK_STEP
                     ))
                     answered[idx] = staged
                     results.append(AgentToolWire.resultMessage(call, staged))
@@ -2395,7 +2395,7 @@ class ChatSession internal constructor(
                     val why =
                         if (verdict == com.codespace.ide.agent.AgentFlowGate.ApprovalVerdict.TIMEOUT)
                             "no answer in 10 minutes" else "you declined"
-                    appendRow(ChatRowModel.InfoNote("Skipped " + call.name + " - " + why))
+                    appendRow(ChatRowModel.InfoNote("Skipped " + call.name + " - " + why, ChatRowModel.NoticeKind.WORK_STEP))
                     answered[idx] = "NOT RUN (" + why + ")"
                     toolExchanges.recordRefused(
                         exchangeId(idx), call.name, call.argumentsJson, "NOT RUN (" + why + ")")
