@@ -1,7 +1,6 @@
 package com.codespace.ide.chat.panel
 
 import com.codespace.ide.chat.provider.ToolOutcome
-import com.codespace.ide.chat.ui.ActivityGrouping
 import com.codespace.ide.chat.ui.ChatRowModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -72,7 +71,7 @@ class Stage72BindingsTest {
             step("write_file", "permission denied", false, "b"),
             step("run_command", "outcome uncertain", true, "c"),
         )
-        val header = CopilotBindings.groupHeader(ActivityGrouping.summary(items), items)
+        val header = CopilotBindings.groupHeader("3 steps", items)
         assertTrue("no step is done, so it cannot claim one: " + header, header.contains("0 of 3 done"))
         assertTrue(header.contains("1 with no state reported"))
     }

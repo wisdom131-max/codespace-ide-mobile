@@ -43,6 +43,12 @@ internal class RequestAttempt(
     @Volatile
     var lastPublishLen: Int = 0
 
+    /** STAGE 5: this attempt's own stall clock. Traffic is not progress; new text is. */
+    val watchdog = StreamProgressWatchdog()
+
+    /** Set on every terminal path so a finished attempt can never be reported as stalled. */
+    @Volatile var finished: Boolean = false
+
     /** The logical reply this attempt is writing into. Survives retry and continuation. */
     @Volatile
     var replyId: String = ""

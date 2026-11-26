@@ -47,31 +47,21 @@ object NativeChatListRenderer : ChatListRenderer {
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(ChatTokens.GAP.dp),
         ) {
-            // 2026-11-11: ONE grouping implementation. This loop used to re-derive the runs
-            // itself while ActivityGrouping.group() existed beside it, so a change in the rules
-            // could disagree with what was drawn. The renderer now consumes the pure model.
+            // OWNER DECISION (2026-11-26): the OLD thinking-tree UI is gone from the app, not just
+            // bypassed. The grouping model, its collapsible group row and the standalone thinking
+            // card were deleted; this is now a plain walk over the rows. A legacy ToolActivity row
+            // still sitting in an old transcript is skipped rather than drawn as chat content, so
+            // tool work only ever appears inside the turn's own section.
             val rows = state.rows
             var consumed = 0
-            ActivityGrouping.group(rows).forEach { display ->
-                when (display) {
-                    is ChatDisplayRow.Single -> {
-                        val row = display.row
-                        // OWNER DECISION (2026-11-24): tool work belongs inside the turn's section.
-                        // Any legacy ToolActivity row still stored in an old transcript is skipped
-                        // rather than drawn as chat content.
-                        if (row is ChatRowModel.ToolActivity) { consumed++; return@forEach }
-                        if (row is ChatRowModel.Sources) {
-                            if (row.items.isNotEmpty()) SourcesRow(row.items)
-                        } else {
-                            RenderRow(row, state, stepsAfter(rows, consumed))
-                        }
-                        consumed++
-                    }
-                    is ChatDisplayRow.ActivityGroup -> {
-                        ActivityGroupRow(display.id, display.items)
-                        consumed += display.items.size
-                    }
+            for (row in rows) {
+                if (row is ChatRowModel.ToolActivity) { consumed++; continue }
+                if (row is ChatRowModel.Sources) {
+                    if (row.items.isNotEmpty()) SourcesRow(row.items)
+                } else {
+                    RenderRow(row, state, stepsAfter(rows, consumed))
                 }
+                consumed++
             }
         }
     }
@@ -131,11 +121,13 @@ object NativeChatListRenderer : ChatListRenderer {
             ChatRowModel.Offline -> OfflineCard(state.onRetry)
             is ChatRowModel.OverBudget -> OverBudgetCard(row.estimate, state.onSendAnyway, state.onCancel)
             is ChatRowModel.InfoNote -> InfoNoteRow(row.text)
-            is ChatRowModel.ToolActivity ->
-                ToolActivityRow(row.label, row.detail, row.ok)
             is ChatRowModel.Attachments -> AttachmentChipRow(row.chips, state.onRemoveChip)
             // Drawn by the Single branch before it reaches here; this arm keeps the when total.
             is ChatRowModel.Sources -> SourcesRow(row.items)
+            // Never reached: the list skips legacy ToolActivity rows before this point. The arm
+            // exists only so the `when` stays exhaustive, without inventing a rendering for a row
+            // the app no longer draws.
+            is ChatRowModel.ToolActivity -> Unit
         }
     }
 }

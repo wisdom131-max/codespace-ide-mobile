@@ -1102,6 +1102,15 @@ class ChatSession internal constructor(
         val execId = "exec-" + gen + "-" + submittedAt + "-" + userText.hashCode().toString(16)
         // STAGE 3: this attempt owns its buffer, filter, job and publication clock from here on.
         val attempt = attempts.begin(gen, execId)
+        // STAGE 5 (Checkpoint 0.5): a provider can hold the socket open with SSE keepalives and
+        // never answer. The transport cannot see that - its timeout is byte-idle and a ':' comment
+        // resets it - so the attempt carries its own stall clock, armed here and re-armed only by
+        // new visible text.
+        // STAGE 5: the stall POLICY lives in StreamProgressWatchdog and is tested there. The
+        // periodic check is not wired here yet: a perpetual ticker job keeps the session busy for
+        // ever, which defeats the harness's own idle detection and, worse, means nothing ever
+        // settles after a turn. Wiring it needs a timer owned by the attempt and cancelled on
+        // every terminal path, which is the next step rather than a guess.
         restoreDeliveryOnce()
         if (!delivery.beginSubmission(deliverySession, execId)) return
         activeExecId = execId
@@ -1404,6 +1413,7 @@ class ChatSession internal constructor(
         // before spending more of the owner's data.
         com.codespace.ide.agent.research.ResearchCancel.bump()
         val attempt = attempts.of(gen)
+        attempt?.let { it.finished = true; it.watchdog.disarm() }
         attempt?.cancelRequested = true
         (attempt?.job ?: sendJob)?.cancel()
         // Stop means stopped - but only for the attempt that still owns the screen. When a 429
@@ -1825,6 +1835,7 @@ class ChatSession internal constructor(
      */
     private fun performEndStream(gen: Int) {
         val attempt = attempts.of(gen)
+        attempt?.let { it.finished = true; it.watchdog.disarm() }
         if (attempt != null && !attempt.claimFinalization()) return
         continuationInFlight = false
         val ownsIndicator = attempt == null || attempts.current() === attempt
@@ -1876,6 +1887,8 @@ class ChatSession internal constructor(
                     if (fresh.isEmpty()) streamBufVisible else RetryPrefix.merge(streamBufVisible, fresh)
                 }
                 streamBufVisible = text
+                // Keepalives, usage-only frames and re-sent identical chunks are silence.
+                attempts.current()?.watchdog?.noteProgress(System.currentTimeMillis())
                 // STAGE 4: paint only when it is worth painting. See the field comment above.
                 val nowMs = System.currentTimeMillis()
                 val due = nowMs - lastPublishMs >= publishIntervalMs ||
