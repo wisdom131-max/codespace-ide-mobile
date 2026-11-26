@@ -21,10 +21,19 @@ internal class RequestGate(initial: Int = 0) {
     var current: Int = initial
         private set
 
-    /** Starts a new turn, or invalidates the running one. Returns the number to carry. */
-    fun bump(): Int {
+    /**
+     * Starts a new turn, or invalidates the running one. Returns the number to carry.
+     *
+     * STAGE 2 (Checkpoint 0.5): this is `current += 1` under a lock, not a bare increment. The
+     * session runs on Dispatchers.Default and cancellation arrives from the UI thread, so two
+     * transitions really can overlap; a lost increment would hand two attempts the same number,
+     * and then a stale event would pass [owns] and write into the newer answer.
+     */
+    private val transition = Any()
+
+    fun bump(): Int = synchronized(transition) {
         current += 1
-        return current
+        current
     }
 
     /** True when [gen] still owns the stream. An unnumbered event (0) never owns anything. */

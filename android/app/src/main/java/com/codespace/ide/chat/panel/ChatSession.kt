@@ -136,10 +136,34 @@ class ChatSession internal constructor(
      */
     private val modeSource: (() -> ChatMode?)? = null,
 ) {
-    private val streamBuf = StringBuilder()
-    /** STAGE 2: text the protocol filter has released for display, and the filter itself. */
-    private var streamBufVisible = ""
-    private var streamFilter = com.codespace.ide.agent.ProtocolStreamFilter()
+    /**
+     * STAGE 3 (Checkpoint 0.5): the response buffer, the visible text and the protocol filter are
+     * no longer single fields. Each attempt owns them (see RequestAttempt), and these accessors
+     * point at the CURRENT attempt, so every existing call site keeps its shape while the storage
+     * stops being shared. A stale attempt that slips past a guard writes into its own object,
+     * which nobody reads.
+     */
+    private val attempts = RequestAttempts()
+    private var idleVisible = ""
+    private var idleFilter = com.codespace.ide.agent.ProtocolStreamFilter()
+    private var idleJob: Job? = null
+
+    private val streamBuf: StringBuilder
+        get() = attempts.currentBuffer()
+
+    private var streamBufVisible: String
+        get() = attempts.current()?.visible ?: idleVisible
+        set(value) {
+            val a = attempts.current()
+            if (a != null) a.visible = value else idleVisible = value
+        }
+
+    private var streamFilter: com.codespace.ide.agent.ProtocolStreamFilter
+        get() = attempts.current()?.filter ?: idleFilter
+        set(value) {
+            val a = attempts.current()
+            if (a != null) a.filter = value else idleFilter = value
+        }
 
     /**
      * 2026-11-04 guard (c): everything this TURN showed the model - tool results, file reads,
@@ -161,7 +185,12 @@ class ChatSession internal constructor(
      * handed over as the retry's prefix and seeded exactly once.
      */
     private var retryPrefixText = ""
-    private var sendJob: Job? = null
+    private var sendJob: Job?
+        get() = attempts.current()?.job ?: idleJob
+        set(value) {
+            val a = attempts.current()
+            if (a != null) a.job = value else idleJob = value
+        }
     /**
      * STAGE 4 (Checkpoint 0.5): when the growing answer was last painted, and how long it was.
      *
@@ -171,8 +200,12 @@ class ChatSession internal constructor(
      * dropped: the buffer keeps every character, and the final row is built from the buffer, so a
      * throttled frame only means the screen catches up slightly later.
      */
-    private var lastPublishMs = 0L
-    private var lastPublishLen = 0
+    private var lastPublishMs: Long
+        get() = attempts.current()?.lastPublishMs ?: 0L
+        set(value) { attempts.current()?.lastPublishMs = value }
+    private var lastPublishLen: Int
+        get() = attempts.current()?.lastPublishLen ?: 0
+        set(value) { attempts.current()?.lastPublishLen = value }
     /** Provisional, as agreed: evaluate on device before treating either number as settled. */
     private val publishIntervalMs = 50L
     private val publishChars = 512
@@ -1056,6 +1089,8 @@ class ChatSession internal constructor(
         // would reuse a completed identity and be refused, which would be silencing a real question.
         val submittedAt = System.currentTimeMillis()
         val execId = "exec-" + gen + "-" + submittedAt + "-" + userText.hashCode().toString(16)
+        // STAGE 3: this attempt owns its buffer, filter, job and publication clock from here on.
+        val attempt = attempts.begin(gen, execId)
         restoreDeliveryOnce()
         if (!delivery.beginSubmission(deliverySession, execId)) return
         activeExecId = execId
@@ -1075,6 +1110,9 @@ class ChatSession internal constructor(
             // STAGE 7: a new ask is a new reply. Continuation and retry fall outside this branch,
             // so they keep the id of the answer they are extending.
             replyId = java.util.UUID.randomUUID().toString()
+            // STAGE 3: the attempt carries the reply it is writing, so a stale attempt can be told
+            // apart from the one that now owns that reply.
+            attempt.replyId = replyId
             newRows.add(ChatRowModel.User(userText))
             if (chips.isNotEmpty()) newRows.add(ChatRowModel.Attachments(chips))
             // STAGE 7: durable statements in what the user just said are captured in the
@@ -1128,11 +1166,14 @@ class ChatSession internal constructor(
             } catch (_: CancellationException) {
                 // Cooperative cancel: partial text is already in the rows.
                 // P4.3: a continuation stopped by the user ends as CANCELLED, never as completed.
+                // P4.3: a continuation stopped by the user ends as CANCELLED, never as completed.
                 if (continuationInFlight) {
                     continuationInFlight = false
                     com.codespace.ide.agent.ContinuationDiag.cancelled()
                 }
-                ui.value = ui.value.copy(streaming = false)
+                // STAGE 5: routed through the one finalizer rather than clearing inline, so a
+                // cancelled attempt is finalized once and only while it still owns the indicator.
+                endStream(gen)
             } catch (t: Throwable) {
                 // PROJECT EIGHT 8.61 (catalog 93/94/95 wiring): ProviderErrors could name a failure
                 // precisely and nothing rendered that name, so the user met a raw exception string.
@@ -1720,9 +1761,24 @@ class ChatSession internal constructor(
      * provider error, Stop, replacement, handoff) goes through it, so no path can leave the flag
      * set and lock the composer on Stop for the rest of the session.
      */
-    private fun endStream() {
+    /**
+     * STAGE 5 (Checkpoint 0.5): the ONE place a request attempt stops being live.
+     *
+     * Two things were wrong before. The indicator was cleared from eight different sites, so no
+     * single place could promise that every ending clears it; and the clear had no idea which
+     * attempt it was clearing for, so a stale attempt could switch off a newer one's spinner.
+     *
+     * Now the attempt itself is asked: it can be finalized exactly once, and it may only touch the
+     * indicator while it is still the current attempt. A cancellation bumps the generation but
+     * does not start a new attempt, so the cancelled attempt is still current and still clears its
+     * own indicator - which is what makes Stop feel immediate.
+     */
+    private fun endStream(gen: Int = requestGate.current) {
+        val attempt = attempts.of(gen)
+        if (attempt != null && !attempt.claimFinalization()) return
         continuationInFlight = false
-        if (ui.value.streaming) ui.value = ui.value.copy(streaming = false)
+        val ownsIndicator = attempt == null || attempts.current() === attempt
+        if (ownsIndicator && ui.value.streaming) ui.value = ui.value.copy(streaming = false)
     }
 
     internal fun appendNotice(text: String) {
@@ -1753,7 +1809,11 @@ class ChatSession internal constructor(
         // before it can touch rows, tool calls or the buffer. This is what stops a stopped or
         // replaced stream from appending to a newer answer.
         if (requestGate.stale(gen)) return
-        if (delivery.isCancelled(activeExecId)) return
+        // STAGE 6 (Checkpoint 0.5): the ledger used to be asked about whichever execution was
+        // active when the event arrived, so a late event from A could be judged by B's state.
+        // The attempt that owns this generation carries its own execution id.
+        val eventExecId = attempts.of(gen)?.execId ?: activeExecId
+        if (delivery.isCancelled(eventExecId)) return
         when (ev) {
             is EngineEvent.Usage -> {
                 tokens.onUsage(ev.inputTokens, ev.outputTokens)
@@ -1827,7 +1887,7 @@ class ChatSession internal constructor(
                 // follows the tools still has an answer of its own to deliver.
                 if (decision is ToolDecision.Answer) {
                     restoreDeliveryOnce()
-                    if (!delivery.mayAppendAnswer(activeExecId, deliverySession)) return
+                    if (!delivery.mayAppendAnswer(eventExecId, deliverySession)) return
                 }
                 val shown = when (decision) {
                     is ToolDecision.Answer -> decision.text
