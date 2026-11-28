@@ -39,6 +39,47 @@ object ThinkingTreeStore {
 
     private fun rootOf(context: Context): File = File(context.filesDir, "chat")
 
+    /**
+     * OWNER FIX (2026-11-28): a tree belongs to exactly one conversation.
+     *
+     * A blank id used to be rewritten to "_", so every unidentified caller shared one file and a
+     * new chat could read another conversation's work. There is no correct file for an
+     * unidentified conversation, so these return empty/refuse instead of inventing one.
+     */
+    private fun identified(projectId: String, conversationId: String): Boolean =
+        projectId.isNotBlank() && conversationId.isNotBlank()
+
+    /** Schema marker for the tree this build writes. Older files are a different renderer's data. */
+    const val SCHEMA = 2
+    private const val SCHEMA_MARKER = ".tree-schema"
+
+    /**
+     * OWNER REQUEST (2026-11-28): the old thinking-tree data must not affect anything.
+     *
+     * The previous renderer wrote `.tree.json` files whose shape this build no longer owns, and
+     * those files are what kept a stale tree appearing in new chats. The first run of this schema
+     * deletes them once and records that it did. Idempotent: the marker means it never runs twice,
+     * and new trees written after it are never touched.
+     *
+     * @return how many stale files were removed (0 when already migrated).
+     */
+    fun migrateOnce(root: File): Int {
+        val marker = File(root, SCHEMA_MARKER)
+        if (marker.isFile) return 0
+        if (!root.isDirectory) {
+            runCatching { root.mkdirs(); marker.writeText(SCHEMA.toString()) }
+            return 0
+        }
+        var removed = 0
+        root.walkTopDown().forEach { f ->
+            if (f.isFile && f.name.endsWith(FILE_SUFFIX) && f.delete()) removed++
+        }
+        runCatching { marker.writeText(SCHEMA.toString()) }
+        return removed
+    }
+
+    fun migrateOnce(context: Context): Int = migrateOnce(rootOf(context))
+
     /** One restored node. `state` is the executor verdict at the time it was written. */
     data class Step(
         val nodeId: String,
@@ -77,6 +118,7 @@ object ThinkingTreeStore {
      * guessed one: nothing here invents a step, a state or a timestamp.
      */
     fun loadFrom(root: File, projectId: String, conversationId: String): List<Step> {
+        if (!identified(projectId, conversationId)) return emptyList()
         val file = fileFor(root, projectId, conversationId)
         if (!file.isFile) return emptyList()
         val arr = try {
@@ -122,6 +164,7 @@ object ThinkingTreeStore {
      */
     fun appendTo(root: File, projectId: String, conversationId: String, step: Step): Boolean {
         if (step.nodeId.isBlank()) return false
+        if (!identified(projectId, conversationId)) return false
         val existing = loadFrom(root, projectId, conversationId).toMutableList()
         val at = existing.indexOfFirst { it.nodeId == step.nodeId }
         if (at >= 0) {
@@ -134,6 +177,7 @@ object ThinkingTreeStore {
     }
 
     fun writeTo(root: File, projectId: String, conversationId: String, steps: List<Step>): Boolean {
+        if (!identified(projectId, conversationId)) return false
         val arr = JSONArray()
         for (s in steps.takeLast(MAX_STEPS)) {
             val o = JSONObject()

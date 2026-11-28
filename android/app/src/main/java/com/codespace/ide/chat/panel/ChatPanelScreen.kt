@@ -428,7 +428,10 @@ private fun ChatBody(
                             steps = liveSteps,
                             tree = storedSteps,
                             liveLabel = liveLabel,
-                            running = state.streaming && state.firstDeltaMs == 0L,
+                            // OWNER FIX (2026-11-28): running was gated on firstDeltaMs == 0, so it
+                            // went false the moment text streamed and never showed during tool work.
+                            // The turn is in flight exactly while it is streaming.
+                            running = state.streaming,
                         ),
                     )
                 else state.rows

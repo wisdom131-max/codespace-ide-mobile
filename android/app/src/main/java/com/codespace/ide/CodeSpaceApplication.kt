@@ -46,6 +46,20 @@ class CodeSpaceApplication : Application(), Configuration.Provider {
                 java.io.File(filesDir, "diagnostics/copilot-events.jsonl"),
             )
         } catch (_: Throwable) { /* diagnostics never block startup */ }
+        // OWNER REQUEST (2026-11-28): delete the previous thinking-tree schema once, at startup,
+        // before any chat panel can read it. Those files are what kept a stale tree appearing in a
+        // new chat. Idempotent (a marker stops it) and never blocks startup.
+        try {
+            val removed = com.codespace.ide.chat.ThinkingTreeStore.migrateOnce(filesDir)
+            if (removed > 0) {
+                com.codespace.ide.agent.CopilotDiag.record(
+                    kind = com.codespace.ide.agent.CopilotDiag.Kind.SESSION,
+                    name = "TREE_SCHEMA_PURGED",
+                    ok = true,
+                    detail = removed.toString() + " stale tree file(s) removed",
+                )
+            }
+        } catch (_: Throwable) { /* a purge failure must never block startup */ }
         // BATCH10-P00 (advisor addendum 2026-10-18): BUILD STAMP is the FIRST Output
         // line — "[start] build <hash> run <n> <time>". The owner's saved logs then
         // always identify WHICH APK produced them (we were guessing before). The

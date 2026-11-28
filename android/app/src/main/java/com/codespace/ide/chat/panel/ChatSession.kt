@@ -1859,10 +1859,15 @@ class ChatSession internal constructor(
     private fun performEndStream(gen: Int) {
         val attempt = attempts.of(gen)
         attempt?.let { it.finished = true; it.watchdog.disarm() }
-        if (attempt != null && !attempt.claimFinalization()) return
-        continuationInFlight = false
+        // OWNER FIX (2026-11-28): the indicator used to be cleared only AFTER the exactly-once
+        // claim. A tool round reuses the send's generation, so its continuation reached a claim
+        // that was already taken and returned before clearing: the spinner stayed on for the rest
+        // of the session and every later send looked like a duplicate. Clearing is idempotent and
+        // is guarded by ownership, not by the claim; the claim still governs the rest.
         val ownsIndicator = attempt == null || attempts.current() === attempt
         if (ownsIndicator && ui.value.streaming) ui.value = ui.value.copy(streaming = false)
+        continuationInFlight = false
+        attempt?.claimFinalization()
     }
 
     internal fun appendNotice(text: String) {
@@ -2211,6 +2216,10 @@ class ChatSession internal constructor(
         val ctx = appContext
         if (ctx == null) {
             appendRow(ChatRowModel.InfoNote("Tool execution is unavailable in this build."))
+            // OWNER FIX (2026-11-28): this returned with streaming=true, set one branch earlier
+            // for a Run decision. The turn then looked alive for ever and no tool ran. A path that
+            // does no work must still end the turn it was given.
+            endStream(gen)
             return
         }
         // PROJECT EIGHT 8.11 (catalog 13): a POLL IS NOT A STEP.
