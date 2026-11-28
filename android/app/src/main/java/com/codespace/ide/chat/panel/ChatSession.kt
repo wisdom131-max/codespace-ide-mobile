@@ -1875,6 +1875,9 @@ class ChatSession internal constructor(
     }
 
     private fun appendRow(row: ChatRowModel) {
+        // OWNER FIX (2026-11-28): a note with no text is not a message. It still painted a
+        // surfaceAlt chip, which is a grey bar with nothing in it. No call site may produce one.
+        if (com.codespace.ide.chat.ui.ChatRowGuard.isBlankNote(row)) return
         // PROJECT EIGHT 8.53 (catalog 85 wiring): Redaction existed and nothing used it. A provider
         // error can echo the request back, and a request can contain a key. Every failure row
         // passes through this one function, so this is the place that guarantees a key never

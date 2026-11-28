@@ -92,7 +92,11 @@ object ModelCatalog {
         // OWNER REPORT (2026-11-23): this sentence was shown as a dialog and called the user's
         // model a lie. A model the catalog has no row for is simply measured from the settings
         // instead - that is a fallback, not an accusation, so it says nothing.
-        Source.UNKNOWN -> ""
+        // OWNER FIX (2026-11-28): this returned an EMPTY STRING, and ChatSession.select() appends
+        // whatever is non-null. A blank note renders as a full-width grey chip, which is the bar
+        // the owner saw on every provider switch, every return to the app and every new chat.
+        // "It says nothing" has to mean null.
+        Source.UNKNOWN -> null
     }
 
     /**

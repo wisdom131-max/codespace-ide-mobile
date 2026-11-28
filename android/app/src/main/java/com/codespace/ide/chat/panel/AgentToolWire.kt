@@ -530,7 +530,19 @@ internal object AgentToolWire {
             if (sb.startsWith("```", i)) {
                 val end = sb.indexOf("```", i + 3)
                 val stop = if (end < 0) sb.length else end + 3
-                for (k in i until stop) if (sb[k] != '\n') sb.setCharAt(k, ' ')
+                val innerStart = i + 3
+                val innerEnd = if (end < 0) sb.length else end
+                // OWNER FIX (2026-11-28): EVERY fence used to be blanked, so a model that wrapped
+                // its call in ```json had the call erased. Nothing ran, the reply read as a normal
+                // answer, and the turn ended - the "it says it will search, then stops" report.
+                // A fence whose whole body is one call is a PAYLOAD and stays scannable. A fence
+                // with prose in it is still documentation and is still masked.
+                if (isPureCallPayload(sb.substring(innerStart, innerEnd))) {
+                    for (k in i until innerStart) if (sb[k] != '\n') sb.setCharAt(k, ' ')
+                    if (end >= 0) for (k in innerEnd until stop) if (sb[k] != '\n') sb.setCharAt(k, ' ')
+                } else {
+                    for (k in i until stop) if (sb[k] != '\n') sb.setCharAt(k, ' ')
+                }
                 i = stop
                 continue
             }
@@ -543,6 +555,24 @@ internal object AgentToolWire {
             i++
         }
         return sb.toString()
+    }
+
+    /**
+     * OWNER FIX (2026-11-28): true only when a fenced body is a single call and nothing else.
+     *
+     * The language tag on the first line is ignored (`json`, `tool`, or none). Anything left over
+     * after removing the call - prose, a second block, an example caption - makes it documentation
+     * again, so only an unambiguous payload can ever be executed.
+     */
+    internal fun isPureCallPayload(fencedBody: String): Boolean {
+        val body = fencedBody.substringAfter('\n', fencedBody).ifBlank { fencedBody }
+        if (body.isBlank()) return false
+        val found = parseDetailed(body)
+        if (found.size != 1) return false
+        val call = found.first()
+        val rest = StringBuilder(body)
+        for (k in call.range) if (k in rest.indices) rest.setCharAt(k, ' ')
+        return rest.isBlank()
     }
 
     /** Same calls [parse] returns, plus where they were and which dialect they came from. */
